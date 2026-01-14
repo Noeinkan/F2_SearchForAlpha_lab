@@ -7,7 +7,6 @@ import logging
 import pandas as pd
 from typing import Dict, Any, Callable
 from ta.volatility import BollingerBands
-import pandas_ta as ta
 
 from lib.signals.base_strategy import BaseTradingStrategy
 
