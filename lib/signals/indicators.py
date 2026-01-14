@@ -1,5 +1,9 @@
 # indicators module
+"""
+Technical indicators and signal aggregation module.
+"""
 
+import logging
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -7,23 +11,30 @@ import yfinance as yf
 from ta.trend import ADXIndicator
 from ta.volatility import AverageTrueRange
 
+from lib.signals.base_strategy import BaseTradingStrategy
+from lib.signals.signals_BB import BB_TradingStrategy
+from lib.signals.signals_CCI import CCI_TradingStrategy
+from lib.signals.signals_EMA import EMA_TradingStrategy
+from lib.signals.signals_MACD import MACD_TradingStrategy
+from lib.signals.signals_RSI import RSI_TradingStrategy
+from lib.signals.signals_SMA import SMA_TradingStrategy
 
-from lib.data_processing import *
-from lib.visualization import *
-from lib.utils import *
-from lib.strategy import *
-from SearchForAlpha_lab.lib.signal_combo_optimisation import *
-# from SS.dash_visualization import *
+logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
 
 
-from lib.signals.signals_BB import *
-from lib.signals.signals_CCI import *
-from lib.signals.signals_EMA import *
-from lib.signals.signals_MACD import *
-from lib.signals.signals_RSI import *
-from lib.signals.signals_SMA import *
-
-def add_indicators(df):
+def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add technical indicators to the DataFrame.
+    
+    Args:
+        df: DataFrame with OHLCV data.
+        
+    Returns:
+        DataFrame with added indicator columns.
+    """
+    logger.debug("Adding technical indicators")
     
     # ADX (Average Directional Index)
     adx = ADXIndicator(df['High'], df['Low'], df['Close'])
@@ -38,24 +49,37 @@ def add_indicators(df):
    
     return df
 
-def generate_signals(df: pd.DataFrame) -> pd.DataFrame:
-    bb_strategy = BB_TradingStrategy()
-    macd_strategy = MACD_TradingStrategy()
-    rsi_strategy = RSI_TradingStrategy()
-    cci_strategy = CCI_TradingStrategy()
-    sma_strategy = SMA_TradingStrategy() 
-    ema_strategy = EMA_TradingStrategy()
 
-
-    df = bb_strategy.BB_generate_signals(df)
-    df = macd_strategy.MACD_generate_signals(df)
-    df = rsi_strategy.RSI_generate_signals(df)
-    df = cci_strategy.CCI_generate_signals(df)
-    df = sma_strategy.SMA_generate_signals(df)  # Aggiungi questa linea
-    df = ema_strategy.EMA_generate_signals(df)
+def generate_signals(df: pd.DataFrame) -> tuple:
+    """
+    Generate trading signals from all strategy classes.
+    
+    Args:
+        df: DataFrame with OHLCV data and indicators.
+        
+    Returns:
+        Tuple of (DataFrame with signals, list of signal column headers).
+    """
+    logger.info("Generating trading signals")
+    
+    strategies = [
+        BB_TradingStrategy(),
+        MACD_TradingStrategy(),
+        RSI_TradingStrategy(),
+        CCI_TradingStrategy(),
+        SMA_TradingStrategy(),
+        EMA_TradingStrategy(),
+    ]
+    
+    for strategy in strategies:
+        try:
+            df = strategy.generate_signals(df)
+            logger.debug(f"Generated signals for {strategy.name}")
+        except Exception as e:
+            logger.error(f"Error generating signals for {strategy.name}: {e}")
+            raise
     
     signal_headers = df.columns.tolist()
-    
     
     return df, signal_headers
 

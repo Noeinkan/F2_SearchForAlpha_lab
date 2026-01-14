@@ -1,9 +1,17 @@
+"""
+Tests for the signal combination optimization module.
+"""
+
 import unittest
 import pandas as pd
 import numpy as np
 from unittest.mock import patch, MagicMock
-from SearchForAlpha_lab.lib.signal_combo_optimisation import create_combinations, test_combination, process_chunk, filter_results
-from dask.distributed import Client
+
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from lib.signal_combo_optimisation import create_combinations, test_combination, filter_results
 
 class TestSignalCombination(unittest.TestCase):
 

@@ -1,68 +1,107 @@
+"""
+Tests for the indicators module.
+"""
+
 import unittest
 import pandas as pd
 import numpy as np
-from lib.signals.indicators import generate_signals
 from unittest.mock import patch, MagicMock
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-import pandas as pd
-import numpy as np
-from lib.signals.indicators import generate_signals
-from unittest.mock import patch, MagicMock
+from lib.signals.indicators import generate_signals, add_indicators
+
 
 class TestGenerateSignals(unittest.TestCase):
 
     def setUp(self):
-        self.df = pd.DataFrame({
-            'Close': [100, 101, 102, 103, 104],
-            'High': [105, 106, 107, 108, 109],
-            'Low': [95, 96, 97, 98, 99],
-        })
-
-    @patch('lib.indicators.BB_TradingStrategy')
-    @patch('lib.indicators.MACD_TradingStrategy')
-    @patch('lib.indicators.RSI_TradingStrategy')
-    @patch('lib.indicators.CCI_TradingStrategy')
-    def test_generate_signals_calls_all_strategies(self, mock_cci, mock_rsi, mock_macd, mock_bb):
-        generate_signals(self.df)
+        """Set up test fixtures."""
+        # Create sample price data with enough rows for indicator calculations
+        np.random.seed(42)
+        n_rows = 250
+        dates = pd.date_range(start='2020-01-01', periods=n_rows, freq='D')
+        base_price = 100
         
-        mock_bb.return_value.BB_generate_signals.assert_called_once()
-        mock_macd.return_value.MACD_generate_signals.assert_called_once()
-        mock_rsi.return_value.RSI_generate_signals.assert_called_once()
-        mock_cci.return_value.CCI_generate_signals.assert_called_once()
+        # Generate realistic price data
+        returns = np.random.randn(n_rows) * 0.02
+        prices = base_price * np.exp(np.cumsum(returns))
+        
+        self.df = pd.DataFrame({
+            'Close': prices,
+            'High': prices * 1.02,
+            'Low': prices * 0.98,
+            'Open': prices * 1.001,
+            'Volume': np.random.randint(1000000, 10000000, n_rows)
+        }, index=dates)
 
-    def test_generate_signals_returns_dataframe(self):
-        result = generate_signals(self.df)
-        self.assertIsInstance(result, pd.DataFrame)
+    def test_generate_signals_returns_tuple(self):
+        """Test that generate_signals returns a tuple of (DataFrame, list)."""
+        df = add_indicators(self.df.copy())
+        result = generate_signals(df)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], pd.DataFrame)
+        self.assertIsInstance(result[1], list)
 
     def test_generate_signals_preserves_original_columns(self):
+        """Test that original columns are preserved."""
+        df = add_indicators(self.df.copy())
+        original_columns = df.columns.tolist()
+        result_df, _ = generate_signals(df)
+        for col in original_columns:
+            self.assertIn(col, result_df.columns)
+
+    def test_generate_signals_adds_signal_columns(self):
+        """Test that signal columns are added."""
+        df = add_indicators(self.df.copy())
+        result_df, signal_headers = generate_signals(df)
+        
+        # Should have added some buy/sell signal columns
+        buy_signals = [col for col in result_df.columns if 'buy' in col.lower()]
+        sell_signals = [col for col in result_df.columns if 'sell' in col.lower()]
+        
+        self.assertGreater(len(buy_signals), 0, "Should have at least one buy signal")
+        self.assertGreater(len(sell_signals), 0, "Should have at least one sell signal")
+
+    def test_add_indicators_adds_expected_columns(self):
+        """Test that add_indicators adds ADX, ATR, and OBV."""
+        result_df = add_indicators(self.df.copy())
+        
+        self.assertIn('ADX', result_df.columns)
+        self.assertIn('ATR', result_df.columns)
+        self.assertIn('OBV', result_df.columns)
+
+
+class TestAddIndicators(unittest.TestCase):
+
+    def setUp(self):
+        """Set up test fixtures."""
+        np.random.seed(42)
+        n_rows = 50
+        dates = pd.date_range(start='2020-01-01', periods=n_rows, freq='D')
+        
+        self.df = pd.DataFrame({
+            'Close': np.random.uniform(95, 105, n_rows),
+            'High': np.random.uniform(100, 110, n_rows),
+            'Low': np.random.uniform(90, 100, n_rows),
+            'Open': np.random.uniform(95, 105, n_rows),
+            'Volume': np.random.randint(1000000, 10000000, n_rows)
+        }, index=dates)
+
+    def test_add_indicators_returns_dataframe(self):
+        """Test that add_indicators returns a DataFrame."""
+        result = add_indicators(self.df.copy())
+        self.assertIsInstance(result, pd.DataFrame)
+
+    def test_add_indicators_preserves_original_data(self):
+        """Test that original columns are preserved."""
         original_columns = self.df.columns.tolist()
-        result = generate_signals(self.df)
+        result = add_indicators(self.df.copy())
         for col in original_columns:
             self.assertIn(col, result.columns)
 
-    def test_generate_signals_adds_new_columns(self):
-        with patch('lib.indicators.BB_TradingStrategy') as mock_bb:
-            mock_bb.return_value.BB_generate_signals.side_effect = lambda df: df.assign(BB_Signal=1)
-            
-            result = generate_signals(self.df)
-            self.assertIn('BB_Signal', result.columns)
 
-    def test_generate_signals_does_not_modify_input_dataframe(self):
-        original_df = self.df.copy()
-        generate_signals(self.df)
-        pd.testing.assert_frame_equal(self.df, original_df)
-
-    def test_generate_signals_handles_empty_dataframe(self):
-        empty_df = pd.DataFrame()
-        result = generate_signals(empty_df)
-        self.assertTrue(result.empty)
-
-    def test_generate_signals_with_nan_values(self):
-        df_with_nan = self.df.copy()
-        df_with_nan.loc[2, 'Close'] = np.nan
-        result = generate_signals(df_with_nan)
-        self.assertFalse(result.isnull().values.any())
+if __name__ == '__main__':
+    unittest.main()

@@ -1,3 +1,10 @@
+"""
+Integrated Trading Dashboard Module
+
+A Dash-based interactive dashboard for trading strategy visualization and backtesting.
+"""
+
+import logging
 import dash
 from dash import dcc, html, dash_table
 from dash.dependencies import Input, Output, State
@@ -7,35 +14,131 @@ from datetime import date
 import yfinance as yf
 from threading import Timer
 import socket
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List, Optional
 from dash.exceptions import PreventUpdate
 import webbrowser
 import sys
 import os
 from datetime import datetime
 import dash_bootstrap_components as dbc
+from functools import lru_cache
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from lib.strategy import backtest, run_backtest, percentage_of_portfolio
-from lib.weights_optimasation import walk_forward_optimisation
+from lib.weights_optimization import walk_forward_optimisation
 from lib.data_processing import get_all_tickers, create_backtest_results
 from lib.signals.indicators import add_indicators, generate_signals
 from lib.dash.chart_utils import create_chart, create_legend_div
-from lib.dash.dash_config import *  
+from lib.dash.dash_config import (
+    TEXT_COLOR, BACKGROUND_COLOR, CHART_BACKGROUND_COLOR, BORDER_COLOR,
+    CHART_HEIGHT, MAIN_CONTENT_WIDTH, SIDEBAR_WIDTH,
+    SIGNAL_OPTIONS, PLOT_OPTIONS, CHART_ELEMENT_OPTIONS,
+    DEFAULT_TICKER, INITIAL_CAPITAL, START_DATE,
+    OPTIMIZATION_METHODS, OPTIMIZATION_DELAY,
+    START_PORT, MAX_PORT_TRIES
+)
 from lib.utils import export_priceaction_to_excel
 
-# Global variables
-df = None
-all_tickers_df = None
-backtest_results = None
 
-def format_df_for_display(df):
+class DashboardState:
+    """
+    Encapsulates dashboard state to avoid global mutable variables.
+    Thread-safe storage for dashboard data.
+    """
+    
+    def __init__(self):
+        self._df: Optional[pd.DataFrame] = None
+        self._all_tickers_df: Optional[pd.DataFrame] = None
+        self._backtest_results: Optional[Dict] = None
+        self._data_cache: Dict[str, pd.DataFrame] = {}
+    
+    @property
+    def df(self) -> Optional[pd.DataFrame]:
+        return self._df
+    
+    @df.setter
+    def df(self, value: pd.DataFrame) -> None:
+        self._df = value
+    
+    @property
+    def all_tickers_df(self) -> Optional[pd.DataFrame]:
+        return self._all_tickers_df
+    
+    @all_tickers_df.setter
+    def all_tickers_df(self, value: pd.DataFrame) -> None:
+        self._all_tickers_df = value
+    
+    @property
+    def backtest_results(self) -> Optional[Dict]:
+        return self._backtest_results
+    
+    @backtest_results.setter
+    def backtest_results(self, value: Dict) -> None:
+        self._backtest_results = value
+    
+    def get_cached_data(self, key: str) -> Optional[pd.DataFrame]:
+        """Get cached data by key."""
+        return self._data_cache.get(key)
+    
+    def set_cached_data(self, key: str, data: pd.DataFrame) -> None:
+        """Cache data with key."""
+        self._data_cache[key] = data
+    
+    def clear_cache(self) -> None:
+        """Clear all cached data."""
+        self._data_cache.clear()
+
+
+# Create a single instance for state management
+dashboard_state = DashboardState()
+
+def format_df_for_display(df: pd.DataFrame) -> pd.DataFrame:
+    """Format DataFrame for display in the dashboard."""
     df = df.copy()
     for col in df.columns:
         if df[col].dtype == 'float64':
             df[col] = df[col].round(2)
     return df
+
+
+def fetch_data_with_cache(ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
+    """
+    Fetch data with caching to avoid repeated API calls.
+    
+    Args:
+        ticker: Stock ticker symbol.
+        start_date: Start date for data.
+        end_date: End date for data.
+        
+    Returns:
+        DataFrame with OHLCV data.
+        
+    Raises:
+        ValueError: If no data is available.
+    """
+    cache_key = f"{ticker}_{start_date}_{end_date}"
+    cached = dashboard_state.get_cached_data(cache_key)
+    
+    if cached is not None:
+        logger.info(f"Using cached data for {ticker}")
+        return cached
+    
+    logger.info(f"Fetching data for {ticker} from {start_date} to {end_date}")
+    try:
+        df = yf.download(ticker, start=start_date, end=end_date)
+        if df.empty:
+            raise ValueError(f"No data available for {ticker}")
+        
+        dashboard_state.set_cached_data(cache_key, df)
+        return df
+    except Exception as e:
+        logger.error(f"Error fetching data for {ticker}: {e}")
+        raise
+
 
 def create_dash_app(df: pd.DataFrame, ticker: str, backtest_results: Dict) -> dash.Dash:
     app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -359,11 +462,17 @@ def run_dashboard():
         [Input('url', 'pathname')]
     )
     def populate_ticker_dropdown(pathname):
-        global all_tickers_df
         if pathname == '/':
-            if all_tickers_df is None:
-                all_tickers_df = get_all_tickers()
-            return [{'label': row['Security'], 'value': row['Symbol']} for _, row in all_tickers_df.iterrows()]
+            if dashboard_state.all_tickers_df is None:
+                try:
+                    dashboard_state.all_tickers_df = get_all_tickers()
+                except Exception as e:
+                    logger.error(f"Error fetching tickers: {e}")
+                    return [{'label': 'SPY - SPDR S&P 500 ETF', 'value': 'SPY'}]
+            return [
+                {'label': row['Security'], 'value': row['Symbol']} 
+                for _, row in dashboard_state.all_tickers_df.iterrows()
+            ]
         return []
 
     def open_browser():
@@ -374,21 +483,34 @@ def run_dashboard():
     app.run_server(debug=False, use_reloader=False, port=port)
 
 def handle_submit_button(params: Dict[str, Any]) -> Tuple[str, str, List, List, None]:
-    global df
+    """Handle the submit button click."""
     ticker, start_date, end_date = params['ticker'], params['start_date'], params['end_date']
     
-    df = yf.download(ticker, start=start_date, end=end_date)
-    
-    if df.empty:
-        return '/', 'No data available for the selected ticker and date range.', [], [], None
-    
-    df = add_indicators(df)
-    df, _ = generate_signals(df)
-    
-    return '/signal-selection', f'Data loaded for {ticker} from {start_date} to {end_date}', [], [], None
+    try:
+        df = fetch_data_with_cache(ticker, start_date, end_date)
+        
+        if df.empty:
+            return '/', 'No data available for the selected ticker and date range.', [], [], None
+        
+        df = add_indicators(df)
+        df, _ = generate_signals(df)
+        dashboard_state.df = df
+        
+        logger.info(f"Data loaded for {ticker}: {len(df)} rows")
+        return '/signal-selection', f'Data loaded for {ticker} from {start_date} to {end_date}', [], [], None
+        
+    except Exception as e:
+        logger.error(f"Error loading data: {e}")
+        return '/', f'Error loading data: {str(e)}', [], [], None
+
 
 def handle_method_next_button(params: Dict[str, Any]) -> Tuple[str, str, List[Dict[str, str]], List[Dict[str, str]], None]:
+    """Handle the method next button click."""
     signal_method = params['signal_method']
+    df = dashboard_state.df
+    
+    if df is None:
+        return '/', 'No data loaded. Please go back and load data first.', [], [], None
     
     if signal_method == 'manual':
         buy_options = [{'label': col, 'value': col} for col in df.columns if 'buy' in col.lower()]
@@ -397,42 +519,67 @@ def handle_method_next_button(params: Dict[str, Any]) -> Tuple[str, str, List[Di
     else:
         return '/auto-optimization', '', [], [], None
 
+
 def handle_manual_submit_button(params: Dict[str, Any]) -> Tuple[str, str, List, List, Any]:
-    global backtest_results
+    """Handle the manual submit button click."""
+    df = dashboard_state.df
     
-    results = run_backtest(df, params['initial_capital'], params['buy_signals'], params['sell_signals'])
-    backtest_results = create_backtest_results(results, params['ticker'], params['initial_capital'], params['buy_signals'], params['sell_signals'])
+    if df is None:
+        return '/', 'No data loaded.', [], [], None
     
-    plot_financial_chart_dash(results, params['ticker'], backtest_results)
-
-    return '/results', '', [], [], html.Div("Results plotted in a new window")
-
-def handle_auto_optimize_button(params: Dict[str, Any]) -> Tuple[str, str, List, List, Any]:
-    global backtest_results
-    
-    if params['optimization_method'] == 'walk_forward':
-        optimized_params = walk_forward_optimisation(df)
-        
-        results = backtest(
-            df=df, 
-            initial_capital=params['initial_capital'],
-            buy_indicators=optimized_params['buy_indicators'],
-            sell_indicators=optimized_params['sell_indicators'],
-            delay=OPTIMIZATION_DELAY,
-            indicator_weights=optimized_params.get('indicator_weights')
-        )
-        
+    try:
+        results = run_backtest(df, params['initial_capital'], params['buy_signals'], params['sell_signals'])
         backtest_results = create_backtest_results(
-            results, 
-            params['ticker'], 
-            params['initial_capital'], 
-            optimized_params['buy_indicators'], 
-            optimized_params['sell_indicators']
+            results, params['ticker'], params['initial_capital'], 
+            params['buy_signals'], params['sell_signals']
         )
+        dashboard_state.backtest_results = backtest_results
         
         plot_financial_chart_dash(results, params['ticker'], backtest_results)
-
+        
         return '/results', '', [], [], html.Div("Results plotted in a new window")
+        
+    except Exception as e:
+        logger.error(f"Error running backtest: {e}")
+        return '/', f'Error running backtest: {str(e)}', [], [], None
+
+
+def handle_auto_optimize_button(params: Dict[str, Any]) -> Tuple[str, str, List, List, Any]:
+    """Handle the auto optimize button click."""
+    df = dashboard_state.df
+    
+    if df is None:
+        return '/', 'No data loaded.', [], [], None
+    
+    try:
+        if params['optimization_method'] == 'walk_forward':
+            optimized_params = walk_forward_optimisation(df)
+            
+            results = backtest(
+                df=df, 
+                initial_capital=params['initial_capital'],
+                buy_indicators=optimized_params['buy_indicators'],
+                sell_indicators=optimized_params['sell_indicators'],
+                delay=OPTIMIZATION_DELAY,
+                indicator_weights=optimized_params.get('indicator_weights')
+            )
+            
+            backtest_results = create_backtest_results(
+                results, 
+                params['ticker'], 
+                params['initial_capital'], 
+                optimized_params['buy_indicators'], 
+                optimized_params['sell_indicators']
+            )
+            dashboard_state.backtest_results = backtest_results
+            
+            plot_financial_chart_dash(results, params['ticker'], backtest_results)
+
+            return '/results', '', [], [], html.Div("Results plotted in a new window")
+            
+    except Exception as e:
+        logger.error(f"Error during optimization: {e}")
+        return '/', f'Error during optimization: {str(e)}', [], [], None
     
     raise PreventUpdate
 

@@ -1,0 +1,70 @@
+# Strategy Configuration File
+# This file contains all tunable parameters for trading strategies.
+# Modify values here instead of in the source code for easier experimentation.
+
+strategies:
+  sma:
+    sma:
+      short_window: 5
+      medium_window: 20
+      long_window: 50
+      trend_window: 200
+    crossover:
+      threshold: 0.001
+
+  ema:
+    ema:
+      short_window: 12
+      medium_window: 26
+      long_window: 50
+    crossover:
+      threshold: 0.001
+
+  rsi:
+    rsi:
+      window: 14
+    overbought_oversold:
+      upper_threshold: 70
+      lower_threshold: 30
+    divergence:
+      lookback_period: 10
+
+  bollinger_bands:
+    bollinger_bands:
+      window: 20
+      window_dev: 2
+    squeeze_strategy:
+      squeeze_threshold: 0.1
+    double_bottom_top_strategy:
+      threshold: 0.02
+
+  cci:
+    cci:
+      window: 20
+    overbought_oversold:
+      upper_threshold: 100
+      lower_threshold: -100
+    trend_reversal:
+      extreme_threshold: 180
+
+  macd:
+    macd:
+      fast_period: 12
+      slow_period: 26
+      signal_period: 9
+    zero_cross:
+      threshold: 0
+    signal_cross:
+      threshold: 0
+
+# Backtest defaults
+backtest:
+  initial_capital: 10000
+  percent_of_portfolio: 0.1
+  delay: 1
+
+# ML Strategy defaults
+ml_strategy:
+  test_size: 0.2
+  random_state: 42
+  n_estimators: 100
