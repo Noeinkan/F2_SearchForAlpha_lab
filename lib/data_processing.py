@@ -90,56 +90,176 @@ def _validate_price_data(df: pd.DataFrame, symbol: str) -> None:
         logger.warning(f"{symbol} has {nan_pct:.1f}% NaN values in Close column")
 
 
-def get_all_tickers() -> pd.DataFrame:
-    """
-    Get list of S&P 500, NASDAQ-100 tickers and popular ETFs.
-    
-    Returns:
-        DataFrame with Symbol, Security name, and Index columns.
-        
-    Raises:
-        DataFetchError: If ticker list cannot be fetched.
-    """
-    logger.info("Fetching ticker list from Wikipedia")
-    
+def _get_default_tickers() -> pd.DataFrame:
+    """Return a default list of popular tickers as fallback."""
+    tickers = [
+        # Major Tech
+        ('AAPL', 'Apple Inc.', 'S&P 500'),
+        ('MSFT', 'Microsoft Corporation', 'S&P 500'),
+        ('GOOGL', 'Alphabet Inc. Class A', 'S&P 500'),
+        ('AMZN', 'Amazon.com Inc.', 'S&P 500'),
+        ('NVDA', 'NVIDIA Corporation', 'S&P 500'),
+        ('META', 'Meta Platforms Inc.', 'S&P 500'),
+        ('TSLA', 'Tesla Inc.', 'S&P 500'),
+        ('AMD', 'Advanced Micro Devices Inc.', 'S&P 500'),
+        ('INTC', 'Intel Corporation', 'S&P 500'),
+        ('CRM', 'Salesforce Inc.', 'S&P 500'),
+        ('ORCL', 'Oracle Corporation', 'S&P 500'),
+        ('ADBE', 'Adobe Inc.', 'S&P 500'),
+        ('NFLX', 'Netflix Inc.', 'S&P 500'),
+        # Finance
+        ('JPM', 'JPMorgan Chase & Co.', 'S&P 500'),
+        ('BAC', 'Bank of America Corp.', 'S&P 500'),
+        ('WFC', 'Wells Fargo & Company', 'S&P 500'),
+        ('GS', 'Goldman Sachs Group Inc.', 'S&P 500'),
+        ('MS', 'Morgan Stanley', 'S&P 500'),
+        ('V', 'Visa Inc.', 'S&P 500'),
+        ('MA', 'Mastercard Inc.', 'S&P 500'),
+        # Healthcare
+        ('JNJ', 'Johnson & Johnson', 'S&P 500'),
+        ('UNH', 'UnitedHealth Group Inc.', 'S&P 500'),
+        ('PFE', 'Pfizer Inc.', 'S&P 500'),
+        ('MRK', 'Merck & Co. Inc.', 'S&P 500'),
+        ('ABBV', 'AbbVie Inc.', 'S&P 500'),
+        ('LLY', 'Eli Lilly and Company', 'S&P 500'),
+        # Consumer
+        ('WMT', 'Walmart Inc.', 'S&P 500'),
+        ('PG', 'Procter & Gamble Co.', 'S&P 500'),
+        ('KO', 'Coca-Cola Company', 'S&P 500'),
+        ('PEP', 'PepsiCo Inc.', 'S&P 500'),
+        ('COST', 'Costco Wholesale Corp.', 'S&P 500'),
+        ('MCD', 'McDonalds Corp.', 'S&P 500'),
+        ('HD', 'Home Depot Inc.', 'S&P 500'),
+        ('NKE', 'Nike Inc.', 'S&P 500'),
+        # Industrial
+        ('CAT', 'Caterpillar Inc.', 'S&P 500'),
+        ('BA', 'Boeing Company', 'S&P 500'),
+        ('GE', 'General Electric Company', 'S&P 500'),
+        ('MMM', '3M Company', 'S&P 500'),
+        ('HON', 'Honeywell International Inc.', 'S&P 500'),
+        ('UPS', 'United Parcel Service Inc.', 'S&P 500'),
+        # Energy
+        ('XOM', 'Exxon Mobil Corporation', 'S&P 500'),
+        ('CVX', 'Chevron Corporation', 'S&P 500'),
+        ('COP', 'ConocoPhillips', 'S&P 500'),
+        # Telecom
+        ('T', 'AT&T Inc.', 'S&P 500'),
+        ('VZ', 'Verizon Communications Inc.', 'S&P 500'),
+        ('TMUS', 'T-Mobile US Inc.', 'S&P 500'),
+        # Index ETFs
+        ('SPY', 'SPDR S&P 500 ETF', 'Index ETF'),
+        ('QQQ', 'Invesco QQQ Trust', 'Index ETF'),
+        ('DIA', 'SPDR Dow Jones Industrial Average ETF', 'Index ETF'),
+        ('IWM', 'iShares Russell 2000 ETF', 'Index ETF'),
+        ('VTI', 'Vanguard Total Stock Market ETF', 'Index ETF'),
+        ('VOO', 'Vanguard S&P 500 ETF', 'Index ETF'),
+        ('VGT', 'Vanguard Information Technology ETF', 'Sector ETF'),
+        ('XLF', 'Financial Select Sector SPDR Fund', 'Sector ETF'),
+        ('XLE', 'Energy Select Sector SPDR Fund', 'Sector ETF'),
+        ('XLK', 'Technology Select Sector SPDR Fund', 'Sector ETF'),
+    ]
+    return pd.DataFrame(tickers, columns=['Symbol', 'Security', 'Index'])
+
+
+def _fetch_sp500_from_github() -> Optional[pd.DataFrame]:
+    """Fetch S&P 500 constituents from GitHub datasets repo."""
+    import requests
+    url = 'https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv'
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        from io import StringIO
+        df = pd.read_csv(StringIO(response.text))
+        df = df.rename(columns={'Name': 'Security'})
+        df['Index'] = 'S&P 500'
+        return df[['Symbol', 'Security', 'Index']]
+    except Exception as e:
+        logger.warning(f"Failed to fetch from GitHub: {e}")
+        return None
+
+
+def _fetch_from_wikipedia() -> Optional[pd.DataFrame]:
+    """Fetch tickers from Wikipedia with proper headers."""
+    import requests
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
     try:
         # Fetch S&P 500 tickers
-        sp500 = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
+        sp500_resp = requests.get(
+            'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
+            headers=headers, timeout=10
+        )
+        sp500_resp.raise_for_status()
+        sp500 = pd.read_html(sp500_resp.text)[0]
         sp500['Index'] = 'S&P 500'
-        
+
         # Fetch NASDAQ-100 tickers
-        nasdaq100 = pd.read_html('https://en.wikipedia.org/wiki/Nasdaq-100')[4]
+        nasdaq_resp = requests.get(
+            'https://en.wikipedia.org/wiki/Nasdaq-100',
+            headers=headers, timeout=10
+        )
+        nasdaq_resp.raise_for_status()
+        nasdaq100 = pd.read_html(nasdaq_resp.text)[4]
         nasdaq100['Index'] = 'NASDAQ-100'
         nasdaq100 = nasdaq100.rename(columns={'Ticker': 'Symbol'})
 
-        # Combine the dataframes
         all_tickers = pd.concat([
-            sp500[['Symbol', 'Security', 'Index']], 
+            sp500[['Symbol', 'Security', 'Index']],
             nasdaq100[['Symbol', 'Company', 'Index']].rename(columns={'Company': 'Security'})
         ], ignore_index=True)
 
-        # Add popular index ETFs
-        index_etfs = pd.DataFrame({
-            'Symbol': ['SPY', 'QQQ', 'DIA', 'IWM', 'VTI'],
-            'Security': [
-                'SPDR S&P 500 ETF', 
-                'Invesco QQQ Trust', 
-                'SPDR Dow Jones Industrial Average ETF', 
-                'iShares Russell 2000 ETF', 
-                'Vanguard Total Stock Market ETF'
-            ],
-            'Index': ['Index ETF'] * 5
-        })
-
-        all_tickers = pd.concat([all_tickers, index_etfs], ignore_index=True)
-        all_tickers = all_tickers.drop_duplicates(subset='Symbol')
-
-        logger.info(f"Fetched {len(all_tickers)} tickers")
         return all_tickers
-        
     except Exception as e:
-        logger.error(f"Error fetching ticker list: {str(e)}")
-        raise DataFetchError(f"Failed to fetch ticker list: {str(e)}") from e
+        logger.warning(f"Failed to fetch from Wikipedia: {e}")
+        return None
+
+
+def get_all_tickers() -> pd.DataFrame:
+    """
+    Get list of S&P 500, NASDAQ-100 tickers and popular ETFs.
+
+    Uses multiple sources with fallback:
+    1. GitHub datasets repo (most reliable)
+    2. Wikipedia (comprehensive but may block)
+    3. Built-in default list (always works)
+
+    Returns:
+        DataFrame with Symbol, Security name, and Index columns.
+    """
+    logger.info("Fetching ticker list")
+
+    # Try GitHub first (most reliable)
+    tickers_df = _fetch_sp500_from_github()
+
+    # Try Wikipedia as backup
+    if tickers_df is None:
+        logger.info("Trying Wikipedia as fallback")
+        tickers_df = _fetch_from_wikipedia()
+
+    # Use default list as final fallback
+    if tickers_df is None:
+        logger.info("Using default ticker list")
+        tickers_df = _get_default_tickers()
+    else:
+        # Add popular ETFs to fetched data
+        index_etfs = pd.DataFrame({
+            'Symbol': ['SPY', 'QQQ', 'DIA', 'IWM', 'VTI', 'VOO'],
+            'Security': [
+                'SPDR S&P 500 ETF',
+                'Invesco QQQ Trust',
+                'SPDR Dow Jones Industrial Average ETF',
+                'iShares Russell 2000 ETF',
+                'Vanguard Total Stock Market ETF',
+                'Vanguard S&P 500 ETF'
+            ],
+            'Index': ['Index ETF'] * 6
+        })
+        tickers_df = pd.concat([tickers_df, index_etfs], ignore_index=True)
+
+    tickers_df = tickers_df.drop_duplicates(subset='Symbol')
+    logger.info(f"Loaded {len(tickers_df)} tickers")
+    return tickers_df
 
 
 def calculate_max_drawdown(df: pd.DataFrame) -> float:
