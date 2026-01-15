@@ -5,8 +5,8 @@ Bloomberg Terminal-inspired design with single-page layout
 
 import logging
 import dash
-from dash import dcc, html, dash_table, callback_context
-from dash.dependencies import Input, Output, State, ClientsideFunction
+from dash import dcc, html, dash_table, callback_context, clientside_callback
+from dash.dependencies import Input, Output, State, ClientsideFunction, ALL
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 import pandas as pd
@@ -859,8 +859,8 @@ def run_combo_optimization(
 # COMPONENT BUILDERS
 # =============================================================================
 
-def build_metric_card(label: str, value: str, is_positive: bool = None, theme: dict = None) -> html.Div:
-    """Build a metric display card."""
+def build_metric_card(label: str, value: str, is_positive: bool = None, theme: dict = None, animated: bool = True) -> html.Div:
+    """Build a metric display card with optional animation."""
     if theme is None:
         theme = get_theme()
 
@@ -873,10 +873,12 @@ def build_metric_card(label: str, value: str, is_positive: bool = None, theme: d
         else:
             value_style.update(styles['metric_negative'])
 
+    card_style = styles['metric_card'].copy()
+
     return html.Div([
         html.Div(label, style=styles['metric_label']),
         html.Div(value, style=value_style)
-    ], style=styles['metric_card'])
+    ], style=card_style, className='metric-card-animated' if animated else '')
 
 
 def build_status_badge(text: str, status: str, theme: dict = None) -> html.Span:
@@ -897,6 +899,56 @@ def build_status_badge(text: str, status: str, theme: dict = None) -> html.Span:
     return html.Span(text, style=badge_style)
 
 
+def build_alert(message: str, alert_type: str = 'info', dismissable: bool = True, theme: dict = None) -> dbc.Alert:
+    """Build a styled alert component."""
+    if theme is None:
+        theme = get_theme()
+
+    color_map = {
+        'success': 'success',
+        'warning': 'warning',
+        'error': 'danger',
+        'info': 'info',
+    }
+
+    icon_map = {
+        'success': '✓',
+        'warning': '⚠',
+        'error': '✕',
+        'info': 'ℹ',
+    }
+
+    return dbc.Alert(
+        [
+            html.Span(icon_map.get(alert_type, 'ℹ'), style={'marginRight': '8px', 'fontWeight': 'bold'}),
+            message
+        ],
+        color=color_map.get(alert_type, 'info'),
+        dismissable=dismissable,
+        className=f'custom-alert {alert_type}',
+        style={'marginBottom': '12px', 'fontSize': FONT_SIZES['sm']}
+    )
+
+
+def build_progress_bar(progress: int = 0, text: str = '', indeterminate: bool = False, theme: dict = None) -> html.Div:
+    """Build a progress bar component."""
+    if theme is None:
+        theme = get_theme()
+
+    return html.Div([
+        html.Div([
+            html.Span(text, style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary']}),
+            html.Span(f'{progress}%' if not indeterminate else '', style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'fontFamily': FONT_MONO}),
+        ], style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '4px'}) if text else None,
+        html.Div([
+            html.Div(
+                className='progress-bar' + (' indeterminate' if indeterminate else ''),
+                style={'width': f'{progress}%'} if not indeterminate else {}
+            )
+        ], className='progress-container')
+    ])
+
+
 # =============================================================================
 # MAIN DASHBOARD APP
 # =============================================================================
@@ -910,7 +962,12 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         dcc.Store(id='theme-store', data=DEFAULT_THEME),
         dcc.Store(id='data-loaded-store', data=False),
         dcc.Store(id='layout-store', data={}),
+        dcc.Store(id='optimization-running', data=False),
         dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
+        dcc.Interval(id='optimization-interval', interval=500, disabled=True),
+
+        # Keyboard shortcut listener
+        html.Div(id='keyboard-listener', style={'display': 'none'}),
 
         # Header
         html.Header([
@@ -923,10 +980,11 @@ def create_dashboard_layout(theme: dict) -> html.Div:
                 # Theme toggle
                 html.Button(
                     id='theme-toggle',
-                    children=[html.Span("Dark", id='theme-label')],
-                    style=styles['button_outline'],
+                    children=[html.Span("☀️", id='theme-label')],
+                    style={**styles['button_outline'], 'fontSize': '16px', 'padding': '6px 12px'},
                     n_clicks=0
                 ),
+                dbc.Tooltip("Toggle light/dark theme", target='theme-toggle', placement='bottom'),
                 # Current time/status
                 html.Div(id='header-status', style={
                     'fontSize': FONT_SIZES['sm'],
@@ -987,15 +1045,16 @@ def create_dashboard_layout(theme: dict) -> html.Div:
                     ], style={'marginBottom': '12px'}),
 
                     html.Button(
-                        "Load Data",
+                        [html.Span("Load Data"), html.Span(" ⌘↵", style={'opacity': '0.5', 'marginLeft': '8px', 'fontSize': '10px'})],
                         id='load-data-button',
                         style={**styles['button_primary'], 'width': '100%'},
                         n_clicks=0
                     ),
+                    dbc.Tooltip("Fetch market data and calculate indicators (Ctrl+Enter)", target='load-data-button', placement='right'),
 
                     dcc.Loading(
                         id='loading-data',
-                        type='circle',
+                        type='dot',
                         color=theme['accent_blue'],
                         children=[html.Div(id='data-status', style={'marginTop': '8px', 'fontSize': FONT_SIZES['xs']})]
                     ),
@@ -1145,6 +1204,7 @@ def create_dashboard_layout(theme: dict) -> html.Div:
                             style={**styles['button_success'], 'width': '100%'},
                             n_clicks=0
                         ),
+                        dbc.Tooltip("Simulate trading with selected buy/sell signals", target='run-backtest-btn', placement='top'),
 
                         html.Div(id='backtest-results', style={'marginTop': '16px'}),
                     ]),
@@ -1177,9 +1237,13 @@ def create_dashboard_layout(theme: dict) -> html.Div:
                             style={**styles['button_primary'], 'width': '100%', 'backgroundColor': theme['accent_orange']},
                             n_clicks=0
                         ),
+                        dbc.Tooltip("Test all signal combinations to find the best strategy", target='run-optimization-btn', placement='top'),
+
+                        # Progress indicator for optimization
+                        html.Div(id='optimization-progress', style={'marginTop': '12px'}),
 
                         dcc.Loading(
-                            type='circle',
+                            type='dot',
                             color=theme['accent_orange'],
                             children=[html.Div(id='optimization-results', style={'marginTop': '16px'})]
                         ),
@@ -1207,18 +1271,85 @@ def run_dashboard():
 
     # Custom CSS for dark theme components
     custom_css = '''
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        @keyframes progressBar {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
+
+        /* Fade-in for results */
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        /* Progress bar */
+        .progress-container {
+            width: 100%;
+            height: 4px;
+            background: #21262d;
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #58a6ff, #3fb950, #58a6ff);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s linear infinite;
+            transition: width 0.3s ease;
+        }
+        .progress-bar.indeterminate {
+            width: 100%;
+            animation: shimmer 1s linear infinite;
+        }
+
+        /* Metric cards animation */
+        .metric-card-animated {
+            animation: fadeIn 0.4s ease-out;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .metric-card-animated:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
         /* Dark theme dropdown */
         .dark-dropdown .Select-control {
             background-color: #21262d !important;
             border-color: #30363d !important;
+            transition: border-color 0.2s ease !important;
+        }
+        .dark-dropdown .Select-control:hover {
+            border-color: #58a6ff !important;
         }
         .dark-dropdown .Select-menu-outer {
             background-color: #21262d !important;
             border-color: #30363d !important;
+            animation: fadeIn 0.15s ease-out;
         }
         .dark-dropdown .Select-option {
             background-color: #21262d !important;
             color: #e6edf3 !important;
+            transition: background-color 0.15s ease !important;
         }
         .dark-dropdown .Select-option:hover {
             background-color: #30363d !important;
@@ -1235,6 +1366,10 @@ def run_dashboard():
             background-color: #21262d !important;
             border: 1px solid #30363d !important;
             border-radius: 6px !important;
+            transition: border-color 0.2s ease !important;
+        }
+        .SingleDatePickerInput:hover {
+            border-color: #58a6ff !important;
         }
         .DateInput_input {
             background-color: #21262d !important;
@@ -1251,6 +1386,7 @@ def run_dashboard():
         .panel-tab {
             background: transparent !important;
             transition: all 0.2s ease !important;
+            position: relative;
         }
         .panel-tab:hover {
             background-color: #21262d !important;
@@ -1258,6 +1394,22 @@ def run_dashboard():
         .panel-tab.active {
             border-bottom-color: #58a6ff !important;
             color: #e6edf3 !important;
+        }
+
+        /* Tab indicator animation */
+        .panel-tab::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            width: 0;
+            height: 2px;
+            background: #58a6ff;
+            transition: all 0.3s ease;
+            transform: translateX(-50%);
+        }
+        .panel-tab.active::after {
+            width: 100%;
         }
 
         /* Scrollbar styling */
@@ -1271,6 +1423,7 @@ def run_dashboard():
         ::-webkit-scrollbar-thumb {
             background: #30363d;
             border-radius: 4px;
+            transition: background 0.2s ease;
         }
         ::-webkit-scrollbar-thumb:hover {
             background: #484f58;
@@ -1284,14 +1437,76 @@ def run_dashboard():
         /* Checkbox styling */
         input[type="checkbox"] {
             accent-color: #58a6ff;
+            cursor: pointer;
+            transition: transform 0.1s ease;
+        }
+        input[type="checkbox"]:hover {
+            transform: scale(1.1);
         }
 
         /* Button hover states */
+        button {
+            transition: all 0.2s ease !important;
+        }
         button:hover {
             opacity: 0.9;
+            transform: translateY(-1px);
         }
         button:active {
             transform: translateY(1px);
+        }
+
+        /* Alert styles */
+        .custom-alert {
+            animation: slideIn 0.3s ease-out;
+            border-left: 4px solid;
+            border-radius: 6px;
+        }
+        .custom-alert.success {
+            background: rgba(63, 185, 80, 0.1);
+            border-left-color: #3fb950;
+        }
+        .custom-alert.warning {
+            background: rgba(210, 153, 34, 0.1);
+            border-left-color: #d29922;
+        }
+        .custom-alert.error {
+            background: rgba(248, 81, 73, 0.1);
+            border-left-color: #f85149;
+        }
+
+        /* Tooltip styling */
+        .tooltip-inner {
+            background-color: #21262d !important;
+            border: 1px solid #30363d !important;
+            color: #e6edf3 !important;
+            font-size: 12px !important;
+            padding: 8px 12px !important;
+            max-width: 250px !important;
+        }
+        .tooltip.bs-tooltip-top .tooltip-arrow::before,
+        .tooltip.bs-tooltip-bottom .tooltip-arrow::before {
+            border-top-color: #30363d !important;
+            border-bottom-color: #30363d !important;
+        }
+
+        /* Card hover effect */
+        .card-hover {
+            transition: all 0.2s ease;
+        }
+        .card-hover:hover {
+            border-color: #58a6ff;
+            box-shadow: 0 0 0 1px #58a6ff;
+        }
+
+        /* Status badge pulse for loading */
+        .status-loading {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        /* Smooth chart transitions */
+        .js-plotly-plot .plotly .main-svg {
+            transition: opacity 0.3s ease;
         }
     '''
 
@@ -1370,7 +1585,10 @@ def run_dashboard():
         try:
             df = fetch_data_with_cache(ticker, start_date, end_date)
             if df.empty:
-                return build_status_badge("No data available", "error", theme), False, [], [], "No data", "", None
+                return html.Div([
+                    html.Span("⚠", style={'color': theme['accent_orange'], 'marginRight': '6px'}),
+                    html.Span("No data available for this symbol", style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_orange']})
+                ]), False, [], [], "No data", "", None
 
             df = add_indicators(df)
             df, _ = generate_signals(df)
@@ -1424,13 +1642,20 @@ def run_dashboard():
                          style={'fontFamily': FONT_MONO, 'color': change_color, 'marginLeft': '8px'}),
             ])
 
-            status = build_status_badge(f"Loaded {len(df)} rows", "success", theme)
+            # Success status with animation
+            status = html.Div([
+                html.Span("✓", style={'color': theme['accent_green'], 'marginRight': '6px', 'fontWeight': 'bold'}),
+                html.Span(f"{len(df)} rows loaded", style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_green']})
+            ], className='fade-in')
 
             return status, True, buy_options, sell_options, ticker, subtitle, data_table
 
         except Exception as e:
             logger.error(f"Error loading data: {e}")
-            return build_status_badge(str(e)[:50], "error", theme), False, [], [], "Error", "", None
+            return html.Div([
+                html.Span("✕", style={'color': theme['accent_red'], 'marginRight': '6px', 'fontWeight': 'bold'}),
+                html.Span(str(e)[:40], style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_red']})
+            ]), False, [], [], "Error", "", None
 
     @app.callback(
         Output('financial-chart', 'figure'),
@@ -1497,10 +1722,10 @@ def run_dashboard():
 
         df = dashboard_state.df
         if df is None:
-            return html.Div([build_status_badge("Load data first", "warning", theme)])
+            return build_alert("Please load market data first", "warning", theme=theme)
 
         if not buy_signals or not sell_signals:
-            return html.Div([build_status_badge("Select signals", "warning", theme)])
+            return build_alert("Select at least one buy and one sell signal", "warning", theme=theme)
 
         try:
             results = run_backtest(df, initial_capital, buy_signals, sell_signals)
@@ -1512,7 +1737,7 @@ def run_dashboard():
             is_positive = total_return >= 0
 
             return html.Div([
-                build_status_badge("Backtest Complete", "success", theme),
+                build_alert("Backtest completed successfully!", "success", dismissable=False, theme=theme),
                 html.Div([
                     build_metric_card("Portfolio Value", f"${backtest_results['final_portfolio_value']:,.2f}", None, theme),
                     build_metric_card("Total Return", f"{total_return:+.2f}%", is_positive, theme),
@@ -1523,11 +1748,11 @@ def run_dashboard():
                     build_metric_card("Win Rate", f"{backtest_results['win_rate']:.1f}%",
                                      backtest_results['win_rate'] > 50, theme),
                 ], style={'marginTop': '12px'}),
-            ])
+            ], className='fade-in')
 
         except Exception as e:
             logger.error(f"Backtest error: {e}")
-            return html.Div([build_status_badge(str(e)[:40], "error", theme)])
+            return build_alert(f"Backtest failed: {str(e)[:60]}", "error", theme=theme)
 
     @app.callback(
         Output('optimization-results', 'children'),
@@ -1545,27 +1770,43 @@ def run_dashboard():
 
         df = dashboard_state.df
         if df is None:
-            return html.Div([build_status_badge("Load data first", "warning", theme)])
+            return build_alert("Please load market data first", "warning", theme=theme)
 
         try:
             results_df = run_combo_optimization(df, initial_capital, max_signals, max_combos)
 
             if results_df.empty:
-                return html.Div([build_status_badge("No valid combinations", "warning", theme)])
+                return build_alert("No valid signal combinations found", "warning", theme=theme)
 
             display_df = results_df.head(10).round(2)
+            best_return = display_df.iloc[0]['Total_Return_%']
 
             return html.Div([
-                build_status_badge(f"Tested {len(results_df)} combinations", "success", theme),
+                build_alert(f"Tested {len(results_df)} combinations successfully!", "success", dismissable=False, theme=theme),
                 html.Div([
-                    html.Div(f"Top result: {display_df.iloc[0]['Total_Return_%']:.1f}% return",
-                            style={'fontSize': FONT_SIZES['sm'], 'color': theme['accent_green'], 'marginTop': '8px', 'marginBottom': '8px'}),
+                    # Best result highlight
+                    html.Div([
+                        html.Span("🏆 ", style={'fontSize': '16px'}),
+                        html.Span("Best Strategy: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['sm']}),
+                        html.Span(f"{best_return:+.1f}% return", style={
+                            'color': theme['accent_green'] if best_return > 0 else theme['accent_red'],
+                            'fontWeight': '600',
+                            'fontSize': FONT_SIZES['base'],
+                            'fontFamily': FONT_MONO
+                        }),
+                    ], style={
+                        'backgroundColor': theme['bg_tertiary'],
+                        'padding': '12px',
+                        'borderRadius': BORDER_RADIUS['md'],
+                        'marginBottom': '12px',
+                        'border': f'1px solid {theme["accent_green"]}40'
+                    }),
                     dash_table.DataTable(
                         columns=[{"name": i, "id": i} for i in ['Buy_Signals', 'Total_Return_%', 'Sharpe_Ratio']],
                         data=display_df[['Buy_Signals', 'Total_Return_%', 'Sharpe_Ratio']].to_dict('records'),
                         style_cell={
                             'textAlign': 'left',
-                            'padding': '6px',
+                            'padding': '8px',
                             'backgroundColor': theme['bg_tertiary'],
                             'color': theme['text_primary'],
                             'fontSize': '11px',
@@ -1578,15 +1819,17 @@ def run_dashboard():
                             'textTransform': 'uppercase',
                         },
                         style_data_conditional=[
-                            {'if': {'row_index': 0}, 'backgroundColor': f'{theme["accent_green"]}20'}
+                            {'if': {'row_index': 0}, 'backgroundColor': f'{theme["accent_green"]}15'},
+                            {'if': {'row_index': 1}, 'backgroundColor': f'{theme["accent_blue"]}10'},
+                            {'if': {'row_index': 2}, 'backgroundColor': f'{theme["accent_blue"]}05'},
                         ],
                     )
                 ], style={'marginTop': '8px'}),
-            ])
+            ], className='fade-in')
 
         except Exception as e:
             logger.error(f"Optimization error: {e}")
-            return html.Div([build_status_badge(str(e)[:40], "error", theme)])
+            return build_alert(f"Optimization failed: {str(e)[:60]}", "error", theme=theme)
 
     @app.callback(
         [Output('panel-backtest', 'style'),
@@ -1653,6 +1896,55 @@ def run_dashboard():
     def update_header_status(_):
         """Update header status."""
         return datetime.now().strftime("%H:%M:%S")
+
+    @app.callback(
+        [Output('theme-store', 'data'),
+         Output('theme-label', 'children')],
+        [Input('theme-toggle', 'n_clicks')],
+        [State('theme-store', 'data')]
+    )
+    def toggle_theme(n_clicks, current_theme):
+        """Toggle between dark and light themes."""
+        if not n_clicks:
+            return DEFAULT_THEME, "☀️"
+
+        new_theme = 'light' if current_theme == 'dark' else 'dark'
+        icon = "🌙" if new_theme == 'light' else "☀️"
+        dashboard_state.set_theme(new_theme)
+        return new_theme, icon
+
+    # Clientside callback for keyboard shortcuts
+    app.clientside_callback(
+        """
+        function(id) {
+            document.addEventListener('keydown', function(e) {
+                // Ctrl+Enter to load data
+                if (e.ctrlKey && e.key === 'Enter') {
+                    var loadBtn = document.getElementById('load-data-button');
+                    if (loadBtn) {
+                        loadBtn.click();
+                    }
+                }
+                // Ctrl+B to run backtest
+                if (e.ctrlKey && e.key === 'b') {
+                    e.preventDefault();
+                    var backtestBtn = document.getElementById('run-backtest-btn');
+                    if (backtestBtn) {
+                        backtestBtn.click();
+                    }
+                }
+                // Escape to close any modals/alerts
+                if (e.key === 'Escape') {
+                    var alerts = document.querySelectorAll('.alert-dismissible .btn-close');
+                    alerts.forEach(function(btn) { btn.click(); });
+                }
+            });
+            return window.dash_clientside.no_update;
+        }
+        """,
+        Output('keyboard-listener', 'children'),
+        Input('startup-interval', 'n_intervals')
+    )
 
     # Start server
     def open_browser():
