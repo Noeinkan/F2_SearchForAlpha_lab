@@ -1174,6 +1174,49 @@ def create_dashboard_layout(theme: dict) -> html.Div:
                 html.Div([
                     # Backtest Panel
                     html.Div(id='panel-backtest', children=[
+                        # Strategy Mode Selector
+                        html.Div([
+                            html.Div("STRATEGY MODE", style={**styles['sidebar_title'], 'marginBottom': '8px'}),
+                            dcc.Dropdown(
+                                id='strategy-mode',
+                                options=[
+                                    {'label': 'Trading (Buy/Sell Cycles)', 'value': 'trading'},
+                                    {'label': 'Accumulation (DCA)', 'value': 'accumulation'},
+                                    {'label': 'Rebalancing (Partial)', 'value': 'rebalancing'}
+                                ],
+                                value='trading',
+                                clearable=False,
+                                style={'fontSize': FONT_SIZES['xs']}
+                            ),
+                        ], style={'marginBottom': '16px'}),
+
+                        # Amount Per Buy (for Accumulation mode)
+                        html.Div(id='accumulation-options', children=[
+                            html.Div("AMOUNT PER BUY ($)", style={**styles['sidebar_title'], 'marginBottom': '8px'}),
+                            dcc.Input(
+                                id='amount-per-buy',
+                                type='number',
+                                value=1000,
+                                min=100,
+                                placeholder='$ per buy signal',
+                                style={**styles['input'], 'width': '100%', 'fontFamily': FONT_MONO}
+                            ),
+                        ], style={'marginBottom': '16px', 'display': 'none'}),
+
+                        # Position Size % (for Rebalancing mode)
+                        html.Div(id='rebalancing-options', children=[
+                            html.Div("POSITION SIZE (%)", style={**styles['sidebar_title'], 'marginBottom': '8px'}),
+                            dcc.Input(
+                                id='position-size-pct',
+                                type='number',
+                                value=25,
+                                min=1,
+                                max=100,
+                                placeholder='% per trade',
+                                style={**styles['input'], 'width': '100%', 'fontFamily': FONT_MONO}
+                            ),
+                        ], style={'marginBottom': '16px', 'display': 'none'}),
+
                         html.Div([
                             html.Div("BUY SIGNALS", style={**styles['sidebar_title'], 'marginBottom': '8px'}),
                             dcc.Checklist(
@@ -1658,6 +1701,17 @@ def run_dashboard():
             ]), False, [], [], "Error", "", None
 
     @app.callback(
+        [Output('accumulation-options', 'style'),
+         Output('rebalancing-options', 'style')],
+        [Input('strategy-mode', 'value')]
+    )
+    def toggle_strategy_options(strategy_mode):
+        """Show/hide mode-specific options based on selected strategy mode."""
+        accumulation_style = {'marginBottom': '16px', 'display': 'block' if strategy_mode == 'accumulation' else 'none'}
+        rebalancing_style = {'marginBottom': '16px', 'display': 'block' if strategy_mode == 'rebalancing' else 'none'}
+        return accumulation_style, rebalancing_style
+
+    @app.callback(
         Output('financial-chart', 'figure'),
         [Input('data-loaded-store', 'data'),
          Input('plot-checklist', 'value'),
@@ -1710,9 +1764,13 @@ def run_dashboard():
         [State('ticker-dropdown', 'value'),
          State('initial-capital', 'value'),
          State('buy-signals', 'value'),
-         State('sell-signals', 'value')]
+         State('sell-signals', 'value'),
+         State('strategy-mode', 'value'),
+         State('amount-per-buy', 'value'),
+         State('position-size-pct', 'value')]
     )
-    def run_backtest_callback(n_clicks, ticker, initial_capital, buy_signals, sell_signals):
+    def run_backtest_callback(n_clicks, ticker, initial_capital, buy_signals, sell_signals,
+                               strategy_mode, amount_per_buy, position_size_pct):
         """Run backtest and display results."""
         if not n_clicks:
             raise PreventUpdate
@@ -1724,11 +1782,23 @@ def run_dashboard():
         if df is None:
             return build_alert("Please load market data first", "warning", theme=theme)
 
-        if not buy_signals or not sell_signals:
-            return build_alert("Select at least one buy and one sell signal", "warning", theme=theme)
+        # Validation based on strategy mode
+        if not buy_signals:
+            return build_alert("Select at least one buy signal", "warning", theme=theme)
+
+        if strategy_mode == 'trading' and not sell_signals:
+            return build_alert("Trading mode requires at least one sell signal", "warning", theme=theme)
+
+        # Use empty list for sell signals if not provided in accumulation/rebalancing modes
+        sell_signals = sell_signals or []
 
         try:
-            results = run_backtest(df, initial_capital, buy_signals, sell_signals)
+            results = run_backtest(
+                df, initial_capital, buy_signals, sell_signals,
+                strategy_mode=strategy_mode,
+                amount_per_buy=amount_per_buy,
+                position_size_pct=position_size_pct
+            )
             backtest_results = create_backtest_results(results, ticker, initial_capital, buy_signals, sell_signals)
             dashboard_state.backtest_results = backtest_results
 

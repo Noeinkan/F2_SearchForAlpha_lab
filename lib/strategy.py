@@ -56,10 +56,12 @@ def validate_backtest_inputs(
     missing_buy = [col for col in buy_indicators if col not in df.columns]
     if missing_buy:
         raise ValidationError(f"Missing buy indicator columns: {missing_buy}")
-    
-    missing_sell = [col for col in sell_indicators if col not in df.columns]
-    if missing_sell:
-        raise ValidationError(f"Missing sell indicator columns: {missing_sell}")
+
+    # Sell indicators are optional (for accumulation/rebalancing modes)
+    if sell_indicators:
+        missing_sell = [col for col in sell_indicators if col not in df.columns]
+        if missing_sell:
+            raise ValidationError(f"Missing sell indicator columns: {missing_sell}")
     
     # Check for NaN in Close prices
     nan_count = df['Close'].isna().sum()
@@ -68,7 +70,7 @@ def validate_backtest_inputs(
 
 
 def backtest(
-    df: pd.DataFrame, 
+    df: pd.DataFrame,
     initial_capital: float,
     position_sizing_strategy: str,
     position_sizing_params: dict,
@@ -82,11 +84,14 @@ def backtest(
     min_holding_period: int = 0,
     position_scaling: float = 0.25,
     trailing_stop_loss: float = 0.05,
-    volatility_window: int = 20
+    volatility_window: int = 20,
+    strategy_mode: str = 'trading',
+    amount_per_buy: float = None,
+    position_size_pct: float = 100
 ) -> pd.DataFrame:
     """
     Run a backtest on the provided DataFrame.
-    
+
     Args:
         df: DataFrame with OHLCV data and signal columns.
         initial_capital: Starting capital for the backtest.
@@ -103,10 +108,13 @@ def backtest(
         position_scaling: Factor for scaling position size on repeated signals.
         trailing_stop_loss: Trailing stop loss percentage.
         volatility_window: Window for volatility calculation.
-        
+        strategy_mode: 'trading' (buy/sell cycles), 'accumulation' (DCA), or 'rebalancing' (partial).
+        amount_per_buy: Fixed dollar amount per buy signal (for accumulation mode).
+        position_size_pct: Percentage of portfolio per trade (for rebalancing mode).
+
     Returns:
         DataFrame with backtest results including portfolio values and metrics.
-        
+
     Raises:
         ValidationError: If inputs are invalid.
         BacktestError: If an error occurs during backtesting.
@@ -137,7 +145,11 @@ def backtest(
             buy_signal_strength, sell_signal_strength = calculate_signal_strengths(df, buy_indicators, sell_indicators, indicator_weights)
         else:
             buy_signal_strength = df[buy_indicators].sum(axis=1).values
-            sell_signal_strength = df[sell_indicators].sum(axis=1).values
+            # Handle empty sell_indicators for accumulation/rebalancing modes
+            if sell_indicators:
+                sell_signal_strength = df[sell_indicators].sum(axis=1).values
+            else:
+                sell_signal_strength = np.zeros(num_rows)
 
         # Calculate volatility
         df = df.copy()
@@ -161,8 +173,8 @@ def backtest(
             else:
                 holding_period[i] = 0
 
-            # Check for trailing stop loss
-            if prev_units > 0 and close_price <= trailing_stop[i-1]:
+            # Check for trailing stop loss (disabled for accumulation mode - long term hold)
+            if strategy_mode != 'accumulation' and prev_units > 0 and close_price <= trailing_stop[i-1]:
                 units_to_sell[i] = prev_units
                 value_to_sell = units_to_sell[i] * close_price
                 units[i] = 0
@@ -174,38 +186,62 @@ def backtest(
                 if (use_signal_strength and buy_signal_strength[i] > buy_threshold) or \
                    (not use_signal_strength and buy_signal_strength[i] > 0):
                     buy_signal_counter[i] = buy_signal_counter[i-1] + 1
-                    position_size = min(position_size + position_scaling, 1)
-                    
-                    if position_sizing_strategy == "volatility_based":
-                        units_to_buy[i] = position_sizer(prev_portfolio_value, close_price, df['Volatility'].iloc[i])
+
+                    # Calculate units to buy based on strategy mode
+                    if strategy_mode == 'accumulation':
+                        # Fixed dollar amount per buy (DCA style)
+                        buy_amount = amount_per_buy if amount_per_buy else 1000
+                        if prev_cash_value >= buy_amount:
+                            units_to_buy[i] = int(buy_amount // close_price)
+                        else:
+                            units_to_buy[i] = int(prev_cash_value // close_price)
+                    elif strategy_mode == 'rebalancing':
+                        # Percentage of available cash
+                        pct = (position_size_pct or 100) / 100.0
+                        buy_amount = prev_cash_value * pct
+                        units_to_buy[i] = int(buy_amount // close_price)
                     else:
-                        units_to_buy[i] = position_sizer(prev_portfolio_value, close_price)
-                    
-                    units_to_buy[i] = int(units_to_buy[i] * position_size)
-                    
+                        # Trading mode - original logic
+                        position_size = min(position_size + position_scaling, 1)
+                        if position_sizing_strategy == "volatility_based":
+                            units_to_buy[i] = position_sizer(prev_portfolio_value, close_price, df['Volatility'].iloc[i])
+                        else:
+                            units_to_buy[i] = position_sizer(prev_portfolio_value, close_price)
+                        units_to_buy[i] = int(units_to_buy[i] * position_size)
+
                     if units_to_buy[i] > 0:
                         value_to_buy = units_to_buy[i] * close_price
                         units[i] = prev_units + units_to_buy[i]
                         cash_value[i] = prev_cash_value - value_to_buy
-                        trailing_stop[i] = close_price * (1 - trailing_stop_loss)
+                        if strategy_mode != 'accumulation':
+                            trailing_stop[i] = close_price * (1 - trailing_stop_loss)
+                        else:
+                            trailing_stop[i] = np.inf  # No trailing stop for accumulation
                     else:
                         units[i] = prev_units
                         cash_value[i] = prev_cash_value
                         trailing_stop[i] = trailing_stop[i-1] if prev_units > 0 else np.inf
-                # Sell signal
-                elif (use_signal_strength and sell_signal_strength[i] > sell_threshold) or \
-                     (not use_signal_strength and sell_signal_strength[i] > 0):
+
+                # Sell signal (skipped entirely for accumulation mode)
+                elif strategy_mode != 'accumulation' and \
+                     ((use_signal_strength and sell_signal_strength[i] > sell_threshold) or \
+                      (not use_signal_strength and sell_signal_strength[i] > 0)):
                     if holding_period[i] >= min_holding_period:
                         sell_signal_counter[i] = sell_signal_counter[i-1] + 1
-                        position_size = max(position_size - position_scaling, 0)
-                        
-                        if position_sizing_strategy == "volatility_based":
-                            units_to_sell[i] = position_sizer(prev_portfolio_value, close_price, df['Volatility'].iloc[i])
+
+                        if strategy_mode == 'rebalancing':
+                            # Sell a percentage of current position
+                            pct = (position_size_pct or 100) / 100.0
+                            units_to_sell[i] = int(prev_units * pct)
                         else:
-                            units_to_sell[i] = position_sizer(prev_portfolio_value, close_price)
-                        
-                        units_to_sell[i] = min(int(units_to_sell[i] * (1 - position_size)), prev_units)
-                        
+                            # Trading mode - original logic
+                            position_size = max(position_size - position_scaling, 0)
+                            if position_sizing_strategy == "volatility_based":
+                                units_to_sell[i] = position_sizer(prev_portfolio_value, close_price, df['Volatility'].iloc[i])
+                            else:
+                                units_to_sell[i] = position_sizer(prev_portfolio_value, close_price)
+                            units_to_sell[i] = min(int(units_to_sell[i] * (1 - position_size)), prev_units)
+
                         if units_to_sell[i] > 0:
                             value_to_sell = units_to_sell[i] * close_price
                             units[i] = prev_units - units_to_sell[i]
@@ -225,7 +261,10 @@ def backtest(
                 else:
                     units[i] = prev_units
                     cash_value[i] = prev_cash_value
-                    trailing_stop[i] = max(trailing_stop[i-1], close_price * (1 - trailing_stop_loss)) if prev_units > 0 else np.inf
+                    if strategy_mode == 'accumulation':
+                        trailing_stop[i] = np.inf
+                    else:
+                        trailing_stop[i] = max(trailing_stop[i-1], close_price * (1 - trailing_stop_loss)) if prev_units > 0 else np.inf
 
             stocks_value[i] = units[i] * close_price
             portfolio_value[i] = cash_value[i] + stocks_value[i]
@@ -422,17 +461,23 @@ def run_backtest(
     df: pd.DataFrame,
     initial_capital: float,
     buy_indicators: List[str],
-    sell_indicators: List[str]
+    sell_indicators: List[str],
+    strategy_mode: str = 'trading',
+    amount_per_buy: float = None,
+    position_size_pct: float = 100
 ) -> pd.DataFrame:
     """
     Convenience function to run a backtest with default Kelly Criterion sizing.
-    
+
     Args:
         df: DataFrame with price data and signals.
         initial_capital: Starting capital.
         buy_indicators: List of buy signal columns.
         sell_indicators: List of sell signal columns.
-        
+        strategy_mode: 'trading' (buy/sell cycles), 'accumulation' (DCA), or 'rebalancing' (partial positions).
+        amount_per_buy: Fixed dollar amount per buy signal (for accumulation mode).
+        position_size_pct: Percentage of portfolio per trade (for rebalancing mode).
+
     Returns:
         DataFrame with backtest results.
     """
@@ -440,7 +485,7 @@ def run_backtest(
         "win_rate": 0.5,
         "win_loss_ratio": 1.5
     }
-    
+
     return backtest(
         df=df,
         initial_capital=initial_capital,
@@ -454,5 +499,8 @@ def run_backtest(
         min_holding_period=5,
         position_scaling=0.25,
         trailing_stop_loss=0.05,
-        volatility_window=20
+        volatility_window=20,
+        strategy_mode=strategy_mode,
+        amount_per_buy=amount_per_buy,
+        position_size_pct=position_size_pct
     )

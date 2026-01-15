@@ -15,7 +15,8 @@ A comprehensive Python-based algorithmic trading research platform for backtesti
   - Average True Range (ATR)
   - On-Balance Volume (OBV)
 
-- **Flexible Backtesting Engine**: 
+- **Flexible Backtesting Engine**:
+  - Multiple strategy modes (Trading, Accumulation, Rebalancing)
   - Configurable position sizing strategies
   - Signal strength weighting
   - Trailing stop-loss support
@@ -191,7 +192,50 @@ best_params, best_return = optimize_parameters(
 )
 ```
 
-## 📈 Dashboard Features
+## 📈 Strategy Modes
+
+The backtester supports three different investment approaches:
+
+| Mode | Description | Sell Signals Required? |
+|------|-------------|------------------------|
+| **Trading** | Traditional buy/sell cycles with position scaling | Yes |
+| **Accumulation (DCA)** | Fixed dollar amount per buy signal, hold until end | No |
+| **Rebalancing** | Percentage-based partial buys/sells | No (optional) |
+
+### Trading Mode (Default)
+- Executes buy/sell cycles based on signals
+- Uses Kelly Criterion for position sizing
+- Trailing stop-loss enabled
+- Requires both buy and sell signals
+
+### Accumulation Mode
+- Ideal for long-term investors and DCA strategies
+- Invests a fixed dollar amount on each buy signal (e.g., $1000)
+- Ignores sell signals entirely - holds positions until end
+- No trailing stop-loss (long-term hold)
+- Only requires buy signals
+
+### Rebalancing Mode
+- Uses percentage of portfolio per trade
+- Allows partial buys (% of available cash)
+- Allows partial sells (% of current position)
+- Sell signals are optional
+
+```python
+# Example: Accumulation mode backtest
+from lib.strategy import run_backtest
+
+results = run_backtest(
+    df=df,
+    initial_capital=100000,
+    buy_indicators=['RSI_Oversold_Buy'],
+    sell_indicators=[],  # No sell signals needed
+    strategy_mode='accumulation',
+    amount_per_buy=1000  # DCA $1000 per buy signal
+)
+```
+
+## 📊 Dashboard Features
 
 The integrated dashboard provides:
 
@@ -208,6 +252,7 @@ The integrated dashboard provides:
   - Portfolio metrics
 
 - **Controls Panel**:
+  - Strategy mode selector (Trading, Accumulation, Rebalancing)
   - Toggle buy/sell signals
   - Select which plots to display
   - View backtest results summary
