@@ -12,6 +12,7 @@ import webbrowser
 import dash
 from dash import dcc, html
 import dash_bootstrap_components as dbc
+from dash_tvlwc import Tvlwc
 
 from lib.dash.dash_config import (
     DEFAULT_THEME, DEFAULT_TICKER, INITIAL_CAPITAL, START_DATE,
@@ -63,6 +64,18 @@ def create_dashboard_layout(theme: dict) -> html.Div:
 
         # Hidden elements
         html.Div(id='hidden-output', style={'display': 'none'}),
+        html.Div(
+            Tvlwc(
+                id='tv-preload',
+                seriesData=[[]],
+                seriesTypes=['candlestick'],
+                seriesOptions=[{}],
+                seriesMarkers=[[]],
+                width=1,
+                height=1
+            ),
+            style={'display': 'none'}
+        ),
 
     ], style=styles['app'], id='app-container')
 
@@ -227,36 +240,76 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
             ], style={'display': 'flex', 'alignItems': 'baseline'}),
 
             html.Div([
+                dcc.RadioItems(
+                    id='chart-library-toggle',
+                    options=[
+                        {'label': 'Plotly', 'value': 'plotly'},
+                        {'label': 'TradingView', 'value': 'tradingview'}
+                    ],
+                    value='plotly',
+                    inline=True
+                ),
                 html.Button("Export CSV", id='export-csv-btn', style=styles['button_outline'], n_clicks=0),
                 html.Button("Export Image", id='export-img-btn', style=styles['button_outline'], n_clicks=0),
-            ], style={'display': 'flex', 'gap': '8px'}),
+            ], style={'display': 'flex', 'gap': '12px', 'alignItems': 'center'}),
         ], style=styles['chart_toolbar']),
 
         # Chart - resizable container
         html.Div([
-            dcc.Loading(
-                id='loading-chart',
-                type='circle',
-                color=theme['accent_blue'],
+            html.Div(
+                id='plotly-chart-container',
                 children=[
-                    dcc.Graph(
-                        id='financial-chart',
-                        style={'height': '100%', 'width': '100%'},
-                        config={
-                            'responsive': True,
-                            'displayModeBar': True,
-                            'displaylogo': False,
-                            'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
-                            'toImageButtonOptions': {
-                                'format': 'png',
-                                'filename': 'chart',
-                                'height': 800,
-                                'width': 1200,
-                                'scale': 2
-                            }
-                        }
+                    dcc.Loading(
+                        id='loading-chart',
+                        type='circle',
+                        color=theme['accent_blue'],
+                        children=[
+                            dcc.Graph(
+                                id='financial-chart',
+                                style={'height': '100%', 'width': '100%'},
+                                config={
+                                    'responsive': True,
+                                    'displayModeBar': True,
+                                    'displaylogo': False,
+                                    'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+                                    'toImageButtonOptions': {
+                                        'format': 'png',
+                                        'filename': 'chart',
+                                        'height': 800,
+                                        'width': 1200,
+                                        'scale': 2
+                                    }
+                                }
+                            )
+                        ]
                     )
-                ]
+                ],
+                style={
+                    'position': 'absolute',
+                    'inset': 0,
+                    'height': '100%',
+                    'width': '100%',
+                    'visibility': 'visible',
+                    'opacity': 1
+                }
+            ),
+            html.Div(
+                id='tv-chart-container',
+                children=[
+                    html.Div(id='tv-main-chart', style={'height': '75%', 'minHeight': '320px'}),
+                    html.Div(id='tv-volume-chart', style={'height': '25%', 'minHeight': '120px'}),
+                ],
+                style={
+                    'position': 'absolute',
+                    'inset': 0,
+                    'height': '100%',
+                    'width': '100%',
+                    'display': 'flex',
+                    'flexDirection': 'column',
+                    'visibility': 'hidden',
+                    'opacity': 0,
+                    'pointerEvents': 'none'
+                }
             )
         ], style={
             **styles['chart_area'],
@@ -264,6 +317,7 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
             'minHeight': '400px',
             'resize': 'vertical',
             'overflow': 'auto',
+            'position': 'relative'
         }, className='resizable-chart'),
     ], style=styles['chart_container'])
 

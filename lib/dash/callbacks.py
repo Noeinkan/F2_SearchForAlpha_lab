@@ -13,12 +13,19 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import plotly.graph_objs as go
 
+from dash_tvlwc import Tvlwc
+
 from lib.dash.dash_config import (
     DEFAULT_THEME, FONT_SIZES, FONT_MONO, get_theme
 )
 from lib.dash.state import dashboard_state
 from lib.dash.styles import get_styles
 from lib.dash.chart_builder import create_chart, create_empty_chart
+from lib.dash.tv_chart_builder import (
+    convert_df_to_tv_format,
+    convert_volume_to_tv_format,
+    get_tv_chart_options
+)
 from lib.dash.components import build_alert, build_metric_card
 from lib.dash.helpers import (
     fetch_data_with_cache, format_df_for_display,
@@ -157,15 +164,40 @@ def register_callbacks(app):
         return accumulation_style, rebalancing_style
 
     @app.callback(
+        [Output('plotly-chart-container', 'style'),
+         Output('tv-chart-container', 'style')],
+        [Input('chart-library-toggle', 'value')]
+    )
+    def toggle_chart_visibility(chart_library):
+        """Show/hide Plotly vs TradingView containers."""
+        base_style = {
+            'position': 'absolute',
+            'inset': 0,
+            'height': '100%',
+            'width': '100%'
+        }
+        plotly_style = {**base_style, 'visibility': 'visible', 'opacity': 1, 'pointerEvents': 'auto', 'zIndex': 1}
+        tv_style = {**base_style, 'display': 'flex', 'flexDirection': 'column', 'visibility': 'hidden',
+                    'opacity': 0, 'pointerEvents': 'none', 'zIndex': 0}
+        if chart_library == 'tradingview':
+            return {**plotly_style, 'visibility': 'hidden', 'opacity': 0, 'pointerEvents': 'none'}, \
+                {**tv_style, 'visibility': 'visible', 'opacity': 1, 'pointerEvents': 'auto', 'zIndex': 2}
+        return plotly_style, tv_style
+
+    @app.callback(
         Output('financial-chart', 'figure'),
         [Input('data-loaded-store', 'data'),
          Input('plot-checklist', 'value'),
          Input('chart-elements-checklist', 'value'),
-         Input('signal-checklist', 'value')],
+         Input('signal-checklist', 'value'),
+         Input('chart-library-toggle', 'value')],
         [State('ticker-dropdown', 'value')]
     )
-    def update_chart(data_loaded, selected_plots, chart_elements, selected_signals, ticker):
-        """Update the financial chart."""
+    def update_plotly_chart(data_loaded, selected_plots, chart_elements, selected_signals, chart_library, ticker):
+        """Update the Plotly financial chart."""
+        if chart_library == 'tradingview':
+            raise PreventUpdate
+
         theme = get_theme()
 
         if not data_loaded or dashboard_state.df is None:
@@ -186,6 +218,83 @@ def register_callbacks(app):
         }
 
         return create_chart(df, config, theme)
+
+    @app.callback(
+        Output('tv-main-chart', 'children'),
+        [Input('data-loaded-store', 'data'),
+         Input('chart-elements-checklist', 'value'),
+         Input('signal-checklist', 'value'),
+         Input('chart-library-toggle', 'value')],
+        [State('ticker-dropdown', 'value')]
+    )
+    def update_tv_main_chart(data_loaded, chart_elements, selected_signals, chart_library, ticker):
+        """Update the TradingView main chart."""
+        if chart_library != 'tradingview':
+            raise PreventUpdate
+
+        theme = get_theme()
+
+        if not data_loaded or dashboard_state.df is None:
+            return html.Div("Load data to view chart", style={'color': theme['text_secondary']})
+
+        df = dashboard_state.df
+
+        config = {
+            'show_candlesticks': 'candlesticks' in (chart_elements or []),
+            'show_bollinger': 'bollinger' in (chart_elements or []),
+            'show_sma': 'sma' in (chart_elements or []),
+            'show_ema': 'ema' in (chart_elements or []),
+            'show_buy_sell_signals': 'signals' in (chart_elements or []),
+            'selected_signals': selected_signals or []
+        }
+
+        series_data, series_types, series_options, series_markers = convert_df_to_tv_format(df, config, theme)
+        if not series_data or not series_types:
+            return html.Div("No series selected for TradingView", style={'color': theme['text_secondary']})
+        chart_options = get_tv_chart_options(theme)
+
+        return Tvlwc(
+            chartOptions=chart_options,
+            seriesData=series_data,
+            seriesTypes=series_types,
+            seriesOptions=series_options,
+            seriesMarkers=series_markers,
+            height=420,
+            width='100%'
+        )
+
+    @app.callback(
+        Output('tv-volume-chart', 'children'),
+        [Input('data-loaded-store', 'data'),
+         Input('plot-checklist', 'value'),
+         Input('chart-library-toggle', 'value')]
+    )
+    def update_tv_volume_chart(data_loaded, selected_plots, chart_library):
+        """Update the TradingView volume chart."""
+        if chart_library != 'tradingview':
+            raise PreventUpdate
+
+        theme = get_theme()
+
+        if not data_loaded or dashboard_state.df is None:
+            return html.Div()
+
+        if 'volume' not in (selected_plots or []):
+            return html.Div()
+
+        df = dashboard_state.df
+        series_data, series_type, series_options = convert_volume_to_tv_format(df, theme)
+        chart_options = get_tv_chart_options(theme)
+
+        return Tvlwc(
+            chartOptions=chart_options,
+            seriesData=[series_data],
+            seriesTypes=[series_type],
+            seriesOptions=[series_options],
+            seriesMarkers=[[]],
+            height=200,
+            width='100%'
+        )
 
     @app.callback(
         Output('backtest-results', 'children'),

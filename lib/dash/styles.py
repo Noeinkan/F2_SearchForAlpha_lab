@@ -537,4 +537,19 @@ CUSTOM_CSS = '''
         background: #30363d;
         border-radius: 0 0 6px 0;
     }
+
+    /* Chart library toggle */
+    #chart-library-toggle label {
+        cursor: pointer;
+        transition: color 0.2s ease;
+    }
+    #chart-library-toggle input {
+        margin-right: 6px;
+    }
+
+    /* TradingView container */
+    #tv-chart-container {
+        display: flex;
+        flex-direction: column;
+    }
 '''
