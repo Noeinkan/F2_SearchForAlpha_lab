@@ -1,0 +1,540 @@
+"""
+Dashboard Styles
+Style generators for dashboard components.
+"""
+
+from lib.dash.dash_config import (
+    FONT_FAMILY, FONT_MONO, FONT_SIZES, BORDER_RADIUS
+)
+
+
+def get_styles(theme: dict) -> dict:
+    """
+    Generate component styles based on theme.
+
+    Args:
+        theme: Theme configuration dict
+
+    Returns:
+        Dict of style definitions for various components
+    """
+    return {
+        'app': {
+            'fontFamily': FONT_FAMILY,
+            'backgroundColor': theme['bg_primary'],
+            'color': theme['text_primary'],
+            'minHeight': '100vh',
+            'margin': 0,
+            'padding': 0,
+        },
+        'header': {
+            'backgroundColor': theme['bg_secondary'],
+            'borderBottom': f'1px solid {theme["border_primary"]}',
+            'padding': '12px 20px',
+            'display': 'flex',
+            'alignItems': 'center',
+            'justifyContent': 'space-between',
+            'height': '56px',
+        },
+        'logo': {
+            'display': 'flex',
+            'alignItems': 'center',
+            'gap': '12px',
+        },
+        'logo_icon': {
+            'width': '32px',
+            'height': '32px',
+            'backgroundColor': theme['accent_blue'],
+            'borderRadius': BORDER_RADIUS['md'],
+            'display': 'flex',
+            'alignItems': 'center',
+            'justifyContent': 'center',
+            'color': '#fff',
+            'fontWeight': 'bold',
+            'fontSize': FONT_SIZES['lg'],
+        },
+        'logo_text': {
+            'fontSize': FONT_SIZES['lg'],
+            'fontWeight': '600',
+            'color': theme['text_primary'],
+            'letterSpacing': '-0.5px',
+        },
+        'header_controls': {
+            'display': 'flex',
+            'alignItems': 'center',
+            'gap': '16px',
+        },
+        'main_container': {
+            'display': 'flex',
+            'height': 'calc(100vh - 56px)',
+            'overflow': 'hidden',
+        },
+        'sidebar': {
+            'width': '280px',
+            'minWidth': '280px',
+            'backgroundColor': theme['bg_secondary'],
+            'borderRight': f'1px solid {theme["border_primary"]}',
+            'display': 'flex',
+            'flexDirection': 'column',
+            'overflow': 'hidden',
+        },
+        'sidebar_section': {
+            'padding': '16px',
+            'borderBottom': f'1px solid {theme["border_secondary"]}',
+        },
+        'sidebar_title': {
+            'fontSize': FONT_SIZES['xs'],
+            'fontWeight': '600',
+            'color': theme['text_secondary'],
+            'textTransform': 'uppercase',
+            'letterSpacing': '0.5px',
+            'marginBottom': '12px',
+        },
+        'chart_container': {
+            'flex': 1,
+            'display': 'flex',
+            'flexDirection': 'column',
+            'overflow': 'hidden',
+            'backgroundColor': theme['bg_primary'],
+        },
+        'chart_toolbar': {
+            'display': 'flex',
+            'alignItems': 'center',
+            'justifyContent': 'space-between',
+            'padding': '8px 16px',
+            'backgroundColor': theme['bg_secondary'],
+            'borderBottom': f'1px solid {theme["border_primary"]}',
+            'gap': '12px',
+            'flexWrap': 'wrap',
+        },
+        'chart_area': {
+            'flex': 1,
+            'padding': '0',
+            'overflow': 'hidden',
+        },
+        'right_panel': {
+            'width': '320px',
+            'minWidth': '320px',
+            'backgroundColor': theme['bg_secondary'],
+            'borderLeft': f'1px solid {theme["border_primary"]}',
+            'display': 'flex',
+            'flexDirection': 'column',
+            'overflow': 'hidden',
+        },
+        'panel_header': {
+            'padding': '12px 16px',
+            'borderBottom': f'1px solid {theme["border_primary"]}',
+            'display': 'flex',
+            'alignItems': 'center',
+            'justifyContent': 'space-between',
+        },
+        'panel_title': {
+            'fontSize': FONT_SIZES['sm'],
+            'fontWeight': '600',
+            'color': theme['text_primary'],
+        },
+        'panel_content': {
+            'flex': 1,
+            'overflow': 'auto',
+            'padding': '16px',
+        },
+        'card': {
+            'backgroundColor': theme['bg_tertiary'],
+            'borderRadius': BORDER_RADIUS['lg'],
+            'border': f'1px solid {theme["border_primary"]}',
+            'marginBottom': '12px',
+        },
+        'card_header': {
+            'padding': '12px 16px',
+            'borderBottom': f'1px solid {theme["border_secondary"]}',
+            'fontSize': FONT_SIZES['sm'],
+            'fontWeight': '600',
+            'color': theme['text_primary'],
+        },
+        'card_body': {
+            'padding': '16px',
+        },
+        'input': {
+            'backgroundColor': theme['bg_tertiary'],
+            'border': f'1px solid {theme["border_primary"]}',
+            'borderRadius': BORDER_RADIUS['md'],
+            'color': theme['text_primary'],
+            'padding': '8px 12px',
+            'fontSize': FONT_SIZES['sm'],
+            'width': '100%',
+        },
+        'input_focus': {
+            'borderColor': theme['border_focus'],
+            'outline': 'none',
+        },
+        'button_primary': {
+            'backgroundColor': theme['accent_blue'],
+            'color': '#fff',
+            'border': 'none',
+            'borderRadius': BORDER_RADIUS['md'],
+            'padding': '10px 20px',
+            'fontSize': FONT_SIZES['sm'],
+            'fontWeight': '600',
+            'cursor': 'pointer',
+            'transition': 'all 0.2s ease',
+        },
+        'button_success': {
+            'backgroundColor': theme['accent_green'],
+            'color': '#fff',
+            'border': 'none',
+            'borderRadius': BORDER_RADIUS['md'],
+            'padding': '10px 20px',
+            'fontSize': FONT_SIZES['sm'],
+            'fontWeight': '600',
+            'cursor': 'pointer',
+        },
+        'button_outline': {
+            'backgroundColor': 'transparent',
+            'color': theme['text_secondary'],
+            'border': f'1px solid {theme["border_primary"]}',
+            'borderRadius': BORDER_RADIUS['md'],
+            'padding': '8px 16px',
+            'fontSize': FONT_SIZES['sm'],
+            'cursor': 'pointer',
+        },
+        'metric_card': {
+            'backgroundColor': theme['bg_tertiary'],
+            'borderRadius': BORDER_RADIUS['md'],
+            'padding': '12px',
+            'marginBottom': '8px',
+        },
+        'metric_label': {
+            'fontSize': FONT_SIZES['xs'],
+            'color': theme['text_secondary'],
+            'marginBottom': '4px',
+        },
+        'metric_value': {
+            'fontSize': FONT_SIZES['xl'],
+            'fontWeight': '600',
+            'color': theme['text_primary'],
+            'fontFamily': FONT_MONO,
+        },
+        'metric_positive': {
+            'color': theme['accent_green'],
+        },
+        'metric_negative': {
+            'color': theme['accent_red'],
+        },
+        'checklist_container': {
+            'display': 'flex',
+            'flexDirection': 'column',
+            'gap': '4px',
+        },
+        'checklist_item': {
+            'display': 'flex',
+            'alignItems': 'center',
+            'padding': '6px 8px',
+            'borderRadius': BORDER_RADIUS['sm'],
+            'cursor': 'pointer',
+            'transition': 'background-color 0.15s ease',
+        },
+        'status_badge': {
+            'display': 'inline-flex',
+            'alignItems': 'center',
+            'padding': '2px 8px',
+            'borderRadius': BORDER_RADIUS['full'],
+            'fontSize': FONT_SIZES['xs'],
+            'fontWeight': '500',
+        },
+        'status_success': {
+            'backgroundColor': f'{theme["accent_green"]}20',
+            'color': theme['accent_green'],
+        },
+        'status_warning': {
+            'backgroundColor': f'{theme["accent_orange"]}20',
+            'color': theme['accent_orange'],
+        },
+        'status_error': {
+            'backgroundColor': f'{theme["accent_red"]}20',
+            'color': theme['accent_red'],
+        },
+        'tab_container': {
+            'display': 'flex',
+            'borderBottom': f'1px solid {theme["border_primary"]}',
+            'backgroundColor': theme['bg_secondary'],
+        },
+        'tab': {
+            'padding': '12px 20px',
+            'fontSize': FONT_SIZES['sm'],
+            'color': theme['text_secondary'],
+            'cursor': 'pointer',
+            'borderBottom': '2px solid transparent',
+            'transition': 'all 0.2s ease',
+        },
+        'tab_active': {
+            'color': theme['text_primary'],
+            'borderBottomColor': theme['accent_blue'],
+        },
+    }
+
+
+# CSS string for custom styling (animations, hover states, etc.)
+CUSTOM_CSS = '''
+    /* Animations */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateX(-20px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+    @keyframes progressBar {
+        0% { width: 0%; }
+        100% { width: 100%; }
+    }
+
+    /* Fade-in for results */
+    .fade-in {
+        animation: fadeIn 0.3s ease-out;
+    }
+    .slide-in {
+        animation: slideIn 0.3s ease-out;
+    }
+
+    /* Progress bar */
+    .progress-container {
+        width: 100%;
+        height: 4px;
+        background: #21262d;
+        border-radius: 2px;
+        overflow: hidden;
+        margin: 8px 0;
+    }
+    .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #58a6ff, #3fb950, #58a6ff);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s linear infinite;
+        transition: width 0.3s ease;
+    }
+    .progress-bar.indeterminate {
+        width: 100%;
+        animation: shimmer 1s linear infinite;
+    }
+
+    /* Metric cards animation */
+    .metric-card-animated {
+        animation: fadeIn 0.4s ease-out;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .metric-card-animated:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    /* Dark theme dropdown */
+    .dark-dropdown .Select-control {
+        background-color: #21262d !important;
+        border-color: #30363d !important;
+        transition: border-color 0.2s ease !important;
+    }
+    .dark-dropdown .Select-control:hover {
+        border-color: #58a6ff !important;
+    }
+    .dark-dropdown .Select-menu-outer {
+        background-color: #21262d !important;
+        border-color: #30363d !important;
+        animation: fadeIn 0.15s ease-out;
+    }
+    .dark-dropdown .Select-option {
+        background-color: #21262d !important;
+        color: #e6edf3 !important;
+        transition: background-color 0.15s ease !important;
+    }
+    .dark-dropdown .Select-option:hover {
+        background-color: #30363d !important;
+    }
+    .dark-dropdown .Select-value-label {
+        color: #e6edf3 !important;
+    }
+    .dark-dropdown .Select-placeholder {
+        color: #8b949e !important;
+    }
+
+    /* Date picker dark theme */
+    .SingleDatePickerInput {
+        background-color: #21262d !important;
+        border: 1px solid #30363d !important;
+        border-radius: 6px !important;
+        transition: border-color 0.2s ease !important;
+    }
+    .SingleDatePickerInput:hover {
+        border-color: #58a6ff !important;
+    }
+    .DateInput_input {
+        background-color: #21262d !important;
+        color: #e6edf3 !important;
+        font-size: 14px !important;
+        padding: 8px 12px !important;
+    }
+    .CalendarDay__selected {
+        background: #58a6ff !important;
+        border-color: #58a6ff !important;
+    }
+
+    /* Panel tabs */
+    .panel-tab {
+        background: transparent !important;
+        transition: all 0.2s ease !important;
+        position: relative;
+    }
+    .panel-tab:hover {
+        background-color: #21262d !important;
+    }
+    .panel-tab.active {
+        border-bottom-color: #58a6ff !important;
+        color: #e6edf3 !important;
+    }
+
+    /* Tab indicator animation */
+    .panel-tab::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        width: 0;
+        height: 2px;
+        background: #58a6ff;
+        transition: all 0.3s ease;
+        transform: translateX(-50%);
+    }
+    .panel-tab.active::after {
+        width: 100%;
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #161b22;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #30363d;
+        border-radius: 4px;
+        transition: background 0.2s ease;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #484f58;
+    }
+
+    /* Loading spinner */
+    ._dash-loading {
+        background-color: transparent !important;
+    }
+
+    /* Checkbox styling */
+    input[type="checkbox"] {
+        accent-color: #58a6ff;
+        cursor: pointer;
+        transition: transform 0.1s ease;
+    }
+    input[type="checkbox"]:hover {
+        transform: scale(1.1);
+    }
+
+    /* Button hover states */
+    button {
+        transition: all 0.2s ease !important;
+    }
+    button:hover {
+        opacity: 0.9;
+        transform: translateY(-1px);
+    }
+    button:active {
+        transform: translateY(1px);
+    }
+
+    /* Alert styles */
+    .custom-alert {
+        animation: slideIn 0.3s ease-out;
+        border-left: 4px solid;
+        border-radius: 6px;
+    }
+    .custom-alert.success {
+        background: rgba(63, 185, 80, 0.1);
+        border-left-color: #3fb950;
+    }
+    .custom-alert.warning {
+        background: rgba(210, 153, 34, 0.1);
+        border-left-color: #d29922;
+    }
+    .custom-alert.error {
+        background: rgba(248, 81, 73, 0.1);
+        border-left-color: #f85149;
+    }
+
+    /* Tooltip styling */
+    .tooltip-inner {
+        background-color: #21262d !important;
+        border: 1px solid #30363d !important;
+        color: #e6edf3 !important;
+        font-size: 12px !important;
+        padding: 8px 12px !important;
+        max-width: 250px !important;
+    }
+    .tooltip.bs-tooltip-top .tooltip-arrow::before,
+    .tooltip.bs-tooltip-bottom .tooltip-arrow::before {
+        border-top-color: #30363d !important;
+        border-bottom-color: #30363d !important;
+    }
+
+    /* Card hover effect */
+    .card-hover {
+        transition: all 0.2s ease;
+    }
+    .card-hover:hover {
+        border-color: #58a6ff;
+        box-shadow: 0 0 0 1px #58a6ff;
+    }
+
+    /* Status badge pulse for loading */
+    .status-loading {
+        animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    /* Smooth chart transitions */
+    .js-plotly-plot .plotly .main-svg {
+        transition: opacity 0.3s ease;
+    }
+
+    /* Resizable chart container */
+    .resizable-chart {
+        resize: vertical;
+        overflow: auto;
+        min-height: 400px;
+        max-height: calc(100vh - 120px);
+        position: relative;
+    }
+    .resizable-chart::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 6px;
+        background: linear-gradient(to bottom, transparent, #30363d);
+        border-radius: 0 0 3px 3px;
+        pointer-events: none;
+    }
+    .resizable-chart::-webkit-resizer {
+        background: #30363d;
+        border-radius: 0 0 6px 0;
+    }
+'''

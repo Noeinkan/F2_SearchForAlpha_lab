@@ -172,6 +172,20 @@ OPTIMIZATION_PERCENT = 0.1
 OPTIMIZATION_DELAY = 1
 
 # =============================================================================
+# CHART CONSTANTS
+# =============================================================================
+
+# Row heights for subplots
+CHART_ROW_HEIGHT_MAIN = 4.5      # Height multiplier for main candlestick chart
+CHART_ROW_HEIGHT_INDICATOR = 1   # Height multiplier for indicator panels
+
+# Signal marker positioning
+SIGNAL_OFFSET_FACTOR = 0.015     # Offset for buy/sell signal markers (% of price)
+
+# Cache settings
+MAX_DATA_CACHE_SIZE = 50         # Maximum number of cached DataFrames
+
+# =============================================================================
 # CHECKLIST OPTIONS
 # =============================================================================
 PLOT_OPTIONS = [

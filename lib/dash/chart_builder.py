@@ -1,0 +1,425 @@
+"""
+Chart Builder Module
+Professional financial chart creation with Plotly.
+"""
+
+import logging
+from typing import Dict, List
+import numpy as np
+import pandas as pd
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
+
+from lib.dash.dash_config import FONT_FAMILY
+
+logger = logging.getLogger(__name__)
+
+# Chart configuration constants
+CHART_ORDER = ['candlestick', 'volume', 'rsi', 'cci', 'macd', 'adx', 'atr', 'obv']
+CHART_ROW_HEIGHT_MAIN = 4.5
+CHART_ROW_HEIGHT_INDICATOR = 1
+SIGNAL_OFFSET_FACTOR = 0.015
+
+
+def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
+    """
+    Create a multi-panel financial chart with professional styling.
+
+    Args:
+        df: DataFrame with OHLCV data and indicators
+        config: Chart configuration dict with keys:
+            - selected_plots: List of plot types to include
+            - show_candlesticks: Whether to show candlestick chart
+            - show_bollinger: Whether to show Bollinger Bands
+            - show_sma: Whether to show SMA lines
+            - show_ema: Whether to show EMA lines
+            - show_buy_sell_signals: Whether to show trading signals
+            - show_legend: Whether to show legend
+            - selected_signals: List of signal types ('buy', 'sell')
+            - title: Optional chart title
+        theme: Theme configuration dict
+
+    Returns:
+        Plotly Figure object
+    """
+    try:
+        selected_plots = config['selected_plots'].copy()
+        if 'candlestick' in selected_plots:
+            selected_plots.remove('candlestick')
+            plot_sequence = ['candlestick'] + selected_plots
+        else:
+            plot_sequence = selected_plots
+
+        plot_count = len(plot_sequence)
+        if plot_count == 0:
+            return go.Figure()
+
+        row_heights = [
+            CHART_ROW_HEIGHT_MAIN if plot == 'candlestick' else CHART_ROW_HEIGHT_INDICATOR
+            for plot in plot_sequence
+        ]
+        subplot_titles = [p.replace('_', ' ').upper() for p in plot_sequence]
+
+        # Adjust vertical spacing based on number of plots
+        vertical_spacing = 0.02 if plot_count <= 3 else 0.015
+
+        fig = make_subplots(
+            rows=plot_count, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=vertical_spacing,
+            row_heights=row_heights,
+            subplot_titles=subplot_titles
+        )
+
+        plot_functions = {
+            'candlestick': _add_candlestick,
+            'volume': _add_volume_chart,
+            'rsi': _add_rsi,
+            'cci': _add_cci,
+            'macd': _add_macd,
+            'adx': _add_adx,
+            'atr': _add_atr,
+            'obv': _add_obv
+        }
+
+        for row, plot in enumerate(plot_sequence, start=1):
+            if plot in plot_functions:
+                plot_functions[plot](fig, df, row, 1, config, theme)
+
+        _add_range_selector(fig, theme)
+        _update_layout(fig, plot_count, config.get('show_legend', False), config, theme)
+        _add_crosshair(fig, plot_count)
+
+        return fig
+
+    except Exception as e:
+        logger.error(f"Error creating chart: {e}")
+        raise
+
+
+def _add_candlestick(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
+    """Add candlestick chart with overlays."""
+    if config.get('show_candlesticks', True):
+        fig.add_trace(go.Candlestick(
+            x=df.index,
+            open=df['Open'],
+            high=df['High'],
+            low=df['Low'],
+            close=df['Close'],
+            name="Price",
+            increasing_line_color=theme['chart_candle_up'],
+            decreasing_line_color=theme['chart_candle_down'],
+            increasing_fillcolor=theme['chart_candle_up'],
+            decreasing_fillcolor=theme['chart_candle_down'],
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>O: %{open:.2f}<br>H: %{high:.2f}<br>L: %{low:.2f}<br>C: %{close:.2f}<extra></extra>'
+        ), row=row, col=col)
+
+    if config.get('show_bollinger', False):
+        bb_colors = [theme['accent_green'], theme['accent_red'], theme['text_secondary']]
+        for (band, color) in zip(['upper', 'lower', 'middle'], bb_colors):
+            if f'BB_{band}' in df.columns:
+                fig.add_trace(go.Scatter(
+                    x=df.index, y=df[f'BB_{band}'],
+                    name=f"BB {band.upper()}",
+                    line=dict(color=color, width=1, dash='dot'),
+                    opacity=0.7
+                ), row=row, col=col)
+
+    if config.get('show_sma', False):
+        sma_colors = [theme['accent_red'], theme['accent_green'], theme['accent_blue'], theme['accent_purple']]
+        for i, period in enumerate(['short', 'medium', 'long', 'trend']):
+            col_name = f'SMA_{period}'
+            if col_name in df.columns:
+                fig.add_trace(go.Scatter(
+                    x=df.index, y=df[col_name],
+                    name=f"SMA {period.upper()}",
+                    line=dict(color=sma_colors[i], width=1.5)
+                ), row=row, col=col)
+
+    if config.get('show_ema', False):
+        ema_colors = [theme['accent_orange'], theme['accent_cyan'], theme['accent_purple']]
+        for i, period in enumerate(['short', 'medium', 'long']):
+            col_name = f'EMA_{period}'
+            if col_name in df.columns:
+                fig.add_trace(go.Scatter(
+                    x=df.index, y=df[col_name],
+                    name=f"EMA {period.upper()}",
+                    line=dict(color=ema_colors[i], width=1.5)
+                ), row=row, col=col)
+
+    if config.get('show_buy_sell_signals', False):
+        _add_signal_traces(fig, df, config.get('selected_signals', []), row, col, theme)
+
+
+def _add_volume_chart(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
+    """Add volume bar chart."""
+    colors = [
+        theme['chart_candle_up'] if c > o else theme['chart_candle_down']
+        for c, o in zip(df['Close'], df['Open'])
+    ]
+    fig.add_trace(go.Bar(
+        x=df.index, y=df['Volume'],
+        name="Volume",
+        marker=dict(color=colors, line=dict(width=0)),
+        opacity=0.7,
+        hovertemplate='%{x|%Y-%m-%d}<br>Vol: %{y:,.0f}<extra></extra>'
+    ), row=row, col=col)
+
+
+def _add_rsi(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
+    """Add RSI indicator."""
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['RSI'],
+        name="RSI",
+        line=dict(color=theme['accent_orange'], width=1.5),
+        hovertemplate='%{x|%Y-%m-%d}<br>RSI: %{y:.2f}<extra></extra>'
+    ), row=row, col=col)
+    fig.add_hline(y=70, line_dash="dash", line_color=theme['accent_red'], line_width=1, opacity=0.5, row=row, col=col)
+    fig.add_hline(y=30, line_dash="dash", line_color=theme['accent_green'], line_width=1, opacity=0.5, row=row, col=col)
+    fig.add_hrect(y0=30, y1=70, fillcolor=theme['text_tertiary'], opacity=0.05, line_width=0, row=row, col=col)
+
+
+def _add_cci(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
+    """Add CCI indicator."""
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['CCI'],
+        name="CCI",
+        line=dict(color=theme['accent_purple'], width=1.5),
+        hovertemplate='%{x|%Y-%m-%d}<br>CCI: %{y:.2f}<extra></extra>'
+    ), row=row, col=col)
+    fig.add_hline(y=100, line_dash="dash", line_color=theme['accent_red'], line_width=1, opacity=0.5, row=row, col=col)
+    fig.add_hline(y=-100, line_dash="dash", line_color=theme['accent_green'], line_width=1, opacity=0.5, row=row, col=col)
+
+
+def _add_macd(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
+    """Add MACD indicator."""
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['MACD'],
+        name="MACD",
+        line=dict(color=theme['accent_blue'], width=1.5),
+        hovertemplate='%{x|%Y-%m-%d}<br>MACD: %{y:.4f}<extra></extra>'
+    ), row=row, col=col)
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['MACD_Signal'],
+        name="Signal",
+        line=dict(color=theme['accent_orange'], width=1.5),
+        hovertemplate='%{x|%Y-%m-%d}<br>Signal: %{y:.4f}<extra></extra>'
+    ), row=row, col=col)
+    histogram_colors = np.where(df['MACD_Histogram'] >= 0, theme['chart_candle_up'], theme['chart_candle_down'])
+    fig.add_bar(
+        x=df.index, y=df['MACD_Histogram'],
+        name="Histogram",
+        marker_color=histogram_colors,
+        opacity=0.6,
+        hovertemplate='%{x|%Y-%m-%d}<br>Hist: %{y:.4f}<extra></extra>',
+        row=row, col=col
+    )
+
+
+def _add_adx(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
+    """Add ADX indicator."""
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['ADX'],
+        name="ADX",
+        line=dict(color=theme['accent_cyan'], width=1.5),
+        hovertemplate='%{x|%Y-%m-%d}<br>ADX: %{y:.2f}<extra></extra>'
+    ), row=row, col=col)
+    fig.add_hline(y=25, line_dash="dash", line_color=theme['text_tertiary'], line_width=1, opacity=0.5, row=row, col=col)
+
+
+def _add_atr(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
+    """Add ATR indicator."""
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['ATR'],
+        name="ATR",
+        line=dict(color=theme['accent_cyan'], width=1.5),
+        fill='tozeroy',
+        fillcolor=f'{theme["accent_cyan"]}10',
+        hovertemplate='%{x|%Y-%m-%d}<br>ATR: %{y:.2f}<extra></extra>'
+    ), row=row, col=col)
+
+
+def _add_obv(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
+    """Add OBV indicator."""
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['OBV'],
+        name="OBV",
+        line=dict(color=theme['accent_purple'], width=1.5),
+        hovertemplate='%{x|%Y-%m-%d}<br>OBV: %{y:,.0f}<extra></extra>'
+    ), row=row, col=col)
+
+
+def _add_signal_traces(fig: go.Figure, df: pd.DataFrame, selected_signals: List[str], row: int, col: int, theme: dict) -> None:
+    """Add buy/sell signal markers."""
+    signal_configs = {
+        'buy': {'color': theme['accent_green'], 'symbol': 'triangle-up', 'offset': -1},
+        'sell': {'color': theme['accent_red'], 'symbol': 'triangle-down', 'offset': 1}
+    }
+
+    for signal_type in selected_signals:
+        if signal_type not in signal_configs:
+            continue
+        cfg = signal_configs[signal_type]
+        col_name = f'{signal_type.capitalize()}_Position'
+        if col_name in df.columns:
+            signals = df[df[col_name] == 1]
+            if not signals.empty:
+                offset = signals['Close'] * SIGNAL_OFFSET_FACTOR * cfg['offset']
+                fig.add_trace(go.Scatter(
+                    x=signals.index,
+                    y=signals['Close'] + offset,
+                    mode='markers',
+                    marker=dict(
+                        symbol=cfg['symbol'], size=12, color=cfg['color'],
+                        line=dict(color='white', width=1)
+                    ),
+                    name=f'{signal_type.capitalize()} Signal',
+                    hovertemplate=f'{signal_type.capitalize()}<br>%{{x|%Y-%m-%d}}<br>Price: %{{y:.2f}}<extra></extra>'
+                ), row=row, col=col)
+
+
+def _add_range_selector(fig: go.Figure, theme: dict) -> None:
+    """Add time range selector buttons."""
+    fig.update_layout(
+        xaxis=dict(
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=1, label="1M", step="month", stepmode="backward"),
+                    dict(count=3, label="3M", step="month", stepmode="backward"),
+                    dict(count=6, label="6M", step="month", stepmode="backward"),
+                    dict(count=1, label="YTD", step="year", stepmode="todate"),
+                    dict(count=1, label="1Y", step="year", stepmode="backward"),
+                    dict(step="all", label="ALL")
+                ]),
+                bgcolor=theme['bg_tertiary'],
+                activecolor=theme['accent_blue'],
+                font=dict(color=theme['text_primary'], size=11),
+                bordercolor=theme['border_primary'],
+                borderwidth=1,
+                x=0,
+                y=1.02,
+            ),
+            rangeslider=dict(visible=False),
+            type="date"
+        )
+    )
+
+
+def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: Dict, theme: dict) -> None:
+    """Update figure layout with professional styling."""
+    title_text = config.get('title', '')
+
+    # Calculate dynamic height based on number of plots
+    # Base height for main chart (candlestick) + additional height per indicator
+    base_height = 400  # Main chart minimum height
+    indicator_height = 120  # Height per indicator panel
+    calculated_height = max(500, base_height + (plot_count - 1) * indicator_height)
+
+    fig.update_layout(
+        template='plotly_dark',
+        autosize=True,
+        height=calculated_height,
+        showlegend=show_legend,
+        plot_bgcolor=theme['chart_bg'],
+        paper_bgcolor=theme['chart_bg'],
+        margin=dict(l=60, r=20, t=60 if title_text else 40, b=40),
+        font=dict(family=FONT_FAMILY, color=theme['text_primary'], size=12),
+        title=dict(
+            text=title_text,
+            x=0.5,
+            xanchor='center',
+            font=dict(size=16, color=theme['text_primary'])
+        ) if title_text else None,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            bgcolor='rgba(0,0,0,0)',
+            font=dict(size=11)
+        ) if show_legend else None,
+        hoverlabel=dict(
+            bgcolor=theme['bg_tertiary'],
+            font_size=12,
+            font_family=FONT_FAMILY,
+            bordercolor=theme['border_primary']
+        )
+    )
+
+    for i in range(1, plot_count + 1):
+        fig.update_xaxes(
+            rangeslider_visible=False,
+            showgrid=True,
+            gridcolor=theme['chart_grid'],
+            gridwidth=1,
+            showline=True,
+            linecolor=theme['border_primary'],
+            linewidth=1,
+            tickfont=dict(color=theme['text_secondary'], size=10),
+            row=i, col=1
+        )
+        fig.update_yaxes(
+            showgrid=True,
+            gridcolor=theme['chart_grid'],
+            gridwidth=1,
+            showline=True,
+            linecolor=theme['border_primary'],
+            linewidth=1,
+            tickfont=dict(color=theme['text_secondary'], size=10),
+            side='right',
+            row=i, col=1
+        )
+        if i < plot_count:
+            fig.update_xaxes(showticklabels=False, row=i, col=1)
+
+    # Update subplot titles styling
+    for annotation in fig.layout.annotations:
+        annotation.update(
+            font=dict(size=11, color=theme['text_secondary']),
+            x=0.01,
+            xanchor='left'
+        )
+
+    fig.update_xaxes(matches='x')
+
+
+def _add_crosshair(fig: go.Figure, plot_count: int) -> None:
+    """Add crosshair functionality."""
+    fig.update_layout(
+        hovermode="x unified",
+        hoverdistance=100,
+        spikedistance=1000,
+    )
+    for i in range(1, plot_count + 1):
+        fig.update_xaxes(
+            showspikes=True, spikecolor="rgba(128,128,128,0.5)", spikethickness=1,
+            spikemode="across", spikesnap="cursor",
+            row=i, col=1
+        )
+        fig.update_yaxes(
+            showspikes=True, spikecolor="rgba(128,128,128,0.5)", spikethickness=1,
+            spikemode="across",
+            row=i, col=1
+        )
+
+
+def create_empty_chart(theme: dict, message: str = "Load data to view chart") -> go.Figure:
+    """Create an empty chart with a placeholder message."""
+    fig = go.Figure()
+    fig.update_layout(
+        template='plotly_dark',
+        plot_bgcolor=theme['chart_bg'],
+        paper_bgcolor=theme['chart_bg'],
+        font=dict(color=theme['text_secondary']),
+        xaxis=dict(showgrid=False, visible=False),
+        yaxis=dict(showgrid=False, visible=False),
+        annotations=[dict(
+            text=message,
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=16, color=theme['text_tertiary'])
+        )]
+    )
+    return fig

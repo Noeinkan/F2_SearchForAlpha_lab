@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(echo:*)",
-      "Bash(.venv/Scripts/python.exe:*)"
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(del \"c:\\\\Users\\\\andre\\\\OneDrive\\\\Desktop\\\\03_Coding\\\\F2_SearchForAlpha_lab\\\\lib\\\\dash\\\\chart_utils.py\")",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python -c:*)",
+      "Bash(python -m pip install:*)"
     ]
   }
 }
