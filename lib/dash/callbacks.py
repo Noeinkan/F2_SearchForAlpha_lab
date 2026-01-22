@@ -185,15 +185,28 @@ def register_callbacks(app):
         return plotly_style, tv_style
 
     @app.callback(
+        Output('chart-library-toggle', 'value'),
+        [Input('plot-checklist', 'value'),
+         Input('chart-elements-checklist', 'value')],
+        [State('chart-library-toggle', 'value')]
+    )
+    def enforce_plotly_for_indicators(selected_plots, chart_elements, current_library):
+        """Ensure Plotly is used when indicators/overlays are requested."""
+        return 'plotly'
+
+    @app.callback(
         Output('financial-chart', 'figure'),
         [Input('data-loaded-store', 'data'),
          Input('plot-checklist', 'value'),
          Input('chart-elements-checklist', 'value'),
          Input('signal-checklist', 'value'),
-         Input('chart-library-toggle', 'value')],
+         Input('chart-library-toggle', 'value'),
+         Input('buy-signals', 'value'),
+         Input('sell-signals', 'value')],
         [State('ticker-dropdown', 'value')]
     )
-    def update_plotly_chart(data_loaded, selected_plots, chart_elements, selected_signals, chart_library, ticker):
+    def update_plotly_chart(data_loaded, selected_plots, chart_elements, selected_signals, chart_library,
+                            buy_signals, sell_signals, ticker):
         """Update the Plotly financial chart."""
         if chart_library == 'tradingview':
             raise PreventUpdate
@@ -204,6 +217,10 @@ def register_callbacks(app):
             return create_empty_chart(theme)
 
         df = dashboard_state.df
+        df = df.copy()
+
+        buy_signals = buy_signals or []
+        sell_signals = sell_signals or []
 
         config = {
             'selected_plots': selected_plots or ['candlestick'],
@@ -214,6 +231,8 @@ def register_callbacks(app):
             'show_buy_sell_signals': 'signals' in (chart_elements or []),
             'show_legend': 'legend' in (chart_elements or []),
             'selected_signals': selected_signals or [],
+            'buy_signal_columns': buy_signals,
+            'sell_signal_columns': sell_signals,
             'title': '',
         }
 
@@ -224,10 +243,13 @@ def register_callbacks(app):
         [Input('data-loaded-store', 'data'),
          Input('chart-elements-checklist', 'value'),
          Input('signal-checklist', 'value'),
-         Input('chart-library-toggle', 'value')],
+         Input('chart-library-toggle', 'value'),
+         Input('buy-signals', 'value'),
+         Input('sell-signals', 'value')],
         [State('ticker-dropdown', 'value')]
     )
-    def update_tv_main_chart(data_loaded, chart_elements, selected_signals, chart_library, ticker):
+    def update_tv_main_chart(data_loaded, chart_elements, selected_signals, chart_library,
+                             buy_signals, sell_signals, ticker):
         """Update the TradingView main chart."""
         if chart_library != 'tradingview':
             raise PreventUpdate
@@ -238,6 +260,10 @@ def register_callbacks(app):
             return html.Div("Load data to view chart", style={'color': theme['text_secondary']})
 
         df = dashboard_state.df
+        df = df.copy()
+
+        buy_signals = buy_signals or []
+        sell_signals = sell_signals or []
 
         config = {
             'show_candlesticks': 'candlesticks' in (chart_elements or []),
@@ -245,7 +271,9 @@ def register_callbacks(app):
             'show_sma': 'sma' in (chart_elements or []),
             'show_ema': 'ema' in (chart_elements or []),
             'show_buy_sell_signals': 'signals' in (chart_elements or []),
-            'selected_signals': selected_signals or []
+            'selected_signals': selected_signals or [],
+            'buy_signal_columns': buy_signals,
+            'sell_signal_columns': sell_signals
         }
 
         series_data, series_types, series_options, series_markers = convert_df_to_tv_format(df, config, theme)

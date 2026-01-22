@@ -244,7 +244,7 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
                     id='chart-library-toggle',
                     options=[
                         {'label': 'Plotly', 'value': 'plotly'},
-                        {'label': 'TradingView', 'value': 'tradingview'}
+                        {'label': 'TradingView', 'value': 'tradingview', 'disabled': True}
                     ],
                     value='plotly',
                     inline=True
@@ -352,7 +352,7 @@ def _create_right_panel(styles: dict, theme: dict) -> html.Aside:
     ], style=styles['right_panel'])
 
 
-def _create_backtest_panel(styles: dict, _theme: dict) -> html.Div:
+def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
     """Create the backtest panel content."""
     return html.Div(id='panel-backtest', children=[
         # Strategy Mode Selector
@@ -399,28 +399,88 @@ def _create_backtest_panel(styles: dict, _theme: dict) -> html.Div:
         ], style={'marginBottom': '16px', 'display': 'none'}),
 
         html.Div([
-            html.Div("BUY SIGNALS", style={**styles['sidebar_title'], 'marginBottom': '8px'}),
-            dcc.Checklist(
-                id='buy-signals',
-                options=[],
-                value=[],
-                style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px', 'maxHeight': '120px', 'overflowY': 'auto'},
-                inputStyle={'cursor': 'pointer'},
-                labelStyle={'display': 'flex', 'alignItems': 'center', 'fontSize': FONT_SIZES['xs'], 'padding': '2px 0', 'cursor': 'pointer'}
-            ),
-        ], style={'marginBottom': '16px'}),
+            html.Div("SIGNALS", style=styles['card_header']),
+            html.Div([
+                html.Div(
+                    "Select signals for chart markers and backtest logic.",
+                    style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '12px'}
+                ),
 
-        html.Div([
-            html.Div("SELL SIGNALS", style={**styles['sidebar_title'], 'marginBottom': '8px'}),
-            dcc.Checklist(
-                id='sell-signals',
-                options=[],
-                value=[],
-                style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px', 'maxHeight': '120px', 'overflowY': 'auto'},
-                inputStyle={'cursor': 'pointer'},
-                labelStyle={'display': 'flex', 'alignItems': 'center', 'fontSize': FONT_SIZES['xs'], 'padding': '2px 0', 'cursor': 'pointer'}
-            ),
-        ], style={'marginBottom': '16px'}),
+                html.Div([
+                    html.Div([
+                        html.Div([
+                            html.Span("", style={
+                                'display': 'inline-block',
+                                'width': '8px',
+                                'height': '8px',
+                                'borderRadius': '50%',
+                                'backgroundColor': theme['accent_green'],
+                                'marginRight': '6px'
+                            }),
+                            html.Span("BUY", style={'fontSize': FONT_SIZES['xs'], 'fontWeight': '600', 'color': theme['accent_green']}),
+                            html.Span("Long entries", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginLeft': '6px'})
+                        ], style={'display': 'flex', 'alignItems': 'center'}),
+                        html.Span("Chart + Backtest", style={**styles['status_badge'], **styles['status_success']})
+                    ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '6px'}),
+
+                    dcc.Checklist(
+                        id='buy-signals',
+                        options=[],
+                        value=[],
+                        style={
+                            'display': 'flex',
+                            'flexDirection': 'column',
+                            'gap': '4px',
+                            'maxHeight': '140px',
+                            'overflowY': 'auto',
+                            'padding': '8px',
+                            'border': f'1px solid {theme["border_secondary"]}',
+                            'borderRadius': '8px',
+                            'backgroundColor': theme['bg_tertiary']
+                        },
+                        inputStyle={'cursor': 'pointer'},
+                        labelStyle={'display': 'flex', 'alignItems': 'center', 'fontSize': FONT_SIZES['xs'], 'padding': '2px 0', 'cursor': 'pointer'}
+                    ),
+                ], style={'marginBottom': '14px'}),
+
+                html.Div([
+                    html.Div([
+                        html.Div([
+                            html.Span("", style={
+                                'display': 'inline-block',
+                                'width': '8px',
+                                'height': '8px',
+                                'borderRadius': '50%',
+                                'backgroundColor': theme['accent_red'],
+                                'marginRight': '6px'
+                            }),
+                            html.Span("SELL", style={'fontSize': FONT_SIZES['xs'], 'fontWeight': '600', 'color': theme['accent_red']}),
+                            html.Span("Exit signals", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginLeft': '6px'})
+                        ], style={'display': 'flex', 'alignItems': 'center'}),
+                        html.Span("Chart + Backtest", style={**styles['status_badge'], **styles['status_error']})
+                    ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '6px'}),
+
+                    dcc.Checklist(
+                        id='sell-signals',
+                        options=[],
+                        value=[],
+                        style={
+                            'display': 'flex',
+                            'flexDirection': 'column',
+                            'gap': '4px',
+                            'maxHeight': '140px',
+                            'overflowY': 'auto',
+                            'padding': '8px',
+                            'border': f'1px solid {theme["border_secondary"]}',
+                            'borderRadius': '8px',
+                            'backgroundColor': theme['bg_tertiary']
+                        },
+                        inputStyle={'cursor': 'pointer'},
+                        labelStyle={'display': 'flex', 'alignItems': 'center', 'fontSize': FONT_SIZES['xs'], 'padding': '2px 0', 'cursor': 'pointer'}
+                    ),
+                ]),
+            ], style=styles['card_body']),
+        ], style={**styles['card'], 'marginBottom': '16px'}),
 
         html.Button(
             "Run Backtest",

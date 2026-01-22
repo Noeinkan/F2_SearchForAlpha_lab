@@ -76,29 +76,58 @@ def convert_df_to_tv_format(df: pd.DataFrame, config: Dict, theme: dict) -> Tupl
         markers: List[Dict] = []
         if config.get('show_buy_sell_signals', False):
             selected_signals = config.get('selected_signals', [])
-            if 'buy' in selected_signals and 'Buy_Position' in df.columns:
-                buy_rows = df[df['Buy_Position'] == 1]
-                if not buy_rows.empty:
+            buy_signal_columns = config.get('buy_signal_columns', [])
+            sell_signal_columns = config.get('sell_signal_columns', [])
+
+            color_palette = [
+                theme['accent_blue'],
+                theme['accent_green'],
+                theme['accent_orange'],
+                theme['accent_purple'],
+                theme['accent_cyan'],
+                theme['accent_red']
+            ]
+
+            def _strategy_color(index: int) -> str:
+                return color_palette[index % len(color_palette)]
+
+            def _strategy_label(column_name: str) -> str:
+                base = column_name.rsplit('_', 1)[0]
+                label = base.replace('_', ' ')
+                return label[:8]
+
+            if 'buy' in selected_signals:
+                for idx, col_name in enumerate(buy_signal_columns):
+                    if col_name not in df.columns:
+                        continue
+                    buy_rows = df[df[col_name] == 1]
+                    if buy_rows.empty:
+                        continue
                     buy_times = _format_time_index(buy_rows)
                     for t in buy_times:
                         markers.append({
                             'time': t,
                             'position': 'belowBar',
                             'shape': 'arrowUp',
-                            'color': theme['accent_green'],
-                            'text': 'Buy'
+                            'color': _strategy_color(idx),
+                            'text': _strategy_label(col_name)
                         })
-            if 'sell' in selected_signals and 'Sell_Position' in df.columns:
-                sell_rows = df[df['Sell_Position'] == 1]
-                if not sell_rows.empty:
+
+            if 'sell' in selected_signals:
+                for idx, col_name in enumerate(sell_signal_columns):
+                    if col_name not in df.columns:
+                        continue
+                    sell_rows = df[df[col_name] == 1]
+                    if sell_rows.empty:
+                        continue
                     sell_times = _format_time_index(sell_rows)
                     for t in sell_times:
                         markers.append({
                             'time': t,
                             'position': 'aboveBar',
                             'shape': 'arrowDown',
-                            'color': theme['accent_red'],
-                            'text': 'Sell'
+                            'color': _strategy_color(idx),
+                            'text': _strategy_label(col_name)
                         })
         series_markers.append(markers)
 

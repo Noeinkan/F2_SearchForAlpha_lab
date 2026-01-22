@@ -90,6 +90,14 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
         _update_layout(fig, plot_count, config.get('show_legend', False), config, theme)
         _add_crosshair(fig, plot_count)
 
+
+        # Set y-axis range for main candlestick chart based only on price data
+        if not df.empty and all(col in df.columns for col in ['Low', 'High']):
+            min_y = df['Low'].min()
+            max_y = df['High'].max()
+            y_margin = (max_y - min_y) * 0.02 if max_y > min_y else 1
+            fig.update_yaxes(range=[min_y - y_margin, max_y + y_margin], fixedrange=False, row=1, col=1)
+
         return fig
 
     except Exception as e:
@@ -100,6 +108,9 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
 def _add_candlestick(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
     """Add candlestick chart with overlays."""
     if config.get('show_candlesticks', True):
+        # Dynamically set candlestick width based on number of visible data points
+        n_points = len(df)
+        width = 0.7 if n_points < 30 else (0.5 if n_points < 100 else 0.3)
         fig.add_trace(go.Candlestick(
             x=df.index,
             open=df['Open'],
@@ -111,7 +122,8 @@ def _add_candlestick(fig: go.Figure, df: pd.DataFrame, row: int, col: int, confi
             decreasing_line_color=theme['chart_candle_down'],
             increasing_fillcolor=theme['chart_candle_up'],
             decreasing_fillcolor=theme['chart_candle_down'],
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>O: %{open:.2f}<br>H: %{high:.2f}<br>L: %{low:.2f}<br>C: %{close:.2f}<extra></extra>'
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>O: %{open:.2f}<br>H: %{high:.2f}<br>L: %{low:.2f}<br>C: %{close:.2f}<extra></extra>',
+            whiskerwidth=width
         ), row=row, col=col)
 
     if config.get('show_bollinger', False):
@@ -148,7 +160,16 @@ def _add_candlestick(fig: go.Figure, df: pd.DataFrame, row: int, col: int, confi
                 ), row=row, col=col)
 
     if config.get('show_buy_sell_signals', False):
-        _add_signal_traces(fig, df, config.get('selected_signals', []), row, col, theme)
+        _add_signal_traces(
+            fig,
+            df,
+            config.get('selected_signals', []),
+            row,
+            col,
+            theme,
+            config.get('buy_signal_columns', []),
+            config.get('sell_signal_columns', [])
+        )
 
 
 def _add_volume_chart(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
@@ -249,33 +270,83 @@ def _add_obv(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict,
     ), row=row, col=col)
 
 
-def _add_signal_traces(fig: go.Figure, df: pd.DataFrame, selected_signals: List[str], row: int, col: int, theme: dict) -> None:
-    """Add buy/sell signal markers."""
+def _add_signal_traces(
+    fig: go.Figure,
+    df: pd.DataFrame,
+    selected_signals: List[str],
+    row: int,
+    col: int,
+    theme: dict,
+    buy_signal_columns: List[str],
+    sell_signal_columns: List[str]
+) -> None:
+    """Add per-strategy buy/sell signal markers."""
     signal_configs = {
-        'buy': {'color': theme['accent_green'], 'symbol': 'triangle-up', 'offset': -1},
-        'sell': {'color': theme['accent_red'], 'symbol': 'triangle-down', 'offset': 1}
+        'buy': {
+            'symbol': 'triangle-up',
+            'offset': -1,
+            'label': 'B',
+            'text_position': 'top center'
+        },
+        'sell': {
+            'symbol': 'triangle-down',
+            'offset': 1,
+            'label': 'S',
+            'text_position': 'bottom center'
+        }
     }
 
-    for signal_type in selected_signals:
-        if signal_type not in signal_configs:
-            continue
+    color_palette = [
+        theme['accent_blue'],
+        theme['accent_green'],
+        theme['accent_orange'],
+        theme['accent_purple'],
+        theme['accent_cyan'],
+        theme['accent_red']
+    ]
+
+    def _strategy_color(index: int) -> str:
+        return color_palette[index % len(color_palette)]
+
+    def _strategy_label(column_name: str) -> str:
+        label = column_name.replace('_', ' ')
+        return label
+
+    def _add_markers(signal_type: str, columns: List[str]) -> None:
+        if signal_type not in selected_signals:
+            return
         cfg = signal_configs[signal_type]
-        col_name = f'{signal_type.capitalize()}_Position'
-        if col_name in df.columns:
+        for idx, col_name in enumerate(columns):
+            if col_name not in df.columns:
+                continue
             signals = df[df[col_name] == 1]
-            if not signals.empty:
-                offset = signals['Close'] * SIGNAL_OFFSET_FACTOR * cfg['offset']
-                fig.add_trace(go.Scatter(
-                    x=signals.index,
-                    y=signals['Close'] + offset,
-                    mode='markers',
-                    marker=dict(
-                        symbol=cfg['symbol'], size=12, color=cfg['color'],
-                        line=dict(color='white', width=1)
-                    ),
-                    name=f'{signal_type.capitalize()} Signal',
-                    hovertemplate=f'{signal_type.capitalize()}<br>%{{x|%Y-%m-%d}}<br>Price: %{{y:.2f}}<extra></extra>'
-                ), row=row, col=col)
+            if signals.empty:
+                continue
+            offset_multiplier = 1 + (idx * 0.35)
+            offset = signals['Close'] * SIGNAL_OFFSET_FACTOR * cfg['offset'] * offset_multiplier
+            fig.add_trace(go.Scatter(
+                x=signals.index,
+                y=signals['Close'] + offset,
+                mode='markers+text',
+                text=[cfg['label']] * len(signals),
+                textposition=cfg['text_position'],
+                textfont=dict(color=theme['text_primary'], size=9, family=FONT_FAMILY),
+                marker=dict(
+                    symbol=cfg['symbol'],
+                    size=14,
+                    color=_strategy_color(idx),
+                    opacity=0.95,
+                    line=dict(color=theme['bg_primary'], width=1.5)
+                ),
+                name=f"{signal_type.capitalize()}: {_strategy_label(col_name)}",
+                hovertemplate=(
+                    f"{signal_type.capitalize()}<br>{_strategy_label(col_name)}"
+                    "<br>%{x|%Y-%m-%d}<br>Price: %{y:.2f}<extra></extra>"
+                )
+            ), row=row, col=col)
+
+    _add_markers('buy', buy_signal_columns or [])
+    _add_markers('sell', sell_signal_columns or [])
 
 
 def _add_range_selector(fig: go.Figure, theme: dict) -> None:
@@ -368,6 +439,7 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             linewidth=1,
             tickfont=dict(color=theme['text_secondary'], size=10),
             side='right',
+            autorange=True,  # Always fit y-axis to visible data
             row=i, col=1
         )
         if i < plot_count:
