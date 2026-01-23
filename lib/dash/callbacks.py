@@ -805,6 +805,60 @@ def register_callbacks(app):
         Input('startup-interval', 'n_intervals')
     )
 
+    # Clientside callback for synced crosshair across all subplots
+    app.clientside_callback(
+        """
+        function(hoverData, figure) {
+            if (!figure || !figure.data || figure.data.length === 0) {
+                return window.dash_clientside.no_update;
+            }
+
+            // Create a copy of the figure
+            var newFigure = JSON.parse(JSON.stringify(figure));
+
+            // Remove previous crosshair shapes (identified by our custom name)
+            if (newFigure.layout.shapes) {
+                newFigure.layout.shapes = newFigure.layout.shapes.filter(function(shape) {
+                    return shape.name !== 'crosshair-vline';
+                });
+            } else {
+                newFigure.layout.shapes = [];
+            }
+
+            // If no hover data, return figure without crosshair
+            if (!hoverData || !hoverData.points || hoverData.points.length === 0) {
+                return newFigure;
+            }
+
+            // Get the x value from hover data
+            var xValue = hoverData.points[0].x;
+
+            // Add vertical line shape spanning all y axes (yref: 'paper' makes it span full height)
+            newFigure.layout.shapes.push({
+                type: 'line',
+                name: 'crosshair-vline',
+                x0: xValue,
+                x1: xValue,
+                y0: 0,
+                y1: 1,
+                xref: 'x',
+                yref: 'paper',
+                line: {
+                    color: 'rgba(128, 128, 128, 0.7)',
+                    width: 1,
+                    dash: 'dot'
+                }
+            });
+
+            return newFigure;
+        }
+        """,
+        Output('financial-chart', 'figure', allow_duplicate=True),
+        Input('financial-chart', 'hoverData'),
+        State('financial-chart', 'figure'),
+        prevent_initial_call=True
+    )
+
 
 # Helper functions for callbacks
 

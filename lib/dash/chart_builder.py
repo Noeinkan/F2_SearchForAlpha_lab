@@ -467,21 +467,31 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
 
 
 def _add_crosshair(fig: go.Figure, plot_count: int) -> None:
-    """Add crosshair functionality."""
+    """Add crosshair functionality with spikes on all subplots."""
     fig.update_layout(
         hovermode="x unified",
         hoverdistance=100,
-        spikedistance=1000,
+        spikedistance=-1,  # Always show spikes regardless of distance
     )
     for i in range(1, plot_count + 1):
+        # Vertical spikes (x-axis) - handled by clientside callback for cross-subplot sync
         fig.update_xaxes(
-            showspikes=True, spikecolor="rgba(128,128,128,0.5)", spikethickness=1,
-            spikemode="across", spikesnap="cursor",
+            showspikes=True,
+            spikecolor="rgba(128,128,128,0.5)",
+            spikethickness=1,
+            spikemode="across",
+            spikesnap="cursor",
+            spikedash="dot",
             row=i, col=1
         )
+        # Horizontal spikes (y-axis) - show in each subplot individually
         fig.update_yaxes(
-            showspikes=True, spikecolor="rgba(128,128,128,0.5)", spikethickness=1,
+            showspikes=True,
+            spikecolor="rgba(128,128,128,0.7)",
+            spikethickness=1,
             spikemode="across",
+            spikesnap="cursor",
+            spikedash="dot",
             row=i, col=1
         )
 
