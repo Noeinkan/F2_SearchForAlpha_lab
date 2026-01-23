@@ -87,7 +87,8 @@ def backtest(
     volatility_window: int = 20,
     strategy_mode: str = 'trading',
     amount_per_buy: float = None,
-    position_size_pct: float = 100
+    position_size_pct: float = 100,
+    signal_logic: str = 'or'
 ) -> pd.DataFrame:
     """
     Run a backtest on the provided DataFrame.
@@ -111,6 +112,7 @@ def backtest(
         strategy_mode: 'trading' (buy/sell cycles), 'accumulation' (DCA), or 'rebalancing' (partial).
         amount_per_buy: Fixed dollar amount per buy signal (for accumulation mode).
         position_size_pct: Percentage of portfolio per trade (for rebalancing mode).
+        signal_logic: 'or' (any signal triggers) or 'and' (all signals must agree).
 
     Returns:
         DataFrame with backtest results including portfolio values and metrics.
@@ -144,12 +146,22 @@ def backtest(
         if use_signal_strength:
             buy_signal_strength, sell_signal_strength = calculate_signal_strengths(df, buy_indicators, sell_indicators, indicator_weights)
         else:
-            buy_signal_strength = df[buy_indicators].sum(axis=1).values
-            # Handle empty sell_indicators for accumulation/rebalancing modes
-            if sell_indicators:
-                sell_signal_strength = df[sell_indicators].sum(axis=1).values
+            # Signal combination logic: 'or' = any signal, 'and' = all signals
+            if signal_logic == 'and':
+                # AND logic: all selected signals must be True
+                buy_signal_strength = df[buy_indicators].all(axis=1).astype(int).values
+                if sell_indicators:
+                    sell_signal_strength = df[sell_indicators].all(axis=1).astype(int).values
+                else:
+                    sell_signal_strength = np.zeros(num_rows)
             else:
-                sell_signal_strength = np.zeros(num_rows)
+                # OR logic (default): any signal triggers
+                buy_signal_strength = df[buy_indicators].sum(axis=1).values
+                # Handle empty sell_indicators for accumulation/rebalancing modes
+                if sell_indicators:
+                    sell_signal_strength = df[sell_indicators].sum(axis=1).values
+                else:
+                    sell_signal_strength = np.zeros(num_rows)
 
         # Calculate volatility
         df = df.copy()
@@ -464,7 +476,8 @@ def run_backtest(
     sell_indicators: List[str],
     strategy_mode: str = 'trading',
     amount_per_buy: float = None,
-    position_size_pct: float = 100
+    position_size_pct: float = 100,
+    signal_logic: str = 'or'
 ) -> pd.DataFrame:
     """
     Convenience function to run a backtest with default Kelly Criterion sizing.
@@ -477,6 +490,7 @@ def run_backtest(
         strategy_mode: 'trading' (buy/sell cycles), 'accumulation' (DCA), or 'rebalancing' (partial positions).
         amount_per_buy: Fixed dollar amount per buy signal (for accumulation mode).
         position_size_pct: Percentage of portfolio per trade (for rebalancing mode).
+        signal_logic: 'or' (any signal triggers) or 'and' (all signals must agree).
 
     Returns:
         DataFrame with backtest results.
@@ -502,5 +516,6 @@ def run_backtest(
         volatility_window=20,
         strategy_mode=strategy_mode,
         amount_per_buy=amount_per_buy,
-        position_size_pct=position_size_pct
+        position_size_pct=position_size_pct,
+        signal_logic=signal_logic
     )

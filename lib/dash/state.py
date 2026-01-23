@@ -4,7 +4,7 @@ Encapsulates dashboard state to avoid global mutable variables.
 """
 
 import logging
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from collections import OrderedDict
 import pandas as pd
 
@@ -26,6 +26,21 @@ class DashboardState:
         self._data_cache: OrderedDict[str, pd.DataFrame] = OrderedDict()
         self._current_theme: str = DEFAULT_THEME
         self._max_cache_size = max_cache_size
+        self._optimization_state: Dict[str, Any] = self._create_empty_optimization_state()
+
+    @staticmethod
+    def _create_empty_optimization_state() -> Dict[str, Any]:
+        """Create empty optimization state dict."""
+        return {
+            'running': False,
+            'current_index': 0,
+            'total_combinations': 0,
+            'combinations': [],
+            'results': [],
+            'initial_capital': 0,
+            'completed': False,
+            'error': None
+        }
 
     @property
     def df(self) -> Optional[pd.DataFrame]:
@@ -67,6 +82,20 @@ class DashboardState:
     def set_theme(self, theme_name: str) -> None:
         """Set the current theme."""
         self._current_theme = theme_name
+
+    @property
+    def optimization_state(self) -> Dict[str, Any]:
+        """Current optimization state."""
+        return self._optimization_state
+
+    def update_optimization_state(self, **kwargs) -> None:
+        """Update optimization state with provided values."""
+        self._optimization_state.update(kwargs)
+
+    def reset_optimization(self) -> None:
+        """Reset optimization state for new run."""
+        self._optimization_state = self._create_empty_optimization_state()
+        logger.debug("Optimization state reset")
 
     def get_cached_data(self, key: str) -> Optional[pd.DataFrame]:
         """
@@ -125,6 +154,7 @@ class DashboardState:
         self._backtest_results = None
         self._data_cache.clear()
         self._current_theme = DEFAULT_THEME
+        self._optimization_state = self._create_empty_optimization_state()
         logger.info("Dashboard state reset")
 
 

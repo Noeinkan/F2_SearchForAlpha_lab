@@ -88,7 +88,7 @@ def get_styles(theme: dict) -> dict:
             'color': theme['text_secondary'],
             'textTransform': 'uppercase',
             'letterSpacing': '0.5px',
-            'marginBottom': '12px',
+            'marginBottom': '6px',
         },
         'chart_container': {
             'flex': 1,
@@ -113,8 +113,8 @@ def get_styles(theme: dict) -> dict:
             'overflow': 'hidden',
         },
         'right_panel': {
-            'width': '320px',
-            'minWidth': '320px',
+            'width': '290px',
+            'minWidth': '290px',
             'backgroundColor': theme['bg_secondary'],
             'borderLeft': f'1px solid {theme["border_primary"]}',
             'display': 'flex',
@@ -122,7 +122,7 @@ def get_styles(theme: dict) -> dict:
             'overflow': 'hidden',
         },
         'panel_header': {
-            'padding': '12px 16px',
+            'padding': '8px 10px',
             'borderBottom': f'1px solid {theme["border_primary"]}',
             'display': 'flex',
             'alignItems': 'center',
@@ -136,23 +136,23 @@ def get_styles(theme: dict) -> dict:
         'panel_content': {
             'flex': 1,
             'overflow': 'auto',
-            'padding': '16px',
+            'padding': '10px',
         },
         'card': {
             'backgroundColor': theme['bg_tertiary'],
-            'borderRadius': BORDER_RADIUS['lg'],
+            'borderRadius': BORDER_RADIUS['md'],
             'border': f'1px solid {theme["border_primary"]}',
-            'marginBottom': '12px',
+            'marginBottom': '8px',
         },
         'card_header': {
-            'padding': '12px 16px',
+            'padding': '8px 12px',
             'borderBottom': f'1px solid {theme["border_secondary"]}',
             'fontSize': FONT_SIZES['sm'],
             'fontWeight': '600',
             'color': theme['text_primary'],
         },
         'card_body': {
-            'padding': '16px',
+            'padding': '10px',
         },
         'input': {
             'backgroundColor': theme['bg_tertiary'],
@@ -200,8 +200,8 @@ def get_styles(theme: dict) -> dict:
         'metric_card': {
             'backgroundColor': theme['bg_tertiary'],
             'borderRadius': BORDER_RADIUS['md'],
-            'padding': '12px',
-            'marginBottom': '8px',
+            'padding': '8px 10px',
+            'marginBottom': '6px',
         },
         'metric_label': {
             'fontSize': FONT_SIZES['xs'],
@@ -236,9 +236,9 @@ def get_styles(theme: dict) -> dict:
         'status_badge': {
             'display': 'inline-flex',
             'alignItems': 'center',
-            'padding': '2px 8px',
+            'padding': '1px 6px',
             'borderRadius': BORDER_RADIUS['full'],
-            'fontSize': FONT_SIZES['xs'],
+            'fontSize': '10px',
             'fontWeight': '500',
         },
         'status_success': {
@@ -259,7 +259,7 @@ def get_styles(theme: dict) -> dict:
             'backgroundColor': theme['bg_secondary'],
         },
         'tab': {
-            'padding': '12px 20px',
+            'padding': '10px 14px',
             'fontSize': FONT_SIZES['sm'],
             'color': theme['text_secondary'],
             'cursor': 'pointer',
@@ -551,5 +551,33 @@ CUSTOM_CSS = '''
     #tv-chart-container {
         display: flex;
         flex-direction: column;
+    }
+
+    /* Strategy Mode Radio Cards */
+    .strategy-mode-radio {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+    }
+    .strategy-mode-radio label {
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .strategy-mode-radio input[type="radio"] {
+        display: none !important;
+    }
+    .strategy-mode-card {
+        transition: all 0.2s ease !important;
+    }
+    .strategy-mode-card:hover {
+        border-color: #58a6ff !important;
+        background-color: #21262d !important;
+    }
+    .strategy-mode-radio input[type="radio"]:checked + .strategy-mode-card,
+    .strategy-mode-radio label:has(input:checked) .strategy-mode-card {
+        border-color: #58a6ff !important;
+        background-color: rgba(88, 166, 255, 0.1) !important;
+        box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.3) !important;
     }
 '''

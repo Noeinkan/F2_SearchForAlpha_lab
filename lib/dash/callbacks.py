@@ -16,7 +16,7 @@ import plotly.graph_objs as go
 from dash_tvlwc import Tvlwc
 
 from lib.dash.dash_config import (
-    DEFAULT_THEME, FONT_SIZES, FONT_MONO, get_theme
+    DEFAULT_THEME, FONT_SIZES, FONT_MONO, BORDER_RADIUS, get_theme
 )
 from lib.dash.state import dashboard_state
 from lib.dash.styles import get_styles
@@ -26,7 +26,7 @@ from lib.dash.tv_chart_builder import (
     convert_volume_to_tv_format,
     get_tv_chart_options
 )
-from lib.dash.components import build_alert, build_metric_card
+from lib.dash.components import build_alert, build_metric_card, build_progress_bar
 from lib.dash.helpers import (
     fetch_data_with_cache, format_df_for_display,
     extract_signals, generate_signal_combinations, evaluate_signal_combination
@@ -149,17 +149,28 @@ def register_callbacks(app):
     @app.callback(
         [Output('accumulation-options', 'style'),
          Output('rebalancing-options', 'style')],
-        [Input('strategy-mode', 'value')]
+        [Input('strategy-mode', 'value')],
+        [State('theme-store', 'data')]
     )
-    def toggle_strategy_options(strategy_mode):
+    def toggle_strategy_options(strategy_mode, theme_name):
         """Show/hide mode-specific options based on selected strategy mode."""
+        theme = get_theme(theme_name or DEFAULT_THEME)
+
         accumulation_style = {
-            'marginBottom': '16px',
-            'display': 'block' if strategy_mode == 'accumulation' else 'none'
+            'marginBottom': '12px',
+            'display': 'block' if strategy_mode == 'accumulation' else 'none',
+            'padding': '10px',
+            'backgroundColor': f'{theme["accent_green"]}10',
+            'borderRadius': BORDER_RADIUS['md'],
+            'border': f'1px solid {theme["accent_green"]}40',
         }
         rebalancing_style = {
-            'marginBottom': '16px',
-            'display': 'block' if strategy_mode == 'rebalancing' else 'none'
+            'marginBottom': '12px',
+            'display': 'block' if strategy_mode == 'rebalancing' else 'none',
+            'padding': '10px',
+            'backgroundColor': f'{theme["accent_blue"]}10',
+            'borderRadius': BORDER_RADIUS['md'],
+            'border': f'1px solid {theme["accent_blue"]}40',
         }
         return accumulation_style, rebalancing_style
 
@@ -202,11 +213,12 @@ def register_callbacks(app):
          Input('signal-checklist', 'value'),
          Input('chart-library-toggle', 'value'),
          Input('buy-signals', 'value'),
-         Input('sell-signals', 'value')],
+         Input('sell-signals', 'value'),
+         Input('signal-logic-mode', 'value')],
         [State('ticker-dropdown', 'value')]
     )
     def update_plotly_chart(data_loaded, selected_plots, chart_elements, selected_signals, chart_library,
-                            buy_signals, sell_signals, ticker):
+                            buy_signals, sell_signals, signal_logic, ticker):
         """Update the Plotly financial chart."""
         if chart_library == 'tradingview':
             raise PreventUpdate
@@ -233,6 +245,7 @@ def register_callbacks(app):
             'selected_signals': selected_signals or [],
             'buy_signal_columns': buy_signals,
             'sell_signal_columns': sell_signals,
+            'signal_logic': signal_logic or 'or',
             'title': '',
         }
 
@@ -333,10 +346,11 @@ def register_callbacks(app):
          State('sell-signals', 'value'),
          State('strategy-mode', 'value'),
          State('amount-per-buy', 'value'),
-         State('position-size-pct', 'value')]
+         State('position-size-pct', 'value'),
+         State('signal-logic-mode', 'value')]
     )
     def run_backtest_callback(n_clicks, ticker, initial_capital, buy_signals, sell_signals,
-                               strategy_mode, amount_per_buy, position_size_pct):
+                               strategy_mode, amount_per_buy, position_size_pct, signal_logic):
         """Run backtest and display results."""
         if not n_clicks:
             raise PreventUpdate
@@ -362,7 +376,8 @@ def register_callbacks(app):
                 df, initial_capital, buy_signals, sell_signals,
                 strategy_mode=strategy_mode,
                 amount_per_buy=amount_per_buy,
-                position_size_pct=position_size_pct
+                position_size_pct=position_size_pct,
+                signal_logic=signal_logic or 'or'
             )
             backtest_results = create_backtest_results(results, ticker, initial_capital, buy_signals, sell_signals)
             dashboard_state.backtest_results = backtest_results
@@ -389,60 +404,291 @@ def register_callbacks(app):
             logger.error(f"Backtest error: {e}")
             return build_alert(f"Backtest failed: {str(e)[:60]}", "error", theme=theme)
 
+    # ==================== OPTIMIZATION CALLBACKS ====================
+
     @app.callback(
-        Output('optimization-results', 'children'),
+        [Output('preview-buy-count', 'children'),
+         Output('preview-sell-count', 'children'),
+         Output('preview-combo-count', 'children')],
+        [Input('data-loaded-store', 'data'),
+         Input('max-signals-slider', 'value'),
+         Input('max-combos-input', 'value')]
+    )
+    def update_signal_preview(data_loaded, max_signals, max_combos):
+        """Show preview of available signals and estimated combinations."""
+        if not data_loaded or dashboard_state.df is None:
+            return "0", "0", "0"
+
+        df = dashboard_state.df
+        buy_signals, sell_signals = extract_signals(df)
+
+        combinations = generate_signal_combinations(buy_signals, sell_signals, max_signals)
+        actual_combos = min(len(combinations), max_combos or 100)
+
+        return str(len(buy_signals)), str(len(sell_signals)), str(actual_combos)
+
+    @app.callback(
+        [Output('optimization-state', 'data'),
+         Output('optimization-interval', 'disabled'),
+         Output('optimization-progress', 'children'),
+         Output('run-optimization-btn', 'disabled'),
+         Output('optimization-results', 'children', allow_duplicate=True),
+         Output('apply-strategy-container', 'style', allow_duplicate=True)],
         [Input('run-optimization-btn', 'n_clicks')],
         [State('initial-capital', 'value'),
          State('max-signals-slider', 'value'),
-         State('max-combos-input', 'value')]
+         State('max-combos-input', 'value'),
+         State('optimization-state', 'data')],
+        prevent_initial_call=True
     )
-    def run_optimization_callback(n_clicks, initial_capital, max_signals, max_combos):
-        """Run signal combination optimization."""
+    def start_optimization(n_clicks, initial_capital, max_signals, max_combos, current_state):
+        """Initialize optimization run and enable interval for progress updates."""
         if not n_clicks:
             raise PreventUpdate
 
         theme = get_theme()
+        df = dashboard_state.df
+
+        if df is None:
+            return (
+                current_state,
+                True,
+                build_alert("Please load market data first", "warning", theme=theme),
+                False,
+                html.Div(),
+                {'display': 'none'}
+            )
+
+        buy_signals, sell_signals = extract_signals(df)
+        combinations = generate_signal_combinations(buy_signals, sell_signals, max_signals)
+        combinations = combinations[:max_combos]
+
+        if not combinations:
+            return (
+                current_state,
+                True,
+                build_alert("No valid signal combinations found", "warning", theme=theme),
+                False,
+                html.Div(),
+                {'display': 'none'}
+            )
+
+        # Convert tuples to lists for JSON serialization
+        combinations_serializable = [[list(buy), list(sell)] for buy, sell in combinations]
+
+        # Reset state in dashboard_state
+        dashboard_state.reset_optimization()
+        dashboard_state.update_optimization_state(
+            running=True,
+            total_combinations=len(combinations),
+            combinations=combinations_serializable,
+            initial_capital=initial_capital
+        )
+
+        new_state = {
+            'running': True,
+            'current_index': 0,
+            'total_combinations': len(combinations),
+            'completed': False,
+            'sort_by': 'Total_Return_%',
+            'sort_ascending': False
+        }
+
+        progress_ui = html.Div([
+            build_progress_bar(0, f"Testing 0/{len(combinations)} combinations...", theme=theme),
+            html.Div("Starting optimization...",
+                     style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginTop': '4px'})
+        ])
+
+        return (
+            new_state,
+            False,  # Enable interval
+            progress_ui,
+            True,   # Disable button
+            html.Div(),  # Clear previous results
+            {'display': 'none'}  # Hide apply button
+        )
+
+    @app.callback(
+        [Output('optimization-state', 'data', allow_duplicate=True),
+         Output('optimization-progress', 'children', allow_duplicate=True),
+         Output('optimization-results', 'children', allow_duplicate=True),
+         Output('optimization-interval', 'disabled', allow_duplicate=True),
+         Output('run-optimization-btn', 'disabled', allow_duplicate=True),
+         Output('apply-strategy-container', 'style', allow_duplicate=True),
+         Output('optimization-results-store', 'data')],
+        [Input('optimization-interval', 'n_intervals')],
+        [State('optimization-state', 'data')],
+        prevent_initial_call=True
+    )
+    def process_optimization_batch(n_intervals, state):
+        """Process a batch of combinations on each interval tick."""
+        theme = get_theme()
+
+        if not state or not state.get('running'):
+            raise PreventUpdate
 
         df = dashboard_state.df
         if df is None:
-            return build_alert("Please load market data first", "warning", theme=theme)
+            raise PreventUpdate
 
-        try:
-            results_df = _run_combo_optimization(df, initial_capital, max_signals, max_combos)
+        opt_state = dashboard_state.optimization_state
+        current_idx = opt_state.get('current_index', 0)
+        total = opt_state.get('total_combinations', 0)
+        combinations = opt_state.get('combinations', [])
+        results = opt_state.get('results', [])
+        initial_capital = opt_state.get('initial_capital', 10000)
+
+        if not combinations or current_idx >= total:
+            raise PreventUpdate
+
+        # Process batch
+        end_idx = min(current_idx + OPTIMIZATION_BATCH_SIZE, total)
+
+        for i in range(current_idx, end_idx):
+            buy_combo, sell_combo = combinations[i]
+            result = evaluate_signal_combination(df, initial_capital, tuple(buy_combo), tuple(sell_combo))
+            results.append(result)
+
+        # Update state
+        dashboard_state.update_optimization_state(
+            current_index=end_idx,
+            results=results
+        )
+
+        progress_pct = int((end_idx / total) * 100)
+
+        # Check if complete
+        if end_idx >= total:
+            dashboard_state.update_optimization_state(running=False, completed=True)
+
+            results_df = pd.DataFrame(results)
+            if 'Total_Return_%' in results_df.columns:
+                results_df = results_df[results_df['Total_Return_%'].notna()]
+                results_df = results_df.sort_values(state.get('sort_by', 'Total_Return_%'),
+                                                    ascending=state.get('sort_ascending', False))
 
             if results_df.empty:
-                return build_alert("No valid signal combinations found", "warning", theme=theme)
+                state['running'] = False
+                state['completed'] = True
+                return (
+                    state,
+                    build_alert("All combinations failed", "warning", theme=theme),
+                    html.Div(),
+                    True,
+                    False,
+                    {'display': 'none'},
+                    []
+                )
 
-            display_df = results_df.head(10).round(2)
-            best_return = display_df.iloc[0]['Total_Return_%']
+            state['running'] = False
+            state['completed'] = True
 
-            return html.Div([
-                build_alert(f"Tested {len(results_df)} combinations successfully!", "success", dismissable=False, theme=theme),
-                html.Div([
-                    # Best result highlight
-                    html.Div([
-                        html.Span("\U0001f3c6 ", style={'fontSize': '16px'}),
-                        html.Span("Best Strategy: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['sm']}),
-                        html.Span(f"{best_return:+.1f}% return", style={
-                            'color': theme['accent_green'] if best_return > 0 else theme['accent_red'],
-                            'fontWeight': '600',
-                            'fontSize': FONT_SIZES['base'],
-                            'fontFamily': FONT_MONO
-                        }),
-                    ], style={
-                        'backgroundColor': theme['bg_tertiary'],
-                        'padding': '12px',
-                        'borderRadius': '6px',
-                        'marginBottom': '12px',
-                        'border': f'1px solid {theme["accent_green"]}40'
-                    }),
-                    _create_optimization_table(display_df, theme),
-                ], style={'marginTop': '8px'}),
+            final_progress = html.Div([
+                html.Span("\u2713 ", style={'color': theme['accent_green']}),
+                html.Span(f"Completed! Tested {total} combinations",
+                         style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_green']})
+            ])
+
+            results_ui = html.Div([
+                _create_best_strategy_highlight(results_df.iloc[0], theme),
+                _create_optimization_table(results_df.head(10), theme),
             ], className='fade-in')
 
-        except Exception as e:
-            logger.error(f"Optimization error: {e}")
-            return build_alert(f"Optimization failed: {str(e)[:60]}", "error", theme=theme)
+            return (
+                state,
+                final_progress,
+                results_ui,
+                True,   # Disable interval
+                False,  # Re-enable button
+                {'display': 'block'},  # Show apply button
+                results_df.to_dict('records')
+            )
+
+        # Still processing - update progress
+        state['current_index'] = end_idx
+
+        progress_ui = html.Div([
+            build_progress_bar(progress_pct, f"Testing {end_idx}/{total} combinations...", theme=theme),
+            html.Div(f"Found {len([r for r in results if 'Total_Return_%' in r])} valid strategies so far...",
+                     style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginTop': '4px'})
+        ])
+
+        # Show partial results (top 5 so far)
+        valid_results = [r for r in results if 'Total_Return_%' in r]
+        partial_results = html.Div()
+        if len(valid_results) >= 5:
+            partial_df = pd.DataFrame(valid_results).sort_values('Total_Return_%', ascending=False).head(5)
+            partial_results = html.Div([
+                html.Div("Top strategies so far:",
+                        style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '8px'}),
+                _create_optimization_table_mini(partial_df, theme)
+            ], style={'marginTop': '12px'})
+
+        return (
+            state,
+            progress_ui,
+            partial_results,
+            False,  # Keep interval enabled
+            True,   # Keep button disabled
+            {'display': 'none'},
+            []
+        )
+
+    @app.callback(
+        Output('optimization-results', 'children', allow_duplicate=True),
+        [Input('sort-metric-dropdown', 'value')],
+        [State('optimization-results-store', 'data'),
+         State('optimization-state', 'data')],
+        prevent_initial_call=True
+    )
+    def sort_optimization_results(sort_by, results_data, state):
+        """Re-sort results when sort metric changes."""
+        if not results_data or not state.get('completed'):
+            raise PreventUpdate
+
+        theme = get_theme()
+        results_df = pd.DataFrame(results_data)
+
+        # Ascending for drawdown (less negative is better), descending for others
+        ascending = sort_by == 'Max_Drawdown_%'
+        results_df = results_df.sort_values(sort_by, ascending=ascending)
+
+        return html.Div([
+            _create_best_strategy_highlight(results_df.iloc[0], theme),
+            _create_optimization_table(results_df.head(10), theme),
+        ], className='fade-in')
+
+    @app.callback(
+        [Output('buy-signals', 'value', allow_duplicate=True),
+         Output('sell-signals', 'value', allow_duplicate=True),
+         Output('tab-backtest', 'n_clicks', allow_duplicate=True)],
+        [Input('apply-strategy-btn', 'n_clicks')],
+        [State('optimization-results-store', 'data'),
+         State('sort-metric-dropdown', 'value'),
+         State('tab-backtest', 'n_clicks')],
+        prevent_initial_call=True
+    )
+    def apply_best_strategy(n_clicks, results_data, sort_by, current_backtest_clicks):
+        """Apply the best strategy from optimization to the backtest panel."""
+        if not n_clicks or not results_data:
+            raise PreventUpdate
+
+        results_df = pd.DataFrame(results_data)
+        ascending = sort_by == 'Max_Drawdown_%'
+        results_df = results_df.sort_values(sort_by, ascending=ascending)
+
+        best = results_df.iloc[0]
+
+        # Parse signal strings back to lists
+        buy_signals = [s.strip() for s in str(best['Buy_Signals']).split(',') if s.strip()]
+        sell_signals_str = str(best.get('Sell_Signals', ''))
+        sell_signals = [s.strip() for s in sell_signals_str.split(',') if s.strip()]
+
+        # Return values to populate checklists and switch to backtest tab
+        return buy_signals, sell_signals, (current_backtest_clicks or 0) + 1
+
+    # ==================== END OPTIMIZATION CALLBACKS ====================
 
     @app.callback(
         [Output('panel-backtest', 'style'),
@@ -609,10 +855,14 @@ def _create_price_subtitle(df: pd.DataFrame, theme: dict) -> html.Span:
 
 
 def _create_optimization_table(display_df: pd.DataFrame, theme: dict) -> dash_table.DataTable:
-    """Create optimization results table."""
+    """Create enhanced optimization results table with all columns."""
+    columns = ['Buy_Signals', 'Sell_Signals', 'Total_Return_%', 'Sharpe_Ratio', 'Max_Drawdown_%', 'Trades']
+    available_cols = [c for c in columns if c in display_df.columns]
+
     return dash_table.DataTable(
-        columns=[{"name": i, "id": i} for i in ['Buy_Signals', 'Total_Return_%', 'Sharpe_Ratio']],
-        data=display_df[['Buy_Signals', 'Total_Return_%', 'Sharpe_Ratio']].to_dict('records'),
+        id='optimization-table',
+        columns=[{"name": c.replace('_', ' '), "id": c} for c in available_cols],
+        data=display_df[available_cols].round(2).to_dict('records'),
         style_cell={
             'textAlign': 'left',
             'padding': '8px',
@@ -620,6 +870,9 @@ def _create_optimization_table(display_df: pd.DataFrame, theme: dict) -> dash_ta
             'color': theme['text_primary'],
             'fontSize': '11px',
             'border': f'1px solid {theme["border_secondary"]}',
+            'maxWidth': '150px',
+            'overflow': 'hidden',
+            'textOverflow': 'ellipsis',
         },
         style_header={
             'fontWeight': '600',
@@ -632,25 +885,87 @@ def _create_optimization_table(display_df: pd.DataFrame, theme: dict) -> dash_ta
             {'if': {'row_index': 1}, 'backgroundColor': f'{theme["accent_blue"]}10'},
             {'if': {'row_index': 2}, 'backgroundColor': f'{theme["accent_blue"]}05'},
         ],
+        page_size=10,
     )
 
 
-def _run_combo_optimization(df: pd.DataFrame, initial_capital: float,
-                            max_signals: int = 3, max_combinations: int = 100) -> pd.DataFrame:
-    """Run signal combination optimization."""
-    import itertools
-    import numpy as np
+def _create_optimization_table_mini(display_df: pd.DataFrame, theme: dict) -> dash_table.DataTable:
+    """Create compact mini-table for partial results during optimization."""
+    return dash_table.DataTable(
+        columns=[
+            {"name": "Buy Signals", "id": "Buy_Signals"},
+            {"name": "Return %", "id": "Total_Return_%"},
+        ],
+        data=display_df[['Buy_Signals', 'Total_Return_%']].round(1).to_dict('records'),
+        style_cell={
+            'textAlign': 'left',
+            'padding': '4px 6px',
+            'backgroundColor': theme['bg_tertiary'],
+            'color': theme['text_primary'],
+            'fontSize': '10px',
+            'border': 'none',
+        },
+        style_header={'display': 'none'},
+    )
 
-    buy_signals, sell_signals = extract_signals(df)
-    combinations = generate_signal_combinations(buy_signals, sell_signals, max_signals)
-    combinations = combinations[:max_combinations]
 
-    results = []
-    for buy_combo, sell_combo in combinations:
-        result = evaluate_signal_combination(df, initial_capital, buy_combo, sell_combo)
-        results.append(result)
+def _create_best_strategy_highlight(best_row: pd.Series, theme: dict) -> html.Div:
+    """Create highlight card for the best strategy."""
+    total_return = best_row.get('Total_Return_%', 0)
+    sharpe = best_row.get('Sharpe_Ratio', 0)
+    drawdown = best_row.get('Max_Drawdown_%', 0)
 
-    results_df = pd.DataFrame(results)
-    if 'Total_Return_%' in results_df.columns:
-        results_df = results_df.sort_values('Total_Return_%', ascending=False)
-    return results_df
+    return html.Div([
+        html.Div([
+            html.Span("\U0001f3c6 ", style={'fontSize': '16px'}),
+            html.Span("Best Strategy", style={
+                'color': theme['text_secondary'],
+                'fontSize': FONT_SIZES['sm'],
+                'fontWeight': '600'
+            }),
+        ], style={'marginBottom': '8px'}),
+        html.Div([
+            html.Div([
+                html.Span("Buy: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['xs']}),
+                html.Span(str(best_row.get('Buy_Signals', '')), style={
+                    'color': theme['accent_green'],
+                    'fontSize': FONT_SIZES['xs']
+                }),
+            ], style={'marginBottom': '4px'}),
+            html.Div([
+                html.Span("Sell: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['xs']}),
+                html.Span(str(best_row.get('Sell_Signals', '')), style={
+                    'color': theme['accent_red'],
+                    'fontSize': FONT_SIZES['xs']
+                }),
+            ], style={'marginBottom': '8px'}),
+            html.Div([
+                html.Span(f"{total_return:+.1f}% return", style={
+                    'color': theme['accent_green'] if total_return > 0 else theme['accent_red'],
+                    'fontWeight': '600',
+                    'fontSize': FONT_SIZES['base'],
+                    'fontFamily': FONT_MONO
+                }),
+                html.Span(f" | Sharpe: {sharpe:.2f}", style={
+                    'color': theme['text_secondary'],
+                    'fontSize': FONT_SIZES['xs'],
+                    'marginLeft': '8px'
+                }),
+                html.Span(f" | DD: {drawdown:.1f}%", style={
+                    'color': theme['text_secondary'],
+                    'fontSize': FONT_SIZES['xs'],
+                    'marginLeft': '8px'
+                }),
+            ]),
+        ]),
+    ], style={
+        'backgroundColor': theme['bg_tertiary'],
+        'padding': '12px',
+        'borderRadius': '6px',
+        'marginBottom': '12px',
+        'border': f'1px solid {theme["accent_green"]}40'
+    })
+
+
+# Batch size for optimization processing (combinations per interval tick)
+OPTIMIZATION_BATCH_SIZE = 5

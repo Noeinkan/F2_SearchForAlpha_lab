@@ -168,7 +168,8 @@ def _add_candlestick(fig: go.Figure, df: pd.DataFrame, row: int, col: int, confi
             col,
             theme,
             config.get('buy_signal_columns', []),
-            config.get('sell_signal_columns', [])
+            config.get('sell_signal_columns', []),
+            config.get('signal_logic', 'or')
         )
 
 
@@ -278,75 +279,84 @@ def _add_signal_traces(
     col: int,
     theme: dict,
     buy_signal_columns: List[str],
-    sell_signal_columns: List[str]
+    sell_signal_columns: List[str],
+    signal_logic: str = 'or'
 ) -> None:
-    """Add per-strategy buy/sell signal markers."""
+    """Add combined buy/sell signal markers based on AND/OR logic."""
     signal_configs = {
         'buy': {
             'symbol': 'triangle-up',
             'offset': -1,
             'label': 'B',
-            'text_position': 'top center'
+            'text_position': 'top center',
+            'color': theme['accent_green']
         },
         'sell': {
             'symbol': 'triangle-down',
             'offset': 1,
             'label': 'S',
-            'text_position': 'bottom center'
+            'text_position': 'bottom center',
+            'color': theme['accent_red']
         }
     }
 
-    color_palette = [
-        theme['accent_blue'],
-        theme['accent_green'],
-        theme['accent_orange'],
-        theme['accent_purple'],
-        theme['accent_cyan'],
-        theme['accent_red']
-    ]
+    def _combine_signals(columns: List[str], logic: str) -> pd.Series:
+        """Combine multiple signal columns using AND or OR logic."""
+        if not columns:
+            return pd.Series(False, index=df.index)
+        valid_cols = [c for c in columns if c in df.columns]
+        if not valid_cols:
+            return pd.Series(False, index=df.index)
+        if logic == 'and':
+            # AND: all signals must be True
+            return df[valid_cols].all(axis=1)
+        else:
+            # OR: any signal triggers
+            return df[valid_cols].any(axis=1)
 
-    def _strategy_color(index: int) -> str:
-        return color_palette[index % len(color_palette)]
-
-    def _strategy_label(column_name: str) -> str:
-        label = column_name.replace('_', ' ')
-        return label
-
-    def _add_markers(signal_type: str, columns: List[str]) -> None:
+    def _add_combined_markers(signal_type: str, columns: List[str]) -> None:
         if signal_type not in selected_signals:
             return
-        cfg = signal_configs[signal_type]
-        for idx, col_name in enumerate(columns):
-            if col_name not in df.columns:
-                continue
-            signals = df[df[col_name] == 1]
-            if signals.empty:
-                continue
-            offset_multiplier = 1 + (idx * 0.35)
-            offset = signals['Close'] * SIGNAL_OFFSET_FACTOR * cfg['offset'] * offset_multiplier
-            fig.add_trace(go.Scatter(
-                x=signals.index,
-                y=signals['Close'] + offset,
-                mode='markers+text',
-                text=[cfg['label']] * len(signals),
-                textposition=cfg['text_position'],
-                textfont=dict(color=theme['text_primary'], size=9, family=FONT_FAMILY),
-                marker=dict(
-                    symbol=cfg['symbol'],
-                    size=14,
-                    color=_strategy_color(idx),
-                    opacity=0.95,
-                    line=dict(color=theme['bg_primary'], width=1.5)
-                ),
-                name=f"{signal_type.capitalize()}: {_strategy_label(col_name)}",
-                hovertemplate=(
-                    f"{signal_type.capitalize()}<br>{_strategy_label(col_name)}"
-                    "<br>%{x|%Y-%m-%d}<br>Price: %{y:.2f}<extra></extra>"
-                )
-            ), row=row, col=col)
+        if not columns:
+            return
 
-    _add_markers('buy', buy_signal_columns or [])
-    _add_markers('sell', sell_signal_columns or [])
+        cfg = signal_configs[signal_type]
+        combined = _combine_signals(columns, signal_logic)
+        signals = df[combined]
+
+        if signals.empty:
+            return
+
+        offset = signals['Close'] * SIGNAL_OFFSET_FACTOR * cfg['offset']
+
+        # Create label showing the logic mode
+        logic_label = f"({signal_logic.upper()})" if len(columns) > 1 else ""
+        signal_names = ", ".join([c.replace('_', ' ') for c in columns if c in df.columns])
+        name = f"{signal_type.capitalize()} {logic_label}: {signal_names}"
+
+        fig.add_trace(go.Scatter(
+            x=signals.index,
+            y=signals['Close'] + offset,
+            mode='markers+text',
+            text=[cfg['label']] * len(signals),
+            textposition=cfg['text_position'],
+            textfont=dict(color=theme['text_primary'], size=9, family=FONT_FAMILY),
+            marker=dict(
+                symbol=cfg['symbol'],
+                size=14,
+                color=cfg['color'],
+                opacity=0.95,
+                line=dict(color=theme['bg_primary'], width=1.5)
+            ),
+            name=name,
+            hovertemplate=(
+                f"{signal_type.capitalize()} ({signal_logic.upper()})<br>{signal_names}"
+                "<br>%{x|%Y-%m-%d}<br>Price: %{y:.2f}<extra></extra>"
+            )
+        ), row=row, col=col)
+
+    _add_combined_markers('buy', buy_signal_columns or [])
+    _add_combined_markers('sell', sell_signal_columns or [])
 
 
 def _add_range_selector(fig: go.Figure, theme: dict) -> None:

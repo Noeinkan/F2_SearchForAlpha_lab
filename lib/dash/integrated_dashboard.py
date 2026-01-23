@@ -17,7 +17,7 @@ from dash_tvlwc import Tvlwc
 from lib.dash.dash_config import (
     DEFAULT_THEME, DEFAULT_TICKER, INITIAL_CAPITAL, START_DATE,
     START_PORT, MAX_PORT_TRIES,
-    FONT_SIZES, FONT_MONO,
+    FONT_SIZES, FONT_MONO, BORDER_RADIUS,
     PLOT_OPTIONS, CHART_ELEMENT_OPTIONS, SIGNAL_OPTIONS,
     get_theme
 )
@@ -39,9 +39,18 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         dcc.Store(id='data-loaded-store', data=False),
         dcc.Store(id='layout-store', data={}),
         dcc.Store(id='optimization-running', data=False),
+        dcc.Store(id='optimization-state', data={
+            'running': False,
+            'current_index': 0,
+            'total_combinations': 0,
+            'completed': False,
+            'sort_by': 'Total_Return_%',
+            'sort_ascending': False
+        }),
+        dcc.Store(id='optimization-results-store', data=[]),
         dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
         dcc.Interval(id='autoload-interval', interval=1000, max_intervals=1),
-        dcc.Interval(id='optimization-interval', interval=500, disabled=True),
+        dcc.Interval(id='optimization-interval', interval=500, disabled=True, n_intervals=0),
 
         # Keyboard shortcut listener
         html.Div(id='keyboard-listener', style={'display': 'none'}),
@@ -354,39 +363,154 @@ def _create_right_panel(styles: dict, theme: dict) -> html.Aside:
 
 def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
     """Create the backtest panel content."""
+
+    # Strategy mode card style
+    mode_card_base = {
+        'padding': '10px 12px',
+        'borderRadius': BORDER_RADIUS['md'],
+        'border': f'2px solid {theme["border_secondary"]}',
+        'backgroundColor': theme['bg_tertiary'],
+        'cursor': 'pointer',
+        'transition': 'all 0.2s ease',
+        'marginBottom': '6px',
+    }
+
     return html.Div(id='panel-backtest', children=[
-        # Strategy Mode Selector
+        # Strategy Mode Selector - Card Style
         html.Div([
-            html.Div("STRATEGY MODE", style={**styles['sidebar_title'], 'marginBottom': '8px'}),
-            dcc.Dropdown(
+            html.Div("STRATEGY MODE", style={
+                **styles['sidebar_title'],
+                'marginBottom': '10px',
+                'fontSize': FONT_SIZES['sm'],
+            }),
+
+            dcc.RadioItems(
                 id='strategy-mode',
                 options=[
-                    {'label': 'Trading (Buy/Sell Cycles)', 'value': 'trading'},
-                    {'label': 'Accumulation (DCA)', 'value': 'accumulation'},
-                    {'label': 'Rebalancing (Partial)', 'value': 'rebalancing'}
+                    {
+                        'label': html.Div([
+                            html.Div([
+                                html.Span("Trading", style={
+                                    'fontWeight': '600',
+                                    'fontSize': FONT_SIZES['sm'],
+                                    'color': theme['text_primary'],
+                                }),
+                                html.Span(" - Full Buy/Sell", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_secondary'],
+                                    'marginLeft': '4px',
+                                }),
+                            ]),
+                            html.Div("Buy 100%, then sell 100%", style={
+                                'fontSize': '10px',
+                                'color': theme['text_tertiary'],
+                                'marginTop': '2px',
+                            }),
+                        ], className='strategy-mode-card', style=mode_card_base),
+                        'value': 'trading'
+                    },
+                    {
+                        'label': html.Div([
+                            html.Div([
+                                html.Span("Accumulation", style={
+                                    'fontWeight': '600',
+                                    'fontSize': FONT_SIZES['sm'],
+                                    'color': theme['accent_green'],
+                                }),
+                                html.Span(" - DCA", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_secondary'],
+                                    'marginLeft': '4px',
+                                }),
+                            ]),
+                            html.Div("Fixed $ amount per buy signal", style={
+                                'fontSize': '10px',
+                                'color': theme['text_tertiary'],
+                                'marginTop': '2px',
+                            }),
+                        ], className='strategy-mode-card', style=mode_card_base),
+                        'value': 'accumulation'
+                    },
+                    {
+                        'label': html.Div([
+                            html.Div([
+                                html.Span("Rebalancing", style={
+                                    'fontWeight': '600',
+                                    'fontSize': FONT_SIZES['sm'],
+                                    'color': theme['accent_blue'],
+                                }),
+                                html.Span(" - Partial", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_secondary'],
+                                    'marginLeft': '4px',
+                                }),
+                            ]),
+                            html.Div("Trade % of portfolio per signal", style={
+                                'fontSize': '10px',
+                                'color': theme['text_tertiary'],
+                                'marginTop': '2px',
+                            }),
+                        ], className='strategy-mode-card', style=mode_card_base),
+                        'value': 'rebalancing'
+                    },
                 ],
                 value='trading',
-                clearable=False,
-                style={'fontSize': FONT_SIZES['xs']}
+                className='strategy-mode-radio',
+                inputStyle={'display': 'none'},
+                labelStyle={'display': 'block', 'margin': 0, 'padding': 0},
             ),
-        ], style={'marginBottom': '16px'}),
+        ], style={'marginBottom': '12px'}),
 
         # Amount Per Buy (for Accumulation mode)
         html.Div(id='accumulation-options', children=[
-            html.Div("AMOUNT PER BUY ($)", style={**styles['sidebar_title'], 'marginBottom': '8px'}),
+            html.Div([
+                html.Span("Amount Per Buy", style={
+                    'fontSize': FONT_SIZES['sm'],
+                    'fontWeight': '600',
+                    'color': theme['accent_green'],
+                }),
+                html.Span(" $", style={
+                    'fontSize': FONT_SIZES['xs'],
+                    'color': theme['text_secondary'],
+                }),
+            ], style={'marginBottom': '6px'}),
             dcc.Input(
                 id='amount-per-buy',
                 type='number',
                 value=1000,
                 min=100,
                 placeholder='$ per buy signal',
-                style={**styles['input'], 'width': '100%', 'fontFamily': FONT_MONO}
+                style={
+                    **styles['input'],
+                    'width': '100%',
+                    'fontFamily': FONT_MONO,
+                    'padding': '10px 12px',
+                    'fontSize': FONT_SIZES['base'],
+                    'borderColor': theme['accent_green'],
+                }
             ),
-        ], style={'marginBottom': '16px', 'display': 'none'}),
+        ], style={
+            'marginBottom': '12px',
+            'display': 'none',
+            'padding': '10px',
+            'backgroundColor': f'{theme["accent_green"]}10',
+            'borderRadius': BORDER_RADIUS['md'],
+            'border': f'1px solid {theme["accent_green"]}40',
+        }),
 
         # Position Size % (for Rebalancing mode)
         html.Div(id='rebalancing-options', children=[
-            html.Div("POSITION SIZE (%)", style={**styles['sidebar_title'], 'marginBottom': '8px'}),
+            html.Div([
+                html.Span("Position Size", style={
+                    'fontSize': FONT_SIZES['sm'],
+                    'fontWeight': '600',
+                    'color': theme['accent_blue'],
+                }),
+                html.Span(" %", style={
+                    'fontSize': FONT_SIZES['xs'],
+                    'color': theme['text_secondary'],
+                }),
+            ], style={'marginBottom': '6px'}),
             dcc.Input(
                 id='position-size-pct',
                 type='number',
@@ -394,111 +518,177 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                 min=1,
                 max=100,
                 placeholder='% per trade',
-                style={**styles['input'], 'width': '100%', 'fontFamily': FONT_MONO}
+                style={
+                    **styles['input'],
+                    'width': '100%',
+                    'fontFamily': FONT_MONO,
+                    'padding': '10px 12px',
+                    'fontSize': FONT_SIZES['base'],
+                    'borderColor': theme['accent_blue'],
+                }
             ),
-        ], style={'marginBottom': '16px', 'display': 'none'}),
+        ], style={
+            'marginBottom': '12px',
+            'display': 'none',
+            'padding': '10px',
+            'backgroundColor': f'{theme["accent_blue"]}10',
+            'borderRadius': BORDER_RADIUS['md'],
+            'border': f'1px solid {theme["accent_blue"]}40',
+        }),
 
         html.Div([
-            html.Div("SIGNALS", style=styles['card_header']),
             html.Div([
-                html.Div(
-                    "Select signals for chart markers and backtest logic.",
-                    style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '12px'}
+                html.Span("SIGNALS", style=styles['card_header']),
+                # AND/OR Toggle
+                html.Div([
+                    dcc.RadioItems(
+                        id='signal-logic-mode',
+                        options=[
+                            {'label': 'OR', 'value': 'or'},
+                            {'label': 'AND', 'value': 'and'},
+                        ],
+                        value='or',
+                        inline=True,
+                        inputStyle={'marginRight': '4px'},
+                        labelStyle={
+                            'fontSize': FONT_SIZES['xs'],
+                            'padding': '2px 8px',
+                            'cursor': 'pointer',
+                            'marginRight': '4px',
+                        },
+                        className='signal-logic-toggle'
+                    ),
+                ], style={
+                    'backgroundColor': theme['bg_tertiary'],
+                    'borderRadius': '4px',
+                    'padding': '2px 4px',
+                }),
+            ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'marginBottom': '8px'}),
+            html.Div([
+                html.Div([
+                    html.Div([
+                        html.Span("", style={
+                            'display': 'inline-block',
+                            'width': '6px',
+                            'height': '6px',
+                            'borderRadius': '50%',
+                            'backgroundColor': theme['accent_green'],
+                            'marginRight': '5px'
+                        }),
+                        html.Span("BUY", style={'fontSize': FONT_SIZES['xs'], 'fontWeight': '600', 'color': theme['accent_green']}),
+                    ], style={'display': 'flex', 'alignItems': 'center'}),
+                ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '4px'}),
+
+                dcc.Checklist(
+                    id='buy-signals',
+                    options=[],
+                    value=[],
+                    style={
+                        'display': 'flex',
+                        'flexDirection': 'column',
+                        'gap': '1px',
+                        'maxHeight': '120px',
+                        'overflowY': 'auto',
+                        'padding': '4px 6px',
+                        'border': f'1px solid {theme["border_secondary"]}',
+                        'borderRadius': '6px',
+                        'backgroundColor': theme['bg_tertiary']
+                    },
+                    inputStyle={'cursor': 'pointer', 'marginRight': '6px'},
+                    labelStyle={'display': 'flex', 'alignItems': 'center', 'fontSize': FONT_SIZES['xs'], 'padding': '2px 0', 'cursor': 'pointer'}
                 ),
 
                 html.Div([
                     html.Div([
-                        html.Div([
-                            html.Span("", style={
-                                'display': 'inline-block',
-                                'width': '8px',
-                                'height': '8px',
-                                'borderRadius': '50%',
-                                'backgroundColor': theme['accent_green'],
-                                'marginRight': '6px'
-                            }),
-                            html.Span("BUY", style={'fontSize': FONT_SIZES['xs'], 'fontWeight': '600', 'color': theme['accent_green']}),
-                            html.Span("Long entries", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginLeft': '6px'})
-                        ], style={'display': 'flex', 'alignItems': 'center'}),
-                        html.Span("Chart + Backtest", style={**styles['status_badge'], **styles['status_success']})
-                    ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '6px'}),
+                        html.Span("", style={
+                            'display': 'inline-block',
+                            'width': '6px',
+                            'height': '6px',
+                            'borderRadius': '50%',
+                            'backgroundColor': theme['accent_red'],
+                            'marginRight': '5px'
+                        }),
+                        html.Span("SELL", style={'fontSize': FONT_SIZES['xs'], 'fontWeight': '600', 'color': theme['accent_red']}),
+                    ], style={'display': 'flex', 'alignItems': 'center'}),
+                ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '4px'}),
 
-                    dcc.Checklist(
-                        id='buy-signals',
-                        options=[],
-                        value=[],
-                        style={
-                            'display': 'flex',
-                            'flexDirection': 'column',
-                            'gap': '4px',
-                            'maxHeight': '140px',
-                            'overflowY': 'auto',
-                            'padding': '8px',
-                            'border': f'1px solid {theme["border_secondary"]}',
-                            'borderRadius': '8px',
-                            'backgroundColor': theme['bg_tertiary']
-                        },
-                        inputStyle={'cursor': 'pointer'},
-                        labelStyle={'display': 'flex', 'alignItems': 'center', 'fontSize': FONT_SIZES['xs'], 'padding': '2px 0', 'cursor': 'pointer'}
-                    ),
-                ], style={'marginBottom': '14px'}),
-
-                html.Div([
-                    html.Div([
-                        html.Div([
-                            html.Span("", style={
-                                'display': 'inline-block',
-                                'width': '8px',
-                                'height': '8px',
-                                'borderRadius': '50%',
-                                'backgroundColor': theme['accent_red'],
-                                'marginRight': '6px'
-                            }),
-                            html.Span("SELL", style={'fontSize': FONT_SIZES['xs'], 'fontWeight': '600', 'color': theme['accent_red']}),
-                            html.Span("Exit signals", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginLeft': '6px'})
-                        ], style={'display': 'flex', 'alignItems': 'center'}),
-                        html.Span("Chart + Backtest", style={**styles['status_badge'], **styles['status_error']})
-                    ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '6px'}),
-
-                    dcc.Checklist(
-                        id='sell-signals',
-                        options=[],
-                        value=[],
-                        style={
-                            'display': 'flex',
-                            'flexDirection': 'column',
-                            'gap': '4px',
-                            'maxHeight': '140px',
-                            'overflowY': 'auto',
-                            'padding': '8px',
-                            'border': f'1px solid {theme["border_secondary"]}',
-                            'borderRadius': '8px',
-                            'backgroundColor': theme['bg_tertiary']
-                        },
-                        inputStyle={'cursor': 'pointer'},
-                        labelStyle={'display': 'flex', 'alignItems': 'center', 'fontSize': FONT_SIZES['xs'], 'padding': '2px 0', 'cursor': 'pointer'}
-                    ),
-                ]),
+                dcc.Checklist(
+                    id='sell-signals',
+                    options=[],
+                    value=[],
+                    style={
+                        'display': 'flex',
+                        'flexDirection': 'column',
+                        'gap': '1px',
+                        'maxHeight': '120px',
+                        'overflowY': 'auto',
+                        'padding': '4px 6px',
+                        'border': f'1px solid {theme["border_secondary"]}',
+                        'borderRadius': '6px',
+                        'backgroundColor': theme['bg_tertiary']
+                    },
+                    inputStyle={'cursor': 'pointer', 'marginRight': '6px'},
+                    labelStyle={'display': 'flex', 'alignItems': 'center', 'fontSize': FONT_SIZES['xs'], 'padding': '2px 0', 'cursor': 'pointer'}
+                ),
             ], style=styles['card_body']),
-        ], style={**styles['card'], 'marginBottom': '16px'}),
+        ], style={**styles['card'], 'marginBottom': '10px'}),
 
         html.Button(
             "Run Backtest",
             id='run-backtest-btn',
-            style={**styles['button_success'], 'width': '100%'},
+            style={**styles['button_success'], 'width': '100%', 'padding': '8px 16px'},
             n_clicks=0
         ),
         dbc.Tooltip("Simulate trading with selected buy/sell signals", target='run-backtest-btn', placement='top'),
 
-        html.Div(id='backtest-results', style={'marginTop': '16px'}),
+        html.Div(id='backtest-results', style={'marginTop': '10px'}),
     ])
 
 
 def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
-    """Create the optimizer panel content."""
+    """Create the optimizer panel content with progress and enhanced controls."""
+    card_style = {
+        'backgroundColor': theme['bg_tertiary'],
+        'borderRadius': '6px',
+        'padding': '12px',
+        'marginBottom': '12px',
+        'border': f'1px solid {theme["border_secondary"]}'
+    }
+
     return html.Div(id='panel-optimizer', children=[
+        # Signal Preview Card
         html.Div([
-            html.Label("Max Signals per Side", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '8px', 'display': 'block'}),
+            html.Div("SIGNAL PREVIEW", style={
+                'fontSize': FONT_SIZES['xs'],
+                'color': theme['text_tertiary'],
+                'marginBottom': '8px',
+                'fontWeight': '600',
+                'letterSpacing': '0.5px'
+            }),
+            html.Div(id='signal-preview', children=[
+                html.Div([
+                    html.Span("Buy Signals: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['xs']}),
+                    html.Span("0", id='preview-buy-count', style={'color': theme['accent_green'], 'fontWeight': '600'}),
+                ], style={'marginBottom': '4px'}),
+                html.Div([
+                    html.Span("Sell Signals: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['xs']}),
+                    html.Span("0", id='preview-sell-count', style={'color': theme['accent_red'], 'fontWeight': '600'}),
+                ], style={'marginBottom': '4px'}),
+                html.Div([
+                    html.Span("Est. Combinations: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['xs']}),
+                    html.Span("0", id='preview-combo-count', style={'color': theme['accent_blue'], 'fontWeight': '600'}),
+                ]),
+            ]),
+        ], style=card_style),
+
+        # Optimization Settings
+        html.Div([
+            html.Label("Max Signals per Side", style={
+                'fontSize': FONT_SIZES['xs'],
+                'color': theme['text_secondary'],
+                'marginBottom': '8px',
+                'display': 'block'
+            }),
             dcc.Slider(
                 id='max-signals-slider',
                 min=1, max=5, value=2, step=1,
@@ -507,7 +697,12 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
         ], style={'marginBottom': '20px'}),
 
         html.Div([
-            html.Label("Max Combinations", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '4px', 'display': 'block'}),
+            html.Label("Max Combinations", style={
+                'fontSize': FONT_SIZES['xs'],
+                'color': theme['text_secondary'],
+                'marginBottom': '4px',
+                'display': 'block'
+            }),
             dcc.Input(
                 id='max-combos-input',
                 type='number',
@@ -517,6 +712,29 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
             ),
         ], style={'marginBottom': '16px'}),
 
+        # Sort Options
+        html.Div([
+            html.Label("Sort Results By", style={
+                'fontSize': FONT_SIZES['xs'],
+                'color': theme['text_secondary'],
+                'marginBottom': '4px',
+                'display': 'block'
+            }),
+            dcc.Dropdown(
+                id='sort-metric-dropdown',
+                options=[
+                    {'label': 'Total Return %', 'value': 'Total_Return_%'},
+                    {'label': 'Sharpe Ratio', 'value': 'Sharpe_Ratio'},
+                    {'label': 'Max Drawdown %', 'value': 'Max_Drawdown_%'},
+                    {'label': 'Trade Count', 'value': 'Trades'},
+                ],
+                value='Total_Return_%',
+                clearable=False,
+                style={'fontSize': FONT_SIZES['xs']}
+            ),
+        ], style={'marginBottom': '16px'}),
+
+        # Run Button
         html.Button(
             "Run Optimization",
             id='run-optimization-btn',
@@ -525,14 +743,28 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
         ),
         dbc.Tooltip("Test all signal combinations to find the best strategy", target='run-optimization-btn', placement='top'),
 
-        # Progress indicator for optimization
+        # Progress Section
         html.Div(id='optimization-progress', style={'marginTop': '12px'}),
 
-        dcc.Loading(
-            type='dot',
-            color=theme['accent_orange'],
-            children=[html.Div(id='optimization-results', style={'marginTop': '16px'})]
-        ),
+        # Results Section
+        html.Div(id='optimization-results', style={'marginTop': '16px'}),
+
+        # Apply Strategy Button (hidden initially)
+        html.Div(id='apply-strategy-container', children=[
+            html.Button(
+                "Apply Best Strategy",
+                id='apply-strategy-btn',
+                style={
+                    **styles['button_primary'],
+                    'width': '100%',
+                    'marginTop': '12px',
+                    'backgroundColor': theme['accent_green']
+                },
+                n_clicks=0,
+            ),
+            dbc.Tooltip("Apply the best strategy to the Backtest panel", target='apply-strategy-btn', placement='top'),
+        ], style={'display': 'none'}),
+
     ], style={'display': 'none'})
 
 
