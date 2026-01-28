@@ -638,6 +638,8 @@ def run_backtest(
     strategy_mode: str = 'trading',
     amount_per_buy: float = None,
     position_size_pct: float = 100,
+    kelly_win_rate: float = 0.5,
+    kelly_win_loss_ratio: float = 1.5,
     min_holding_period: int = 5,
     trailing_stop_loss: float = 0.05,
     position_scaling: float = 0.25,
@@ -661,6 +663,8 @@ def run_backtest(
         strategy_mode: 'trading' (buy/sell cycles), 'accumulation' (DCA), or 'rebalancing' (partial positions).
         amount_per_buy: Fixed dollar amount per buy signal (for accumulation mode).
         position_size_pct: Percentage of portfolio per trade (for rebalancing mode).
+        kelly_win_rate: Expected win rate for Kelly sizing (0-1).
+        kelly_win_loss_ratio: Expected win/loss ratio for Kelly sizing.
         min_holding_period: Minimum bars to hold before selling.
         trailing_stop_loss: Trailing stop loss percentage.
         position_scaling: Position scaling factor on repeated buys.
@@ -676,9 +680,13 @@ def run_backtest(
     Returns:
         DataFrame with backtest results.
     """
+    kelly_win_rate = 0.5 if kelly_win_rate is None else float(kelly_win_rate)
+    kelly_win_loss_ratio = 1.5 if kelly_win_loss_ratio is None else float(kelly_win_loss_ratio)
+    kelly_win_rate = min(1.0, max(0.0, kelly_win_rate))
+    kelly_win_loss_ratio = max(0.01, kelly_win_loss_ratio)
     position_sizing_params = {
-        "win_rate": 0.5,
-        "win_loss_ratio": 1.5
+        "win_rate": kelly_win_rate,
+        "win_loss_ratio": kelly_win_loss_ratio
     }
 
     return backtest(

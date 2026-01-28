@@ -97,6 +97,9 @@ def test_combination(df: dd.DataFrame, params: Dict[str, Any]) -> pd.Series:
             'Error': str(e)
         })
 
+# Avoid pytest collecting this production function as a test.
+test_combination.__test__ = False
+
 def process_chunk(chunk: List[Tuple[Tuple[str, ...], Tuple[str, ...]]], df: dd.DataFrame, params: Dict[str, Any]) -> pd.DataFrame:
     """Process a chunk of signal combinations."""
     results = []

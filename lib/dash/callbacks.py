@@ -523,6 +523,8 @@ def register_callbacks(app):
          Output('take-profit-pct', 'value', allow_duplicate=True),
          Output('amount-per-buy', 'value'),
          Output('position-size-pct', 'value'),
+         Output('kelly-win-rate', 'value'),
+         Output('kelly-win-loss-ratio', 'value'),
          Output('consecutive-signal-mode', 'value'),
          Output('signal-cooldown-bars', 'value', allow_duplicate=True),
          Output('signal-logic-mode', 'value'),
@@ -545,7 +547,7 @@ def register_callbacks(app):
                 no_update, no_update, no_update, no_update, no_update_list,
                 no_update, no_update, no_update, no_update, no_update,
                 no_update, no_update, no_update, no_update, no_update,
-                no_update, no_update, no_update, no_update, no_update,
+                no_update, no_update, no_update, no_update, no_update, no_update, no_update,
                 no_update, no_update, no_update,
                 "", None, None
             )
@@ -558,7 +560,7 @@ def register_callbacks(app):
                 no_update, no_update, no_update, no_update, no_update_list,
                 no_update, no_update, no_update, no_update, no_update,
                 no_update, no_update, no_update, no_update, no_update,
-                no_update, no_update, no_update, no_update, no_update,
+                no_update, no_update, no_update, no_update, no_update, no_update, no_update,
                 no_update, no_update, no_update,
                 "", None, None
             )
@@ -589,6 +591,8 @@ def register_callbacks(app):
             trade_setup.get("take_profit_pct"),
             trade_setup.get("amount_per_buy"),
             trade_setup.get("position_size_pct"),
+            trade_setup.get("kelly_win_rate", 0.5),
+            trade_setup.get("kelly_win_loss_ratio", 1.5),
             trade_setup.get("consecutive_signal_mode"),
             trade_setup.get("signal_cooldown_bars"),
             signals.get("signal_logic_mode"),
@@ -630,6 +634,8 @@ def register_callbacks(app):
          State('take-profit-pct', 'value'),
          State('amount-per-buy', 'value'),
          State('position-size-pct', 'value'),
+        State('kelly-win-rate', 'value'),
+        State('kelly-win-loss-ratio', 'value'),
          State('consecutive-signal-mode', 'value'),
          State('signal-cooldown-bars', 'value'),
          State('signal-logic-mode', 'value'),
@@ -648,7 +654,8 @@ def register_callbacks(app):
                        indicator_settings, chart_library,
                        strategy_mode, strategy_preset, min_holding_period,
                        trailing_stop_pct, position_scaling_pct, take_profit_pct,
-                       amount_per_buy, position_size_pct, consecutive_signal_mode,
+                       amount_per_buy, position_size_pct, kelly_win_rate, kelly_win_loss_ratio,
+                       consecutive_signal_mode,
                        signal_cooldown_bars, signal_logic_mode, signal_window,
                        buy_signals, sell_signals,
                        fx_fee_pct, slippage_pct, commission_pct):
@@ -683,7 +690,8 @@ def register_callbacks(app):
                 indicator_settings, chart_library,
                 strategy_mode, strategy_preset, min_holding_period,
                 trailing_stop_pct, position_scaling_pct, take_profit_pct,
-                amount_per_buy, position_size_pct, consecutive_signal_mode,
+                amount_per_buy, position_size_pct, kelly_win_rate, kelly_win_loss_ratio,
+                consecutive_signal_mode,
                 signal_cooldown_bars, signal_logic_mode, signal_window,
                 buy_signals, sell_signals,
                 fx_fee_pct, slippage_pct, commission_pct
@@ -711,7 +719,8 @@ def register_callbacks(app):
                 indicator_settings, chart_library,
                 strategy_mode, strategy_preset, min_holding_period,
                 trailing_stop_pct, position_scaling_pct, take_profit_pct,
-                amount_per_buy, position_size_pct, consecutive_signal_mode,
+                amount_per_buy, position_size_pct, kelly_win_rate, kelly_win_loss_ratio,
+                consecutive_signal_mode,
                 signal_cooldown_bars, signal_logic_mode, signal_window,
                 buy_signals, sell_signals,
                 fx_fee_pct, slippage_pct, commission_pct
@@ -854,7 +863,8 @@ def register_callbacks(app):
          Output('holding-period-options', 'style'),
          Output('trailing-stop-options', 'style'),
          Output('position-scaling-options', 'style'),
-         Output('take-profit-options', 'style')],
+         Output('take-profit-options', 'style'),
+         Output('kelly-options', 'style')],
         [Input('strategy-mode', 'value')],
         [State('theme-store', 'data')]
     )
@@ -884,9 +894,11 @@ def register_callbacks(app):
         trailing_style = panel_style(is_trading or is_rebalancing, theme["accent_red"])
         scaling_style = panel_style(is_trading, theme["accent_cyan"])
         take_profit_style = panel_style(is_trading or is_rebalancing, theme["accent_green"])
+        kelly_style = panel_style(is_trading, theme["accent_purple"])
 
         return (accumulation_style, rebalancing_style, preset_style,
-                holding_style, trailing_style, scaling_style, take_profit_style)
+                holding_style, trailing_style, scaling_style, take_profit_style,
+                kelly_style)
 
     @app.callback(
         [Output('signal-cooldown-bars', 'value', allow_duplicate=True),
@@ -1096,6 +1108,8 @@ def register_callbacks(app):
          Input('strategy-preset', 'value'),
          Input('amount-per-buy', 'value'),
          Input('position-size-pct', 'value'),
+         Input('kelly-win-rate', 'value'),
+         Input('kelly-win-loss-ratio', 'value'),
          Input('min-holding-period', 'value'),
          Input('trailing-stop-pct', 'value'),
          Input('position-scaling-pct', 'value'),
@@ -1106,8 +1120,9 @@ def register_callbacks(app):
          Input('signal-window', 'value')]
     )
     def update_backtest_panel_summaries(strategy_mode, strategy_preset, amount_per_buy, position_size_pct,
-                                        min_holding_period, trailing_stop_pct, position_scaling_pct,
-                                        take_profit_pct, buy_signals, sell_signals, signal_logic, signal_window):
+                                        kelly_win_rate, kelly_win_loss_ratio, min_holding_period,
+                                        trailing_stop_pct, position_scaling_pct, take_profit_pct,
+                                        buy_signals, sell_signals, signal_logic, signal_window):
         """Update accordion titles with selected options when collapsed."""
         strategy_labels = {
             'trading': 'Trading (Full)',
@@ -1131,6 +1146,13 @@ def register_callbacks(app):
                     sizing_parts.append('% per trade')
                 else:
                     sizing_parts.append(f'{position_size_pct:.0f}% per trade')
+
+            if strategy_mode == 'trading':
+                kelly_win_rate = 0.5 if kelly_win_rate is None else kelly_win_rate
+                kelly_win_loss_ratio = 1.5 if kelly_win_loss_ratio is None else kelly_win_loss_ratio
+
+            if strategy_mode == 'trading' and kelly_win_rate is not None and kelly_win_loss_ratio is not None:
+                sizing_parts.append(f'Kelly {kelly_win_rate:.2f}/{kelly_win_loss_ratio:.2f}')
 
             if min_holding_period is not None:
                 sizing_parts.append(f'Hold {int(min_holding_period)}')
@@ -1705,6 +1727,8 @@ def register_callbacks(app):
          State('strategy-mode', 'value'),
          State('amount-per-buy', 'value'),
          State('position-size-pct', 'value'),
+         State('kelly-win-rate', 'value'),
+         State('kelly-win-loss-ratio', 'value'),
          State('min-holding-period', 'value'),
          State('trailing-stop-pct', 'value'),
          State('position-scaling-pct', 'value'),
@@ -1718,10 +1742,11 @@ def register_callbacks(app):
          State('commission-pct', 'value')]
     )
     def run_backtest_callback(n_clicks, ticker, initial_capital, buy_signals, sell_signals,
-                               strategy_mode, amount_per_buy, position_size_pct,
-                               min_holding_period, trailing_stop_pct, position_scaling_pct,
-                               take_profit_pct, consecutive_signal_mode, signal_cooldown_bars,
-                               signal_logic, signal_window, fx_fee_pct, slippage_pct, commission_pct):
+                              strategy_mode, amount_per_buy, position_size_pct,
+                              kelly_win_rate, kelly_win_loss_ratio,
+                              min_holding_period, trailing_stop_pct, position_scaling_pct,
+                              take_profit_pct, consecutive_signal_mode, signal_cooldown_bars,
+                              signal_logic, signal_window, fx_fee_pct, slippage_pct, commission_pct):
         """Run backtest and display results."""
         if not n_clicks:
             raise PreventUpdate
@@ -1749,6 +1774,10 @@ def register_callbacks(app):
         fx_fee_pct = max(0.0, float(fx_fee_pct or 0)) / 100.0
         slippage_pct = max(0.0, float(slippage_pct or 0)) / 100.0
         commission_per_trade = max(0.0, float(commission_pct or 0)) / 100.0
+        kelly_win_rate = float(kelly_win_rate) if kelly_win_rate is not None else 0.5
+        kelly_win_rate = min(1.0, max(0.0, kelly_win_rate))
+        kelly_win_loss_ratio = float(kelly_win_loss_ratio) if kelly_win_loss_ratio is not None else 1.5
+        kelly_win_loss_ratio = max(0.01, kelly_win_loss_ratio)
 
         try:
             results = run_backtest(
@@ -1756,6 +1785,8 @@ def register_callbacks(app):
                 strategy_mode=strategy_mode,
                 amount_per_buy=amount_per_buy,
                 position_size_pct=position_size_pct,
+                kelly_win_rate=kelly_win_rate,
+                kelly_win_loss_ratio=kelly_win_loss_ratio,
                 min_holding_period=min_holding_period,
                 trailing_stop_loss=trailing_stop_loss,
                 position_scaling=position_scaling,
@@ -1778,6 +1809,8 @@ def register_callbacks(app):
                     strategy_mode=strategy_mode,
                     amount_per_buy=amount_per_buy,
                     position_size_pct=position_size_pct,
+                    kelly_win_rate=kelly_win_rate,
+                    kelly_win_loss_ratio=kelly_win_loss_ratio,
                     min_holding_period=min_holding_period,
                     trailing_stop_loss=trailing_stop_loss,
                     position_scaling=position_scaling,
@@ -2397,6 +2430,8 @@ def _build_preset_payload(
     take_profit_pct: Any,
     amount_per_buy: Any,
     position_size_pct: Any,
+    kelly_win_rate: Any,
+    kelly_win_loss_ratio: Any,
     consecutive_signal_mode: str,
     signal_cooldown_bars: Any,
     signal_logic_mode: str,
@@ -2432,6 +2467,8 @@ def _build_preset_payload(
             "take_profit_pct": take_profit_pct,
             "amount_per_buy": amount_per_buy,
             "position_size_pct": position_size_pct,
+            "kelly_win_rate": kelly_win_rate,
+            "kelly_win_loss_ratio": kelly_win_loss_ratio,
             "consecutive_signal_mode": consecutive_signal_mode,
             "signal_cooldown_bars": signal_cooldown_bars
         },

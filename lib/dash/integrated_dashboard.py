@@ -1153,6 +1153,83 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                             placement='right',
                             trigger='hover focus',
                         ),
+                        html.Div(id='kelly-options', children=[
+                            html.Div([
+                                html.Span("Kelly Criterion", style={
+                                    'fontSize': FONT_SIZES['sm'],
+                                    'fontWeight': '600',
+                                    'color': theme['accent_purple'],
+                                }),
+                            ], style={'marginBottom': '6px'}),
+                            html.Div([
+                                html.Div([
+                                    html.Span("Win Rate", style={
+                                        'fontSize': FONT_SIZES['xs'],
+                                        'color': theme['text_secondary'],
+                                    }),
+                                ], style={'marginBottom': '4px'}),
+                                dcc.Input(
+                                    id='kelly-win-rate',
+                                    type='number',
+                                    value=0.5,
+                                    min=0,
+                                    max=1,
+                                    step=0.01,
+                                    placeholder='0.50',
+                                    style={
+                                        **styles['input'],
+                                        'width': '100%',
+                                        'fontFamily': FONT_MONO,
+                                        'padding': '10px 12px',
+                                        'fontSize': FONT_SIZES['base'],
+                                        'borderColor': theme['accent_purple'],
+                                    }
+                                ),
+                            ], style={'marginBottom': '10px'}),
+                            html.Div([
+                                html.Div([
+                                    html.Span("Win/Loss Ratio", style={
+                                        'fontSize': FONT_SIZES['xs'],
+                                        'color': theme['text_secondary'],
+                                    }),
+                                ], style={'marginBottom': '4px'}),
+                                dcc.Input(
+                                    id='kelly-win-loss-ratio',
+                                    type='number',
+                                    value=1.5,
+                                    min=0.1,
+                                    step=0.1,
+                                    placeholder='1.50',
+                                    style={
+                                        **styles['input'],
+                                        'width': '100%',
+                                        'fontFamily': FONT_MONO,
+                                        'padding': '10px 12px',
+                                        'fontSize': FONT_SIZES['base'],
+                                        'borderColor': theme['accent_purple'],
+                                    }
+                                ),
+                            ]),
+                        ], style={
+                            'marginBottom': '12px',
+                            'display': 'none',
+                            'padding': '10px',
+                            'backgroundColor': f'{theme["accent_purple"]}10',
+                            'borderRadius': BORDER_RADIUS['md'],
+                            'border': f'1px solid {theme["accent_purple"]}40',
+                        }),
+                        dbc.Tooltip(
+                            "Probability of a winning trade (0-1).",
+                            target='kelly-win-rate',
+                            placement='right',
+                            trigger='hover focus',
+                        ),
+                        dbc.Tooltip(
+                            "Average win/loss ratio used by Kelly sizing.",
+                            target='kelly-win-loss-ratio',
+                            placement='right',
+                            trigger='hover focus',
+                        ),
                     ],
                     title=html.Div([
                         html.Span("Trade Setup"),
