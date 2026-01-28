@@ -10,6 +10,10 @@ import pandas as pd
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
+from ta.momentum import RSIIndicator
+from ta.trend import CCIIndicator, MACD, ADXIndicator
+from ta.volatility import AverageTrueRange
+
 from lib.dash.dash_config import FONT_FAMILY
 
 logger = logging.getLogger(__name__)
@@ -19,6 +23,18 @@ CHART_ORDER = ['candlestick', 'volume', 'rsi', 'cci', 'macd', 'adx', 'atr', 'obv
 CHART_ROW_HEIGHT_MAIN = 4.5
 CHART_ROW_HEIGHT_INDICATOR = 1
 SIGNAL_OFFSET_FACTOR = 0.015
+
+
+def _get_indicator_setting(config: Dict, indicator: str, key: str, default: float | int) -> float | int:
+    settings = config.get('indicator_settings', {}) or {}
+    return settings.get(indicator, {}).get(key, default)
+
+
+def _coerce_period(value: float | int, default: int) -> int:
+    try:
+        return max(1, int(round(float(value))))
+    except (TypeError, ValueError):
+        return default
 
 
 def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
@@ -171,6 +187,7 @@ def _add_candlestick(fig: go.Figure, df: pd.DataFrame, row: int, col: int, confi
 
 def _add_volume_chart(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
     """Add volume bar chart."""
+    ma_period = _coerce_period(_get_indicator_setting(config, 'volume', 'ma_period', 20), 20)
     colors = [
         theme['chart_candle_up'] if c > o else theme['chart_candle_down']
         for c, o in zip(df['Close'], df['Open'])
@@ -182,89 +199,138 @@ def _add_volume_chart(fig: go.Figure, df: pd.DataFrame, row: int, col: int, conf
         opacity=0.7,
         hovertemplate='%{x|%Y-%m-%d}<br>Vol: %{y:,.0f}<extra></extra>'
     ), row=row, col=col)
+    if ma_period > 1:
+        volume_ma = df['Volume'].rolling(window=ma_period, min_periods=1).mean()
+        fig.add_trace(go.Scatter(
+            x=df.index, y=volume_ma,
+            name=f"Vol MA ({ma_period})",
+            line=dict(color=theme['accent_blue'], width=1.2),
+            hovertemplate='%{x|%Y-%m-%d}<br>Vol MA: %{y:,.0f}<extra></extra>'
+        ), row=row, col=col)
 
 
 def _add_rsi(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
     """Add RSI indicator."""
+    period = _coerce_period(_get_indicator_setting(config, 'rsi', 'period', 14), 14)
+    overbought = _get_indicator_setting(config, 'rsi', 'overbought', 70)
+    oversold = _get_indicator_setting(config, 'rsi', 'oversold', 30)
+    rsi_series = RSIIndicator(close=df['Close'], window=period).rsi()
     fig.add_trace(go.Scatter(
-        x=df.index, y=df['RSI'],
-        name="RSI",
+        x=df.index, y=rsi_series,
+        name=f"RSI ({period})",
         line=dict(color=theme['accent_orange'], width=1.5),
         hovertemplate='%{x|%Y-%m-%d}<br>RSI: %{y:.2f}<extra></extra>'
     ), row=row, col=col)
-    fig.add_hline(y=70, line_dash="dash", line_color=theme['accent_red'], line_width=1, opacity=0.5, row=row, col=col)
-    fig.add_hline(y=30, line_dash="dash", line_color=theme['accent_green'], line_width=1, opacity=0.5, row=row, col=col)
-    fig.add_hrect(y0=30, y1=70, fillcolor=theme['text_tertiary'], opacity=0.05, line_width=0, row=row, col=col)
+    fig.add_hline(y=overbought, line_dash="dash", line_color=theme['accent_red'], line_width=1, opacity=0.6, row=row, col=col)
+    fig.add_hline(y=oversold, line_dash="dash", line_color=theme['accent_green'], line_width=1, opacity=0.6, row=row, col=col)
+    fig.add_hline(y=50, line_dash="dot", line_color=theme['text_tertiary'], line_width=1, opacity=0.4, row=row, col=col)
+    fig.add_hrect(y0=oversold, y1=overbought, fillcolor=theme['text_tertiary'], opacity=0.06, line_width=0, row=row, col=col)
 
 
 def _add_cci(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
     """Add CCI indicator."""
+    period = _coerce_period(_get_indicator_setting(config, 'cci', 'period', 20), 20)
+    ceiling = _get_indicator_setting(config, 'cci', 'ceiling', 100)
+    floor = _get_indicator_setting(config, 'cci', 'floor', -100)
+    cci_series = CCIIndicator(high=df['High'], low=df['Low'], close=df['Close'], window=period).cci()
     fig.add_trace(go.Scatter(
-        x=df.index, y=df['CCI'],
-        name="CCI",
+        x=df.index, y=cci_series,
+        name=f"CCI ({period})",
         line=dict(color=theme['accent_purple'], width=1.5),
         hovertemplate='%{x|%Y-%m-%d}<br>CCI: %{y:.2f}<extra></extra>'
     ), row=row, col=col)
-    fig.add_hline(y=100, line_dash="dash", line_color=theme['accent_red'], line_width=1, opacity=0.5, row=row, col=col)
-    fig.add_hline(y=-100, line_dash="dash", line_color=theme['accent_green'], line_width=1, opacity=0.5, row=row, col=col)
+    fig.add_hline(y=ceiling, line_dash="dash", line_color=theme['accent_red'], line_width=1, opacity=0.6, row=row, col=col)
+    fig.add_hline(y=floor, line_dash="dash", line_color=theme['accent_green'], line_width=1, opacity=0.6, row=row, col=col)
+    fig.add_hline(y=0, line_dash="dot", line_color=theme['text_tertiary'], line_width=1, opacity=0.4, row=row, col=col)
+    fig.add_hrect(y0=floor, y1=ceiling, fillcolor=theme['text_tertiary'], opacity=0.04, line_width=0, row=row, col=col)
 
 
 def _add_macd(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
     """Add MACD indicator."""
+    fast = _coerce_period(_get_indicator_setting(config, 'macd', 'fast', 12), 12)
+    slow = _coerce_period(_get_indicator_setting(config, 'macd', 'slow', 26), 26)
+    signal = _coerce_period(_get_indicator_setting(config, 'macd', 'signal', 9), 9)
+    macd = MACD(close=df['Close'], window_slow=slow, window_fast=fast, window_sign=signal)
+    macd_line = macd.macd()
+    macd_signal = macd.macd_signal()
+    macd_hist = macd.macd_diff()
     fig.add_trace(go.Scatter(
-        x=df.index, y=df['MACD'],
-        name="MACD",
+        x=df.index, y=macd_line,
+        name=f"MACD ({fast},{slow})",
         line=dict(color=theme['accent_blue'], width=1.5),
         hovertemplate='%{x|%Y-%m-%d}<br>MACD: %{y:.4f}<extra></extra>'
     ), row=row, col=col)
     fig.add_trace(go.Scatter(
-        x=df.index, y=df['MACD_Signal'],
-        name="Signal",
+        x=df.index, y=macd_signal,
+        name=f"Signal ({signal})",
         line=dict(color=theme['accent_orange'], width=1.5),
         hovertemplate='%{x|%Y-%m-%d}<br>Signal: %{y:.4f}<extra></extra>'
     ), row=row, col=col)
-    histogram_colors = np.where(df['MACD_Histogram'] >= 0, theme['chart_candle_up'], theme['chart_candle_down'])
+    histogram_colors = np.where(macd_hist >= 0, theme['chart_candle_up'], theme['chart_candle_down'])
     fig.add_bar(
-        x=df.index, y=df['MACD_Histogram'],
+        x=df.index, y=macd_hist,
         name="Histogram",
         marker_color=histogram_colors,
         opacity=0.6,
         hovertemplate='%{x|%Y-%m-%d}<br>Hist: %{y:.4f}<extra></extra>',
         row=row, col=col
     )
+    fig.add_hline(y=0, line_dash="dot", line_color=theme['text_tertiary'], line_width=1, opacity=0.5, row=row, col=col)
 
 
 def _add_adx(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
     """Add ADX indicator."""
+    period = _coerce_period(_get_indicator_setting(config, 'adx', 'period', 14), 14)
+    threshold = _get_indicator_setting(config, 'adx', 'threshold', 25)
+    adx = ADXIndicator(high=df['High'], low=df['Low'], close=df['Close'], window=period).adx()
     fig.add_trace(go.Scatter(
-        x=df.index, y=df['ADX'],
-        name="ADX",
+        x=df.index, y=adx,
+        name=f"ADX ({period})",
         line=dict(color=theme['accent_cyan'], width=1.5),
         hovertemplate='%{x|%Y-%m-%d}<br>ADX: %{y:.2f}<extra></extra>'
     ), row=row, col=col)
-    fig.add_hline(y=25, line_dash="dash", line_color=theme['text_tertiary'], line_width=1, opacity=0.5, row=row, col=col)
+    fig.add_hline(y=threshold, line_dash="dash", line_color=theme['text_tertiary'], line_width=1, opacity=0.6, row=row, col=col)
 
 
 def _add_atr(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
     """Add ATR indicator."""
+    period = _coerce_period(_get_indicator_setting(config, 'atr', 'period', 14), 14)
+    atr_series = AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=period).average_true_range()
+    atr_ma = atr_series.rolling(window=period, min_periods=1).mean()
     fig.add_trace(go.Scatter(
-        x=df.index, y=df['ATR'],
-        name="ATR",
+        x=df.index, y=atr_series,
+        name=f"ATR ({period})",
         line=dict(color=theme['accent_cyan'], width=1.5),
         fill='tozeroy',
         fillcolor=f'{theme["accent_cyan"]}10',
         hovertemplate='%{x|%Y-%m-%d}<br>ATR: %{y:.2f}<extra></extra>'
     ), row=row, col=col)
+    fig.add_trace(go.Scatter(
+        x=df.index, y=atr_ma,
+        name=f"ATR MA ({period})",
+        line=dict(color=theme['accent_blue'], width=1.1, dash='dot'),
+        hovertemplate='%{x|%Y-%m-%d}<br>ATR MA: %{y:.2f}<extra></extra>'
+    ), row=row, col=col)
 
 
 def _add_obv(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
     """Add OBV indicator."""
+    ma_period = _coerce_period(_get_indicator_setting(config, 'obv', 'ma_period', 20), 20)
+    obv = (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
     fig.add_trace(go.Scatter(
-        x=df.index, y=df['OBV'],
+        x=df.index, y=obv,
         name="OBV",
         line=dict(color=theme['accent_purple'], width=1.5),
         hovertemplate='%{x|%Y-%m-%d}<br>OBV: %{y:,.0f}<extra></extra>'
     ), row=row, col=col)
+    if ma_period > 1:
+        obv_ma = obv.rolling(window=ma_period, min_periods=1).mean()
+        fig.add_trace(go.Scatter(
+            x=df.index, y=obv_ma,
+            name=f"OBV MA ({ma_period})",
+            line=dict(color=theme['accent_blue'], width=1.1, dash='dot'),
+            hovertemplate='%{x|%Y-%m-%d}<br>OBV MA: %{y:,.0f}<extra></extra>'
+        ), row=row, col=col)
 
 
 def _add_signal_traces(
@@ -440,21 +506,27 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             rangeslider_visible=False,
             showgrid=True,
             gridcolor=theme['chart_grid'],
-            gridwidth=1,
+            gridwidth=0.5,
             showline=True,
-            linecolor=theme['border_primary'],
+            linecolor=theme['border_secondary'],
             linewidth=1,
-            tickfont=dict(color=theme['text_secondary'], size=10),
+            zeroline=False,
+            tickfont=dict(color=theme['text_secondary'], size=9),
+            ticks='outside',
+            ticklen=4,
             row=i, col=1
         )
         fig.update_yaxes(
             showgrid=True,
             gridcolor=theme['chart_grid'],
-            gridwidth=1,
+            gridwidth=0.5,
             showline=True,
-            linecolor=theme['border_primary'],
+            linecolor=theme['border_secondary'],
             linewidth=1,
-            tickfont=dict(color=theme['text_secondary'], size=10),
+            zeroline=False,
+            tickfont=dict(color=theme['text_secondary'], size=9),
+            ticks='outside',
+            ticklen=4,
             side='right',
             autorange=True,  # Always fit y-axis to visible data
             row=i, col=1

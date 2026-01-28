@@ -214,6 +214,138 @@ SIGNAL_OPTIONS = [
     ('Sell', 'sell')
 ]
 
+# =============================================================================
+# INDICATOR SETTINGS
+# =============================================================================
+
+DEFAULT_INDICATOR_SETTINGS = {
+    'volume': {
+        'ma_period': 20
+    },
+    'rsi': {
+        'period': 14,
+        'overbought': 70,
+        'oversold': 30
+    },
+    'bollinger': {
+        'window': 20,
+        'window_dev': 2,
+        'squeeze_threshold': 0.1,
+        'double_bottom_threshold': 0.02
+    },
+    'sma': {
+        'short_window': 5,
+        'medium_window': 20,
+        'long_window': 50,
+        'trend_window': 200
+    },
+    'ema': {
+        'short_window': 12,
+        'medium_window': 26,
+        'long_window': 50,
+        'atr_window': 14
+    },
+    'cci': {
+        'period': 20,
+        'ceiling': 100,
+        'floor': -100
+    },
+    'macd': {
+        'fast': 12,
+        'slow': 26,
+        'signal': 9
+    },
+    'adx': {
+        'period': 14,
+        'threshold': 25
+    },
+    'atr': {
+        'period': 14
+    },
+    'obv': {
+        'ma_period': 20
+    }
+}
+
+INDICATOR_SETTING_SCHEMA = {
+    'volume': {
+        'label': 'Volume',
+        'fields': [
+            {'key': 'ma_period', 'label': 'Volume MA Period', 'step': 1, 'min': 1}
+        ]
+    },
+    'rsi': {
+        'label': 'RSI',
+        'fields': [
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
+            {'key': 'overbought', 'label': 'Overbought', 'step': 0.1},
+            {'key': 'oversold', 'label': 'Oversold', 'step': 0.1}
+        ]
+    },
+    'bollinger': {
+        'label': 'Bollinger Bands',
+        'fields': [
+            {'key': 'window', 'label': 'Window', 'step': 1, 'min': 1},
+            {'key': 'window_dev', 'label': 'Std Dev', 'step': 0.1, 'min': 0.1},
+            {'key': 'squeeze_threshold', 'label': 'Squeeze Threshold', 'step': 0.01, 'min': 0},
+            {'key': 'double_bottom_threshold', 'label': 'Double Top/Bottom Threshold', 'step': 0.001, 'min': 0}
+        ]
+    },
+    'sma': {
+        'label': 'SMA',
+        'fields': [
+            {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1},
+            {'key': 'medium_window', 'label': 'Medium Window', 'step': 1, 'min': 1},
+            {'key': 'long_window', 'label': 'Long Window', 'step': 1, 'min': 1},
+            {'key': 'trend_window', 'label': 'Trend Window', 'step': 1, 'min': 1}
+        ]
+    },
+    'ema': {
+        'label': 'EMA',
+        'fields': [
+            {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1},
+            {'key': 'medium_window', 'label': 'Medium Window', 'step': 1, 'min': 1},
+            {'key': 'long_window', 'label': 'Long Window', 'step': 1, 'min': 1},
+            {'key': 'atr_window', 'label': 'ATR Window', 'step': 1, 'min': 1}
+        ]
+    },
+    'cci': {
+        'label': 'CCI',
+        'fields': [
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
+            {'key': 'ceiling', 'label': 'Ceiling', 'step': 0.1},
+            {'key': 'floor', 'label': 'Floor', 'step': 0.1}
+        ]
+    },
+    'macd': {
+        'label': 'MACD',
+        'fields': [
+            {'key': 'fast', 'label': 'Fast EMA', 'step': 1, 'min': 1},
+            {'key': 'slow', 'label': 'Slow EMA', 'step': 1, 'min': 1},
+            {'key': 'signal', 'label': 'Signal EMA', 'step': 1, 'min': 1}
+        ]
+    },
+    'adx': {
+        'label': 'ADX',
+        'fields': [
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
+            {'key': 'threshold', 'label': 'Trend Threshold', 'step': 0.1}
+        ]
+    },
+    'atr': {
+        'label': 'ATR',
+        'fields': [
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1}
+        ]
+    },
+    'obv': {
+        'label': 'OBV',
+        'fields': [
+            {'key': 'ma_period', 'label': 'OBV MA Period', 'step': 1, 'min': 1}
+        ]
+    }
+}
+
 # Optimization methods
 OPTIMIZATION_METHODS = [
     {'label': 'Walk-Forward Optimization', 'value': 'walk_forward'}

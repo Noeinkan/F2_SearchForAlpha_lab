@@ -5,6 +5,8 @@ All Dash callback functions for the trading dashboard.
 
 import logging
 import re
+import copy
+import json
 from datetime import datetime
 from typing import Tuple, List, Any, Dict
 
@@ -17,7 +19,8 @@ import plotly.graph_objs as go
 from dash_tvlwc import Tvlwc
 
 from lib.dash.dash_config import (
-    DEFAULT_THEME, FONT_SIZES, FONT_MONO, BORDER_RADIUS, get_theme
+    DEFAULT_THEME, FONT_SIZES, FONT_MONO, BORDER_RADIUS, get_theme,
+    DEFAULT_INDICATOR_SETTINGS, INDICATOR_SETTING_SCHEMA
 )
 from lib.dash.state import dashboard_state
 from lib.dash.styles import get_styles
@@ -101,6 +104,66 @@ def _describe_signal(col_name: str) -> str:
         return description
     base = _format_signal_label(col_name)
     return f"Signal generated from {base}."
+
+
+def _collect_selected_plots(values_list: List[List[str]]) -> List[str]:
+    selected = []
+    for values in values_list or []:
+        if not values:
+            continue
+        selected.extend(values)
+    return selected
+
+
+def _build_indicator_settings_panel(indicator_key: str | None, settings_store: Dict[str, Any], styles: Dict[str, Any]) -> html.Div:
+    if not indicator_key or indicator_key not in INDICATOR_SETTING_SCHEMA:
+        return html.Div("Click a gear icon to edit indicator settings.", style=styles['indicator_settings_empty'])
+
+    schema = INDICATOR_SETTING_SCHEMA[indicator_key]
+    default_settings = DEFAULT_INDICATOR_SETTINGS.get(indicator_key, {})
+    current_settings = settings_store.get(indicator_key, {})
+
+    header = html.Div(
+        schema['label'],
+        style={'fontSize': FONT_SIZES['sm'], 'color': styles['panel_title']['color'], 'fontWeight': '600'}
+    )
+    fields = []
+    for field in schema['fields']:
+        key = field['key']
+        value = current_settings.get(key, default_settings.get(key))
+        input_kwargs = {
+            'type': 'number',
+            'value': value,
+            'step': field.get('step', 1),
+            'style': styles['indicator_setting_input'],
+            'debounce': True,
+            'id': {'type': 'indicator-setting', 'indicator': indicator_key, 'key': key}
+        }
+        if 'min' in field:
+            input_kwargs['min'] = field['min']
+        if 'max' in field:
+            input_kwargs['max'] = field['max']
+
+        fields.append(html.Div(
+            [
+                html.Span(field['label'], style=styles['indicator_setting_label']),
+                dcc.Input(**input_kwargs),
+            ],
+            style=styles['indicator_setting_row']
+        ))
+
+    return html.Div([header] + fields, style=styles['indicator_settings_panel'])
+
+
+def _rebuild_indicator_dataframe(df: pd.DataFrame, indicator_settings: Dict[str, Any]) -> pd.DataFrame:
+    """Rebuild indicators/signals from price data using updated settings."""
+    if df is None or df.empty:
+        return df
+    price_cols = [col for col in ['Open', 'High', 'Low', 'Close', 'Volume'] if col in df.columns]
+    base_df = df[price_cols].copy() if price_cols else df.copy()
+    base_df = add_indicators(base_df, indicator_settings)
+    base_df, _ = generate_signals(base_df, indicator_settings)
+    return base_df
 
 
 def _normalize_timestamp(value: Any) -> pd.Timestamp | None:
@@ -340,9 +403,10 @@ def register_callbacks(app):
          Input('autoload-interval', 'n_intervals')],
         [State('ticker-dropdown', 'value'),
          State('start-date', 'date'),
-         State('end-date', 'date')]
+         State('end-date', 'date'),
+         State('indicator-settings-store', 'data')]
     )
-    def load_data(n_clicks, n_intervals, ticker, start_date, end_date):
+    def load_data(n_clicks, n_intervals, ticker, start_date, end_date, indicator_settings):
         """Load market data. Auto-loads SPY on startup."""
         ctx = callback_context
         if not ctx.triggered:
@@ -372,8 +436,8 @@ def register_callbacks(app):
                     False, [], [], [], "No data", "", None
                 )
 
-            df = add_indicators(df)
-            df, _ = generate_signals(df)
+            df = add_indicators(df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
+            df, _ = generate_signals(df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
             dashboard_state.df = df
 
             buy_columns = [col for col in df.columns if 'buy' in col.lower()]
@@ -641,31 +705,151 @@ def register_callbacks(app):
         return plotly_style, tv_style
 
     @app.callback(
+        Output('active-indicator-store', 'data'),
+        [Input({'type': 'indicator-gear', 'indicator': ALL}, 'n_clicks_timestamp')],
+        prevent_initial_call=True
+    )
+    def set_active_indicator_settings(_timestamps):
+        """Update active indicator when a gear icon is clicked."""
+        ctx = callback_context
+        triggered_id = getattr(ctx, "triggered_id", None)
+        if isinstance(triggered_id, dict) and triggered_id.get('indicator'):
+            return triggered_id['indicator']
+
+        if ctx.triggered:
+            prop_id = ctx.triggered[0].get("prop_id", "")
+            if prop_id and prop_id != ".":
+                raw_id = prop_id.split(".")[0]
+                try:
+                    parsed_id = json.loads(raw_id)
+                except json.JSONDecodeError:
+                    parsed_id = None
+                if isinstance(parsed_id, dict) and parsed_id.get("indicator"):
+                    return parsed_id["indicator"]
+
+        inputs = ctx.inputs or {}
+        if inputs:
+            latest_indicator = None
+            latest_ts = -1
+            for key, value in inputs.items():
+                if not key.startswith("{"):
+                    continue
+                try:
+                    parsed = json.loads(key.split(".")[0])
+                except json.JSONDecodeError:
+                    continue
+                if parsed.get("type") == "indicator-gear" and isinstance(value, (int, float)):
+                    if value > latest_ts:
+                        latest_ts = value
+                        latest_indicator = parsed.get("indicator")
+            if latest_indicator:
+                return latest_indicator
+
+        raise PreventUpdate
+
+    @app.callback(
+        Output({'type': 'indicator-settings-panel', 'indicator': ALL}, 'children'),
+        [Input('active-indicator-store', 'data')],
+        [State('indicator-settings-store', 'data')]
+    )
+    def render_indicator_settings_panel(active_indicator, settings_store):
+        """Render indicator settings panel for the active indicator."""
+        theme = get_theme()
+        styles = get_styles(theme)
+        settings_store = settings_store or copy.deepcopy(DEFAULT_INDICATOR_SETTINGS)
+        indicator_ids = [item['id']['indicator'] for item in callback_context.outputs_list]
+        panels = []
+        for indicator in indicator_ids:
+            if indicator == active_indicator:
+                panels.append(_build_indicator_settings_panel(indicator, settings_store, styles))
+            else:
+                panels.append(html.Div())
+        return panels
+
+    @app.callback(
+        Output('indicator-settings-store', 'data'),
+        [Input({'type': 'indicator-setting', 'indicator': ALL, 'key': ALL}, 'value')],
+        [State('indicator-settings-store', 'data')],
+        prevent_initial_call=True
+    )
+    def persist_indicator_settings(_values, current_settings):
+        """Persist indicator settings from the sidebar inputs."""
+        if current_settings is None:
+            current_settings = copy.deepcopy(DEFAULT_INDICATOR_SETTINGS)
+        if not callback_context.inputs_list:
+            raise PreventUpdate
+
+        updated = copy.deepcopy(current_settings)
+        for item in callback_context.inputs_list[0]:
+            field_id = item.get('id', {})
+            indicator = field_id.get('indicator')
+            key = field_id.get('key')
+            if not indicator or not key:
+                continue
+            value = item.get('value')
+            if value is None:
+                continue
+            updated.setdefault(indicator, {})[key] = value
+        return updated
+
+    @app.callback(
+        [Output('buy-signals', 'options', allow_duplicate=True),
+         Output('sell-signals', 'options', allow_duplicate=True),
+         Output('signals-unified-store', 'data', allow_duplicate=True),
+         Output('data-table-container', 'children', allow_duplicate=True)],
+        [Input('indicator-settings-store', 'data')],
+        [State('data-loaded-store', 'data')],
+        prevent_initial_call=True
+    )
+    def refresh_signals_with_settings(indicator_settings, data_loaded):
+        """Recompute signals when indicator parameters change."""
+        if not data_loaded or dashboard_state.df is None:
+            raise PreventUpdate
+
+        theme = get_theme()
+        indicator_settings = indicator_settings or DEFAULT_INDICATOR_SETTINGS
+        df = _rebuild_indicator_dataframe(dashboard_state.df, indicator_settings)
+        if df is None or df.empty:
+            raise PreventUpdate
+        dashboard_state.df = df
+
+        buy_columns = [col for col in df.columns if 'buy' in col.lower()]
+        sell_columns = [col for col in df.columns if 'sell' in col.lower()]
+        buy_options = _build_signal_options(buy_columns)
+        sell_options = _build_signal_options(sell_columns)
+        unified_rows = _build_unified_signal_rows(buy_columns, sell_columns)
+
+        display_df = format_df_for_display(df.tail(50)).reset_index()
+        data_table = _create_data_table(display_df, theme)
+        return buy_options, sell_options, unified_rows, data_table
+
+    @app.callback(
         Output('chart-library-toggle', 'value'),
-        [Input('plot-checklist', 'value'),
+        [Input({'type': 'plot-toggle', 'indicator': ALL}, 'value'),
          Input('chart-elements-checklist', 'value')],
         [State('chart-library-toggle', 'value')]
     )
-    def enforce_plotly_for_indicators(selected_plots, chart_elements, current_library):
+    def enforce_plotly_for_indicators(plot_values, chart_elements, current_library):
         """Ensure Plotly is used when indicators/overlays are requested."""
         return 'plotly'
 
     @app.callback(
         Output('financial-chart', 'figure'),
         [Input('data-loaded-store', 'data'),
-         Input('plot-checklist', 'value'),
+         Input({'type': 'plot-toggle', 'indicator': ALL}, 'value'),
          Input('chart-elements-checklist', 'value'),
          Input('signal-checklist', 'value'),
          Input('chart-library-toggle', 'value'),
          Input('buy-signals', 'value'),
          Input('sell-signals', 'value'),
          Input('signal-logic-mode', 'value'),
-         Input('signal-window', 'value')],
+         Input('signal-window', 'value'),
+         Input('indicator-settings-store', 'data')],
         [State('ticker-dropdown', 'value'),
          State('layout-store', 'data')]
     )
-    def update_plotly_chart(data_loaded, selected_plots, chart_elements, selected_signals, chart_library,
-                            buy_signals, sell_signals, signal_logic, signal_window, ticker, layout_state):
+    def update_plotly_chart(data_loaded, plot_values, chart_elements, selected_signals, chart_library,
+                            buy_signals, sell_signals, signal_logic, signal_window, indicator_settings, ticker, layout_state):
         """Update the Plotly financial chart."""
         if chart_library == 'tradingview':
             raise PreventUpdate
@@ -677,12 +861,14 @@ def register_callbacks(app):
 
         df = dashboard_state.df
         df = df.copy()
+        df = _rebuild_indicator_dataframe(df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
+        dashboard_state.df = df
 
         buy_signals = buy_signals or []
         sell_signals = sell_signals or []
 
         config = {
-            'selected_plots': selected_plots or ['candlestick'],
+            'selected_plots': _collect_selected_plots(plot_values) or ['candlestick'],
             'show_candlesticks': 'candlesticks' in (chart_elements or []),
             'show_bollinger': 'bollinger' in (chart_elements or []),
             'show_sma': 'sma' in (chart_elements or []),
@@ -695,6 +881,7 @@ def register_callbacks(app):
             'signal_logic': signal_logic or 'or',
             'signal_window': signal_window or 0,
             'title': '',
+            'indicator_settings': indicator_settings or DEFAULT_INDICATOR_SETTINGS,
         }
 
         fig = create_chart(df, config, theme)
@@ -840,10 +1027,10 @@ def register_callbacks(app):
     @app.callback(
         Output('tv-volume-chart', 'children'),
         [Input('data-loaded-store', 'data'),
-         Input('plot-checklist', 'value'),
+         Input({'type': 'plot-toggle', 'indicator': ALL}, 'value'),
          Input('chart-library-toggle', 'value')]
     )
-    def update_tv_volume_chart(data_loaded, selected_plots, chart_library):
+    def update_tv_volume_chart(data_loaded, plot_values, chart_library):
         """Update the TradingView volume chart."""
         if chart_library != 'tradingview':
             raise PreventUpdate
@@ -853,6 +1040,7 @@ def register_callbacks(app):
         if not data_loaded or dashboard_state.df is None:
             return html.Div()
 
+        selected_plots = _collect_selected_plots(plot_values)
         if 'volume' not in (selected_plots or []):
             return html.Div()
 

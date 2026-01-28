@@ -1,89 +1,38 @@
 # SearchForAlpha Lab 📈
 
-A comprehensive Python-based algorithmic trading research platform for backtesting, signal generation, and strategy optimization. This project provides tools to analyze financial markets, test trading strategies using technical indicators, and visualize results through an interactive dashboard.
+A Python-based algorithmic trading research workspace for data fetching, signal generation, backtesting, and strategy optimization. It includes a Dash dashboard for interactive analysis and a modular signal system for technical indicators.
 
 ## 🎯 Features
 
-- **Multiple Technical Indicators**: Built-in support for popular indicators:
-  - Bollinger Bands (BB)
-  - Relative Strength Index (RSI)
-  - Moving Average Convergence Divergence (MACD)
-  - Commodity Channel Index (CCI)
-  - Simple Moving Average (SMA)
-  - Exponential Moving Average (EMA)
-  - Average Directional Index (ADX)
-  - Average True Range (ATR)
-  - On-Balance Volume (OBV)
-
-- **Flexible Backtesting Engine**:
-  - Multiple strategy modes (Trading, Accumulation, Rebalancing)
-  - Configurable position sizing strategies
-  - Signal strength weighting
-  - Trailing stop-loss support
-  - Volatility-based position sizing
-  - Minimum holding period constraints
-
-- **Strategy Optimization**:
-  - Grid search parameter optimization
-  - Walk-forward optimization
-  - Signal combination optimization
-  - Weight optimization for indicator combinations
-
-- **Interactive Dashboard**: 
-  - Built with Dash and Plotly
-  - Real-time chart visualization
-  - Candlestick charts with overlay indicators
-  - Data table view for detailed analysis
-  - Configurable buy/sell signal display
-
-- **Performance Metrics**:
-  - Total Return
-  - Sharpe Ratio
-  - Maximum Drawdown
-  - Win Rate
-  - Profit Factor
-  - Average Trade Duration
+- **Signal generation**: Bollinger Bands, RSI, MACD, CCI, SMA, EMA plus ADX/ATR/OBV indicator support.
+- **Backtesting engine**: Trading, Accumulation (DCA), and Rebalancing modes with position sizing and trailing stops.
+- **Optimization tools**: Parameter sweeps, signal-combination testing, and indicator weight optimization.
+- **Interactive dashboard**: Plotly charts, signal overlays, and data tables with configurable views.
+- **Performance metrics**: Total return, Sharpe, max drawdown, win rate, profit factor, and trade duration.
 
 ## 📁 Project Structure
 
 ```
 F2_SearchForAlpha_lab/
-├── Main.ipynb                    # Main entry point - launches dashboard
-├── params_optimisation.ipynb     # Parameter optimization notebook
-├── Signal_combination_Tester.ipynb # Signal testing notebook
-├── ML_tester.ipynb               # Machine learning experiments
-├── AEC_IDE.ipynb                 # Additional testing notebook
-│
-├── lib/                          # Core library modules
-│   ├── data_processing.py        # Data fetching & preprocessing
-│   ├── strategy.py               # Backtesting engine
-│   ├── visualization.py          # Matplotlib chart generation
-│   ├── utils.py                  # Utility functions
-│   ├── params_optimasation.py    # Parameter optimization logic
-│   ├── signal_combo_optimisation.py # Signal combination optimizer
-│   ├── weights_optimasation.py   # Weight optimization for signals
-│   │
-│   ├── dash/                     # Dashboard components
-│   │   ├── integrated_dashboard.py # Main Dash application
-│   │   ├── chart_utils.py        # Plotly chart utilities
-│   │   └── dash_config.py        # Dashboard configuration
-│   │
-│   ├── signals/                  # Trading signal generators
-│   │   ├── indicators.py         # Main indicator module
-│   │   ├── signals_BB.py         # Bollinger Bands strategies
-│   │   ├── signals_RSI.py        # RSI strategies
-│   │   ├── signals_MACD.py       # MACD strategies
-│   │   ├── signals_CCI.py        # CCI strategies
-│   │   ├── signals_SMA.py        # SMA strategies
-│   │   └── signals_EMA.py        # EMA strategies
-│   │
-│   ├── tests/                    # Unit tests
-│   └── WIP/                      # Work in progress modules
-│
-├── SS/                           # Strategy sandbox notebooks
-├── export/                       # Exported results
-├── results/                      # Backtest results
-└── Notes/                        # Project notes
+├── main.py                        # Entry point (launches Dash app)
+├── config/
+│   └── strategy_config.yaml        # Strategy and indicator defaults
+├── lib/
+│   ├── data_processing.py          # Data fetching + metrics
+│   ├── strategy.py                 # Backtesting engine
+│   ├── visualization.py            # Matplotlib chart utilities
+│   ├── utils.py                    # Input helpers and Excel export
+│   ├── params_optimization.py      # Parameter optimization
+│   ├── signal_combo_optimisation.py# Signal combination testing
+│   ├── weights_optimization.py     # Indicator weight optimization
+│   ├── config_loader.py            # YAML config loader
+│   ├── dash/                       # Dash UI and callbacks
+│   ├── signals/                    # Indicator strategies
+│   ├── tests/                      # Pytest suite
+│   └── WIP/                        # Experimental ideas
+├── export/                         # Exported Excel results
+├── results/                        # Parquet outputs
+└── Signal_Combination.pbix         # Power BI report
 ```
 
 ## 🚀 Getting Started
@@ -93,33 +42,26 @@ F2_SearchForAlpha_lab/
 - Python 3.8+
 - pip or conda package manager
 
-### Installation
+### Install dependencies
 
-1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/SearchForAlpha_lab.git
-cd SearchForAlpha_lab
+pip install numpy pandas yfinance plotly dash dash-bootstrap-components mplfinance ta matplotlib adjustText tqdm dask pyarrow
 ```
 
-2. Install required dependencies:
+## ▶️ Run the Dashboard
+
 ```bash
-pip install numpy pandas yfinance plotly dash dash-bootstrap-components mplfinance ta matplotlib adjustText tqdm
+python main.py
 ```
 
-### Quick Start
+By default `main.py` enables a development mode reload. To disable:
 
-1. Open `Main.ipynb` in Jupyter Notebook or VS Code
-2. Run all cells to launch the interactive dashboard
-3. The dashboard will open in your browser automatically
-
-```python
-from lib.dash.integrated_dashboard import run_dashboard
-
-if __name__ == "__main__":
-    run_dashboard()
+```bash
+set DASH_DEV=0
+python main.py
 ```
 
-## 📊 Usage
+## 📊 Programmatic Usage
 
 ### Running a Backtest
 
@@ -128,73 +70,52 @@ from lib.data_processing import fetch_data
 from lib.signals.indicators import add_indicators, generate_signals
 from lib.strategy import backtest
 
-# Fetch historical data
-df = fetch_data('SPY', '2020-01-01', '2024-01-01')
-
-# Add technical indicators
+df = fetch_data("SPY", "2020-01-01", "2024-01-01")
 df = add_indicators(df)
-
-# Generate trading signals
 df, all_signals = generate_signals(df)
 
-# Define buy/sell indicators
-buy_indicators = ['RSI_Oversold_Buy', 'BB_Lower_Buy']
-sell_indicators = ['RSI_Overbought_Sell', 'BB_Upper_Sell']
+buy_indicators = ["RSI_Oversold_Buy", "BB_Lower_Buy"]
+sell_indicators = ["RSI_Overbought_Sell", "BB_Upper_Sell"]
 
-# Run backtest
 results = backtest(
     df=df,
     initial_capital=100000,
-    position_sizing_strategy='percentage_of_portfolio',
-    position_sizing_params={'percentage': 0.1},
+    position_sizing_strategy="percentage_of_portfolio",
+    position_sizing_params={"percentage": 0.1},
     buy_indicators=buy_indicators,
     sell_indicators=sell_indicators,
-    trailing_stop_loss=0.05
+    trailing_stop_loss=0.05,
 )
 ```
 
 ### Customizing Signal Strategies
 
-Each signal module (e.g., `signals_RSI.py`) contains configurable parameters:
-
 ```python
 from lib.signals.signals_RSI import RSI_TradingStrategy
 
-# Create strategy with custom configuration
 rsi_strategy = RSI_TradingStrategy(config={
-    'rsi': {'window': 14},
-    'overbought_oversold': {
-        'upper_threshold': 70,
-        'lower_threshold': 30
-    }
+    "rsi": {"window": 14},
+    "overbought_oversold": {"upper_threshold": 70, "lower_threshold": 30},
 })
 
-# Apply to dataframe
 df = rsi_strategy.RSI_generate_signals(df)
 ```
 
-### Parameter Optimization
+### Signal Combination Optimization
 
 ```python
-from lib.params_optimasation import optimize_parameters
+from lib.signal_combo_optimisation import test_all_combinations
 
-param_ranges = {
-    'trailing_stop_loss': [0.03, 0.05, 0.07],
-    'position_scaling': [0.1, 0.25, 0.5],
-    'buy_threshold': [0.3, 0.5, 0.7]
-}
-
-best_params, best_return = optimize_parameters(
+results, buy_combo, sell_combo, best_value, output_file = test_all_combinations(
     df=df,
     initial_capital=100000,
-    param_ranges=param_ranges,
-    metric='total_return'
+    combination_type="Buy_&_Sell",
+    max_combinations=500,
+    max_signals=5,
 )
 ```
 
 ## 📈 Strategy Modes
-
-The backtester supports three different investment approaches:
 
 | Mode | Description | Sell Signals Required? |
 |------|-------------|------------------------|
@@ -202,75 +123,20 @@ The backtester supports three different investment approaches:
 | **Accumulation (DCA)** | Fixed dollar amount per buy signal, hold until end | No |
 | **Rebalancing** | Percentage-based partial buys/sells | No (optional) |
 
-### Trading Mode (Default)
-- Executes buy/sell cycles based on signals
-- Uses Kelly Criterion for position sizing
-- Trailing stop-loss enabled
-- Requires both buy and sell signals
-
-### Accumulation Mode
-- Ideal for long-term investors and DCA strategies
-- Invests a fixed dollar amount on each buy signal (e.g., $1000)
-- Ignores sell signals entirely - holds positions until end
-- No trailing stop-loss (long-term hold)
-- Only requires buy signals
-
-### Rebalancing Mode
-- Uses percentage of portfolio per trade
-- Allows partial buys (% of available cash)
-- Allows partial sells (% of current position)
-- Sell signals are optional
-
 ```python
-# Example: Accumulation mode backtest
 from lib.strategy import run_backtest
 
 results = run_backtest(
     df=df,
     initial_capital=100000,
-    buy_indicators=['RSI_Oversold_Buy'],
-    sell_indicators=[],  # No sell signals needed
-    strategy_mode='accumulation',
-    amount_per_buy=1000  # DCA $1000 per buy signal
+    buy_indicators=["RSI_Oversold_Buy"],
+    sell_indicators=[],
+    strategy_mode="accumulation",
+    amount_per_buy=1000,
 )
 ```
 
-## 📊 Dashboard Features
-
-The integrated dashboard provides:
-
-- **Chart Tab**: Interactive candlestick chart with:
-  - Overlay indicators (Bollinger Bands, SMAs, EMAs)
-  - Buy/Sell signal markers
-  - Volume subplot
-  - Technical indicator subplots (RSI, MACD, CCI)
-
-- **Data Table Tab**: Spreadsheet view of all data including:
-  - Price data (OHLCV)
-  - Indicator values
-  - Signal columns
-  - Portfolio metrics
-
-- **Controls Panel**:
-  - Strategy mode selector (Trading, Accumulation, Rebalancing)
-  - Toggle buy/sell signals
-  - Select which plots to display
-  - View backtest results summary
-
-## 🔧 Available Signals
-
-| Indicator | Buy Signals | Sell Signals |
-|-----------|-------------|--------------|
-| RSI | Oversold, Bullish Divergence | Overbought, Bearish Divergence |
-| Bollinger Bands | Lower Band Touch, Squeeze | Upper Band Touch |
-| MACD | Bullish Crossover, Histogram Rising | Bearish Crossover, Histogram Falling |
-| CCI | Oversold Reversal | Overbought Reversal |
-| SMA | Golden Cross, Price Above SMA | Death Cross, Price Below SMA |
-| EMA | Bullish Crossover | Bearish Crossover |
-
 ## 🧪 Testing
-
-Run the test suite:
 
 ```bash
 python -m pytest lib/tests/
@@ -278,18 +144,18 @@ python -m pytest lib/tests/
 
 ## 📝 Notes
 
-- Data is fetched from Yahoo Finance via the `yfinance` library
-- Supports S&P 500, NASDAQ-100 stocks, and major ETFs (SPY, QQQ, DIA, IWM, VTI)
-- Results can be exported to Excel for further analysis
+- Data is fetched from Yahoo Finance via `yfinance`.
+- Results are saved in `results/` (Parquet) and `export/` (Excel).
+- Default strategy settings live in `config/strategy_config.yaml`.
 
 ## ⚠️ Disclaimer
 
-This software is for educational and research purposes only. It is not intended as financial advice. Trading in financial markets involves substantial risk of loss. Past performance is not indicative of future results. Always do your own research and consider consulting with a qualified financial advisor before making investment decisions.
+This software is for educational and research purposes only and is not financial advice. Trading involves risk and past performance does not guarantee future results.
 
 ## 📄 License
 
-This project is provided as-is for educational purposes.
+Provided as-is for educational purposes.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
+Contributions are welcome. Please open issues or pull requests for fixes and improvements.

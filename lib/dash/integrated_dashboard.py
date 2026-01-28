@@ -20,6 +20,7 @@ from lib.dash.dash_config import (
     FONT_SIZES, FONT_MONO, BORDER_RADIUS,
     DEFAULT_SIGNAL_WINDOW,
     PLOT_OPTIONS, CHART_ELEMENT_OPTIONS, SIGNAL_OPTIONS,
+    DEFAULT_INDICATOR_SETTINGS, INDICATOR_SETTING_SCHEMA,
     get_theme
 )
 from lib.dash.state import dashboard_state  # noqa: F401 - used by callbacks
@@ -50,6 +51,8 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         }),
         dcc.Store(id='optimization-results-store', data=[]),
         dcc.Store(id='signals-unified-store', data=[]),
+        dcc.Store(id='indicator-settings-store', data=DEFAULT_INDICATOR_SETTINGS),
+        dcc.Store(id='active-indicator-store', data=None),
         dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
         dcc.Interval(id='autoload-interval', interval=1000, max_intervals=1),
         dcc.Interval(id='optimization-interval', interval=500, disabled=True, n_intervals=0),
@@ -212,14 +215,36 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                     html.Label("Indicators", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': 0, 'display': 'block'}),
                     html.Span("?", id='help-chart-indicators', style=help_icon_style),
                 ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '8px'}),
-                dcc.Checklist(
-                    id='plot-checklist',
-                    options=[{'label': html.Span(label, style={'marginLeft': '8px', 'fontSize': FONT_SIZES['sm']}), 'value': value}
-                            for label, value in PLOT_OPTIONS],
-                    value=['candlestick', 'volume'],
-                    style={'display': 'flex', 'flexDirection': 'column', 'gap': '4px'},
-                    inputStyle={'cursor': 'pointer'},
-                    labelStyle={'display': 'flex', 'alignItems': 'center', 'padding': '4px 0', 'cursor': 'pointer'}
+                html.Div(
+                    [
+                        html.Div([
+                            html.Div([
+                                dcc.Checklist(
+                                    id={'type': 'plot-toggle', 'indicator': value},
+                                    options=[{'label': html.Span(label, style={'fontSize': FONT_SIZES['sm']}), 'value': value}],
+                                    value=[value] if value in {'candlestick', 'volume'} else [],
+                                    style={'flex': 1},
+                                    inputStyle={'cursor': 'pointer'},
+                                    labelStyle={'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'cursor': 'pointer'}
+                                ),
+                                html.Button(
+                                    "\u2699",
+                                    id={'type': 'indicator-gear', 'indicator': value},
+                                    n_clicks=0,
+                                    n_clicks_timestamp=0,
+                                    type='button',
+                                    style=styles['indicator_gear_button'],
+                                    title=f"{label} settings",
+                                ) if value in INDICATOR_SETTING_SCHEMA else html.Span(style={'width': '22px'})
+                            ], style=styles['indicator_row']),
+                            html.Div(
+                                id={'type': 'indicator-settings-panel', 'indicator': value},
+                                style=styles['indicator_settings_panel']
+                            ) if value in INDICATOR_SETTING_SCHEMA else None
+                        ])
+                        for label, value in PLOT_OPTIONS
+                    ],
+                    style={'display': 'flex', 'flexDirection': 'column', 'gap': '4px'}
                 ),
             ], style={'marginBottom': '16px'}),
 
@@ -237,6 +262,56 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                     inputStyle={'cursor': 'pointer'},
                     labelStyle={'display': 'flex', 'alignItems': 'center', 'padding': '4px 0', 'cursor': 'pointer'}
                 ),
+                html.Div([
+                    html.Div([
+                        html.Span("Bollinger Bands", style={'fontSize': FONT_SIZES['sm']}),
+                        html.Button(
+                            "\u2699",
+                            id={'type': 'indicator-gear', 'indicator': 'bollinger'},
+                            n_clicks=0,
+                            n_clicks_timestamp=0,
+                            type='button',
+                            style=styles['indicator_gear_button'],
+                            title="Bollinger Bands settings",
+                        ),
+                    ], style=styles['indicator_row']),
+                    html.Div(
+                        id={'type': 'indicator-settings-panel', 'indicator': 'bollinger'},
+                        style=styles['indicator_settings_panel']
+                    ),
+                    html.Div([
+                        html.Span("SMA", style={'fontSize': FONT_SIZES['sm']}),
+                        html.Button(
+                            "\u2699",
+                            id={'type': 'indicator-gear', 'indicator': 'sma'},
+                            n_clicks=0,
+                            n_clicks_timestamp=0,
+                            type='button',
+                            style=styles['indicator_gear_button'],
+                            title="SMA settings",
+                        ),
+                    ], style=styles['indicator_row']),
+                    html.Div(
+                        id={'type': 'indicator-settings-panel', 'indicator': 'sma'},
+                        style=styles['indicator_settings_panel']
+                    ),
+                    html.Div([
+                        html.Span("EMA", style={'fontSize': FONT_SIZES['sm']}),
+                        html.Button(
+                            "\u2699",
+                            id={'type': 'indicator-gear', 'indicator': 'ema'},
+                            n_clicks=0,
+                            n_clicks_timestamp=0,
+                            type='button',
+                            style=styles['indicator_gear_button'],
+                            title="EMA settings",
+                        ),
+                    ], style=styles['indicator_row']),
+                    html.Div(
+                        id={'type': 'indicator-settings-panel', 'indicator': 'ema'},
+                        style=styles['indicator_settings_panel']
+                    ),
+                ], style={'display': 'flex', 'flexDirection': 'column', 'gap': '4px', 'marginTop': '6px'}),
             ], style={'marginBottom': '16px'}),
 
             html.Div([
@@ -263,6 +338,12 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
             dbc.Tooltip(
                 "Select price and indicator panels to plot.",
                 target='help-chart-indicators',
+                placement='right',
+                trigger='hover focus',
+            ),
+            dbc.Tooltip(
+                "Click the gear next to an indicator to edit its settings.",
+                target='help-indicator-settings',
                 placement='right',
                 trigger='hover focus',
             ),
