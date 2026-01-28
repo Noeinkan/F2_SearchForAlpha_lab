@@ -863,7 +863,7 @@ def create_backtest_results(
             'end_date': df.index[-1].strftime('%Y-%m-%d') if hasattr(df.index[-1], 'strftime') else str(df.index[-1]),
             'initial_capital': initial_capital,
             'final_portfolio_value': df['Portfolio_Value'].iloc[-1],
-            'total_return': (df['Cumulative_Returns'].iloc[-1] - 1) * 100,
+            'total_return': ((df['Portfolio_Value'].iloc[-1] / initial_capital) - 1) * 100,
             'market_return': ((df['Close'].iloc[-1] / df['Close'].iloc[0]) - 1) * 100,
             'buy_strategy': buy_strategy,
             'sell_strategy': sell_strategy,

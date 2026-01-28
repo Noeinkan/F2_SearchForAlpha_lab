@@ -181,7 +181,9 @@ def _add_candlestick(fig: go.Figure, df: pd.DataFrame, row: int, col: int, confi
             config.get('buy_signal_columns', []),
             config.get('sell_signal_columns', []),
             config.get('signal_logic', 'or'),
-            config.get('signal_window', 0)
+            config.get('signal_window', 0),
+            config.get('consecutive_signal_mode', 'scale_in'),
+            config.get('cooldown_bars', 0)
         )
 
 
@@ -343,7 +345,9 @@ def _add_signal_traces(
     buy_signal_columns: List[str],
     sell_signal_columns: List[str],
     signal_logic: str = 'or',
-    signal_window: int = 0
+    signal_window: int = 0,
+    consecutive_signal_mode: str = 'scale_in',
+    cooldown_bars: int = 0
 ) -> None:
     """Add combined buy/sell signal markers based on AND/OR logic."""
     signal_configs = {
@@ -352,14 +356,14 @@ def _add_signal_traces(
             'offset': -1,
             'label': 'B',
             'text_position': 'top center',
-            'color': theme['accent_green']
+            'color': theme['accent_blue']
         },
         'sell': {
             'symbol': 'triangle-down',
             'offset': 1,
             'label': 'S',
             'text_position': 'bottom center',
-            'color': theme['accent_red']
+            'color': theme['accent_purple']
         }
     }
 
@@ -380,6 +384,42 @@ def _add_signal_traces(
             # OR: any signal triggers
             return df[valid_cols].any(axis=1)
 
+    def _apply_consecutive_rules(signal_series: pd.Series, mode: str, cooldown: int) -> tuple[pd.Series, pd.Series]:
+        mode = (mode or 'scale_in').lower()
+        cooldown = max(0, int(cooldown or 0))
+        accepted = np.zeros(len(signal_series), dtype=bool)
+        rejected = np.zeros(len(signal_series), dtype=bool)
+        wait_reset = False
+        remaining_cooldown = 0
+
+        for idx, is_signal in enumerate(signal_series.values):
+            if mode == 'reset_cooldown' and not is_signal:
+                wait_reset = False
+
+            if mode == 'edge':
+                prev = signal_series.values[idx - 1] if idx > 0 else False
+                allow = bool(is_signal) and not bool(prev)
+            elif mode == 'cooldown':
+                allow = bool(is_signal) and remaining_cooldown == 0
+            elif mode == 'reset_cooldown':
+                allow = bool(is_signal) and remaining_cooldown == 0 and not wait_reset
+            else:
+                allow = bool(is_signal)
+
+            if is_signal and allow:
+                accepted[idx] = True
+                if mode in ('cooldown', 'reset_cooldown') and cooldown > 0:
+                    remaining_cooldown = cooldown
+                if mode == 'reset_cooldown':
+                    wait_reset = True
+            elif is_signal and not allow:
+                rejected[idx] = True
+
+            if remaining_cooldown > 0:
+                remaining_cooldown -= 1
+
+        return pd.Series(accepted, index=signal_series.index), pd.Series(rejected, index=signal_series.index)
+
     def _add_combined_markers(signal_type: str, columns: List[str]) -> None:
         if signal_type not in selected_signals:
             return
@@ -387,44 +427,78 @@ def _add_signal_traces(
             return
 
         cfg = signal_configs[signal_type]
-        combined = _combine_signals(columns, signal_logic, signal_window)
-        signals = df[combined]
+        accepted_col = f"{signal_type.capitalize()}_Trigger_Accepted"
+        rejected_col = f"{signal_type.capitalize()}_Trigger_Rejected"
+        has_acceptance = accepted_col in df.columns and rejected_col in df.columns
+        if has_acceptance:
+            accepted = df[df[accepted_col]]
+            rejected = df[df[rejected_col]]
+        else:
+            combined = _combine_signals(columns, signal_logic, signal_window)
+            accepted_mask, rejected_mask = _apply_consecutive_rules(
+                combined, consecutive_signal_mode, cooldown_bars
+            )
+            accepted = df[accepted_mask]
+            rejected = df[rejected_mask]
 
-        if signals.empty:
+        if accepted.empty and rejected.empty:
             return
 
-        offset = signals['Close'] * SIGNAL_OFFSET_FACTOR * cfg['offset']
-
-        # Create label showing the logic mode
+        signal_names = ", ".join([c.replace('_', ' ') for c in columns if c in df.columns])
         logic_label = ""
         if len(columns) > 1:
             if signal_logic == 'and' and signal_window and signal_window > 0:
                 logic_label = f"(AND w={signal_window})"
             else:
                 logic_label = f"({signal_logic.upper()})"
-        signal_names = ", ".join([c.replace('_', ' ') for c in columns if c in df.columns])
         name = f"{signal_type.capitalize()} {logic_label}: {signal_names}"
 
-        fig.add_trace(go.Scatter(
-            x=signals.index,
-            y=signals['Close'] + offset,
-            mode='markers+text',
-            text=[cfg['label']] * len(signals),
-            textposition=cfg['text_position'],
-            textfont=dict(color=theme['text_primary'], size=9, family=FONT_FAMILY),
-            marker=dict(
-                symbol=cfg['symbol'],
-                size=14,
-                color=cfg['color'],
-                opacity=0.95,
-                line=dict(color=theme['bg_primary'], width=1.5)
-            ),
-            name=name,
-            hovertemplate=(
-                f"{signal_type.capitalize()} {logic_label or f'({signal_logic.upper()})'}<br>{signal_names}"
-                "<br>%{x|%Y-%m-%d}<br>Price: %{y:.2f}<extra></extra>"
-            )
-        ), row=row, col=col)
+        if not accepted.empty:
+            offset = accepted['Close'] * SIGNAL_OFFSET_FACTOR * cfg['offset']
+            fig.add_trace(go.Scatter(
+                x=accepted.index,
+                y=accepted['Close'] + offset,
+                mode='markers+text',
+                text=[cfg['label']] * len(accepted),
+                textposition=cfg['text_position'],
+                textfont=dict(color=theme['text_primary'], size=9, family=FONT_FAMILY),
+                marker=dict(
+                    symbol=cfg['symbol'],
+                    size=14,
+                    color=cfg['color'],
+                    opacity=0.95,
+                    line=dict(color=theme['bg_primary'], width=1.5)
+                ),
+                name=name,
+                hovertemplate=(
+                    f"{signal_type.capitalize()} {logic_label or f'({signal_logic.upper()})'}<br>{signal_names}"
+                    "<br>%{x|%Y-%m-%d}<br>Price: %{y:.2f}<extra></extra>"
+                )
+            ), row=row, col=col)
+
+        if not rejected.empty:
+            offset = rejected['Close'] * SIGNAL_OFFSET_FACTOR * cfg['offset']
+            muted_color = theme['text_tertiary']
+            fig.add_trace(go.Scatter(
+                x=rejected.index,
+                y=rejected['Close'] + offset,
+                mode='markers+text',
+                text=[cfg['label']] * len(rejected),
+                textposition=cfg['text_position'],
+                textfont=dict(color=muted_color, size=9, family=FONT_FAMILY),
+                marker=dict(
+                    symbol=cfg['symbol'],
+                    size=7,
+                    color=muted_color,
+                    opacity=0.35,
+                    line=dict(color=theme['bg_primary'], width=1.0)
+                ),
+                name=f"{name} (filtered)",
+                hovertemplate=(
+                    f"{signal_type.capitalize()} filtered {logic_label or f'({signal_logic.upper()})'}<br>{signal_names}"
+                    "<br>%{x|%Y-%m-%d}<br>Price: %{y:.2f}<extra></extra>"
+                )
+            ), row=row, col=col)
 
     _add_combined_markers('buy', buy_signal_columns or [])
     _add_combined_markers('sell', sell_signal_columns or [])

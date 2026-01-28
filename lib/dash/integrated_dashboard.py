@@ -175,6 +175,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                         id='end-date',
                         date=date.today(),
                         display_format='YYYY-MM-DD',
+                        className='date-picker-end',
                         style={'width': '100%'}
                     ),
                 ], style={'flex': 1}),
@@ -428,6 +429,11 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
                                 }
                             )
                         ]
+                    ),
+                    html.Div(
+                        id='signal-count-bar',
+                        children=html.Span("Signals: --", style={'color': theme['text_secondary']}),
+                        style=styles['signal_count_bar']
                     )
                 ],
                 style={
@@ -831,6 +837,89 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                             placement='right',
                             trigger='hover focus',
                         ),
+                        html.Div(id='consecutive-signal-options', children=[
+                            html.Div([
+                                html.Span("Consecutive Signals", style={
+                                    'fontSize': FONT_SIZES['sm'],
+                                    'fontWeight': '600',
+                                    'color': theme['accent_purple'],
+                                }),
+                            ], style={'marginBottom': '6px'}),
+                            dcc.Dropdown(
+                                id='consecutive-signal-mode',
+                                options=[
+                                    {'label': 'Scale-in (default behavior)', 'value': 'scale_in'},
+                                    {'label': 'Edge trigger (0→1 only)', 'value': 'edge'},
+                                    {'label': 'Cooldown between triggers', 'value': 'cooldown'},
+                                    {'label': 'Reset + Cooldown (stricter)', 'value': 'reset_cooldown'},
+                                ],
+                                value='scale_in',
+                                clearable=False,
+                                style={'fontSize': FONT_SIZES['sm']},
+                                className='dark-dropdown',
+                            ),
+                            html.Div(
+                                id='consecutive-signal-help',
+                                children="Controls repeated triggers for BUY and SELL signals.",
+                                style={
+                                    'fontSize': '10px',
+                                    'color': theme['text_tertiary'],
+                                    'marginTop': '6px'
+                                }
+                            ),
+                            html.Div(id='signal-cooldown-container', children=[
+                                html.Div([
+                                    html.Span("Cooldown", style={
+                                        'fontSize': FONT_SIZES['xs'],
+                                        'color': theme['text_secondary'],
+                                    }),
+                                    html.Span(" bars", style={
+                                        'fontSize': FONT_SIZES['xs'],
+                                        'color': theme['text_primary'],
+                                    }),
+                                ], style={'marginTop': '8px', 'marginBottom': '4px'}),
+                                dcc.Input(
+                                    id='signal-cooldown-bars',
+                                    type='number',
+                                    value=5,
+                                    min=0,
+                                    step=1,
+                                    placeholder='bars between triggers',
+                                    style={
+                                        **styles['input'],
+                                        'width': '100%',
+                                        'fontFamily': FONT_MONO,
+                                        'padding': '10px 12px',
+                                        'fontSize': FONT_SIZES['base'],
+                                        'borderColor': theme['accent_purple'],
+                                    }
+                                ),
+                                html.Div("Applies to BUY and SELL signals.", style={
+                                    'fontSize': '10px',
+                                    'color': theme['text_tertiary'],
+                                    'marginTop': '4px'
+                                })
+                            ], style={'display': 'block'})
+                        ], style={
+                            'marginBottom': '12px',
+                            'display': 'block',
+                            'padding': '10px',
+                            'backgroundColor': f'{theme["accent_purple"]}10',
+                            'borderRadius': BORDER_RADIUS['md'],
+                            'border': f'1px solid {theme["accent_purple"]}40',
+                        }),
+                        dbc.Tooltip(
+                            "Edge = only on 0→1. Cooldown = wait N bars. Reset+Cooldown = wait for reset plus N bars.",
+                            target='consecutive-signal-mode',
+                            placement='right',
+                            trigger='hover focus',
+                        ),
+                        dbc.Tooltip(
+                            "Best practice defaults: edge=0, cooldown=5, reset+cooldown=5.",
+                            target='signal-cooldown-bars',
+                            placement='right',
+                            trigger='hover focus',
+                        ),
                         html.Div(id='take-profit-options', children=[
                             html.Div([
                                 html.Span("Take Profit", style={
@@ -1030,15 +1119,17 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                     'color': theme['text_tertiary'],
                                     'marginTop': '4px'
                                 })
-                            ], style={'marginBottom': '10px'}),
+                            ], id='signal-window-container', style={'marginBottom': '10px'}),
                             html.Div([
                                 html.Div([
+                                    html.Div("Filters", className='signals-filter-label'),
                                     dcc.Input(
                                         id='signals-search',
                                         type='text',
                                         placeholder='Search signals...',
                                         style=styles['input'],
                                     ),
+                                    html.Div("Categories", className='signals-filter-label'),
                                     dcc.Checklist(
                                         id='signals-category-filter',
                                         options=[{'label': cat, 'value': cat} for cat in signal_categories],
@@ -1076,6 +1167,104 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                         )
                     ], className='accordion-title-row'),
                     item_id='backtest-signals',
+                ),
+                dbc.AccordionItem(
+                    [
+                        html.Div([
+                            html.Div([
+                                html.Span("TRANSACTION COSTS", style=styles['card_header']),
+                                html.Span("?", id='help-transaction-costs', style=help_icon_style),
+                            ], style={'display': 'flex', 'alignItems': 'center'}),
+                            html.Div([
+                                html.Label("FX Fee (%)", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_secondary'],
+                                    'marginBottom': '4px',
+                                    'display': 'block'
+                                }),
+                                dcc.Input(
+                                    id='fx-fee-pct',
+                                    type='number',
+                                    value=0.15,
+                                    min=0,
+                                    step=0.01,
+                                    placeholder='0.15',
+                                    style={
+                                        **styles['input'],
+                                        'width': '100%',
+                                        'fontFamily': FONT_MONO,
+                                        'padding': '10px 12px',
+                                        'fontSize': FONT_SIZES['base'],
+                                    }
+                                ),
+                            ], style={'marginBottom': '10px'}),
+                            html.Div([
+                                html.Label("Slippage (%)", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_secondary'],
+                                    'marginBottom': '4px',
+                                    'display': 'block'
+                                }),
+                                dcc.Input(
+                                    id='slippage-pct',
+                                    type='number',
+                                    value=0.05,
+                                    min=0,
+                                    step=0.01,
+                                    placeholder='0.05',
+                                    style={
+                                        **styles['input'],
+                                        'width': '100%',
+                                        'fontFamily': FONT_MONO,
+                                        'padding': '10px 12px',
+                                        'fontSize': FONT_SIZES['base'],
+                                    }
+                                ),
+                            ], style={'marginBottom': '10px'}),
+                            html.Div([
+                                html.Label("Commission (%)", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_secondary'],
+                                    'marginBottom': '4px',
+                                    'display': 'block'
+                                }),
+                                dcc.Input(
+                                    id='commission-pct',
+                                    type='number',
+                                    value=0.0,
+                                    min=0,
+                                    step=0.01,
+                                    placeholder='0.00',
+                                    style={
+                                        **styles['input'],
+                                        'width': '100%',
+                                        'fontFamily': FONT_MONO,
+                                        'padding': '10px 12px',
+                                        'fontSize': FONT_SIZES['base'],
+                                    }
+                                ),
+                            ], style={'marginBottom': '4px'}),
+                            html.Div("Trading 212 UK: 0% commission, 0.15% FX fee.", style={
+                                'fontSize': '10px',
+                                'color': theme['text_tertiary'],
+                                'marginTop': '2px'
+                            }),
+                            dbc.Tooltip(
+                                "Applied on every trade. FX fee assumes cross-currency.",
+                                target='help-transaction-costs',
+                                placement='left',
+                                trigger='hover focus',
+                            ),
+                        ], style=styles['card'])
+                    ],
+                    title=html.Div([
+                        html.Span("Transaction Costs"),
+                        html.Span(
+                            id='summary-transaction-costs',
+                            className='accordion-title-summary'
+                        )
+                    ], className='accordion-title-row'),
+                    item_id='backtest-costs',
                 ),
             ],
             className='compact-accordion',

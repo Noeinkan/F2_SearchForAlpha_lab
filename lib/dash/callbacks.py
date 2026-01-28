@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Tuple, List, Any, Dict
 
 import pandas as pd
+import numpy as np
 from dash import html, dash_table, callback_context, dcc, no_update
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
@@ -237,6 +238,102 @@ def _axis_layout_key(axis_id: str) -> str:
     if axis_id == 'y':
         return 'yaxis'
     return f"yaxis{axis_id[1:]}"
+
+
+def _combine_signals_for_counts(df: pd.DataFrame, columns: List[str], logic: str, window: int) -> pd.Series:
+    """Combine signal columns using the same logic as the chart markers."""
+    if not columns:
+        return pd.Series(False, index=df.index)
+    valid_cols = [c for c in columns if c in df.columns]
+    if not valid_cols:
+        return pd.Series(False, index=df.index)
+    if logic == 'and':
+        if window and window > 0:
+            windowed = df[valid_cols].rolling(window=window + 1, min_periods=1).max()
+            return (windowed > 0).all(axis=1)
+        return df[valid_cols].all(axis=1)
+    return df[valid_cols].any(axis=1)
+
+
+def _apply_consecutive_rules_for_counts(
+    signal_series: pd.Series,
+    mode: str,
+    cooldown: int
+) -> tuple[pd.Series, pd.Series]:
+    """Return accepted/rejected masks for consecutive signal rules."""
+    mode = (mode or 'scale_in').lower()
+    cooldown = max(0, int(cooldown or 0))
+    accepted = np.zeros(len(signal_series), dtype=bool)
+    rejected = np.zeros(len(signal_series), dtype=bool)
+    wait_reset = False
+    remaining_cooldown = 0
+
+    for idx, is_signal in enumerate(signal_series.values):
+        if mode == 'reset_cooldown' and not is_signal:
+            wait_reset = False
+
+        if mode == 'edge':
+            prev = signal_series.values[idx - 1] if idx > 0 else False
+            allow = bool(is_signal) and not bool(prev)
+        elif mode == 'cooldown':
+            allow = bool(is_signal) and remaining_cooldown == 0
+        elif mode == 'reset_cooldown':
+            allow = bool(is_signal) and remaining_cooldown == 0 and not wait_reset
+        else:
+            allow = bool(is_signal)
+
+        if is_signal and allow:
+            accepted[idx] = True
+            if mode in ('cooldown', 'reset_cooldown') and cooldown > 0:
+                remaining_cooldown = cooldown
+            if mode == 'reset_cooldown':
+                wait_reset = True
+        elif is_signal and not allow:
+            rejected[idx] = True
+
+        if remaining_cooldown > 0:
+            remaining_cooldown -= 1
+
+    return pd.Series(accepted, index=signal_series.index), pd.Series(rejected, index=signal_series.index)
+
+
+def _compute_trigger_counts(
+    df: pd.DataFrame,
+    selected_signals: List[str],
+    buy_columns: List[str],
+    sell_columns: List[str],
+    signal_logic: str,
+    signal_window: int,
+    consecutive_signal_mode: str,
+    cooldown_bars: int
+) -> dict:
+    """Compute total accepted/rejected trigger counts for buy/sell."""
+    totals = {'accepted': 0, 'rejected': 0}
+    if df is None or df.empty:
+        return totals
+
+    selected_set = set(selected_signals or [])
+    for signal_type, columns in (('buy', buy_columns), ('sell', sell_columns)):
+        if signal_type not in selected_set:
+            continue
+
+        accepted_col = f"{signal_type.capitalize()}_Trigger_Accepted"
+        rejected_col = f"{signal_type.capitalize()}_Trigger_Rejected"
+        if accepted_col in df.columns and rejected_col in df.columns:
+            accepted = int(df[accepted_col].fillna(False).astype(bool).sum())
+            rejected = int(df[rejected_col].fillna(False).astype(bool).sum())
+        else:
+            combined = _combine_signals_for_counts(df, columns, signal_logic, signal_window)
+            accepted_mask, rejected_mask = _apply_consecutive_rules_for_counts(
+                combined, consecutive_signal_mode, cooldown_bars
+            )
+            accepted = int(accepted_mask.sum())
+            rejected = int(rejected_mask.sum())
+
+        totals['accepted'] += accepted
+        totals['rejected'] += rejected
+
+    return totals
 
 
 def _compute_y_ranges_by_axis(fig: Dict[str, Any],
@@ -513,6 +610,39 @@ def register_callbacks(app):
                 holding_style, trailing_style, scaling_style, take_profit_style)
 
     @app.callback(
+        [Output('signal-cooldown-bars', 'value'),
+         Output('signal-cooldown-container', 'style'),
+         Output('consecutive-signal-help', 'children')],
+        [Input('consecutive-signal-mode', 'value')],
+        [State('signal-cooldown-bars', 'value')]
+    )
+    def update_consecutive_signal_settings(mode, current_value):
+        """Set defaults and visibility for consecutive signal controls."""
+        mode = (mode or 'scale_in').lower()
+        cooldown_style = {'display': 'none'}
+        help_text = "Controls repeated triggers for BUY and SELL signals."
+        value = current_value
+
+        if mode == 'edge':
+            help_text = "Edge: triggers only when signals flip 0→1 (no re-entry spam)."
+        elif mode == 'cooldown':
+            cooldown_style = {'display': 'block'}
+            help_text = "Cooldown: wait N bars after a trigger before allowing another."
+            if not value or value <= 0:
+                value = 5
+        elif mode == 'reset_cooldown':
+            cooldown_style = {'display': 'block'}
+            help_text = "Reset+Cooldown: wait for signal reset plus N bars."
+            if not value or value <= 0:
+                value = 5
+        else:
+            help_text = "Scale-in: repeats add to position (default behavior)."
+            if value is None:
+                value = 0
+
+        return value, cooldown_style, help_text
+
+    @app.callback(
         [Output('min-holding-period', 'value'),
          Output('trailing-stop-pct', 'value'),
          Output('position-scaling-pct', 'value'),
@@ -631,6 +761,18 @@ def register_callbacks(app):
             ]
 
         return [header, *rows]
+
+    @app.callback(
+        [Output('signal-window', 'disabled'),
+         Output('signal-window-container', 'style')],
+        [Input('signal-logic-mode', 'value')]
+    )
+    def toggle_signal_window(signal_logic):
+        """Disable AND window control unless AND logic is selected."""
+        base_style = {'marginBottom': '10px'}
+        if signal_logic != 'and':
+            return True, {**base_style, 'opacity': 0.55}
+        return False, {**base_style, 'opacity': 1}
 
     @app.callback(
         [Output('buy-signals', 'value'),
@@ -901,6 +1043,8 @@ def register_callbacks(app):
          Input('chart-library-toggle', 'value'),
          Input('buy-signals', 'value'),
          Input('sell-signals', 'value'),
+         Input('consecutive-signal-mode', 'value'),
+         Input('signal-cooldown-bars', 'value'),
          Input('signal-logic-mode', 'value'),
          Input('signal-window', 'value'),
          Input('indicator-settings-store', 'data')],
@@ -908,7 +1052,8 @@ def register_callbacks(app):
          State('layout-store', 'data')]
     )
     def update_plotly_chart(data_loaded, plot_values, chart_elements, selected_signals, chart_library,
-                            buy_signals, sell_signals, signal_logic, signal_window, indicator_settings, ticker, layout_state):
+                            buy_signals, sell_signals, consecutive_signal_mode, signal_cooldown_bars,
+                            signal_logic, signal_window, indicator_settings, ticker, layout_state):
         """Update the Plotly financial chart."""
         if chart_library == 'tradingview':
             raise PreventUpdate
@@ -937,6 +1082,8 @@ def register_callbacks(app):
             'selected_signals': selected_signals or [],
             'buy_signal_columns': buy_signals,
             'sell_signal_columns': sell_signals,
+            'consecutive_signal_mode': consecutive_signal_mode or 'scale_in',
+            'cooldown_bars': signal_cooldown_bars or 0,
             'signal_logic': signal_logic or 'or',
             'signal_window': signal_window or 0,
             'title': '',
@@ -960,6 +1107,78 @@ def register_callbacks(app):
             fig.update_xaxes(autorange=True)
 
         return fig
+
+    @app.callback(
+        Output('signal-count-bar', 'children'),
+        [Input('data-loaded-store', 'data'),
+         Input('chart-elements-checklist', 'value'),
+         Input('signal-checklist', 'value'),
+         Input('buy-signals', 'value'),
+         Input('sell-signals', 'value'),
+         Input('consecutive-signal-mode', 'value'),
+         Input('signal-cooldown-bars', 'value'),
+         Input('signal-logic-mode', 'value'),
+         Input('signal-window', 'value'),
+         Input('indicator-settings-store', 'data')]
+    )
+    def update_signal_count_bar(
+        data_loaded,
+        chart_elements,
+        selected_signals,
+        buy_signals,
+        sell_signals,
+        consecutive_signal_mode,
+        signal_cooldown_bars,
+        signal_logic,
+        signal_window,
+        indicator_settings
+    ):
+        theme = get_theme()
+        if not data_loaded or dashboard_state.df is None:
+            return html.Span("Signals: --", style={'color': theme['text_secondary']})
+
+        df = dashboard_state.df.copy()
+        df = _rebuild_indicator_dataframe(df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
+
+        counts = _compute_trigger_counts(
+            df,
+            selected_signals or [],
+            buy_signals or [],
+            sell_signals or [],
+            signal_logic or 'or',
+            signal_window or 0,
+            consecutive_signal_mode or 'scale_in',
+            signal_cooldown_bars or 0
+        )
+
+        label_style = {
+            'fontSize': FONT_SIZES['xs'],
+            'color': theme['text_secondary'],
+            'textTransform': 'uppercase',
+            'letterSpacing': '0.4px',
+        }
+        value_style = {
+            'fontSize': FONT_SIZES['sm'],
+            'fontWeight': '600',
+            'fontFamily': FONT_MONO,
+        }
+        muted_value_style = {
+            **value_style,
+            'color': theme['text_tertiary'],
+        }
+        active_value_style = {
+            **value_style,
+            'color': theme['accent_blue'],
+        }
+        divider_style = {'color': theme['border_secondary'], 'opacity': 0.7}
+
+        return html.Div([
+            html.Span("Triggered", style=label_style),
+            html.Span(f"{counts['accepted']}", style=active_value_style),
+            html.Span("|", style=divider_style),
+            html.Span("Rejected", style=label_style),
+            html.Span(f"{counts['rejected']}", style=muted_value_style),
+        ], style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'})
 
     @app.callback(
         Output('download-csv', 'data'),
@@ -1094,11 +1313,12 @@ def register_callbacks(app):
          Input('signal-checklist', 'value'),
          Input('chart-library-toggle', 'value'),
          Input('buy-signals', 'value'),
-         Input('sell-signals', 'value')],
+         Input('sell-signals', 'value'),
+         Input('indicator-settings-store', 'data')],
         [State('ticker-dropdown', 'value')]
     )
     def update_tv_main_chart(data_loaded, chart_elements, selected_signals, chart_library,
-                             buy_signals, sell_signals, ticker):
+                             buy_signals, sell_signals, indicator_settings, ticker):
         """Update the TradingView main chart."""
         if chart_library != 'tradingview':
             raise PreventUpdate
@@ -1110,6 +1330,8 @@ def register_callbacks(app):
 
         df = dashboard_state.df
         df = df.copy()
+        df = _rebuild_indicator_dataframe(df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
+        dashboard_state.df = df
 
         buy_signals = buy_signals or []
         sell_signals = sell_signals or []
@@ -1188,13 +1410,19 @@ def register_callbacks(app):
          State('trailing-stop-pct', 'value'),
          State('position-scaling-pct', 'value'),
          State('take-profit-pct', 'value'),
+         State('consecutive-signal-mode', 'value'),
+         State('signal-cooldown-bars', 'value'),
          State('signal-logic-mode', 'value'),
-         State('signal-window', 'value')]
+         State('signal-window', 'value'),
+         State('fx-fee-pct', 'value'),
+         State('slippage-pct', 'value'),
+         State('commission-pct', 'value')]
     )
     def run_backtest_callback(n_clicks, ticker, initial_capital, buy_signals, sell_signals,
                                strategy_mode, amount_per_buy, position_size_pct,
                                min_holding_period, trailing_stop_pct, position_scaling_pct,
-                               take_profit_pct, signal_logic, signal_window):
+                               take_profit_pct, consecutive_signal_mode, signal_cooldown_bars,
+                               signal_logic, signal_window, fx_fee_pct, slippage_pct, commission_pct):
         """Run backtest and display results."""
         if not n_clicks:
             raise PreventUpdate
@@ -1219,6 +1447,9 @@ def register_callbacks(app):
         trailing_stop_loss = max(0.0, float(trailing_stop_pct or 0)) / 100.0
         position_scaling = max(0.0, float(position_scaling_pct or 0)) / 100.0
         take_profit = max(0.0, float(take_profit_pct or 0)) / 100.0
+        fx_fee_pct = max(0.0, float(fx_fee_pct or 0)) / 100.0
+        slippage_pct = max(0.0, float(slippage_pct or 0)) / 100.0
+        commission_per_trade = max(0.0, float(commission_pct or 0)) / 100.0
 
         try:
             results = run_backtest(
@@ -1230,11 +1461,44 @@ def register_callbacks(app):
                 trailing_stop_loss=trailing_stop_loss,
                 position_scaling=position_scaling,
                 take_profit=take_profit,
+                consecutive_signal_mode=consecutive_signal_mode,
+                cooldown_bars=signal_cooldown_bars,
                 signal_logic=signal_logic or 'or',
-                signal_window=signal_window or 0
+                signal_window=signal_window or 0,
+                commission_per_trade=commission_per_trade,
+                slippage_pct=slippage_pct,
+                fx_fee_pct=fx_fee_pct
             )
             backtest_results = create_backtest_results(results, ticker, initial_capital, buy_signals, sell_signals)
             dashboard_state.backtest_results = backtest_results
+
+            baseline_results = None
+            if fx_fee_pct > 0 or slippage_pct > 0 or commission_per_trade > 0:
+                baseline_results = run_backtest(
+                    df, initial_capital, buy_signals, sell_signals,
+                    strategy_mode=strategy_mode,
+                    amount_per_buy=amount_per_buy,
+                    position_size_pct=position_size_pct,
+                    min_holding_period=min_holding_period,
+                    trailing_stop_loss=trailing_stop_loss,
+                    position_scaling=position_scaling,
+                    take_profit=take_profit,
+                    consecutive_signal_mode=consecutive_signal_mode,
+                    cooldown_bars=signal_cooldown_bars,
+                    signal_logic=signal_logic or 'or',
+                    signal_window=signal_window or 0,
+                    commission_per_trade=0.0,
+                    slippage_pct=0.0,
+                    fx_fee_pct=0.0
+                )
+
+            baseline_metrics = (
+                create_backtest_results(baseline_results, ticker, initial_capital, buy_signals, sell_signals)
+                if baseline_results is not None
+                else backtest_results
+            )
+            cost_drag_pct = backtest_results['total_return'] - baseline_metrics['total_return']
+            cost_drag_value = backtest_results['final_portfolio_value'] - baseline_metrics['final_portfolio_value']
 
             # Calculate metrics
             total_return = backtest_results['total_return']
@@ -1249,6 +1513,29 @@ def register_callbacks(app):
 
             return html.Div([
                 build_alert("Backtest completed successfully!", "success", dismissable=False, theme=theme),
+                html.Div([
+                    build_metric_card(
+                        "Return Before Costs",
+                        f"{baseline_metrics['total_return']:+.2f}%",
+                        baseline_metrics['total_return'] >= 0,
+                        theme,
+                        info_text="Backtest return with 0% fees and 0% slippage."
+                    ),
+                    build_metric_card(
+                        "Cost Drag",
+                        f"{cost_drag_pct:+.2f}%",
+                        cost_drag_pct >= 0,
+                        theme,
+                        info_text="Difference between net return and zero-cost return."
+                    ),
+                    build_metric_card(
+                        "Cost Impact",
+                        f"${cost_drag_value:,.2f}",
+                        cost_drag_value >= 0,
+                        theme,
+                        info_text="Final portfolio impact of fees and slippage."
+                    ),
+                ], style={'marginTop': '10px'}),
                 html.Div([
                     build_metric_card(
                         "Portfolio Value",

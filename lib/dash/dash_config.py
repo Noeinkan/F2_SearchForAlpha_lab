@@ -15,11 +15,13 @@ THEMES = {
         'bg_secondary': '#161b22',     # Slightly lighter panels
         'bg_tertiary': '#21262d',      # Cards and elevated surfaces
         'bg_hover': '#30363d',         # Hover states
+        'bg_panel': '#1b222c',         # Left/right panel surfaces
+        'bg_panel_header': '#202836',  # Panel headers
 
         # Text colors
         'text_primary': '#e6edf3',     # Primary text
-        'text_secondary': '#8b949e',   # Secondary/muted text
-        'text_tertiary': '#6e7681',    # Disabled/placeholder text
+        'text_secondary': '#c9d1d9',   # Secondary/muted text
+        'text_tertiary': '#adbac7',    # Disabled/placeholder text
 
         # Accent colors
         'accent_blue': '#58a6ff',      # Primary actions
@@ -51,6 +53,8 @@ THEMES = {
         'bg_secondary': '#f6f8fa',
         'bg_tertiary': '#eaeef2',
         'bg_hover': '#d0d7de',
+        'bg_panel': '#f1f4f7',
+        'bg_panel_header': '#e6ebf0',
 
         # Text colors
         'text_primary': '#1f2328',
@@ -247,8 +251,8 @@ DEFAULT_INDICATOR_SETTINGS = {
     },
     'cci': {
         'period': 20,
-        'ceiling': 100,
-        'floor': -100
+        'ceiling': 150,
+        'floor': -150
     },
     'macd': {
         'fast': 12,

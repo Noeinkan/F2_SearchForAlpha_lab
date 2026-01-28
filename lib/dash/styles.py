@@ -72,15 +72,21 @@ def get_styles(theme: dict) -> dict:
         'sidebar': {
             'width': '280px',
             'minWidth': '280px',
-            'backgroundColor': theme['bg_secondary'],
+            'backgroundColor': theme['bg_panel'],
             'borderRight': f'1px solid {theme["border_primary"]}',
             'display': 'flex',
             'flexDirection': 'column',
-            'overflow': 'hidden',
+            'gap': '10px',
+            'padding': '10px',
+            'position': 'relative',
+            'zIndex': 3,
+            'overflow': 'visible',
         },
         'sidebar_section': {
-            'padding': '16px',
-            'borderBottom': f'1px solid {theme["border_secondary"]}',
+            'backgroundColor': theme['bg_tertiary'],
+            'border': f'1px solid {theme["border_primary"]}',
+            'borderRadius': BORDER_RADIUS['md'],
+            'padding': '12px',
         },
         'indicator_label_row': {
             'display': 'flex',
@@ -128,7 +134,7 @@ def get_styles(theme: dict) -> dict:
         },
         'indicator_setting_label': {
             'fontSize': FONT_SIZES['xs'],
-            'color': theme['text_secondary'],
+            'color': theme['text_primary'],
         },
         'indicator_setting_input': {
             'backgroundColor': theme['bg_tertiary'],
@@ -141,16 +147,15 @@ def get_styles(theme: dict) -> dict:
         },
         'indicator_settings_empty': {
             'fontSize': FONT_SIZES['xs'],
-            'color': theme['text_tertiary'],
+            'color': theme['text_primary'],
             'padding': '6px 0',
         },
         'sidebar_title': {
-            'fontSize': FONT_SIZES['xs'],
+            'fontSize': FONT_SIZES['sm'],
             'fontWeight': '600',
-            'color': theme['text_secondary'],
-            'textTransform': 'uppercase',
-            'letterSpacing': '0.5px',
-            'marginBottom': '6px',
+            'color': theme['text_primary'],
+            'letterSpacing': '0.2px',
+            'marginBottom': '8px',
         },
         'chart_container': {
             'flex': 1,
@@ -158,6 +163,8 @@ def get_styles(theme: dict) -> dict:
             'flexDirection': 'column',
             'overflow': 'hidden',
             'backgroundColor': theme['bg_primary'],
+            'position': 'relative',
+            'zIndex': 1,
         },
         'chart_toolbar': {
             'display': 'flex',
@@ -174,18 +181,38 @@ def get_styles(theme: dict) -> dict:
             'padding': '0',
             'overflow': 'hidden',
         },
+        'signal_count_bar': {
+            'position': 'absolute',
+            'top': '44px',
+            'left': '16px',
+            'display': 'flex',
+            'alignItems': 'center',
+            'gap': '8px',
+            'padding': '6px 10px',
+            'backgroundColor': theme['bg_tertiary'],
+            'border': f'1px solid {theme["border_primary"]}',
+            'borderRadius': BORDER_RADIUS['md'],
+            'fontSize': FONT_SIZES['xs'],
+            'color': theme['text_primary'],
+            'boxShadow': '0 6px 14px rgba(0,0,0,0.25)',
+            'zIndex': 4,
+            'pointerEvents': 'none',
+        },
         'right_panel': {
-            'width': '320px',
-            'minWidth': '320px',
-            'backgroundColor': theme['bg_secondary'],
+            'width': '346px',
+            'minWidth': '346px',
+            'backgroundColor': theme['bg_panel'],
             'borderLeft': f'1px solid {theme["border_primary"]}',
             'display': 'flex',
             'flexDirection': 'column',
+            'position': 'relative',
+            'zIndex': 3,
             'overflow': 'hidden',
         },
         'panel_header': {
             'padding': '8px 10px',
             'borderBottom': f'1px solid {theme["border_primary"]}',
+            'backgroundColor': theme['bg_panel_header'],
             'display': 'flex',
             'alignItems': 'center',
             'justifyContent': 'space-between',
@@ -199,6 +226,8 @@ def get_styles(theme: dict) -> dict:
             'flex': 1,
             'overflow': 'auto',
             'padding': '10px',
+            'backgroundColor': theme['bg_panel'],
+            'color': theme['text_primary'],
         },
         'card': {
             'backgroundColor': theme['bg_tertiary'],
@@ -215,6 +244,7 @@ def get_styles(theme: dict) -> dict:
         },
         'card_body': {
             'padding': '10px',
+            'color': theme['text_primary'],
         },
         'input': {
             'backgroundColor': theme['bg_tertiary'],
@@ -269,7 +299,6 @@ def get_styles(theme: dict) -> dict:
         'metric_label': {
             'fontSize': FONT_SIZES['xs'],
             'color': theme['text_primary'],
-            'opacity': 0.8,
             'marginBottom': '4px',
         },
         'metric_value': {
@@ -296,6 +325,7 @@ def get_styles(theme: dict) -> dict:
             'borderRadius': BORDER_RADIUS['sm'],
             'cursor': 'pointer',
             'transition': 'background-color 0.15s ease',
+            'color': theme['text_primary'],
         },
         'status_badge': {
             'display': 'inline-flex',
@@ -325,14 +355,16 @@ def get_styles(theme: dict) -> dict:
         'tab': {
             'padding': '10px 14px',
             'fontSize': FONT_SIZES['sm'],
-            'color': theme['text_secondary'],
+            'color': theme['text_primary'],
             'cursor': 'pointer',
             'borderBottom': '2px solid transparent',
             'transition': 'all 0.2s ease',
+            'opacity': 0.8,
         },
         'tab_active': {
             'color': theme['text_primary'],
             'borderBottomColor': theme['accent_blue'],
+            'opacity': 1,
         },
     }
 
@@ -402,7 +434,7 @@ CUSTOM_CSS = '''
 
     /* Dark theme dropdown */
     .dark-dropdown .Select-control {
-        background-color: #21262d !important;
+        background-color: #1f2630 !important;
         border-color: #30363d !important;
         transition: border-color 0.2s ease !important;
     }
@@ -410,23 +442,93 @@ CUSTOM_CSS = '''
         border-color: #58a6ff !important;
     }
     .dark-dropdown .Select-menu-outer {
-        background-color: #21262d !important;
+        background-color: #2f3742 !important;
         border-color: #30363d !important;
         animation: fadeIn 0.15s ease-out;
     }
     .dark-dropdown .Select-option {
-        background-color: #21262d !important;
+        background-color: #3a4350 !important;
+        color: #ffffff !important;
+        transition: background-color 0.15s ease !important;
+    }
+    .dark-dropdown .Select-option.is-focused {
+        background-color: #465161 !important;
+        color: #ffffff !important;
+    }
+    .dark-dropdown .Select-option.is-selected {
+        background-color: #4f5c6f !important;
+        color: #ffffff !important;
+    }
+    .dark-dropdown .Select-option:hover {
+        background-color: #465161 !important;
+    }
+    .dark-dropdown .Select-value-label {
+        color: #ffffff !important;
+    }
+    .dark-dropdown .Select-placeholder {
+        color: #ffffff !important;
+    }
+    .dark-dropdown .Select-input > input {
+        color: #ffffff !important;
+    }
+
+    /* Default dropdown (if dark-dropdown class is missing) */
+    .Select-control {
+        background-color: #1f2630 !important;
+        border-color: #30363d !important;
+        transition: border-color 0.2s ease !important;
+    }
+    .Select-control:hover {
+        border-color: #58a6ff !important;
+    }
+    .Select-menu-outer {
+        background-color: #2f3742 !important;
+        border-color: #30363d !important;
+        animation: fadeIn 0.15s ease-out;
+    }
+    .Select-option {
+        background-color: #3a4350 !important;
         color: #e6edf3 !important;
         transition: background-color 0.15s ease !important;
     }
-    .dark-dropdown .Select-option:hover {
-        background-color: #30363d !important;
-    }
-    .dark-dropdown .Select-value-label {
+    .Select-option.is-focused {
+        background-color: #465161 !important;
         color: #e6edf3 !important;
     }
-    .dark-dropdown .Select-placeholder {
-        color: #8b949e !important;
+    .Select-option.is-selected {
+        background-color: #4f5c6f !important;
+        color: #e6edf3 !important;
+    }
+    .Select-option:hover {
+        background-color: #465161 !important;
+        color: #e6edf3 !important;
+    }
+    .Select-value-label {
+        color: #e6edf3 !important;
+    }
+    .Select-placeholder {
+        color: #c9d1d9 !important;
+    }
+    .Select-input > input {
+        color: #e6edf3 !important;
+    }
+
+    /* Virtualized dropdown options (dcc.Dropdown) */
+    .VirtualizedSelectOption {
+        background-color: #3a4350 !important;
+        color: #e6edf3 !important;
+    }
+    .VirtualizedSelectFocusedOption {
+        background-color: #465161 !important;
+        color: #e6edf3 !important;
+    }
+    .VirtualizedSelectOption:hover {
+        background-color: #465161 !important;
+        color: #e6edf3 !important;
+    }
+    .VirtualizedSelectSelectedOption {
+        background-color: #4f5c6f !important;
+        color: #e6edf3 !important;
     }
 
     /* Date picker dark theme */
@@ -435,6 +537,14 @@ CUSTOM_CSS = '''
         border: 1px solid #30363d !important;
         border-radius: 6px !important;
         transition: border-color 0.2s ease !important;
+    }
+    .SingleDatePicker,
+    .SingleDatePickerInput,
+    .DateInput,
+    .DateInput_input {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     .SingleDatePickerInput:hover {
         border-color: #58a6ff !important;
@@ -448,6 +558,76 @@ CUSTOM_CSS = '''
     .CalendarDay__selected {
         background: #58a6ff !important;
         border-color: #58a6ff !important;
+    }
+    .SingleDatePicker_picker {
+        background-color: #1f2630 !important;
+        border: 1px solid #30363d !important;
+        border-radius: 8px !important;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4) !important;
+        z-index: 9999 !important;
+        position: absolute !important;
+        max-width: calc(100vw - 24px) !important;
+    }
+    .DateRangePicker_picker {
+        z-index: 9999 !important;
+        position: absolute !important;
+    }
+    .SingleDatePicker,
+    .DateRangePicker {
+        position: relative !important;
+        z-index: 2 !important;
+    }
+    .DayPicker,
+    .CalendarMonth,
+    .CalendarMonth_table {
+        background-color: #1f2630 !important;
+    }
+    .DayPicker,
+    .DayPicker_transitionContainer,
+    .CalendarMonth {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    .CalendarMonth_caption {
+        color: #e6edf3 !important;
+        font-weight: 600 !important;
+    }
+    .DayPicker_weekHeader {
+        color: #c9d1d9 !important;
+    }
+    .CalendarDay {
+        border: 1px solid #30363d !important;
+        color: #e6edf3 !important;
+        background: #1f2630 !important;
+    }
+    .CalendarDay__default:hover {
+        background: #30363d !important;
+        color: #f0f6fc !important;
+        border-color: #3a4552 !important;
+    }
+    .CalendarDay__selected,
+    .CalendarDay__selected:hover {
+        background: #58a6ff !important;
+        border-color: #58a6ff !important;
+        color: #ffffff !important;
+    }
+    .CalendarDay__outside {
+        color: #adbac7 !important;
+        background: #1b222c !important;
+    }
+    .DayPickerNavigation_button {
+        border: 1px solid #30363d !important;
+        background: #21262d !important;
+    }
+    .DayPickerNavigation_button:hover {
+        border-color: #58a6ff !important;
+    }
+
+    /* End date picker alignment */
+    .date-picker-end .SingleDatePicker_picker {
+        left: 0 !important;
+        right: auto !important;
     }
 
     /* Panel tabs */
@@ -529,18 +709,23 @@ CUSTOM_CSS = '''
         animation: slideIn 0.3s ease-out;
         border-left: 4px solid;
         border-radius: 6px;
+        color: #e6edf3;
+        background-color: rgba(240, 246, 252, 0.08);
     }
     .custom-alert.success {
-        background: rgba(63, 185, 80, 0.1);
+        background: rgba(63, 185, 80, 0.2);
         border-left-color: #3fb950;
+        color: #dff5e3;
     }
     .custom-alert.warning {
-        background: rgba(210, 153, 34, 0.1);
+        background: rgba(210, 153, 34, 0.18);
         border-left-color: #d29922;
+        color: #fff3cd;
     }
     .custom-alert.error {
-        background: rgba(248, 81, 73, 0.1);
+        background: rgba(248, 81, 73, 0.18);
         border-left-color: #f85149;
+        color: #ffe3e1;
     }
 
     /* Tooltip styling */
@@ -615,6 +800,10 @@ CUSTOM_CSS = '''
     #tv-chart-container {
         display: flex;
         flex-direction: column;
+        z-index: 1;
+    }
+    #plotly-chart-container {
+        z-index: 1;
     }
 
     /* Signal tabs */
@@ -666,7 +855,7 @@ CUSTOM_CSS = '''
     .compact-accordion .accordion-title-summary {
         font-size: 10px;
         font-weight: 500;
-        color: #8b949e;
+        color: #c9d1d9;
         text-transform: none;
         white-space: nowrap;
         overflow: hidden;
@@ -742,6 +931,13 @@ CUSTOM_CSS = '''
         gap: 6px;
         padding: 4px 2px 6px;
     }
+    .signals-filter-label {
+        font-size: 10px;
+        color: #c9d1d9;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        margin-top: 2px;
+    }
     .signals-unified-controls input {
         font-size: 11px !important;
         padding: 6px 8px !important;
@@ -751,7 +947,7 @@ CUSTOM_CSS = '''
         flex-wrap: wrap;
         gap: 6px 10px;
         font-size: 10px;
-        color: #8b949e;
+        color: #c9d1d9;
     }
     .signals-category-filter label {
         margin: 0 !important;
@@ -776,6 +972,13 @@ CUSTOM_CSS = '''
     .signal-row:nth-child(odd) {
         background-color: rgba(48, 54, 61, 0.2);
     }
+    .signal-row:hover {
+        background-color: rgba(88, 166, 255, 0.12);
+    }
+    .signal-row:has(.signal-toggle--buy input:checked),
+    .signal-row:has(.signal-toggle--sell input:checked) {
+        background-color: rgba(88, 166, 255, 0.18);
+    }
     .signal-name {
         font-size: 11px;
         color: #e6edf3;
@@ -793,6 +996,12 @@ CUSTOM_CSS = '''
     }
     .signal-toggle input {
         margin: 0 !important;
+    }
+    .signal-toggle--buy input {
+        accent-color: #2ea043;
+    }
+    .signal-toggle--sell input {
+        accent-color: #f85149;
     }
     .signal-toggle span {
         display: none;

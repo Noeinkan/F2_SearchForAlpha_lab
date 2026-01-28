@@ -100,12 +100,26 @@ class SMA_TradingStrategy(BaseTradingStrategy):
         
         return df
 
+    def sma_short_slope_flip_strategy(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Generate SMA short slope flip signals."""
+        df['SMA_short_slope'] = df['SMA_short'].diff()
+        df['SMA_SlopeFlip_Buy'] = (
+            (df['SMA_short_slope'] > 0) &
+            (df['SMA_short_slope'].shift(1) <= 0)
+        ).astype(int)
+        df['SMA_SlopeFlip_Sell'] = (
+            (df['SMA_short_slope'] < 0) &
+            (df['SMA_short_slope'].shift(1) >= 0)
+        ).astype(int)
+        return df
+
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """Generate all SMA-based trading signals."""
         df = self.add_indicators(df)
         df = self.sma_triple_crossover_strategy(df)
         df = self.sma_price_crossover_strategy(df)
         df = self.sma_trend_following_strategy(df)
+        df = self.sma_short_slope_flip_strategy(df)
         return df
     
     # Legacy method for backwards compatibility
