@@ -53,7 +53,8 @@ def main():
     reload_modules()
     # Re-import after reload to get the fresh module
     from lib.dash.integrated_dashboard import run_dashboard as dashboard
-    dashboard()
+    dev_mode = os.getenv("DASH_DEV", "1") == "1"
+    dashboard(dev_mode=dev_mode)
 
 
 if __name__ == "__main__":

@@ -113,8 +113,8 @@ def get_styles(theme: dict) -> dict:
             'overflow': 'hidden',
         },
         'right_panel': {
-            'width': '290px',
-            'minWidth': '290px',
+            'width': '320px',
+            'minWidth': '320px',
             'backgroundColor': theme['bg_secondary'],
             'borderLeft': f'1px solid {theme["border_primary"]}',
             'display': 'flex',
@@ -202,10 +202,12 @@ def get_styles(theme: dict) -> dict:
             'borderRadius': BORDER_RADIUS['md'],
             'padding': '8px 10px',
             'marginBottom': '6px',
+            'border': f'1px solid {theme["border_primary"]}',
         },
         'metric_label': {
             'fontSize': FONT_SIZES['xs'],
-            'color': theme['text_secondary'],
+            'color': theme['text_primary'],
+            'opacity': 0.8,
             'marginBottom': '4px',
         },
         'metric_value': {
@@ -553,6 +555,67 @@ CUSTOM_CSS = '''
         flex-direction: column;
     }
 
+    /* Signal tabs */
+    .signal-tabs .tab {
+        border: none !important;
+        background: transparent !important;
+        padding: 6px 10px !important;
+    }
+    .signal-tabs .tab--selected {
+        border: none !important;
+        background: transparent !important;
+    }
+
+    /* Compact accordion for stacked panels */
+    .compact-accordion .accordion-item {
+        background: transparent !important;
+        border: none !important;
+        margin-bottom: 4px;
+    }
+    .compact-accordion .accordion-button {
+        padding: 6px 8px !important;
+        font-size: 11px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.3px !important;
+        text-transform: uppercase !important;
+        background: transparent !important;
+        color: #c9d1d9 !important;
+        box-shadow: none !important;
+    }
+    .compact-accordion .accordion-button:not(.collapsed) {
+        background: transparent !important;
+        color: #e6edf3 !important;
+        box-shadow: none !important;
+    }
+    .compact-accordion .accordion-button::after {
+        transform: scale(0.8);
+    }
+    .compact-accordion .accordion-body {
+        padding: 6px 8px 8px !important;
+    }
+    .compact-accordion .accordion-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+    }
+    .compact-accordion .accordion-title-summary {
+        font-size: 10px;
+        font-weight: 500;
+        color: #8b949e;
+        text-transform: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 180px;
+    }
+    .compact-accordion .accordion-title-summary--signals {
+        max-width: 320px;
+        white-space: normal;
+        line-height: 1.2;
+    }
+
     /* Strategy Mode Radio Cards */
     .strategy-mode-radio {
         display: flex;
@@ -579,5 +642,107 @@ CUSTOM_CSS = '''
         border-color: #58a6ff !important;
         background-color: rgba(88, 166, 255, 0.1) !important;
         box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.3) !important;
+    }
+
+    /* Signal checklist text visibility */
+    #buy-signals label,
+    #sell-signals label {
+        color: #e6edf3 !important;
+    }
+    #buy-signals span,
+    #sell-signals span {
+        color: #e6edf3 !important;
+    }
+
+    /* Unified BUY/SELL signal list */
+    .signals-unified-header {
+        display: grid;
+        grid-template-columns: 36px 1fr 36px;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        text-align: center;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background-color: #161b22;
+        border-bottom: 1px solid #30363d;
+    }
+    .signals-unified-header span {
+        justify-self: center;
+    }
+    .signals-unified-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 4px 2px 6px;
+    }
+    .signals-unified-controls input {
+        font-size: 11px !important;
+        padding: 6px 8px !important;
+    }
+    .signals-category-filter {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 10px;
+        font-size: 10px;
+        color: #8b949e;
+    }
+    .signals-category-filter label {
+        margin: 0 !important;
+        cursor: pointer;
+    }
+    .signals-unified-list {
+        max-height: 220px;
+        overflow-y: auto;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        background-color: #161b22;
+        padding: 4px 6px;
+    }
+    .signal-row {
+        display: grid;
+        grid-template-columns: 36px 1fr 36px;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 2px;
+        border-radius: 4px;
+    }
+    .signal-row:nth-child(odd) {
+        background-color: rgba(48, 54, 61, 0.2);
+    }
+    .signal-name {
+        font-size: 11px;
+        color: #e6edf3;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: center;
+        justify-self: center;
+    }
+    .signal-toggle label {
+        display: flex !important;
+        justify-content: center;
+        margin: 0 !important;
+        cursor: pointer;
+    }
+    .signal-toggle input {
+        margin: 0 !important;
+    }
+    .signal-toggle span {
+        display: none;
+    }
+    .signal-toggle-placeholder {
+        height: 16px;
+    }
+
+    /* Signal logic toggle visibility */
+    .signal-logic-toggle label {
+        color: #e6edf3 !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.3px !important;
     }
 '''

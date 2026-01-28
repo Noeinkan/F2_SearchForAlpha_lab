@@ -59,6 +59,8 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
             for plot in plot_sequence
         ]
         subplot_titles = [p.replace('_', ' ').upper() for p in plot_sequence]
+        if subplot_titles and plot_sequence[0] == 'candlestick':
+            subplot_titles[0] = ""
 
         # Adjust vertical spacing based on number of plots
         vertical_spacing = 0.02 if plot_count <= 3 else 0.015
@@ -90,13 +92,6 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
         _update_layout(fig, plot_count, config.get('show_legend', False), config, theme)
         _add_crosshair(fig, plot_count)
 
-
-        # Set y-axis range for main candlestick chart based only on price data
-        if not df.empty and all(col in df.columns for col in ['Low', 'High']):
-            min_y = df['Low'].min()
-            max_y = df['High'].max()
-            y_margin = (max_y - min_y) * 0.02 if max_y > min_y else 1
-            fig.update_yaxes(range=[min_y - y_margin, max_y + y_margin], fixedrange=False, row=1, col=1)
 
         return fig
 
@@ -169,7 +164,8 @@ def _add_candlestick(fig: go.Figure, df: pd.DataFrame, row: int, col: int, confi
             theme,
             config.get('buy_signal_columns', []),
             config.get('sell_signal_columns', []),
-            config.get('signal_logic', 'or')
+            config.get('signal_logic', 'or'),
+            config.get('signal_window', 0)
         )
 
 
@@ -280,7 +276,8 @@ def _add_signal_traces(
     theme: dict,
     buy_signal_columns: List[str],
     sell_signal_columns: List[str],
-    signal_logic: str = 'or'
+    signal_logic: str = 'or',
+    signal_window: int = 0
 ) -> None:
     """Add combined buy/sell signal markers based on AND/OR logic."""
     signal_configs = {
@@ -300,7 +297,7 @@ def _add_signal_traces(
         }
     }
 
-    def _combine_signals(columns: List[str], logic: str) -> pd.Series:
+    def _combine_signals(columns: List[str], logic: str, window: int) -> pd.Series:
         """Combine multiple signal columns using AND or OR logic."""
         if not columns:
             return pd.Series(False, index=df.index)
@@ -308,6 +305,9 @@ def _add_signal_traces(
         if not valid_cols:
             return pd.Series(False, index=df.index)
         if logic == 'and':
+            if window and window > 0:
+                windowed = df[valid_cols].rolling(window=window + 1, min_periods=1).max()
+                return (windowed > 0).all(axis=1)
             # AND: all signals must be True
             return df[valid_cols].all(axis=1)
         else:
@@ -321,7 +321,7 @@ def _add_signal_traces(
             return
 
         cfg = signal_configs[signal_type]
-        combined = _combine_signals(columns, signal_logic)
+        combined = _combine_signals(columns, signal_logic, signal_window)
         signals = df[combined]
 
         if signals.empty:
@@ -330,7 +330,12 @@ def _add_signal_traces(
         offset = signals['Close'] * SIGNAL_OFFSET_FACTOR * cfg['offset']
 
         # Create label showing the logic mode
-        logic_label = f"({signal_logic.upper()})" if len(columns) > 1 else ""
+        logic_label = ""
+        if len(columns) > 1:
+            if signal_logic == 'and' and signal_window and signal_window > 0:
+                logic_label = f"(AND w={signal_window})"
+            else:
+                logic_label = f"({signal_logic.upper()})"
         signal_names = ", ".join([c.replace('_', ' ') for c in columns if c in df.columns])
         name = f"{signal_type.capitalize()} {logic_label}: {signal_names}"
 
@@ -350,7 +355,7 @@ def _add_signal_traces(
             ),
             name=name,
             hovertemplate=(
-                f"{signal_type.capitalize()} ({signal_logic.upper()})<br>{signal_names}"
+                f"{signal_type.capitalize()} {logic_label or f'({signal_logic.upper()})'}<br>{signal_names}"
                 "<br>%{x|%Y-%m-%d}<br>Price: %{y:.2f}<extra></extra>"
             )
         ), row=row, col=col)
@@ -372,13 +377,15 @@ def _add_range_selector(fig: go.Figure, theme: dict) -> None:
                     dict(count=1, label="1Y", step="year", stepmode="backward"),
                     dict(step="all", label="ALL")
                 ]),
-                bgcolor=theme['bg_tertiary'],
+                bgcolor='rgba(0,0,0,0)',
                 activecolor=theme['accent_blue'],
                 font=dict(color=theme['text_primary'], size=11),
                 bordercolor=theme['border_primary'],
                 borderwidth=1,
                 x=0,
-                y=1.02,
+                y=1.08,
+                xanchor='left',
+                yanchor='bottom'
             ),
             rangeslider=dict(visible=False),
             type="date"
@@ -403,7 +410,7 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
         showlegend=show_legend,
         plot_bgcolor=theme['chart_bg'],
         paper_bgcolor=theme['chart_bg'],
-        margin=dict(l=60, r=20, t=60 if title_text else 40, b=40),
+        margin=dict(l=60, r=20, t=80 if title_text else 60, b=40),
         font=dict(family=FONT_FAMILY, color=theme['text_primary'], size=12),
         title=dict(
             text=title_text,

@@ -88,7 +88,8 @@ def backtest(
     strategy_mode: str = 'trading',
     amount_per_buy: float = None,
     position_size_pct: float = 100,
-    signal_logic: str = 'or'
+    signal_logic: str = 'or',
+    signal_window: int = 0
 ) -> pd.DataFrame:
     """
     Run a backtest on the provided DataFrame.
@@ -113,6 +114,7 @@ def backtest(
         amount_per_buy: Fixed dollar amount per buy signal (for accumulation mode).
         position_size_pct: Percentage of portfolio per trade (for rebalancing mode).
         signal_logic: 'or' (any signal triggers) or 'and' (all signals must agree).
+        signal_window: Window size (candles) for AND confirmation across signals.
 
     Returns:
         DataFrame with backtest results including portfolio values and metrics.
@@ -127,6 +129,7 @@ def backtest(
         logger.info(f"Starting backtest with {len(df)} rows, initial capital: ${initial_capital:,.2f}")
         
         num_rows = len(df)
+        signal_window = max(0, int(signal_window or 0))
     
         # Initialize arrays
         units = np.zeros(num_rows)
@@ -144,24 +147,15 @@ def backtest(
         position_sizer = get_position_sizer(position_sizing_strategy, **position_sizing_params)
 
         if use_signal_strength:
-            buy_signal_strength, sell_signal_strength = calculate_signal_strengths(df, buy_indicators, sell_indicators, indicator_weights)
+            buy_signal_strength, sell_signal_strength = calculate_signal_strengths(
+                df, buy_indicators, sell_indicators, indicator_weights
+            )
         else:
-            # Signal combination logic: 'or' = any signal, 'and' = all signals
-            if signal_logic == 'and':
-                # AND logic: all selected signals must be True
-                buy_signal_strength = df[buy_indicators].all(axis=1).astype(int).values
-                if sell_indicators:
-                    sell_signal_strength = df[sell_indicators].all(axis=1).astype(int).values
-                else:
-                    sell_signal_strength = np.zeros(num_rows)
+            buy_signal_strength = _combine_signals(df, buy_indicators, signal_logic, signal_window)
+            if sell_indicators:
+                sell_signal_strength = _combine_signals(df, sell_indicators, signal_logic, signal_window)
             else:
-                # OR logic (default): any signal triggers
-                buy_signal_strength = df[buy_indicators].sum(axis=1).values
-                # Handle empty sell_indicators for accumulation/rebalancing modes
-                if sell_indicators:
-                    sell_signal_strength = df[sell_indicators].sum(axis=1).values
-                else:
-                    sell_signal_strength = np.zeros(num_rows)
+                sell_signal_strength = np.zeros(num_rows)
 
         # Calculate volatility
         df = df.copy()
@@ -332,6 +326,43 @@ def calculate_signal_strengths(
     return buy_signal_strength, sell_signal_strength
 
 
+def _combine_signals(
+    df: pd.DataFrame,
+    columns: List[str],
+    logic: str,
+    window: int
+) -> np.ndarray:
+    """
+    Combine multiple signal columns into a single 0/1 array.
+
+    Args:
+        df: DataFrame with signal columns.
+        columns: Signal column names to combine.
+        logic: 'or' (any signal) or 'and' (all signals).
+        window: Rolling window for confirmation (0 disables).
+    """
+    if not columns:
+        return np.zeros(len(df), dtype=int)
+
+    valid_cols = [col for col in columns if col in df.columns]
+    if not valid_cols:
+        return np.zeros(len(df), dtype=int)
+
+    signals = df[valid_cols].fillna(0)
+    window = max(0, int(window or 0))
+    logic = (logic or 'or').lower()
+
+    if logic == 'and' and window > 0:
+        windowed = signals.rolling(window=window + 1, min_periods=1).max()
+        combined = (windowed > 0).all(axis=1)
+    elif logic == 'and':
+        combined = signals.gt(0).all(axis=1)
+    else:
+        combined = signals.gt(0).any(axis=1)
+
+    return combined.astype(int).values
+
+
 def calculate_returns(portfolio_value: np.ndarray, returns: np.ndarray) -> tuple:
     """Calculate strategy and market returns."""
     strategy_returns = np.zeros_like(returns)
@@ -477,7 +508,8 @@ def run_backtest(
     strategy_mode: str = 'trading',
     amount_per_buy: float = None,
     position_size_pct: float = 100,
-    signal_logic: str = 'or'
+    signal_logic: str = 'or',
+    signal_window: int = 0
 ) -> pd.DataFrame:
     """
     Convenience function to run a backtest with default Kelly Criterion sizing.
@@ -491,6 +523,7 @@ def run_backtest(
         amount_per_buy: Fixed dollar amount per buy signal (for accumulation mode).
         position_size_pct: Percentage of portfolio per trade (for rebalancing mode).
         signal_logic: 'or' (any signal triggers) or 'and' (all signals must agree).
+        signal_window: Window size (candles) for AND confirmation across signals.
 
     Returns:
         DataFrame with backtest results.
@@ -517,5 +550,6 @@ def run_backtest(
         strategy_mode=strategy_mode,
         amount_per_buy=amount_per_buy,
         position_size_pct=position_size_pct,
-        signal_logic=signal_logic
+        signal_logic=signal_logic,
+        signal_window=signal_window
     )

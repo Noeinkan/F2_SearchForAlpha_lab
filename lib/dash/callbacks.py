@@ -4,12 +4,13 @@ All Dash callback functions for the trading dashboard.
 """
 
 import logging
+import re
 from datetime import datetime
-from typing import Tuple, List, Any
+from typing import Tuple, List, Any, Dict
 
 import pandas as pd
-from dash import html, dash_table, callback_context
-from dash.dependencies import Input, Output, State
+from dash import html, dash_table, callback_context, dcc
+from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 import plotly.graph_objs as go
 
@@ -37,6 +38,268 @@ from lib.signals.indicators import add_indicators, generate_signals
 from lib.strategy import run_backtest
 
 logger = logging.getLogger(__name__)
+
+SIGNAL_DESCRIPTIONS: Dict[str, str] = {
+    # Bollinger Bands
+    "BB_Breakout_Buy": "Price breaks above upper Bollinger Band (momentum breakout).",
+    "BB_Breakout_Sell": "Price breaks below lower Bollinger Band (momentum breakdown).",
+    "BB_MeanReversion_Buy": "Price crosses back above lower band (mean reversion).",
+    "BB_MeanReversion_Sell": "Price crosses back below upper band (mean reversion).",
+    "BB_Squeeze_Buy": "Post-squeeze breakout above upper band after narrow bands.",
+    "BB_Squeeze_Sell": "Post-squeeze breakdown below lower band after narrow bands.",
+    "BB_DoubleBottom_Buy": "Two lower-band touches with a rebound (double bottom).",
+    "BB_DoubleTop_Sell": "Two upper-band touches with a drop (double top).",
+    # MACD
+    "MACD_ZeroCross_Buy": "MACD crosses above zero line (trend shifts bullish).",
+    "MACD_ZeroCross_Sell": "MACD crosses below zero line (trend shifts bearish).",
+    "MACD_SignalCross_Buy": "MACD crosses above its signal line.",
+    "MACD_SignalCross_Sell": "MACD crosses below its signal line.",
+    "MACD_Histogram_Buy": "Histogram flips positive (momentum turning up).",
+    "MACD_Histogram_Sell": "Histogram flips negative (momentum turning down).",
+    # RSI
+    "RSI_Oversold_Buy": "RSI < 30 (oversold; potential rebound).",
+    "RSI_Overbought_Sell": "RSI > 70 (overbought; potential pullback).",
+    "RSI_Bullish_Divergence": "Price makes new low while RSI rises (bullish divergence).",
+    "RSI_Bearish_Divergence": "Price makes new high while RSI falls (bearish divergence).",
+    # CCI
+    "CCI_Oversold_Buy": "CCI < -100 (oversold; potential rebound).",
+    "CCI_Overbought_Sell": "CCI > 100 (overbought; potential pullback).",
+    "CCI_Reversal_Buy": "CCI rebounds from extreme low (< -180).",
+    "CCI_Reversal_Sell": "CCI reverses down from extreme high (> 180).",
+    "CCI_ZeroCross_Buy": "CCI crosses above zero (trend turns positive).",
+    "CCI_ZeroCross_Sell": "CCI crosses below zero (trend turns negative).",
+    # SMA
+    "SMA_TripleCross_Buy": "Short > medium > long SMAs (bullish alignment).",
+    "SMA_TripleCross_Sell": "Short < medium < long SMAs (bearish alignment).",
+    "SMA_PriceCross_Buy": "Price crosses above medium SMA.",
+    "SMA_PriceCross_Sell": "Price crosses below medium SMA.",
+    "SMA_TrendFollow_Buy": "Price above long SMA with short/medium/long aligned.",
+    "SMA_TrendFollow_Sell": "Price below long SMA with short/medium/long aligned.",
+    # EMA
+    "EMA_TripleCross_Buy": "Short > medium > long EMAs (bullish alignment).",
+    "EMA_TripleCross_Sell": "Short < medium < long EMAs (bearish alignment).",
+    "EMA_Distance_Buy": "Bullish EMA alignment with strong separation.",
+    "EMA_Distance_Sell": "Bearish EMA alignment with strong separation.",
+    "EMA_Momentum_Buy": "Bullish EMA alignment with rising EMA slope.",
+    "EMA_Momentum_Sell": "Bearish EMA alignment with falling EMA slope.",
+    "EMA_ValueZone_Buy": "Price between long and medium EMA (value zone).",
+    "EMA_ValueZone_Sell": "Price between long and medium EMA (value zone).",
+    "EMA_Divergence_Buy": "Price low falls while short EMA rises (divergence).",
+    "EMA_Divergence_Sell": "Price high rises while short EMA falls (divergence).",
+    "EMA_Volatility_Buy": "Bullish EMA alignment during high volatility.",
+    "EMA_Volatility_Sell": "Bearish EMA alignment during high volatility.",
+}
+
+
+def _format_signal_label(col_name: str) -> str:
+    return col_name.replace("_", " ")
+
+
+def _describe_signal(col_name: str) -> str:
+    description = SIGNAL_DESCRIPTIONS.get(col_name)
+    if description:
+        return description
+    base = _format_signal_label(col_name)
+    return f"Signal generated from {base}."
+
+
+def _normalize_timestamp(value: Any) -> pd.Timestamp | None:
+    """Normalize timestamps to timezone-naive UTC for comparisons."""
+    ts = pd.to_datetime(value, errors='coerce', utc=True)
+    if pd.isna(ts):
+        return None
+    return ts.tz_convert(None)
+
+
+def _figure_dict(fig: Any) -> Dict[str, Any]:
+    """Return a dict representation for read-only access."""
+    if hasattr(fig, "to_dict"):
+        return fig.to_dict()
+    return fig
+
+
+def _apply_layout_updates(fig: Any, updates: Dict[str, Any]) -> None:
+    """Apply layout updates to either Figure or dict."""
+    if not updates:
+        return
+    if hasattr(fig, "update_layout"):
+        fig.update_layout(**updates)
+        return
+    layout = fig.setdefault('layout', {})
+    for axis_key, axis_values in updates.items():
+        axis_layout = layout.setdefault(axis_key, {})
+        axis_layout.update(axis_values)
+
+
+def _resolve_x_range(relayout_data: Dict[str, Any],
+                     df: pd.DataFrame,
+                     fig: Dict[str, Any] | None = None) -> Tuple[pd.Timestamp, pd.Timestamp] | None:
+    """Resolve the active x-axis range from relayout data."""
+    if not relayout_data:
+        relayout_data = {}
+
+    if 'xaxis.range[0]' in relayout_data and 'xaxis.range[1]' in relayout_data:
+        start = relayout_data['xaxis.range[0]']
+        end = relayout_data['xaxis.range[1]']
+    elif 'xaxis.range' in relayout_data and isinstance(relayout_data['xaxis.range'], list):
+        start, end = relayout_data['xaxis.range'][0], relayout_data['xaxis.range'][1]
+    elif relayout_data.get('xaxis.autorange') is True:
+        if df is None or df.empty:
+            return None
+        start, end = df.index.min(), df.index.max()
+    else:
+        if not fig:
+            return None
+        fig_dict = _figure_dict(fig)
+        layout = fig_dict.get('layout', {})
+        xaxis = layout.get('xaxis', {})
+        if isinstance(xaxis.get('range'), list) and len(xaxis['range']) >= 2:
+            start, end = xaxis['range'][0], xaxis['range'][1]
+        elif xaxis.get('autorange') is True:
+            if df is None or df.empty:
+                return None
+            start, end = df.index.min(), df.index.max()
+        else:
+            return None
+
+    start_ts = _normalize_timestamp(start)
+    end_ts = _normalize_timestamp(end)
+    if start_ts is None or end_ts is None:
+        return None
+    return start_ts, end_ts
+
+
+def _axis_layout_key(axis_id: str) -> str:
+    """Convert trace yaxis id ('y', 'y2') to layout key ('yaxis', 'yaxis2')."""
+    if axis_id == 'y':
+        return 'yaxis'
+    return f"yaxis{axis_id[1:]}"
+
+
+def _compute_y_ranges_by_axis(fig: Dict[str, Any],
+                              x_start: pd.Timestamp,
+                              x_end: pd.Timestamp,
+                              df: pd.DataFrame | None = None) -> Dict[str, Tuple[float, float]]:
+    """Compute min/max y ranges per axis for the visible x-range."""
+    axis_ranges: Dict[str, Tuple[float, float]] = {}
+    fig_dict = _figure_dict(fig)
+
+    if df is not None and not df.empty and {'Low', 'High'}.issubset(df.columns):
+        df_index = pd.to_datetime(df.index, errors='coerce', utc=True).tz_convert(None)
+        df_mask = (df_index >= x_start) & (df_index <= x_end)
+        if hasattr(df_mask, "to_numpy"):
+            df_mask = df_mask.to_numpy()
+        else:
+            df_mask = pd.Series(df_mask).to_numpy()
+        if df_mask.any():
+            visible_df = df.iloc[df_mask]
+            if not visible_df.empty:
+                price_min = float(pd.to_numeric(visible_df['Low'], errors='coerce').min())
+                price_max = float(pd.to_numeric(visible_df['High'], errors='coerce').max())
+                for trace in fig_dict.get('data', []):
+                    if trace.get('type') == 'candlestick':
+                        axis_id = trace.get('yaxis', 'y')
+                        axis_ranges[axis_id] = (price_min, price_max)
+
+    traces = fig_dict.get('data', [])
+    for trace in traces:
+        if trace.get('visible') == 'legendonly':
+            continue
+
+        axis_id = trace.get('yaxis', 'y')
+        if trace.get('type') == 'candlestick' and axis_id in axis_ranges:
+            continue
+        x_values = trace.get('x', [])
+        if x_values is None or (hasattr(x_values, "__len__") and len(x_values) == 0):
+            continue
+
+        x_series = pd.to_datetime(pd.Series(x_values), errors='coerce', utc=True).dt.tz_convert(None)
+        mask = (x_series >= x_start) & (x_series <= x_end)
+        mask_values = mask.to_numpy()
+        if not mask.any():
+            continue
+
+        y_min = y_max = None
+        if trace.get('type') == 'candlestick':
+            lows = pd.to_numeric(pd.Series(trace.get('low', [])), errors='coerce')
+            highs = pd.to_numeric(pd.Series(trace.get('high', [])), errors='coerce')
+            values_len = min(len(mask_values), len(lows), len(highs))
+            if values_len == 0:
+                continue
+            low_vals = lows.to_numpy()[:values_len][mask_values[:values_len]]
+            high_vals = highs.to_numpy()[:values_len][mask_values[:values_len]]
+            if low_vals.size == 0 or high_vals.size == 0:
+                continue
+            y_min = float(low_vals.min())
+            y_max = float(high_vals.max())
+        else:
+            y_values = pd.to_numeric(pd.Series(trace.get('y', [])), errors='coerce')
+            values_len = min(len(mask_values), len(y_values))
+            if values_len == 0:
+                continue
+            y_vals = y_values.to_numpy()[:values_len][mask_values[:values_len]]
+            if y_vals.size == 0:
+                continue
+            y_min = float(y_vals.min())
+            y_max = float(y_vals.max())
+
+        if y_min is None or y_max is None:
+            continue
+
+        current = axis_ranges.get(axis_id)
+        if current:
+            axis_ranges[axis_id] = (min(current[0], y_min), max(current[1], y_max))
+        else:
+            axis_ranges[axis_id] = (y_min, y_max)
+
+    return axis_ranges
+
+
+def _pad_range(y_min: float, y_max: float, pad_ratio: float = 0.04) -> Tuple[float, float]:
+    """Apply a small padding to y ranges for visual breathing room."""
+    span = y_max - y_min
+    if span <= 0:
+        span = max(abs(y_max) * 0.02, 1e-6)
+    pad = span * pad_ratio
+    return y_min - pad, y_max + pad
+
+
+def _build_signal_options(columns: List[str]) -> List[Dict[str, Any]]:
+    options = []
+    for col in columns:
+        label = html.Span(
+            _format_signal_label(col),
+            title=_describe_signal(col),
+            style={'marginLeft': '8px'}
+        )
+        options.append({'label': label, 'value': col})
+    return options
+
+
+def _strip_signal_side(col_name: str) -> str:
+    return re.sub(r'_(buy|sell)$', '', col_name, flags=re.IGNORECASE)
+
+
+def _build_unified_signal_rows(buy_columns: List[str], sell_columns: List[str]) -> List[Dict[str, Any]]:
+    rows: Dict[str, Dict[str, Any]] = {}
+    for col in buy_columns:
+        base = _strip_signal_side(col)
+        rows.setdefault(base, {})['buy'] = col
+    for col in sell_columns:
+        base = _strip_signal_side(col)
+        rows.setdefault(base, {})['sell'] = col
+
+    unified_rows = []
+    for base, sides in rows.items():
+        category = base.split('_')[0].upper() if base else 'OTHER'
+        unified_rows.append({
+            'label': _format_signal_label(base),
+            'category': category,
+            'buy': sides.get('buy'),
+            'sell': sides.get('sell')
+        })
+
+    return sorted(unified_rows, key=lambda row: row['label'].lower())
 
 
 def register_callbacks(app):
@@ -69,6 +332,7 @@ def register_callbacks(app):
          Output('data-loaded-store', 'data'),
          Output('buy-signals', 'options'),
          Output('sell-signals', 'options'),
+         Output('signals-unified-store', 'data'),
          Output('chart-title', 'children'),
          Output('chart-subtitle', 'children'),
          Output('data-table-container', 'children')],
@@ -105,21 +369,18 @@ def register_callbacks(app):
                         html.Span("No data available for this symbol",
                                   style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_orange']})
                     ]),
-                    False, [], [], "No data", "", None
+                    False, [], [], [], "No data", "", None
                 )
 
             df = add_indicators(df)
             df, _ = generate_signals(df)
             dashboard_state.df = df
 
-            buy_options = [
-                {'label': html.Span(col.replace('_', ' '), style={'marginLeft': '8px'}), 'value': col}
-                for col in df.columns if 'buy' in col.lower()
-            ]
-            sell_options = [
-                {'label': html.Span(col.replace('_', ' '), style={'marginLeft': '8px'}), 'value': col}
-                for col in df.columns if 'sell' in col.lower()
-            ]
+            buy_columns = [col for col in df.columns if 'buy' in col.lower()]
+            sell_columns = [col for col in df.columns if 'sell' in col.lower()]
+            buy_options = _build_signal_options(buy_columns)
+            sell_options = _build_signal_options(sell_columns)
+            unified_rows = _build_unified_signal_rows(buy_columns, sell_columns)
 
             # Create data table
             display_df = format_df_for_display(df.tail(50)).reset_index()
@@ -134,7 +395,7 @@ def register_callbacks(app):
                 html.Span(f"{len(df)} rows loaded", style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_green']})
             ], className='fade-in')
 
-            return status, True, buy_options, sell_options, ticker, subtitle, data_table
+            return status, True, buy_options, sell_options, unified_rows, ticker, subtitle, data_table
 
         except Exception as e:
             logger.error(f"Error loading data: {e}")
@@ -143,7 +404,7 @@ def register_callbacks(app):
                     html.Span("\u2715", style={'color': theme['accent_red'], 'marginRight': '6px', 'fontWeight': 'bold'}),
                     html.Span(str(e)[:40], style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_red']})
                 ]),
-                False, [], [], "Error", "", None
+                False, [], [], [], "Error", "", None
             )
 
     @app.callback(
@@ -173,6 +434,190 @@ def register_callbacks(app):
             'border': f'1px solid {theme["accent_blue"]}40',
         }
         return accumulation_style, rebalancing_style
+
+    @app.callback(
+        Output('signals-unified-list', 'children'),
+        [Input('signals-unified-store', 'data'),
+         Input('signals-search', 'value'),
+         Input('signals-category-filter', 'value')],
+        [State('buy-signals', 'value'),
+         State('sell-signals', 'value')]
+    )
+    def render_unified_signal_list(signal_rows, search_value, category_values, buy_values, sell_values):
+        """Render unified BUY/SELL signal rows."""
+        theme = get_theme()
+        header = html.Div([
+            html.Span("BUY", style={
+                'fontSize': FONT_SIZES['xs'],
+                'fontWeight': '600',
+                'color': theme['accent_green']
+            }),
+            html.Span("SIGNAL", style={
+                'fontSize': FONT_SIZES['xs'],
+                'fontWeight': '600',
+                'color': theme['text_secondary']
+            }),
+            html.Span("SELL", style={
+                'fontSize': FONT_SIZES['xs'],
+                'fontWeight': '600',
+                'color': theme['accent_red']
+            }),
+        ], className='signals-unified-header')
+        if not signal_rows:
+            return [
+                header,
+                html.Div(
+                    "Load data to view signals.",
+                    style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'padding': '6px'}
+                )
+            ]
+
+        buy_values = set(buy_values or [])
+        sell_values = set(sell_values or [])
+        search_term = (search_value or '').strip().lower()
+        selected_categories = set(category_values or [])
+        rows = []
+        for row in signal_rows:
+            if selected_categories and row.get('category') not in selected_categories:
+                continue
+            label_text = row.get('label', '')
+            if search_term and search_term not in label_text.lower():
+                continue
+            buy_value = row.get('buy')
+            sell_value = row.get('sell')
+            description = ''
+            if buy_value or sell_value:
+                description = _describe_signal(buy_value or sell_value)
+
+            buy_toggle = html.Div('', className='signal-toggle-placeholder')
+            if buy_value:
+                buy_toggle = dcc.Checklist(
+                    id={'type': 'signal-toggle', 'side': 'buy', 'value': buy_value},
+                    options=[{'label': '', 'value': buy_value}],
+                    value=[buy_value] if buy_value in buy_values else [],
+                    className='signal-toggle signal-toggle--buy'
+                )
+
+            sell_toggle = html.Div('', className='signal-toggle-placeholder')
+            if sell_value:
+                sell_toggle = dcc.Checklist(
+                    id={'type': 'signal-toggle', 'side': 'sell', 'value': sell_value},
+                    options=[{'label': '', 'value': sell_value}],
+                    value=[sell_value] if sell_value in sell_values else [],
+                    className='signal-toggle signal-toggle--sell'
+                )
+
+            rows.append(
+                html.Div(
+                    [
+                        buy_toggle,
+                        html.Div(row.get('label', ''), className='signal-name', title=description),
+                        sell_toggle,
+                    ],
+                    className='signal-row'
+                )
+            )
+
+        if not rows:
+            return [
+                header,
+                html.Div(
+                    "No signals match the filter.",
+                    style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'padding': '6px'}
+                )
+            ]
+
+        return [header, *rows]
+
+    @app.callback(
+        [Output('buy-signals', 'value'),
+         Output('sell-signals', 'value')],
+        [Input({'type': 'signal-toggle', 'side': 'buy', 'value': ALL}, 'value'),
+         Input({'type': 'signal-toggle', 'side': 'sell', 'value': ALL}, 'value')],
+        [State({'type': 'signal-toggle', 'side': 'buy', 'value': ALL}, 'id'),
+         State({'type': 'signal-toggle', 'side': 'sell', 'value': ALL}, 'id')]
+    )
+    def sync_signal_selection(buy_values, sell_values, buy_ids, sell_ids):
+        """Sync row toggles to unified buy/sell selections."""
+        if not buy_ids and not sell_ids:
+            return [], []
+
+        selected_buy = [
+            item_id['value']
+            for item_id, value in zip(buy_ids, buy_values)
+            if value
+        ]
+        selected_sell = [
+            item_id['value']
+            for item_id, value in zip(sell_ids, sell_values)
+            if value
+        ]
+
+        return selected_buy, selected_sell
+
+    @app.callback(
+        [Output('summary-strategy-mode', 'children'),
+         Output('summary-position-sizing', 'children'),
+         Output('summary-signal-settings', 'children')],
+        [Input('strategy-mode', 'value'),
+         Input('amount-per-buy', 'value'),
+         Input('position-size-pct', 'value'),
+         Input('buy-signals', 'value'),
+         Input('sell-signals', 'value'),
+         Input('signal-logic-mode', 'value'),
+         Input('signal-window', 'value')]
+    )
+    def update_backtest_panel_summaries(strategy_mode, amount_per_buy, position_size_pct,
+                                        buy_signals, sell_signals, signal_logic, signal_window):
+        """Update accordion titles with selected options when collapsed."""
+        strategy_labels = {
+            'trading': 'Trading (Full)',
+            'accumulation': 'Accumulation (DCA)',
+            'rebalancing': 'Rebalancing (Partial)',
+        }
+        strategy_summary = strategy_labels.get(strategy_mode, 'Trading (Full)')
+
+        if strategy_mode == 'accumulation':
+            if amount_per_buy is None:
+                sizing_summary = '$- per buy'
+            else:
+                sizing_summary = f'${amount_per_buy:,.0f} per buy'
+        elif strategy_mode == 'rebalancing':
+            if position_size_pct is None:
+                sizing_summary = '% per trade'
+            else:
+                sizing_summary = f'{position_size_pct:.0f}% per trade'
+        else:
+            sizing_summary = 'N/A'
+
+        buy_signals = buy_signals or []
+        sell_signals = sell_signals or []
+
+        def _summarize_signals(values, max_items=2):
+            labels = [_format_signal_label(v) for v in values]
+            if not labels:
+                return 'None'
+            if len(labels) <= max_items:
+                return ', '.join(labels)
+            extra = len(labels) - max_items
+            return f"{', '.join(labels[:max_items])} +{extra}"
+
+        if not buy_signals and not sell_signals:
+            signals_summary = 'No signals'
+        else:
+            signals_summary = (
+                f"Buy: {_summarize_signals(buy_signals)} | "
+                f"Sell: {_summarize_signals(sell_signals)}"
+            )
+            if signal_logic == 'and':
+                if signal_window:
+                    signals_summary += f" | AND W={signal_window}"
+                else:
+                    signals_summary += " | AND"
+            else:
+                signals_summary += " | OR"
+
+        return strategy_summary, sizing_summary, signals_summary
 
     @app.callback(
         [Output('plotly-chart-container', 'style'),
@@ -214,11 +659,13 @@ def register_callbacks(app):
          Input('chart-library-toggle', 'value'),
          Input('buy-signals', 'value'),
          Input('sell-signals', 'value'),
-         Input('signal-logic-mode', 'value')],
-        [State('ticker-dropdown', 'value')]
+         Input('signal-logic-mode', 'value'),
+         Input('signal-window', 'value')],
+        [State('ticker-dropdown', 'value'),
+         State('layout-store', 'data')]
     )
     def update_plotly_chart(data_loaded, selected_plots, chart_elements, selected_signals, chart_library,
-                            buy_signals, sell_signals, signal_logic, ticker):
+                            buy_signals, sell_signals, signal_logic, signal_window, ticker, layout_state):
         """Update the Plotly financial chart."""
         if chart_library == 'tradingview':
             raise PreventUpdate
@@ -246,10 +693,96 @@ def register_callbacks(app):
             'buy_signal_columns': buy_signals,
             'sell_signal_columns': sell_signals,
             'signal_logic': signal_logic or 'or',
+            'signal_window': signal_window or 0,
             'title': '',
         }
 
-        return create_chart(df, config, theme)
+        fig = create_chart(df, config, theme)
+        if layout_state and layout_state.get('x_range'):
+            fig.update_xaxes(range=layout_state['x_range'], autorange=False)
+            x_start = _normalize_timestamp(layout_state['x_range'][0])
+            x_end = _normalize_timestamp(layout_state['x_range'][1])
+            if x_start and x_end:
+                axis_ranges = _compute_y_ranges_by_axis(fig, x_start, x_end, df)
+                layout_updates = {}
+                for axis_id, (y_min, y_max) in axis_ranges.items():
+                    padded_min, padded_max = _pad_range(y_min, y_max)
+                    axis_key = _axis_layout_key(axis_id)
+                    layout_updates[axis_key] = {'range': [padded_min, padded_max], 'autorange': False}
+                _apply_layout_updates(fig, layout_updates)
+        elif layout_state and layout_state.get('autorange'):
+            fig.update_xaxes(autorange=True)
+
+        return fig
+
+    @app.callback(
+        Output('layout-store', 'data'),
+        [Input('financial-chart', 'relayoutData')],
+        [State('layout-store', 'data')],
+        prevent_initial_call=True
+    )
+    def persist_timeframe(relayout_data, current_layout):
+        """Persist selected timeframe so chart refresh keeps x-range."""
+        if not relayout_data:
+            raise PreventUpdate
+
+        layout_state = current_layout or {}
+        if 'xaxis.range[0]' in relayout_data or 'xaxis.range[1]' in relayout_data:
+            start = relayout_data.get('xaxis.range[0]')
+            end = relayout_data.get('xaxis.range[1]')
+            current_range = layout_state.get('x_range') or [None, None]
+            if start is None:
+                start = current_range[0]
+            if end is None:
+                end = current_range[1]
+            if start is not None and end is not None:
+                layout_state['x_range'] = [start, end]
+                layout_state['autorange'] = False
+                return layout_state
+            layout_state['autorange'] = False
+        if 'xaxis.range' in relayout_data and isinstance(relayout_data['xaxis.range'], list):
+            layout_state['x_range'] = relayout_data['xaxis.range'][:2]
+            layout_state['autorange'] = False
+            return layout_state
+        if relayout_data.get('xaxis.autorange') is True:
+            layout_state['x_range'] = None
+            layout_state['autorange'] = True
+            return layout_state
+
+        raise PreventUpdate
+
+    @app.callback(
+        Output('financial-chart', 'figure', allow_duplicate=True),
+        [Input('financial-chart', 'relayoutData')],
+        [State('financial-chart', 'figure'),
+         State('chart-library-toggle', 'value')],
+        prevent_initial_call=True
+    )
+    def autoscale_chart_to_timerange(relayout_data, fig, chart_library):
+        """Autoscale y-axes to the visible x-axis timeframe."""
+        if chart_library == 'tradingview':
+            raise PreventUpdate
+        if not relayout_data or not fig or dashboard_state.df is None:
+            raise PreventUpdate
+
+        df = dashboard_state.df
+        x_range = _resolve_x_range(relayout_data, df, fig)
+        if not x_range:
+            raise PreventUpdate
+
+        x_start, x_end = x_range
+        axis_ranges = _compute_y_ranges_by_axis(fig, x_start, x_end, df)
+        if not axis_ranges:
+            raise PreventUpdate
+
+        layout_updates = {}
+        for axis_id, (y_min, y_max) in axis_ranges.items():
+            padded_min, padded_max = _pad_range(y_min, y_max)
+            axis_key = _axis_layout_key(axis_id)
+            layout_updates[axis_key] = {'range': [padded_min, padded_max], 'autorange': False}
+        _apply_layout_updates(fig, layout_updates)
+
+        return fig
 
     @app.callback(
         Output('tv-main-chart', 'children'),
@@ -347,10 +880,11 @@ def register_callbacks(app):
          State('strategy-mode', 'value'),
          State('amount-per-buy', 'value'),
          State('position-size-pct', 'value'),
-         State('signal-logic-mode', 'value')]
+         State('signal-logic-mode', 'value'),
+         State('signal-window', 'value')]
     )
     def run_backtest_callback(n_clicks, ticker, initial_capital, buy_signals, sell_signals,
-                               strategy_mode, amount_per_buy, position_size_pct, signal_logic):
+                               strategy_mode, amount_per_buy, position_size_pct, signal_logic, signal_window):
         """Run backtest and display results."""
         if not n_clicks:
             raise PreventUpdate
@@ -377,7 +911,8 @@ def register_callbacks(app):
                 strategy_mode=strategy_mode,
                 amount_per_buy=amount_per_buy,
                 position_size_pct=position_size_pct,
-                signal_logic=signal_logic or 'or'
+                signal_logic=signal_logic or 'or',
+                signal_window=signal_window or 0
             )
             backtest_results = create_backtest_results(results, ticker, initial_capital, buy_signals, sell_signals)
             dashboard_state.backtest_results = backtest_results
@@ -385,18 +920,40 @@ def register_callbacks(app):
             # Calculate metrics
             total_return = backtest_results['total_return']
             is_positive = total_return >= 0
+            metric_help = {
+                "Portfolio Value": "Final account value after the backtest period.",
+                "Total Return": "Percent gain/loss from initial capital.",
+                "Sharpe Ratio": "Risk-adjusted return (higher is better).",
+                "Max Drawdown": "Largest peak-to-trough loss during the period.",
+                "Win Rate": "Percent of trades that were profitable.",
+            }
 
             return html.Div([
                 build_alert("Backtest completed successfully!", "success", dismissable=False, theme=theme),
                 html.Div([
-                    build_metric_card("Portfolio Value", f"${backtest_results['final_portfolio_value']:,.2f}", None, theme),
-                    build_metric_card("Total Return", f"{total_return:+.2f}%", is_positive, theme),
+                    build_metric_card(
+                        "Portfolio Value",
+                        f"${backtest_results['final_portfolio_value']:,.2f}",
+                        None,
+                        theme,
+                        info_text=metric_help["Portfolio Value"]
+                    ),
+                    build_metric_card(
+                        "Total Return",
+                        f"{total_return:+.2f}%",
+                        is_positive,
+                        theme,
+                        info_text=metric_help["Total Return"]
+                    ),
                     build_metric_card("Sharpe Ratio", f"{backtest_results['sharpe_ratio']:.2f}",
-                                     backtest_results['sharpe_ratio'] > 1, theme),
+                                     backtest_results['sharpe_ratio'] > 1, theme,
+                                     info_text=metric_help["Sharpe Ratio"]),
                     build_metric_card("Max Drawdown", f"{backtest_results['max_drawdown']:.2f}%",
-                                     backtest_results['max_drawdown'] > -20, theme),
+                                     backtest_results['max_drawdown'] > -20, theme,
+                                     info_text=metric_help["Max Drawdown"]),
                     build_metric_card("Win Rate", f"{backtest_results['win_rate']:.1f}%",
-                                     backtest_results['win_rate'] > 50, theme),
+                                     backtest_results['win_rate'] > 50, theme,
+                                     info_text=metric_help["Win Rate"]),
                 ], style={'marginTop': '12px'}),
             ], className='fade-in')
 

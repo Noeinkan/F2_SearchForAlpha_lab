@@ -156,6 +156,7 @@ INDICATOR_HEIGHT = '120px'
 DEFAULT_TICKER = 'SPY'
 INITIAL_CAPITAL = 10000
 START_DATE = '2018-01-01'
+DEFAULT_SIGNAL_WINDOW = 4
 
 # =============================================================================
 # SERVER CONFIG

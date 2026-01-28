@@ -17,7 +17,8 @@ def build_metric_card(
     value: str,
     is_positive: bool = None,
     theme: dict = None,
-    animated: bool = True
+    animated: bool = True,
+    info_text: str = None
 ) -> html.Div:
     """
     Build a metric display card with optional animation.
@@ -46,10 +47,15 @@ def build_metric_card(
 
     card_style = styles['metric_card'].copy()
 
-    return html.Div([
-        html.Div(label, style=styles['metric_label']),
-        html.Div(value, style=value_style)
-    ], style=card_style, className='metric-card-animated' if animated else '')
+    return html.Div(
+        [
+            html.Div(label, style=styles['metric_label']),
+            html.Div(value, style=value_style),
+        ],
+        style=card_style,
+        className='metric-card-animated' if animated else '',
+        title=info_text or None
+    )
 
 
 def build_status_badge(text: str, status: str, theme: dict = None) -> html.Span:
