@@ -21,7 +21,8 @@ from dash_tvlwc import Tvlwc
 
 from lib.dash.dash_config import (
     DEFAULT_THEME, FONT_SIZES, FONT_MONO, BORDER_RADIUS, get_theme,
-    DEFAULT_INDICATOR_SETTINGS, INDICATOR_SETTING_SCHEMA
+    DEFAULT_INDICATOR_SETTINGS, INDICATOR_SETTING_SCHEMA, PRESET_FILE_PATH,
+    PLOT_OPTIONS
 )
 from lib.dash.state import dashboard_state
 from lib.dash.styles import get_styles
@@ -40,6 +41,8 @@ from lib.dash.helpers import (
 from lib.data_processing import get_all_tickers, create_backtest_results
 from lib.signals.indicators import add_indicators, generate_signals
 from lib.strategy import run_backtest
+
+from lib.dash.preset_storage import load_presets, save_presets, normalize_preset
 
 logger = logging.getLogger(__name__)
 
@@ -488,6 +491,282 @@ def register_callbacks(app):
         ]
 
     @app.callback(
+        [Output('presets-store', 'data'),
+         Output('preset-selector', 'options'),
+         Output('preset-selector', 'value')],
+        [Input('startup-interval', 'n_intervals')]
+    )
+    def load_presets_on_startup(n_intervals):
+        """Load UI presets from disk on startup."""
+        if n_intervals is None:
+            raise PreventUpdate
+
+        data = load_presets(PRESET_FILE_PATH)
+        presets = data.get("presets", {})
+        options = _format_preset_options(presets)
+        return data, options, None
+
+    @app.callback(
+        [Output('ticker-dropdown', 'value'),
+         Output('start-date', 'date'),
+         Output('end-date', 'date'),
+         Output('initial-capital', 'value'),
+         Output({'type': 'plot-toggle', 'indicator': ALL}, 'value'),
+         Output('chart-elements-checklist', 'value'),
+         Output('signal-checklist', 'value'),
+         Output('chart-library-toggle', 'value', allow_duplicate=True),
+         Output('strategy-mode', 'value'),
+         Output('strategy-preset', 'value'),
+         Output('min-holding-period', 'value', allow_duplicate=True),
+         Output('trailing-stop-pct', 'value', allow_duplicate=True),
+         Output('position-scaling-pct', 'value', allow_duplicate=True),
+         Output('take-profit-pct', 'value', allow_duplicate=True),
+         Output('amount-per-buy', 'value'),
+         Output('position-size-pct', 'value'),
+         Output('consecutive-signal-mode', 'value'),
+         Output('signal-cooldown-bars', 'value', allow_duplicate=True),
+         Output('signal-logic-mode', 'value'),
+         Output('signal-window', 'value'),
+         Output('fx-fee-pct', 'value'),
+         Output('slippage-pct', 'value'),
+         Output('commission-pct', 'value'),
+         Output('preset-name-input', 'value'),
+         Output('active-preset-name', 'data'),
+         Output('preset-apply-store', 'data')],
+        [Input('preset-selector', 'value')],
+        [State('presets-store', 'data')],
+        prevent_initial_call=True
+    )
+    def apply_preset(preset_name, presets_data):
+        """Apply a saved preset to all UI controls."""
+        if not preset_name:
+            no_update_list = [no_update] * len(PLOT_OPTIONS)
+            return (
+                no_update, no_update, no_update, no_update, no_update_list,
+                no_update, no_update, no_update, no_update, no_update,
+                no_update, no_update, no_update, no_update, no_update,
+                no_update, no_update, no_update, no_update, no_update,
+                no_update, no_update, no_update,
+                "", None, None
+            )
+
+        presets = (presets_data or {}).get("presets", {})
+        preset = presets.get(preset_name)
+        if not preset:
+            no_update_list = [no_update] * len(PLOT_OPTIONS)
+            return (
+                no_update, no_update, no_update, no_update, no_update_list,
+                no_update, no_update, no_update, no_update, no_update,
+                no_update, no_update, no_update, no_update, no_update,
+                no_update, no_update, no_update, no_update, no_update,
+                no_update, no_update, no_update,
+                "", None, None
+            )
+
+        market = preset.get("market_data", {})
+        chart = preset.get("chart", {})
+        execution = preset.get("execution", {})
+        trade_setup = preset.get("trade_setup", {})
+        signals = preset.get("signals", {})
+        costs = preset.get("costs", {})
+
+        plot_values = _build_plot_toggle_values(chart.get("plot_toggles", []))
+
+        return (
+            market.get("ticker"),
+            market.get("start_date"),
+            market.get("end_date"),
+            market.get("initial_capital"),
+            plot_values,
+            chart.get("chart_elements", []),
+            chart.get("signal_checklist", []),
+            chart.get("chart_library"),
+            execution.get("strategy_mode"),
+            trade_setup.get("strategy_preset"),
+            trade_setup.get("min_holding_period"),
+            trade_setup.get("trailing_stop_pct"),
+            trade_setup.get("position_scaling_pct"),
+            trade_setup.get("take_profit_pct"),
+            trade_setup.get("amount_per_buy"),
+            trade_setup.get("position_size_pct"),
+            trade_setup.get("consecutive_signal_mode"),
+            trade_setup.get("signal_cooldown_bars"),
+            signals.get("signal_logic_mode"),
+            signals.get("signal_window"),
+            costs.get("fx_fee_pct"),
+            costs.get("slippage_pct"),
+            costs.get("commission_pct"),
+            preset_name,
+            preset_name,
+            preset
+        )
+
+    @app.callback(
+        [Output('presets-store', 'data', allow_duplicate=True),
+         Output('preset-selector', 'options', allow_duplicate=True),
+         Output('preset-selector', 'value', allow_duplicate=True),
+         Output('preset-status', 'children')],
+        [Input('preset-save-btn', 'n_clicks'),
+         Input('preset-save-as-btn', 'n_clicks'),
+         Input('preset-rename-btn', 'n_clicks'),
+         Input('preset-delete-btn', 'n_clicks')],
+        [State('presets-store', 'data'),
+         State('preset-selector', 'value'),
+         State('preset-name-input', 'value'),
+         State('ticker-dropdown', 'value'),
+         State('start-date', 'date'),
+         State('end-date', 'date'),
+         State('initial-capital', 'value'),
+         State({'type': 'plot-toggle', 'indicator': ALL}, 'value'),
+         State('chart-elements-checklist', 'value'),
+         State('signal-checklist', 'value'),
+         State('indicator-settings-store', 'data'),
+         State('chart-library-toggle', 'value'),
+         State('strategy-mode', 'value'),
+         State('strategy-preset', 'value'),
+         State('min-holding-period', 'value'),
+         State('trailing-stop-pct', 'value'),
+         State('position-scaling-pct', 'value'),
+         State('take-profit-pct', 'value'),
+         State('amount-per-buy', 'value'),
+         State('position-size-pct', 'value'),
+         State('consecutive-signal-mode', 'value'),
+         State('signal-cooldown-bars', 'value'),
+         State('signal-logic-mode', 'value'),
+         State('signal-window', 'value'),
+         State('buy-signals', 'value'),
+         State('sell-signals', 'value'),
+         State('fx-fee-pct', 'value'),
+         State('slippage-pct', 'value'),
+         State('commission-pct', 'value')],
+        prevent_initial_call=True
+    )
+    def manage_presets(save_clicks, save_as_clicks, rename_clicks, delete_clicks,
+                       presets_data, preset_selected, preset_name_input,
+                       ticker, start_date, end_date, initial_capital,
+                       plot_values, chart_elements, signal_checklist,
+                       indicator_settings, chart_library,
+                       strategy_mode, strategy_preset, min_holding_period,
+                       trailing_stop_pct, position_scaling_pct, take_profit_pct,
+                       amount_per_buy, position_size_pct, consecutive_signal_mode,
+                       signal_cooldown_bars, signal_logic_mode, signal_window,
+                       buy_signals, sell_signals,
+                       fx_fee_pct, slippage_pct, commission_pct):
+        """Handle preset Save/Save As/Rename/Delete actions."""
+        ctx = callback_context
+        if not ctx.triggered:
+            raise PreventUpdate
+
+        action = ctx.triggered[0]['prop_id'].split('.')[0]
+        data = presets_data or load_presets(PRESET_FILE_PATH)
+        presets = copy.deepcopy(data.get("presets", {}))
+
+        selected_name = _sanitize_preset_name(preset_selected)
+        input_name = _sanitize_preset_name(preset_name_input)
+
+        if action == 'preset-save-btn':
+            target_name = selected_name or input_name
+            if input_name and input_name != selected_name:
+                target_name = input_name
+                if target_name in presets:
+                    return data, _format_preset_options(presets), preset_selected, _preset_status(
+                        f"Preset '{target_name}' already exists. Select it to overwrite or use Save As.",
+                        "warning"
+                    )
+            if not target_name:
+                return data, _format_preset_options(presets), preset_selected, _preset_status(
+                    "Enter a preset name or select one to save.", "error"
+                )
+            presets[target_name] = _build_preset_payload(
+                ticker, start_date, end_date, initial_capital,
+                plot_values, chart_elements, signal_checklist,
+                indicator_settings, chart_library,
+                strategy_mode, strategy_preset, min_holding_period,
+                trailing_stop_pct, position_scaling_pct, take_profit_pct,
+                amount_per_buy, position_size_pct, consecutive_signal_mode,
+                signal_cooldown_bars, signal_logic_mode, signal_window,
+                buy_signals, sell_signals,
+                fx_fee_pct, slippage_pct, commission_pct
+            )
+            data["presets"] = presets
+            save_presets(PRESET_FILE_PATH, data)
+            refreshed = load_presets(PRESET_FILE_PATH)
+            return refreshed, _format_preset_options(refreshed["presets"]), target_name, _preset_status(
+                f"Saved preset '{target_name}'.", "success"
+            )
+
+        if action == 'preset-save-as-btn':
+            target_name = input_name
+            if not target_name:
+                return data, _format_preset_options(presets), preset_selected, _preset_status(
+                    "Enter a name for Save As.", "error"
+                )
+            if target_name in presets:
+                return data, _format_preset_options(presets), preset_selected, _preset_status(
+                    f"Preset '{target_name}' already exists.", "warning"
+                )
+            presets[target_name] = _build_preset_payload(
+                ticker, start_date, end_date, initial_capital,
+                plot_values, chart_elements, signal_checklist,
+                indicator_settings, chart_library,
+                strategy_mode, strategy_preset, min_holding_period,
+                trailing_stop_pct, position_scaling_pct, take_profit_pct,
+                amount_per_buy, position_size_pct, consecutive_signal_mode,
+                signal_cooldown_bars, signal_logic_mode, signal_window,
+                buy_signals, sell_signals,
+                fx_fee_pct, slippage_pct, commission_pct
+            )
+            data["presets"] = presets
+            save_presets(PRESET_FILE_PATH, data)
+            refreshed = load_presets(PRESET_FILE_PATH)
+            return refreshed, _format_preset_options(refreshed["presets"]), target_name, _preset_status(
+                f"Created preset '{target_name}'.", "success"
+            )
+
+        if action == 'preset-rename-btn':
+            if not selected_name:
+                return data, _format_preset_options(presets), preset_selected, _preset_status(
+                    "Select a preset to rename.", "error"
+                )
+            if not input_name:
+                return data, _format_preset_options(presets), preset_selected, _preset_status(
+                    "Enter a new name to rename.", "error"
+                )
+            if input_name == selected_name:
+                return data, _format_preset_options(presets), preset_selected, _preset_status(
+                    "Preset name unchanged.", "warning"
+                )
+            if input_name in presets:
+                return data, _format_preset_options(presets), preset_selected, _preset_status(
+                    f"Preset '{input_name}' already exists.", "warning"
+                )
+            presets[input_name] = presets.pop(selected_name)
+            data["presets"] = presets
+            save_presets(PRESET_FILE_PATH, data)
+            refreshed = load_presets(PRESET_FILE_PATH)
+            return refreshed, _format_preset_options(refreshed["presets"]), input_name, _preset_status(
+                f"Renamed preset to '{input_name}'.", "success"
+            )
+
+        if action == 'preset-delete-btn':
+            if not selected_name:
+                return data, _format_preset_options(presets), preset_selected, _preset_status(
+                    "Select a preset to delete.", "error"
+                )
+            if selected_name in presets:
+                presets.pop(selected_name, None)
+                data["presets"] = presets
+                save_presets(PRESET_FILE_PATH, data)
+                refreshed = load_presets(PRESET_FILE_PATH)
+                return refreshed, _format_preset_options(refreshed["presets"]), None, _preset_status(
+                    f"Deleted preset '{selected_name}'.", "success"
+                )
+
+        return data, _format_preset_options(presets), preset_selected, _preset_status(
+            "No action performed.", "warning"
+        )
+
+    @app.callback(
         [Output('data-status', 'children'),
          Output('data-loaded-store', 'data'),
          Output('buy-signals', 'options'),
@@ -610,11 +889,12 @@ def register_callbacks(app):
                 holding_style, trailing_style, scaling_style, take_profit_style)
 
     @app.callback(
-        [Output('signal-cooldown-bars', 'value'),
+        [Output('signal-cooldown-bars', 'value', allow_duplicate=True),
          Output('signal-cooldown-container', 'style'),
          Output('consecutive-signal-help', 'children')],
         [Input('consecutive-signal-mode', 'value')],
-        [State('signal-cooldown-bars', 'value')]
+        [State('signal-cooldown-bars', 'value')],
+        prevent_initial_call=True
     )
     def update_consecutive_signal_settings(mode, current_value):
         """Set defaults and visibility for consecutive signal controls."""
@@ -672,9 +952,9 @@ def register_callbacks(app):
         Output('signals-unified-list', 'children'),
         [Input('signals-unified-store', 'data'),
          Input('signals-search', 'value'),
-         Input('signals-category-filter', 'value')],
-        [State('buy-signals', 'value'),
-         State('sell-signals', 'value')]
+         Input('signals-category-filter', 'value'),
+         Input('buy-signals', 'value'),
+         Input('sell-signals', 'value')]
     )
     def render_unified_signal_list(signal_rows, search_value, category_values, buy_values, sell_values):
         """Render unified BUY/SELL signal rows."""
@@ -777,13 +1057,21 @@ def register_callbacks(app):
     @app.callback(
         [Output('buy-signals', 'value'),
          Output('sell-signals', 'value')],
-        [Input({'type': 'signal-toggle', 'side': 'buy', 'value': ALL}, 'value'),
+        [Input('preset-apply-store', 'data'),
+         Input({'type': 'signal-toggle', 'side': 'buy', 'value': ALL}, 'value'),
          Input({'type': 'signal-toggle', 'side': 'sell', 'value': ALL}, 'value')],
         [State({'type': 'signal-toggle', 'side': 'buy', 'value': ALL}, 'id'),
          State({'type': 'signal-toggle', 'side': 'sell', 'value': ALL}, 'id')]
     )
-    def sync_signal_selection(buy_values, sell_values, buy_ids, sell_ids):
+    def sync_signal_selection(preset_data, buy_values, sell_values, buy_ids, sell_ids):
         """Sync row toggles to unified buy/sell selections."""
+        ctx = callback_context
+        if getattr(ctx, "triggered_id", None) == 'preset-apply-store':
+            if not preset_data:
+                raise PreventUpdate
+            signals = preset_data.get("signals", {})
+            return list(signals.get("buy_signals", []) or []), list(signals.get("sell_signals", []) or [])
+
         if not buy_ids and not sell_ids:
             return [], []
 
@@ -969,19 +1257,30 @@ def register_callbacks(app):
 
     @app.callback(
         Output('indicator-settings-store', 'data'),
-        [Input({'type': 'indicator-setting', 'indicator': ALL, 'key': ALL}, 'value')],
+        [Input('preset-apply-store', 'data'),
+         Input({'type': 'indicator-setting', 'indicator': ALL, 'key': ALL}, 'value')],
         [State('indicator-settings-store', 'data')],
         prevent_initial_call=True
     )
-    def persist_indicator_settings(_values, current_settings):
+    def persist_indicator_settings(preset_data, _values, current_settings):
         """Persist indicator settings from the sidebar inputs."""
+        ctx = callback_context
+        if getattr(ctx, "triggered_id", None) == 'preset-apply-store':
+            if not preset_data:
+                raise PreventUpdate
+            indicator_settings = preset_data.get("chart", {}).get("indicator_settings")
+            if indicator_settings is None:
+                raise PreventUpdate
+            return indicator_settings
+
         if current_settings is None:
             current_settings = copy.deepcopy(DEFAULT_INDICATOR_SETTINGS)
         if not callback_context.inputs_list:
             raise PreventUpdate
 
         updated = copy.deepcopy(current_settings)
-        for item in callback_context.inputs_list[0]:
+        settings_inputs = callback_context.inputs_list[1] if len(callback_context.inputs_list) > 1 else []
+        for item in settings_inputs:
             field_id = item.get('id', {})
             indicator = field_id.get('indicator')
             key = field_id.get('key')
@@ -2053,6 +2352,118 @@ def _create_data_table(display_df: pd.DataFrame, theme: dict) -> dash_table.Data
         page_size=50,
         fixed_rows={'headers': True}
     )
+
+
+def _sanitize_preset_name(name: Any) -> str:
+    """Normalize preset names for consistent storage."""
+    if not name:
+        return ""
+    normalized = re.sub(r"\s+", " ", str(name)).strip()
+    return normalized
+
+
+def _extract_selected_plots(plot_values: List[List[str]]) -> List[str]:
+    """Convert pattern-matched plot toggle values into selected indicator list."""
+    selected = []
+    plot_values = plot_values or []
+    for idx, (_, value) in enumerate(PLOT_OPTIONS):
+        values = plot_values[idx] if idx < len(plot_values) else []
+        if values:
+            selected.append(value)
+    return selected
+
+
+def _build_plot_toggle_values(selected: List[str]) -> List[List[str]]:
+    """Build pattern output values for plot toggles from selected list."""
+    selected = set(selected or [])
+    return [[value] if value in selected else [] for _, value in PLOT_OPTIONS]
+
+
+def _build_preset_payload(
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    initial_capital: Any,
+    plot_values: List[List[str]],
+    chart_elements: List[str],
+    signal_checklist: List[str],
+    indicator_settings: Dict[str, Any],
+    chart_library: str,
+    strategy_mode: str,
+    strategy_preset: str,
+    min_holding_period: Any,
+    trailing_stop_pct: Any,
+    position_scaling_pct: Any,
+    take_profit_pct: Any,
+    amount_per_buy: Any,
+    position_size_pct: Any,
+    consecutive_signal_mode: str,
+    signal_cooldown_bars: Any,
+    signal_logic_mode: str,
+    signal_window: Any,
+    buy_signals: List[str],
+    sell_signals: List[str],
+    fx_fee_pct: Any,
+    slippage_pct: Any,
+    commission_pct: Any
+) -> Dict[str, Any]:
+    payload = {
+        "market_data": {
+            "ticker": ticker,
+            "start_date": start_date,
+            "end_date": end_date,
+            "initial_capital": initial_capital
+        },
+        "chart": {
+            "plot_toggles": _extract_selected_plots(plot_values),
+            "chart_elements": chart_elements or [],
+            "signal_checklist": signal_checklist or [],
+            "indicator_settings": copy.deepcopy(indicator_settings or {}),
+            "chart_library": chart_library
+        },
+        "execution": {
+            "strategy_mode": strategy_mode
+        },
+        "trade_setup": {
+            "strategy_preset": strategy_preset,
+            "min_holding_period": min_holding_period,
+            "trailing_stop_pct": trailing_stop_pct,
+            "position_scaling_pct": position_scaling_pct,
+            "take_profit_pct": take_profit_pct,
+            "amount_per_buy": amount_per_buy,
+            "position_size_pct": position_size_pct,
+            "consecutive_signal_mode": consecutive_signal_mode,
+            "signal_cooldown_bars": signal_cooldown_bars
+        },
+        "signals": {
+            "signal_logic_mode": signal_logic_mode,
+            "signal_window": signal_window,
+            "buy_signals": list(buy_signals or []),
+            "sell_signals": list(sell_signals or [])
+        },
+        "costs": {
+            "fx_fee_pct": fx_fee_pct,
+            "slippage_pct": slippage_pct,
+            "commission_pct": commission_pct
+        }
+    }
+    return normalize_preset(payload)
+
+
+def _preset_status(message: str, level: str = "info") -> html.Span:
+    """Simple status message with theme color."""
+    theme = get_theme()
+    color_map = {
+        "success": theme["accent_green"],
+        "error": theme["accent_red"],
+        "warning": theme["accent_orange"]
+    }
+    return html.Span(message, style={"color": color_map.get(level, theme["text_secondary"])})
+
+
+def _format_preset_options(presets: Dict[str, Any]) -> List[Dict[str, str]]:
+    names = sorted(presets.keys(), key=lambda name: str(name).lower())
+    return [{"label": name, "value": name} for name in names]
 
 
 def _create_price_subtitle(df: pd.DataFrame, theme: dict) -> html.Span:

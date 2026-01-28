@@ -80,7 +80,8 @@ def get_styles(theme: dict) -> dict:
             'padding': '10px',
             'position': 'relative',
             'zIndex': 3,
-            'overflow': 'visible',
+            'overflowY': 'auto',
+            'overflowX': 'hidden',
         },
         'sidebar_section': {
             'backgroundColor': theme['bg_tertiary'],

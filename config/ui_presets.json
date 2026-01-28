@@ -1,0 +1,109 @@
+{
+  "presets": {
+    "CCI + RSI Oversold": {
+      "chart": {
+        "chart_elements": [
+          "candlesticks",
+          "signals",
+          "bollinger"
+        ],
+        "chart_library": "plotly",
+        "indicator_settings": {
+          "adx": {
+            "period": 14,
+            "threshold": 25
+          },
+          "atr": {
+            "period": 14
+          },
+          "bollinger": {
+            "double_bottom_threshold": 0.02,
+            "squeeze_threshold": 0.1,
+            "window": 20,
+            "window_dev": 2
+          },
+          "cci": {
+            "ceiling": 150,
+            "floor": -150,
+            "period": 20
+          },
+          "ema": {
+            "atr_window": 14,
+            "long_window": 50,
+            "medium_window": 26,
+            "short_window": 12
+          },
+          "macd": {
+            "fast": 12,
+            "signal": 9,
+            "slow": 26
+          },
+          "obv": {
+            "ma_period": 20
+          },
+          "rsi": {
+            "overbought": 70,
+            "oversold": 30,
+            "period": 14
+          },
+          "sma": {
+            "long_window": 50,
+            "medium_window": 20,
+            "short_window": 5,
+            "trend_window": 200
+          },
+          "volume": {
+            "ma_period": 20
+          }
+        },
+        "plot_toggles": [
+          "candlestick",
+          "volume",
+          "rsi",
+          "cci",
+          "macd"
+        ],
+        "signal_checklist": [
+          "buy",
+          "sell"
+        ]
+      },
+      "costs": {
+        "commission_pct": 0,
+        "fx_fee_pct": 0.15,
+        "slippage_pct": 0.05
+      },
+      "execution": {
+        "strategy_mode": "accumulation"
+      },
+      "market_data": {
+        "end_date": "2026-01-28",
+        "initial_capital": 10000,
+        "start_date": "2018-01-01",
+        "ticker": "SPY"
+      },
+      "signals": {
+        "buy_signals": [
+          "CCI_Oversold_Buy",
+          "RSI_Oversold_Buy"
+        ],
+        "sell_signals": [],
+        "signal_logic_mode": "and",
+        "signal_window": 4
+      },
+      "trade_setup": {
+        "amount_per_buy": 1000,
+        "consecutive_signal_mode": "cooldown",
+        "min_holding_period": 5,
+        "position_scaling_pct": 25,
+        "position_size_pct": 25,
+        "signal_cooldown_bars": 10,
+        "strategy_preset": "custom",
+        "take_profit_pct": 0,
+        "trailing_stop_pct": 5
+      }
+    }
+  },
+  "updated_at": "2026-01-28T23:27:14+00:00",
+  "version": 1
+}
