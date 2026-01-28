@@ -4,6 +4,7 @@ Bloomberg Terminal-inspired design with single-page layout.
 """
 
 import logging
+import os
 import socket
 from datetime import date
 from threading import Timer
@@ -53,6 +54,8 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         dcc.Store(id='signals-unified-store', data=[]),
         dcc.Store(id='indicator-settings-store', data=DEFAULT_INDICATOR_SETTINGS),
         dcc.Store(id='active-indicator-store', data=None),
+        dcc.Store(id='export-img-store', data=None),
+        dcc.Download(id='download-csv'),
         dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
         dcc.Interval(id='autoload-interval', interval=1000, max_intervals=1),
         dcc.Interval(id='optimization-interval', interval=500, disabled=True, n_intervals=0),
@@ -222,7 +225,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                                 dcc.Checklist(
                                     id={'type': 'plot-toggle', 'indicator': value},
                                     options=[{'label': html.Span(label, style={'fontSize': FONT_SIZES['sm']}), 'value': value}],
-                                    value=[value] if value in {'candlestick', 'volume'} else [],
+                                    value=[value] if value in {'candlestick', 'volume', 'rsi', 'cci', 'macd'} else [],
                                     style={'flex': 1},
                                     inputStyle={'cursor': 'pointer'},
                                     labelStyle={'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'cursor': 'pointer'}
@@ -257,7 +260,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                     id='chart-elements-checklist',
                     options=[{'label': html.Span(label, style={'marginLeft': '8px', 'fontSize': FONT_SIZES['sm']}), 'value': value}
                             for label, value in CHART_ELEMENT_OPTIONS],
-                    value=['candlesticks', 'signals'],
+                    value=['candlesticks', 'signals', 'bollinger'],
                     style={'display': 'flex', 'flexDirection': 'column', 'gap': '4px'},
                     inputStyle={'cursor': 'pointer'},
                     labelStyle={'display': 'flex', 'alignItems': 'center', 'padding': '4px 0', 'cursor': 'pointer'}
@@ -532,7 +535,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                     [
                         html.Div([
                             html.Div([
-                                html.Span("Strategy Mode", style={
+                                html.Span("Execution Type", style={
                                     'fontSize': FONT_SIZES['xs'],
                                     'color': theme['text_secondary'],
                                     'fontWeight': '600',
@@ -655,7 +658,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                         ])
                     ],
                     title=html.Div([
-                        html.Span("Strategy Mode"),
+                        html.Span("Execution Type"),
                         html.Span(
                             id='summary-strategy-mode',
                             className='accordion-title-summary'
@@ -665,6 +668,212 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                 ),
                 dbc.AccordionItem(
                     [
+                        html.Div(id='preset-options', children=[
+                            html.Div([
+                                html.Span("Strategy Preset", style={
+                                    'fontSize': FONT_SIZES['sm'],
+                                    'fontWeight': '600',
+                                    'color': theme['accent_purple'],
+                                }),
+                            ], style={'marginBottom': '6px'}),
+                            dcc.Dropdown(
+                                id='strategy-preset',
+                                options=[
+                                    {'label': 'Custom', 'value': 'custom'},
+                                    {'label': 'Swing', 'value': 'swing'},
+                                    {'label': 'Position', 'value': 'position'},
+                                    {'label': 'Trend', 'value': 'trend'},
+                                ],
+                                value='custom',
+                                clearable=False,
+                                style={'fontSize': FONT_SIZES['sm']},
+                                className='dark-dropdown',
+                            ),
+                        ], style={
+                            'marginBottom': '12px',
+                            'display': 'none',
+                            'padding': '10px',
+                            'backgroundColor': f'{theme["accent_purple"]}10',
+                            'borderRadius': BORDER_RADIUS['md'],
+                            'border': f'1px solid {theme["accent_purple"]}40',
+                        }),
+                        dbc.Tooltip(
+                            "Quick presets for longer-hold strategies (swing/position/trend).",
+                            target='strategy-preset',
+                            placement='right',
+                            trigger='hover focus',
+                        ),
+                        html.Div(id='holding-period-options', children=[
+                            html.Div([
+                                html.Span("Min Holding Period", style={
+                                    'fontSize': FONT_SIZES['sm'],
+                                    'fontWeight': '600',
+                                    'color': theme['accent_orange'],
+                                }),
+                                html.Span(" bars", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_primary'],
+                                }),
+                            ], style={'marginBottom': '6px'}),
+                            dcc.Input(
+                                id='min-holding-period',
+                                type='number',
+                                value=5,
+                                min=0,
+                                step=1,
+                                placeholder='bars to hold',
+                                style={
+                                    **styles['input'],
+                                    'width': '100%',
+                                    'fontFamily': FONT_MONO,
+                                    'padding': '10px 12px',
+                                    'fontSize': FONT_SIZES['base'],
+                                    'borderColor': theme['accent_orange'],
+                                }
+                            ),
+                        ], style={
+                            'marginBottom': '12px',
+                            'display': 'none',
+                            'padding': '10px',
+                            'backgroundColor': f'{theme["accent_orange"]}10',
+                            'borderRadius': BORDER_RADIUS['md'],
+                            'border': f'1px solid {theme["accent_orange"]}40',
+                        }),
+                        dbc.Tooltip(
+                            "Minimum number of bars to hold before a sell/exit.",
+                            target='min-holding-period',
+                            placement='right',
+                            trigger='hover focus',
+                        ),
+                        html.Div(id='trailing-stop-options', children=[
+                            html.Div([
+                                html.Span("Trailing Stop", style={
+                                    'fontSize': FONT_SIZES['sm'],
+                                    'fontWeight': '600',
+                                    'color': theme['accent_red'],
+                                }),
+                                html.Span(" %", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_primary'],
+                                }),
+                            ], style={'marginBottom': '6px'}),
+                            dcc.Input(
+                                id='trailing-stop-pct',
+                                type='number',
+                                value=5,
+                                min=0,
+                                max=100,
+                                step=0.5,
+                                placeholder='% trail',
+                                style={
+                                    **styles['input'],
+                                    'width': '100%',
+                                    'fontFamily': FONT_MONO,
+                                    'padding': '10px 12px',
+                                    'fontSize': FONT_SIZES['base'],
+                                    'borderColor': theme['accent_red'],
+                                }
+                            ),
+                        ], style={
+                            'marginBottom': '12px',
+                            'display': 'none',
+                            'padding': '10px',
+                            'backgroundColor': f'{theme["accent_red"]}10',
+                            'borderRadius': BORDER_RADIUS['md'],
+                            'border': f'1px solid {theme["accent_red"]}40',
+                        }),
+                        dbc.Tooltip(
+                            "Trailing stop percentage applied after entry.",
+                            target='trailing-stop-pct',
+                            placement='right',
+                            trigger='hover focus',
+                        ),
+                        html.Div(id='position-scaling-options', children=[
+                            html.Div([
+                                html.Span("Position Scaling", style={
+                                    'fontSize': FONT_SIZES['sm'],
+                                    'fontWeight': '600',
+                                    'color': theme['accent_cyan'],
+                                }),
+                                html.Span(" %", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_primary'],
+                                }),
+                            ], style={'marginBottom': '6px'}),
+                            dcc.Input(
+                                id='position-scaling-pct',
+                                type='number',
+                                value=25,
+                                min=0,
+                                max=100,
+                                step=1,
+                                placeholder='% scale per signal',
+                                style={
+                                    **styles['input'],
+                                    'width': '100%',
+                                    'fontFamily': FONT_MONO,
+                                    'padding': '10px 12px',
+                                    'fontSize': FONT_SIZES['base'],
+                                    'borderColor': theme['accent_cyan'],
+                                }
+                            ),
+                        ], style={
+                            'marginBottom': '12px',
+                            'display': 'none',
+                            'padding': '10px',
+                            'backgroundColor': f'{theme["accent_cyan"]}10',
+                            'borderRadius': BORDER_RADIUS['md'],
+                            'border': f'1px solid {theme["accent_cyan"]}40',
+                        }),
+                        dbc.Tooltip(
+                            "Increase position size by this % on repeated buys.",
+                            target='position-scaling-pct',
+                            placement='right',
+                            trigger='hover focus',
+                        ),
+                        html.Div(id='take-profit-options', children=[
+                            html.Div([
+                                html.Span("Take Profit", style={
+                                    'fontSize': FONT_SIZES['sm'],
+                                    'fontWeight': '600',
+                                    'color': theme['accent_green'],
+                                }),
+                                html.Span(" %", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_primary'],
+                                }),
+                            ], style={'marginBottom': '6px'}),
+                            dcc.Input(
+                                id='take-profit-pct',
+                                type='number',
+                                value=0,
+                                min=0,
+                                max=100,
+                                step=0.5,
+                                placeholder='% target',
+                                style={
+                                    **styles['input'],
+                                    'width': '100%',
+                                    'fontFamily': FONT_MONO,
+                                    'padding': '10px 12px',
+                                    'fontSize': FONT_SIZES['base'],
+                                    'borderColor': theme['accent_green'],
+                                }
+                            ),
+                        ], style={
+                            'marginBottom': '12px',
+                            'display': 'none',
+                            'padding': '10px',
+                            'backgroundColor': f'{theme["accent_green"]}10',
+                            'borderRadius': BORDER_RADIUS['md'],
+                            'border': f'1px solid {theme["accent_green"]}40',
+                        }),
+                        dbc.Tooltip(
+                            "Exit full position when profit target is reached.",
+                            target='take-profit-pct',
+                            placement='right',
+                            trigger='hover focus',
+                        ),
                         html.Div(id='accumulation-options', children=[
                             html.Div([
                                 html.Span("Amount Per Buy", style={
@@ -674,7 +883,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                 }),
                                 html.Span(" $", style={
                                     'fontSize': FONT_SIZES['xs'],
-                                    'color': theme['text_secondary'],
+                                    'color': theme['text_primary'],
                                 }),
                             ], style={'marginBottom': '6px'}),
                             dcc.Input(
@@ -715,7 +924,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                 }),
                                 html.Span(" %", style={
                                     'fontSize': FONT_SIZES['xs'],
-                                    'color': theme['text_secondary'],
+                                    'color': theme['text_primary'],
                                 }),
                             ], style={'marginBottom': '6px'}),
                             dcc.Input(
@@ -750,7 +959,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                         ),
                     ],
                     title=html.Div([
-                        html.Span("Position Sizing"),
+                        html.Span("Trade Setup"),
                         html.Span(
                             id='summary-position-sizing',
                             className='accordion-title-summary'
@@ -1109,8 +1318,12 @@ def run_dashboard(dev_mode: bool = False) -> None:
     def open_browser():
         webbrowser.open_new(f"http://127.0.0.1:{port}/")
 
-    port = find_available_port()
-    Timer(1, open_browser).start()
+    # In dev mode the reloader spawns two processes; keep a fixed port to
+    # avoid the second process auto-selecting the next free port.
+    port = START_PORT if dev_mode else find_available_port()
+    should_open_browser = (not dev_mode) or (os.environ.get("WERKZEUG_RUN_MAIN") == "true")
+    if should_open_browser:
+        Timer(1, open_browser).start()
     logger.info(f"Starting dashboard on port {port}")
     app.run(debug=dev_mode, use_reloader=dev_mode, port=port)
 

@@ -88,6 +88,7 @@ def backtest(
     strategy_mode: str = 'trading',
     amount_per_buy: float = None,
     position_size_pct: float = 100,
+    take_profit: float = 0.0,
     signal_logic: str = 'or',
     signal_window: int = 0
 ) -> pd.DataFrame:
@@ -113,6 +114,7 @@ def backtest(
         strategy_mode: 'trading' (buy/sell cycles), 'accumulation' (DCA), or 'rebalancing' (partial).
         amount_per_buy: Fixed dollar amount per buy signal (for accumulation mode).
         position_size_pct: Percentage of portfolio per trade (for rebalancing mode).
+        take_profit: Take profit percentage (0 disables).
         signal_logic: 'or' (any signal triggers) or 'and' (all signals must agree).
         signal_window: Window size (candles) for AND confirmation across signals.
 
@@ -142,6 +144,7 @@ def backtest(
         sell_signal_counter = np.zeros(num_rows, dtype=int)
         holding_period = np.zeros(num_rows, dtype=int)
         trailing_stop = np.full(num_rows, np.inf)
+        avg_entry_price = np.zeros(num_rows)
 
         # Get position sizer function
         position_sizer = get_position_sizer(position_sizing_strategy, **position_sizing_params)
@@ -167,11 +170,14 @@ def backtest(
 
         position_size = 0
 
+        take_profit = max(0.0, float(take_profit or 0))
+
         for i in range(1 + delay, num_rows):
             close_price = close_prices[i]
             prev_portfolio_value = portfolio_value[i-1]
             prev_cash_value = cash_value[i-1]
             prev_units = units[i-1]
+            avg_entry_price[i] = avg_entry_price[i-1]
 
             # Update holding period
             if prev_units > 0:
@@ -187,6 +193,17 @@ def backtest(
                 cash_value[i] = prev_cash_value + value_to_sell
                 position_size = 0
                 trailing_stop[i] = np.inf
+                avg_entry_price[i] = 0
+            elif strategy_mode != 'accumulation' and take_profit > 0 and prev_units > 0 and \
+                 avg_entry_price[i-1] > 0 and close_price >= avg_entry_price[i-1] * (1 + take_profit) and \
+                 holding_period[i] >= min_holding_period:
+                units_to_sell[i] = prev_units
+                value_to_sell = units_to_sell[i] * close_price
+                units[i] = 0
+                cash_value[i] = prev_cash_value + value_to_sell
+                position_size = 0
+                trailing_stop[i] = np.inf
+                avg_entry_price[i] = 0
             else:
                 # Buy signal
                 if (use_signal_strength and buy_signal_strength[i] > buy_threshold) or \
@@ -219,6 +236,10 @@ def backtest(
                         value_to_buy = units_to_buy[i] * close_price
                         units[i] = prev_units + units_to_buy[i]
                         cash_value[i] = prev_cash_value - value_to_buy
+                        if units[i] > 0:
+                            avg_entry_price[i] = (
+                                (avg_entry_price[i-1] * prev_units) + value_to_buy
+                            ) / units[i]
                         if strategy_mode != 'accumulation':
                             trailing_stop[i] = close_price * (1 - trailing_stop_loss)
                         else:
@@ -254,6 +275,7 @@ def backtest(
                             cash_value[i] = prev_cash_value + value_to_sell
                             if units[i] == 0:
                                 trailing_stop[i] = np.inf
+                                avg_entry_price[i] = 0
                             else:
                                 trailing_stop[i] = max(trailing_stop[i-1], close_price * (1 - trailing_stop_loss))
                         else:
@@ -508,6 +530,10 @@ def run_backtest(
     strategy_mode: str = 'trading',
     amount_per_buy: float = None,
     position_size_pct: float = 100,
+    min_holding_period: int = 5,
+    trailing_stop_loss: float = 0.05,
+    position_scaling: float = 0.25,
+    take_profit: float = 0.0,
     signal_logic: str = 'or',
     signal_window: int = 0
 ) -> pd.DataFrame:
@@ -522,6 +548,10 @@ def run_backtest(
         strategy_mode: 'trading' (buy/sell cycles), 'accumulation' (DCA), or 'rebalancing' (partial positions).
         amount_per_buy: Fixed dollar amount per buy signal (for accumulation mode).
         position_size_pct: Percentage of portfolio per trade (for rebalancing mode).
+        min_holding_period: Minimum bars to hold before selling.
+        trailing_stop_loss: Trailing stop loss percentage.
+        position_scaling: Position scaling factor on repeated buys.
+        take_profit: Take profit percentage (0 disables).
         signal_logic: 'or' (any signal triggers) or 'and' (all signals must agree).
         signal_window: Window size (candles) for AND confirmation across signals.
 
@@ -543,13 +573,14 @@ def run_backtest(
         use_signal_strength=False,  # Set to False by default
         buy_threshold=0.6,
         sell_threshold=0.6,
-        min_holding_period=5,
-        position_scaling=0.25,
-        trailing_stop_loss=0.05,
+        min_holding_period=min_holding_period,
+        position_scaling=position_scaling,
+        trailing_stop_loss=trailing_stop_loss,
         volatility_window=20,
         strategy_mode=strategy_mode,
         amount_per_buy=amount_per_buy,
         position_size_pct=position_size_pct,
+        take_profit=take_profit,
         signal_logic=signal_logic,
         signal_window=signal_window
     )

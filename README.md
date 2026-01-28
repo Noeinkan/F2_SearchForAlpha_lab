@@ -122,6 +122,9 @@ results, buy_combo, sell_combo, best_value, output_file = test_all_combinations(
 | **Trading** | Traditional buy/sell cycles with position scaling | Yes |
 | **Accumulation (DCA)** | Fixed dollar amount per buy signal, hold until end | No |
 | **Rebalancing** | Percentage-based partial buys/sells | No (optional) |
+| **Swing Trading** | Multi-day holds targeting short-to-medium trends | Yes |
+| **Position Trading** | Multi-week/month holds based on long-term trends | Yes |
+| **Trend Following** | Stay in trend until exit signal or reversal | Yes |
 
 ```python
 from lib.strategy import run_backtest

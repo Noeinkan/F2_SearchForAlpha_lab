@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Tuple, List, Any, Dict
 
 import pandas as pd
-from dash import html, dash_table, callback_context, dcc
+from dash import html, dash_table, callback_context, dcc, no_update
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 import plotly.graph_objs as go
@@ -473,7 +473,12 @@ def register_callbacks(app):
 
     @app.callback(
         [Output('accumulation-options', 'style'),
-         Output('rebalancing-options', 'style')],
+         Output('rebalancing-options', 'style'),
+         Output('preset-options', 'style'),
+         Output('holding-period-options', 'style'),
+         Output('trailing-stop-options', 'style'),
+         Output('position-scaling-options', 'style'),
+         Output('take-profit-options', 'style')],
         [Input('strategy-mode', 'value')],
         [State('theme-store', 'data')]
     )
@@ -481,23 +486,57 @@ def register_callbacks(app):
         """Show/hide mode-specific options based on selected strategy mode."""
         theme = get_theme(theme_name or DEFAULT_THEME)
 
-        accumulation_style = {
-            'marginBottom': '12px',
-            'display': 'block' if strategy_mode == 'accumulation' else 'none',
-            'padding': '10px',
-            'backgroundColor': f'{theme["accent_green"]}10',
-            'borderRadius': BORDER_RADIUS['md'],
-            'border': f'1px solid {theme["accent_green"]}40',
+        def panel_style(show: bool, color: str) -> dict:
+            return {
+                'marginBottom': '12px',
+                'display': 'block' if show else 'none',
+                'padding': '10px',
+                'backgroundColor': f'{color}10',
+                'borderRadius': BORDER_RADIUS['md'],
+                'border': f'1px solid {color}40',
+                'color': theme['text_primary'],
+            }
+
+        is_trading = strategy_mode == 'trading'
+        is_accumulation = strategy_mode == 'accumulation'
+        is_rebalancing = strategy_mode == 'rebalancing'
+
+        accumulation_style = panel_style(is_accumulation, theme["accent_green"])
+        rebalancing_style = panel_style(is_rebalancing, theme["accent_blue"])
+        preset_style = panel_style(is_trading, theme["accent_purple"])
+        holding_style = panel_style(is_trading or is_rebalancing, theme["accent_orange"])
+        trailing_style = panel_style(is_trading or is_rebalancing, theme["accent_red"])
+        scaling_style = panel_style(is_trading, theme["accent_cyan"])
+        take_profit_style = panel_style(is_trading or is_rebalancing, theme["accent_green"])
+
+        return (accumulation_style, rebalancing_style, preset_style,
+                holding_style, trailing_style, scaling_style, take_profit_style)
+
+    @app.callback(
+        [Output('min-holding-period', 'value'),
+         Output('trailing-stop-pct', 'value'),
+         Output('position-scaling-pct', 'value'),
+         Output('take-profit-pct', 'value')],
+        [Input('strategy-preset', 'value')],
+        prevent_initial_call=True
+    )
+    def apply_strategy_preset(preset):
+        """Apply preset values to trade setup inputs."""
+        presets = {
+            'swing': {'min_hold': 5, 'trailing': 8, 'scaling': 25, 'take_profit': 12},
+            'position': {'min_hold': 20, 'trailing': 15, 'scaling': 15, 'take_profit': 25},
+            'trend': {'min_hold': 10, 'trailing': 12, 'scaling': 20, 'take_profit': 20},
         }
-        rebalancing_style = {
-            'marginBottom': '12px',
-            'display': 'block' if strategy_mode == 'rebalancing' else 'none',
-            'padding': '10px',
-            'backgroundColor': f'{theme["accent_blue"]}10',
-            'borderRadius': BORDER_RADIUS['md'],
-            'border': f'1px solid {theme["accent_blue"]}40',
-        }
-        return accumulation_style, rebalancing_style
+
+        if not preset or preset == 'custom':
+            return no_update, no_update, no_update, no_update
+
+        preset_values = presets.get(preset)
+        if not preset_values:
+            return no_update, no_update, no_update, no_update
+
+        return (preset_values['min_hold'], preset_values['trailing'],
+                preset_values['scaling'], preset_values['take_profit'])
 
     @app.callback(
         Output('signals-unified-list', 'children'),
@@ -624,15 +663,21 @@ def register_callbacks(app):
          Output('summary-position-sizing', 'children'),
          Output('summary-signal-settings', 'children')],
         [Input('strategy-mode', 'value'),
+         Input('strategy-preset', 'value'),
          Input('amount-per-buy', 'value'),
          Input('position-size-pct', 'value'),
+         Input('min-holding-period', 'value'),
+         Input('trailing-stop-pct', 'value'),
+         Input('position-scaling-pct', 'value'),
+         Input('take-profit-pct', 'value'),
          Input('buy-signals', 'value'),
          Input('sell-signals', 'value'),
          Input('signal-logic-mode', 'value'),
          Input('signal-window', 'value')]
     )
-    def update_backtest_panel_summaries(strategy_mode, amount_per_buy, position_size_pct,
-                                        buy_signals, sell_signals, signal_logic, signal_window):
+    def update_backtest_panel_summaries(strategy_mode, strategy_preset, amount_per_buy, position_size_pct,
+                                        min_holding_period, trailing_stop_pct, position_scaling_pct,
+                                        take_profit_pct, buy_signals, sell_signals, signal_logic, signal_window):
         """Update accordion titles with selected options when collapsed."""
         strategy_labels = {
             'trading': 'Trading (Full)',
@@ -641,18 +686,32 @@ def register_callbacks(app):
         }
         strategy_summary = strategy_labels.get(strategy_mode, 'Trading (Full)')
 
+        if strategy_mode == 'trading' and strategy_preset and strategy_preset != 'custom':
+            strategy_summary = f"{strategy_summary} ({strategy_preset.title()})"
+
         if strategy_mode == 'accumulation':
             if amount_per_buy is None:
                 sizing_summary = '$- per buy'
             else:
                 sizing_summary = f'${amount_per_buy:,.0f} per buy'
-        elif strategy_mode == 'rebalancing':
-            if position_size_pct is None:
-                sizing_summary = '% per trade'
-            else:
-                sizing_summary = f'{position_size_pct:.0f}% per trade'
         else:
-            sizing_summary = 'N/A'
+            sizing_parts = []
+            if strategy_mode == 'rebalancing':
+                if position_size_pct is None:
+                    sizing_parts.append('% per trade')
+                else:
+                    sizing_parts.append(f'{position_size_pct:.0f}% per trade')
+
+            if min_holding_period is not None:
+                sizing_parts.append(f'Hold {int(min_holding_period)}')
+            if trailing_stop_pct is not None and trailing_stop_pct > 0:
+                sizing_parts.append(f'TS {trailing_stop_pct:.1f}%')
+            if strategy_mode == 'trading' and position_scaling_pct is not None:
+                sizing_parts.append(f'Scale {position_scaling_pct:.0f}%')
+            if take_profit_pct is not None and take_profit_pct > 0:
+                sizing_parts.append(f'TP {take_profit_pct:.1f}%')
+
+            sizing_summary = ' | '.join(sizing_parts) if sizing_parts else 'N/A'
 
         buy_signals = buy_signals or []
         sell_signals = sell_signals or []
@@ -903,6 +962,63 @@ def register_callbacks(app):
         return fig
 
     @app.callback(
+        Output('download-csv', 'data'),
+        [Input('export-csv-btn', 'n_clicks')],
+        [State('data-loaded-store', 'data'),
+         State('ticker-dropdown', 'value')],
+        prevent_initial_call=True
+    )
+    def export_chart_csv(n_clicks, data_loaded, ticker):
+        """Export current chart data (with indicators) to CSV."""
+        if not data_loaded or dashboard_state.df is None:
+            raise PreventUpdate
+
+        df = dashboard_state.df.copy()
+        if isinstance(df.index, pd.DatetimeIndex):
+            df = df.reset_index().rename(columns={'index': 'Date'})
+        if 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
+            cols = ['Date'] + [col for col in df.columns if col != 'Date']
+            df = df.loc[:, cols]
+
+        export_date = datetime.now().strftime('%Y%m%d')
+        safe_ticker = (ticker or 'data').replace('/', '-')
+        filename = f"{safe_ticker}_chart_data_{export_date}.csv"
+        return dcc.send_data_frame(df.to_csv, filename, index=False, float_format='%.6f')
+
+    app.clientside_callback(
+        """
+        function(n_clicks, chartLibrary) {
+            if (!n_clicks) {
+                return window.dash_clientside.no_update;
+            }
+            if (chartLibrary && chartLibrary !== 'plotly') {
+                return window.dash_clientside.no_update;
+            }
+            const graph = document.getElementById('financial-chart');
+            if (!graph || !window.Plotly) {
+                return window.dash_clientside.no_update;
+            }
+            const plotlyGraph = graph.querySelector('.js-plotly-plot');
+            if (!plotlyGraph) {
+                return window.dash_clientside.no_update;
+            }
+            window.Plotly.downloadImage(plotlyGraph, {
+                format: 'png',
+                filename: 'chart',
+                height: 800,
+                width: 1200,
+                scale: 2
+            });
+            return Date.now();
+        }
+        """,
+        Output('export-img-store', 'data'),
+        Input('export-img-btn', 'n_clicks'),
+        State('chart-library-toggle', 'value')
+    )
+
+    @app.callback(
         Output('layout-store', 'data'),
         [Input('financial-chart', 'relayoutData')],
         [State('layout-store', 'data')],
@@ -1068,11 +1184,17 @@ def register_callbacks(app):
          State('strategy-mode', 'value'),
          State('amount-per-buy', 'value'),
          State('position-size-pct', 'value'),
+         State('min-holding-period', 'value'),
+         State('trailing-stop-pct', 'value'),
+         State('position-scaling-pct', 'value'),
+         State('take-profit-pct', 'value'),
          State('signal-logic-mode', 'value'),
          State('signal-window', 'value')]
     )
     def run_backtest_callback(n_clicks, ticker, initial_capital, buy_signals, sell_signals,
-                               strategy_mode, amount_per_buy, position_size_pct, signal_logic, signal_window):
+                               strategy_mode, amount_per_buy, position_size_pct,
+                               min_holding_period, trailing_stop_pct, position_scaling_pct,
+                               take_profit_pct, signal_logic, signal_window):
         """Run backtest and display results."""
         if not n_clicks:
             raise PreventUpdate
@@ -1093,12 +1215,21 @@ def register_callbacks(app):
         # Use empty list for sell signals if not provided in accumulation/rebalancing modes
         sell_signals = sell_signals or []
 
+        min_holding_period = int(min_holding_period or 0)
+        trailing_stop_loss = max(0.0, float(trailing_stop_pct or 0)) / 100.0
+        position_scaling = max(0.0, float(position_scaling_pct or 0)) / 100.0
+        take_profit = max(0.0, float(take_profit_pct or 0)) / 100.0
+
         try:
             results = run_backtest(
                 df, initial_capital, buy_signals, sell_signals,
                 strategy_mode=strategy_mode,
                 amount_per_buy=amount_per_buy,
                 position_size_pct=position_size_pct,
+                min_holding_period=min_holding_period,
+                trailing_stop_loss=trailing_stop_loss,
+                position_scaling=position_scaling,
+                take_profit=take_profit,
                 signal_logic=signal_logic or 'or',
                 signal_window=signal_window or 0
             )
