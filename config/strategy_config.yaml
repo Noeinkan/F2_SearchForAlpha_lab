@@ -57,6 +57,19 @@ strategies:
     signal_cross:
       threshold: 0
 
+  vwap:
+    vwap:
+      window: 20
+
+# Signal/strategy discovery controls (optional)
+signal_registry:
+  # Optional explicit order override. Leave empty to use strategy metadata priority.
+  order: []
+  allowlist: []
+  denylist: []
+  # Optional per-strategy priority override (lower runs first), e.g. {rsi: 15}
+  priorities: {}
+
 # Backtest defaults
 backtest:
   initial_capital: 10000

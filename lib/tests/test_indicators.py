@@ -65,6 +65,27 @@ class TestGenerateSignals(unittest.TestCase):
         self.assertGreater(len(buy_signals), 0, "Should have at least one buy signal")
         self.assertGreater(len(sell_signals), 0, "Should have at least one sell signal")
 
+    def test_generate_signals_includes_vwap_columns(self):
+        """Test that VWAP cross signal columns are generated."""
+        df = add_indicators(self.df.copy())
+        result_df, _ = generate_signals(df, {'vwap': {'window': 10}})
+
+        self.assertIn('VWAP', result_df.columns)
+        self.assertIn('VWAP_CrossAbove_Buy', result_df.columns)
+        self.assertIn('VWAP_CrossBelow_Sell', result_df.columns)
+
+    def test_generate_signals_handles_zero_volume_for_vwap(self):
+        """Test VWAP generation remains stable with zero-volume rows."""
+        df = add_indicators(self.df.copy())
+        df['Volume'] = 0
+        result_df, _ = generate_signals(df, {'vwap': {'window': 10}})
+
+        self.assertIn('VWAP', result_df.columns)
+        self.assertIn('VWAP_CrossAbove_Buy', result_df.columns)
+        self.assertIn('VWAP_CrossBelow_Sell', result_df.columns)
+        self.assertTrue(set(result_df['VWAP_CrossAbove_Buy'].dropna().unique()).issubset({0, 1}))
+        self.assertTrue(set(result_df['VWAP_CrossBelow_Sell'].dropna().unique()).issubset({0, 1}))
+
     def test_add_indicators_adds_expected_columns(self):
         """Test that add_indicators adds ADX, ATR, and OBV."""
         result_df = add_indicators(self.df.copy())

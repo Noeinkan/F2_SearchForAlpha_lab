@@ -15,6 +15,19 @@ logger = logging.getLogger(__name__)
 
 class BB_TradingStrategy(BaseTradingStrategy):
     """Bollinger Bands-based trading strategy implementation."""
+
+    STRATEGY_KEY = 'bollinger'
+    STRATEGY_PRIORITY = 10
+    SIGNAL_METADATA = {
+        'BB_Breakout_Buy': 'Price breaks above the upper Bollinger Band.',
+        'BB_Breakout_Sell': 'Price breaks below the lower Bollinger Band.',
+        'BB_MeanReversion_Buy': 'Price crosses back above the lower band.',
+        'BB_MeanReversion_Sell': 'Price crosses back below the upper band.',
+        'BB_Squeeze_Buy': 'Breakout up after a Bollinger squeeze.',
+        'BB_Squeeze_Sell': 'Breakdown down after a Bollinger squeeze.',
+        'BB_DoubleBottom_Buy': 'Two lower-band touches followed by a rebound.',
+        'BB_DoubleTop_Sell': 'Two upper-band touches followed by a drop.',
+    }
     
     DEFAULT_CONFIG = {
         'bollinger_bands': {

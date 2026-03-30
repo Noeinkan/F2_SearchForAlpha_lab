@@ -7,7 +7,7 @@ from __future__ import annotations
 import copy
 import logging
 import re
-from typing import Tuple, List, Any, Dict
+from typing import Tuple, List, Any, Dict, cast
 
 import numpy as np
 import pandas as pd
@@ -323,7 +323,7 @@ def _compute_trigger_counts(
     return totals
 
 
-def _compute_y_ranges_by_axis(fig: Dict[str, Any],
+def _compute_y_ranges_by_axis(fig: Any,
                               x_start: pd.Timestamp,
                               x_end: pd.Timestamp,
                               df: pd.DataFrame | None = None) -> Dict[str, Tuple[float, float]]:
@@ -334,12 +334,12 @@ def _compute_y_ranges_by_axis(fig: Dict[str, Any],
     if df is not None and not df.empty and {'Low', 'High'}.issubset(df.columns):
         df_index = pd.to_datetime(df.index, errors='coerce', utc=True).tz_convert(None)
         df_mask = (df_index >= x_start) & (df_index <= x_end)
-        if hasattr(df_mask, "to_numpy"):
-            df_mask = df_mask.to_numpy()
+        if isinstance(df_mask, pd.Series):
+            mask_arr = df_mask.to_numpy()
         else:
-            df_mask = pd.Series(df_mask).to_numpy()
-        if df_mask.any():
-            visible_df = df.iloc[df_mask]
+            mask_arr = np.asarray(df_mask)
+        if mask_arr.any():
+            visible_df = df.iloc[mask_arr]
             if not visible_df.empty:
                 price_min = float(pd.to_numeric(visible_df['Low'], errors='coerce').min())
                 price_max = float(pd.to_numeric(visible_df['High'], errors='coerce').max())
@@ -453,7 +453,7 @@ def _create_data_table(display_df: pd.DataFrame, theme: dict) -> dash_table.Data
     """Create a styled data table."""
     return dash_table.DataTable(
         columns=[{"name": i, "id": i} for i in display_df.columns],
-        data=display_df.to_dict('records'),
+        data=cast(Any, display_df.to_dict('records')),
         style_table={'height': '400px', 'overflowY': 'auto'},
         style_cell={
             'textAlign': 'right',
@@ -471,9 +471,9 @@ def _create_data_table(display_df: pd.DataFrame, theme: dict) -> dash_table.Data
             'textTransform': 'uppercase',
             'fontSize': '10px',
         },
-        style_data_conditional=[
+        style_data_conditional=cast(Any, [
             {'if': {'row_index': 'odd'}, 'backgroundColor': theme['table_row_alt']}
-        ],
+        ]),
         page_size=50,
         fixed_rows={'headers': True}
     )
@@ -500,8 +500,8 @@ def _extract_selected_plots(plot_values: List[List[str]]) -> List[str]:
 
 def _build_plot_toggle_values(selected: List[str]) -> List[List[str]]:
     """Build pattern output values for plot toggles from selected list."""
-    selected = set(selected or [])
-    return [[value] if value in selected else [] for _, value in PLOT_OPTIONS]
+    selected_set = set(selected or [])
+    return [[value] if value in selected_set else [] for _, value in PLOT_OPTIONS]
 
 
 def _build_preset_payload(
@@ -621,7 +621,7 @@ def _create_optimization_table(display_df: pd.DataFrame, theme: dict) -> dash_ta
     return dash_table.DataTable(
         id='optimization-table',
         columns=[{"name": c.replace('_', ' '), "id": c} for c in available_cols],
-        data=display_df[available_cols].round(2).to_dict('records'),
+        data=cast(Any, display_df[available_cols].round(2).to_dict('records')),
         style_cell={
             'textAlign': 'left',
             'padding': '8px',
@@ -639,11 +639,11 @@ def _create_optimization_table(display_df: pd.DataFrame, theme: dict) -> dash_ta
             'fontSize': '10px',
             'textTransform': 'uppercase',
         },
-        style_data_conditional=[
+        style_data_conditional=cast(Any, [
             {'if': {'row_index': 0}, 'backgroundColor': f'{theme["accent_green"]}15'},
             {'if': {'row_index': 1}, 'backgroundColor': f'{theme["accent_blue"]}10'},
             {'if': {'row_index': 2}, 'backgroundColor': f'{theme["accent_blue"]}05'},
-        ],
+        ]),
         page_size=10,
     )
 
@@ -655,7 +655,7 @@ def _create_optimization_table_mini(display_df: pd.DataFrame, theme: dict) -> da
             {"name": "Buy Signals", "id": "Buy_Signals"},
             {"name": "Return %", "id": "Total_Return_%"},
         ],
-        data=display_df[['Buy_Signals', 'Total_Return_%']].round(1).to_dict('records'),
+        data=cast(Any, display_df[['Buy_Signals', 'Total_Return_%']].round(1).to_dict('records')),
         style_cell={
             'textAlign': 'left',
             'padding': '4px 6px',

@@ -13,13 +13,15 @@ from plotly.subplots import make_subplots
 from ta.momentum import RSIIndicator
 from ta.trend import CCIIndicator, MACD, ADXIndicator
 from ta.volatility import AverageTrueRange
+from ta.volume import VolumeWeightedAveragePrice
 
 from lib.dash.dash_config import FONT_FAMILY
+from lib.dash.overlay_registry import build_overlay_visibility, get_plotly_overlay_specs
 
 logger = logging.getLogger(__name__)
 
 # Chart configuration constants
-CHART_ORDER = ['candlestick', 'volume', 'rsi', 'cci', 'macd', 'adx', 'atr', 'obv']
+CHART_ORDER = ['candlestick', 'volume', 'rsi', 'cci', 'macd', 'vwap', 'adx', 'atr', 'obv']
 CHART_ROW_HEIGHT_MAIN = 4.5
 CHART_ROW_HEIGHT_INDICATOR = 1
 SIGNAL_OFFSET_FACTOR = 0.015
@@ -95,6 +97,7 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
             'rsi': _add_rsi,
             'cci': _add_cci,
             'macd': _add_macd,
+            'vwap': _add_vwap,
             'adx': _add_adx,
             'atr': _add_atr,
             'obv': _add_obv
@@ -137,38 +140,24 @@ def _add_candlestick(fig: go.Figure, df: pd.DataFrame, row: int, col: int, confi
             whiskerwidth=width
         ), row=row, col=col)
 
-    if config.get('show_bollinger', False):
-        bb_colors = [theme['accent_green'], theme['accent_red'], theme['text_secondary']]
-        for (band, color) in zip(['upper', 'lower', 'middle'], bb_colors):
-            if f'BB_{band}' in df.columns:
-                fig.add_trace(go.Scatter(
-                    x=df.index, y=df[f'BB_{band}'],
-                    name=f"BB {band.upper()}",
-                    line=dict(color=color, width=1, dash='dot'),
-                    opacity=0.7
-                ), row=row, col=col)
+    overlay_visibility = config.get('overlay_visibility')
+    if overlay_visibility is None:
+        overlay_visibility = build_overlay_visibility(
+            legacy_flags={
+                'show_bollinger': config.get('show_bollinger', False),
+                'show_sma': config.get('show_sma', False),
+                'show_ema': config.get('show_ema', False),
+            }
+        )
 
-    if config.get('show_sma', False):
-        sma_colors = [theme['accent_red'], theme['accent_green'], theme['accent_blue'], theme['accent_purple']]
-        for i, period in enumerate(['short', 'medium', 'long', 'trend']):
-            col_name = f'SMA_{period}'
-            if col_name in df.columns:
-                fig.add_trace(go.Scatter(
-                    x=df.index, y=df[col_name],
-                    name=f"SMA {period.upper()}",
-                    line=dict(color=sma_colors[i], width=1.5)
-                ), row=row, col=col)
-
-    if config.get('show_ema', False):
-        ema_colors = [theme['accent_orange'], theme['accent_cyan'], theme['accent_purple']]
-        for i, period in enumerate(['short', 'medium', 'long']):
-            col_name = f'EMA_{period}'
-            if col_name in df.columns:
-                fig.add_trace(go.Scatter(
-                    x=df.index, y=df[col_name],
-                    name=f"EMA {period.upper()}",
-                    line=dict(color=ema_colors[i], width=1.5)
-                ), row=row, col=col)
+    for overlay_spec in get_plotly_overlay_specs(df, theme, overlay_visibility):
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df[overlay_spec['column']],
+            name=overlay_spec['name'],
+            line=overlay_spec['line'],
+            opacity=overlay_spec.get('opacity', 1.0),
+        ), row=row, col=col)
 
     if config.get('show_buy_sell_signals', False):
         _add_signal_traces(
@@ -278,6 +267,32 @@ def _add_macd(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict
         row=row, col=col
     )
     fig.add_hline(y=0, line_dash="dot", line_color=theme['text_tertiary'], line_width=1, opacity=0.5, row=row, col=col)
+
+
+def _add_vwap(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:
+    """Add VWAP indicator."""
+    window = _coerce_period(_get_indicator_setting(config, 'vwap', 'window', 20), 20)
+    vwap_series = VolumeWeightedAveragePrice(
+        high=df['High'],
+        low=df['Low'],
+        close=df['Close'],
+        volume=df['Volume'].fillna(0),
+        window=window
+    ).volume_weighted_average_price()
+
+    fig.add_trace(go.Scatter(
+        x=df.index, y=vwap_series,
+        name=f"VWAP ({window})",
+        line=dict(color=theme['accent_blue'], width=1.6),
+        hovertemplate='%{x|%Y-%m-%d}<br>VWAP: %{y:.2f}<extra></extra>'
+    ), row=row, col=col)
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['Close'],
+        name="Close",
+        line=dict(color=theme['text_secondary'], width=1.1, dash='dot'),
+        opacity=0.8,
+        hovertemplate='%{x|%Y-%m-%d}<br>Close: %{y:.2f}<extra></extra>'
+    ), row=row, col=col)
 
 
 def _add_adx(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict, theme: dict) -> None:

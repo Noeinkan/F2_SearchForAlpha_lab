@@ -13,7 +13,19 @@ import webbrowser
 import dash
 from dash import dcc, html
 import dash_bootstrap_components as dbc
-from dash_tvlwc import Tvlwc
+
+# Optional TradingView lightweight chart wrapper. Not all environments will
+# have `dash_tvlwc` installed (it's an optional dependency). Provide a safe
+# fallback so the app can run without the package.
+try:
+    from dash_tvlwc import Tvlwc
+except Exception:
+    def Tvlwc(*args, **kwargs):
+        # Return a minimal placeholder component. The caller often places this
+        # inside a hidden element (preload) or expects an html.Component
+        # returned from callbacks, so return a Div that makes failure visible
+        # but does not crash the app.
+        return html.Div("TradingView component not installed (dash_tvlwc).", style={'display': 'none'})
 
 from lib.dash.dash_config import (
     DEFAULT_THEME, DEFAULT_TICKER, INITIAL_CAPITAL, START_DATE,
@@ -28,6 +40,7 @@ from lib.dash.state import dashboard_state  # noqa: F401 - used by callbacks
 from lib.dash.styles import get_styles, CUSTOM_CSS
 from lib.dash.chart_builder import create_chart
 from lib.dash.callbacks import register_callbacks
+from lib.signals.indicators import get_signal_categories
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +217,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                 color=theme['accent_blue'],
                 children=[html.Div(id='data-status', style={'marginTop': '8px', 'fontSize': FONT_SIZES['xs']})]
             ),
+                html.Div(id='strategy-order-status', style={'marginTop': '6px', 'fontSize': FONT_SIZES['xs'], 'color': theme['text_tertiary']})
         ], style=styles['sidebar_section'])
 
     presets_section = html.Div([
@@ -308,12 +322,12 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                                 type='button',
                                 style=styles['indicator_gear_button'],
                                 title=f"{label} settings",
-                            ) if value in INDICATOR_SETTING_SCHEMA else html.Span(style={'width': '22px'})
+                            ) if (value in INDICATOR_SETTING_SCHEMA and value not in {opt[1] for opt in CHART_ELEMENT_OPTIONS}) else html.Span(style={'width': '22px'})
                         ], style=styles['indicator_row']),
                         html.Div(
                             id={'type': 'indicator-settings-panel', 'indicator': value},
                             style=styles['indicator_settings_panel']
-                        ) if value in INDICATOR_SETTING_SCHEMA else None
+                        ) if (value in INDICATOR_SETTING_SCHEMA and value not in {opt[1] for opt in CHART_ELEMENT_OPTIONS}) else None
                     ])
                     for label, value in PLOT_OPTIONS
                 ],
@@ -639,7 +653,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
         'marginLeft': '6px',
     }
 
-    signal_categories = ['BB', 'MACD', 'RSI', 'CCI', 'SMA', 'EMA']
+    signal_categories = get_signal_categories()
 
     return html.Div(id='panel-backtest', children=[
         dbc.Accordion(

@@ -5,7 +5,8 @@ Plotly chart callbacks.
 from datetime import datetime
 
 import pandas as pd
-from dash import html, dcc, callback_context
+from dash import html, callback_context
+from dash.dcc.express import send_data_frame
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 
@@ -247,7 +248,7 @@ def register_plotly_callbacks(app) -> None:
         export_date = datetime.now().strftime('%Y%m%d')
         safe_ticker = (ticker or 'data').replace('/', '-')
         filename = f"{safe_ticker}_chart_data_{export_date}.csv"
-        return dcc.send_data_frame(df.to_csv, filename, index=False, float_format='%.6f')
+        return send_data_frame(df.to_csv, filename, index=False, float_format='%.6f')
 
     @app.callback(
         Output('layout-store', 'data'),

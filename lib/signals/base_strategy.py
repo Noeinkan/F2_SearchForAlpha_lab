@@ -25,6 +25,9 @@ class BaseTradingStrategy(ABC):
     """
     
     DEFAULT_CONFIG: Dict[str, Any] = {}
+    STRATEGY_KEY: str | None = None
+    STRATEGY_PRIORITY: int = 100
+    SIGNAL_METADATA: Dict[str, str] = {}
     
     def __init__(self, config: Optional[Dict[str, Any]] = None, name: str = "BaseStrategy"):
         """
@@ -49,6 +52,24 @@ class BaseTradingStrategy(ABC):
             Dictionary with default configuration values.
         """
         return self.DEFAULT_CONFIG.copy()
+
+    @classmethod
+    def get_strategy_key(cls) -> str:
+        """Return canonical strategy key used by registry/discovery."""
+        if cls.STRATEGY_KEY:
+            return cls.STRATEGY_KEY
+        name = cls.__name__.replace("_TradingStrategy", "").replace("TradingStrategy", "")
+        return name.strip("_").lower()
+
+    @classmethod
+    def get_signal_metadata(cls) -> Dict[str, str]:
+        """Return strategy signal metadata."""
+        return cls.SIGNAL_METADATA.copy()
+
+    @classmethod
+    def get_strategy_priority(cls) -> int:
+        """Return strategy display/execution priority (lower comes first)."""
+        return int(cls.STRATEGY_PRIORITY)
     
     def update_config(self, new_config: Dict[str, Any]) -> None:
         """
@@ -138,6 +159,16 @@ class BaseTradingStrategy(ABC):
             Dictionary with 'buy' and 'sell' keys containing lists of column names.
         """
         strategy_prefix = self.name.replace("_TradingStrategy", "").replace("TradingStrategy", "")
-        buy_signals = [col for col in df.columns if strategy_prefix in col and 'buy' in col.lower()]
-        sell_signals = [col for col in df.columns if strategy_prefix in col and 'sell' in col.lower()]
-        return {'buy': buy_signals, 'sell': sell_signals}
+        buy_signals = [
+            col for col in df.columns
+            if strategy_prefix in col and col.lower().endswith('_buy')
+        ]
+        sell_signals = [
+            col for col in df.columns
+            if strategy_prefix in col and col.lower().endswith('_sell')
+        ]
+        other_signals = [
+            col for col in df.columns
+            if strategy_prefix in col and col not in buy_signals and col not in sell_signals
+        ]
+        return {'buy': buy_signals, 'sell': sell_signals, 'other': other_signals}

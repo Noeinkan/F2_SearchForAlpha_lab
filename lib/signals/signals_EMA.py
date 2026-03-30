@@ -31,6 +31,23 @@ class EMAConfig:
 
 class EMA_TradingStrategy(BaseTradingStrategy):
     """EMA-based trading strategy implementation."""
+
+    STRATEGY_KEY = 'ema'
+    STRATEGY_PRIORITY = 60
+    SIGNAL_METADATA = {
+        'EMA_TripleCross_Buy': 'Short, medium, and long EMA align bullishly.',
+        'EMA_TripleCross_Sell': 'Short, medium, and long EMA align bearishly.',
+        'EMA_Distance_Buy': 'Bullish EMA alignment with wide separation.',
+        'EMA_Distance_Sell': 'Bearish EMA alignment with wide separation.',
+        'EMA_Momentum_Buy': 'Bullish EMA alignment with rising momentum.',
+        'EMA_Momentum_Sell': 'Bearish EMA alignment with falling momentum.',
+        'EMA_ValueZone_Buy': 'Price enters bullish EMA value zone.',
+        'EMA_ValueZone_Sell': 'Price enters bearish EMA value zone.',
+        'EMA_Divergence_Buy': 'Price weakens while short EMA improves.',
+        'EMA_Divergence_Sell': 'Price strengthens while short EMA weakens.',
+        'EMA_Volatility_Buy': 'Bullish EMA setup during high volatility.',
+        'EMA_Volatility_Sell': 'Bearish EMA setup during high volatility.',
+    }
     
     DEFAULT_CONFIG = {
         'ema': EMAConfig()

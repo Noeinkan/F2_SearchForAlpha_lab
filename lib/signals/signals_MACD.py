@@ -15,6 +15,17 @@ logger = logging.getLogger(__name__)
 
 class MACD_TradingStrategy(BaseTradingStrategy):
     """MACD-based trading strategy implementation."""
+
+    STRATEGY_KEY = 'macd'
+    STRATEGY_PRIORITY = 20
+    SIGNAL_METADATA = {
+        'MACD_ZeroCross_Buy': 'MACD crosses above the zero line.',
+        'MACD_ZeroCross_Sell': 'MACD crosses below the zero line.',
+        'MACD_SignalCross_Buy': 'MACD crosses above the signal line.',
+        'MACD_SignalCross_Sell': 'MACD crosses below the signal line.',
+        'MACD_Histogram_Buy': 'MACD histogram flips from negative to positive.',
+        'MACD_Histogram_Sell': 'MACD histogram flips from positive to negative.',
+    }
     
     DEFAULT_CONFIG = {
         'macd': {

@@ -7,6 +7,8 @@ from typing import Dict, List, Tuple
 
 import pandas as pd
 
+from lib.dash.overlay_registry import build_overlay_visibility, get_tv_overlay_specs
+
 logger = logging.getLogger(__name__)
 
 
@@ -146,20 +148,22 @@ def convert_df_to_tv_format(df: pd.DataFrame, config: Dict, theme: dict) -> Tupl
         })
         series_markers.append([])
 
-    if config.get('show_bollinger', False):
-        _add_line_series('BB_upper', theme['accent_green'], 'BB Upper')
-        _add_line_series('BB_lower', theme['accent_red'], 'BB Lower')
-        _add_line_series('BB_middle', theme['text_secondary'], 'BB Middle')
+    overlay_visibility = config.get('overlay_visibility')
+    if overlay_visibility is None:
+        overlay_visibility = build_overlay_visibility(
+            legacy_flags={
+                'show_bollinger': config.get('show_bollinger', False),
+                'show_sma': config.get('show_sma', False),
+                'show_ema': config.get('show_ema', False),
+            }
+        )
 
-    if config.get('show_sma', False):
-        sma_colors = [theme['accent_red'], theme['accent_green'], theme['accent_blue'], theme['accent_purple']]
-        for color, period in zip(sma_colors, ['short', 'medium', 'long', 'trend']):
-            _add_line_series(f'SMA_{period}', color, f'SMA {period.upper()}')
-
-    if config.get('show_ema', False):
-        ema_colors = [theme['accent_orange'], theme['accent_cyan'], theme['accent_purple']]
-        for color, period in zip(ema_colors, ['short', 'medium', 'long']):
-            _add_line_series(f'EMA_{period}', color, f'EMA {period.upper()}')
+    for overlay_spec in get_tv_overlay_specs(df, theme, overlay_visibility):
+        _add_line_series(
+            overlay_spec['column'],
+            overlay_spec['color'],
+            overlay_spec['title']
+        )
 
     return series_data, series_types, series_options, series_markers
 

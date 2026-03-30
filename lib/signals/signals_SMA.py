@@ -15,6 +15,19 @@ logger = logging.getLogger(__name__)
 
 class SMA_TradingStrategy(BaseTradingStrategy):
     """SMA-based trading strategy implementation."""
+
+    STRATEGY_KEY = 'sma'
+    STRATEGY_PRIORITY = 50
+    SIGNAL_METADATA = {
+        'SMA_TripleCross_Buy': 'Short, medium, and long SMA align bullishly.',
+        'SMA_TripleCross_Sell': 'Short, medium, and long SMA align bearishly.',
+        'SMA_PriceCross_Buy': 'Price crosses above the medium SMA.',
+        'SMA_PriceCross_Sell': 'Price crosses below the medium SMA.',
+        'SMA_TrendFollow_Buy': 'Uptrend alignment with price above trend SMA.',
+        'SMA_TrendFollow_Sell': 'Downtrend alignment with price below trend SMA.',
+        'SMA_SlopeFlip_Buy': 'Short SMA slope flips from down to up.',
+        'SMA_SlopeFlip_Sell': 'Short SMA slope flips from up to down.',
+    }
     
     DEFAULT_CONFIG = {
         'sma': {

@@ -15,6 +15,15 @@ logger = logging.getLogger(__name__)
 
 class RSI_TradingStrategy(BaseTradingStrategy):
     """RSI-based trading strategy implementation."""
+
+    STRATEGY_KEY = 'rsi'
+    STRATEGY_PRIORITY = 30
+    SIGNAL_METADATA = {
+        'RSI_Oversold_Buy': 'RSI drops below the oversold threshold.',
+        'RSI_Overbought_Sell': 'RSI rises above the overbought threshold.',
+        'RSI_Bullish_Divergence': 'Price weakens while RSI improves.',
+        'RSI_Bearish_Divergence': 'Price strengthens while RSI weakens.',
+    }
     
     DEFAULT_CONFIG = {
         'rsi': {

@@ -13,6 +13,7 @@ import yfinance as yf
 
 from lib.dash.state import dashboard_state
 from lib.strategy import run_backtest
+from lib.signals.indicators import classify_signal_columns
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +79,9 @@ def extract_signals(df: pd.DataFrame) -> Tuple[List[str], List[str]]:
     Returns:
         Tuple of (buy_signals, sell_signals) lists
     """
-    buy_signals = [col for col in df.columns if 'buy' in col.lower()]
-    sell_signals = [col for col in df.columns if 'sell' in col.lower()]
+    classified = classify_signal_columns(df.columns.tolist())
+    buy_signals = classified['buy']
+    sell_signals = classified['sell']
     return buy_signals, sell_signals
 
 

@@ -5,9 +5,17 @@ TradingView chart callbacks.
 from dash import html
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
-from dash_tvlwc import Tvlwc
+
+# TradingView lightweight chart wrapper is optional. Provide a fallback so
+# callbacks can still run when the package is not installed.
+try:
+    from dash_tvlwc import Tvlwc
+except Exception:
+    def Tvlwc(*args, **kwargs):
+        return html.Div("TradingView component not installed. Install 'dash-tvlwc' to enable.", style={'color': '#888'})
 
 from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, get_theme
+from lib.dash.overlay_registry import build_overlay_visibility
 from lib.dash.state import dashboard_state
 from lib.dash.tv_chart_builder import (
     convert_df_to_tv_format,
@@ -50,9 +58,7 @@ def register_tv_callbacks(app) -> None:
 
         config = {
             'show_candlesticks': 'candlesticks' in (chart_elements or []),
-            'show_bollinger': 'bollinger' in (chart_elements or []),
-            'show_sma': 'sma' in (chart_elements or []),
-            'show_ema': 'ema' in (chart_elements or []),
+            'overlay_visibility': build_overlay_visibility(chart_elements),
             'show_buy_sell_signals': 'signals' in (chart_elements or []),
             'selected_signals': selected_signals or [],
             'buy_signal_columns': buy_signals,

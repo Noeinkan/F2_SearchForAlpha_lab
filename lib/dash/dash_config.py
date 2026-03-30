@@ -8,7 +8,10 @@ Bloomberg Terminal-inspired design system
 # THEME SYSTEM - Professional Dark Theme (Bloomberg-style)
 # =============================================================================
 
+import copy
 import os
+
+from lib.config_loader import get_strategy_config
 
 THEMES = {
     'dark': {
@@ -201,24 +204,135 @@ MAX_DATA_CACHE_SIZE = 50         # Maximum number of cached DataFrames
 # =============================================================================
 # CHECKLIST OPTIONS
 # =============================================================================
-PLOT_OPTIONS = [
-    ('Candlestick', 'candlestick'),
-    ('Volume', 'volume'),
-    ('RSI', 'rsi'),
-    ('CCI', 'cci'),
-    ('MACD', 'macd'),
-    ('ADX', 'adx'),
-    ('ATR', 'atr'),
-    ('OBV', 'obv')
+CHART_ELEMENT_DEFINITIONS = [
+    {'label': 'Candlesticks', 'value': 'candlesticks'},
+    {'label': 'Bollinger Bands', 'value': 'bollinger'},
+    {'label': 'SMA', 'value': 'sma'},
+    {'label': 'EMA', 'value': 'ema'},
+    {'label': 'Buy/Sell Signals', 'value': 'signals'},
+    {'label': 'Legend', 'value': 'legend'},
+]
+
+INDICATOR_DEFINITIONS = [
+    {
+        'key': 'volume',
+        'label': 'Volume',
+        'defaults': {'ma_period': 20},
+        'fields': [
+            {'key': 'ma_period', 'label': 'Volume MA Period', 'step': 1, 'min': 1}
+        ],
+    },
+    {
+        'key': 'rsi',
+        'label': 'RSI',
+        'defaults': {'period': 14, 'overbought': 70, 'oversold': 30},
+        'fields': [
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
+            {'key': 'overbought', 'label': 'Overbought', 'step': 0.1},
+            {'key': 'oversold', 'label': 'Oversold', 'step': 0.1},
+        ],
+    },
+    {
+        'key': 'bollinger',
+        'label': 'Bollinger Bands',
+        'defaults': {
+            'window': 20,
+            'window_dev': 2,
+            'squeeze_threshold': 0.1,
+            'double_bottom_threshold': 0.02,
+        },
+        'fields': [
+            {'key': 'window', 'label': 'Window', 'step': 1, 'min': 1},
+            {'key': 'window_dev', 'label': 'Std Dev', 'step': 0.1, 'min': 0.1},
+            {'key': 'squeeze_threshold', 'label': 'Squeeze Threshold', 'step': 0.01, 'min': 0},
+            {'key': 'double_bottom_threshold', 'label': 'Double Top/Bottom Threshold', 'step': 0.001, 'min': 0},
+        ],
+    },
+    {
+        'key': 'sma',
+        'label': 'SMA',
+        'defaults': {'short_window': 5, 'medium_window': 20, 'long_window': 50, 'trend_window': 200},
+        'fields': [
+            {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1},
+            {'key': 'medium_window', 'label': 'Medium Window', 'step': 1, 'min': 1},
+            {'key': 'long_window', 'label': 'Long Window', 'step': 1, 'min': 1},
+            {'key': 'trend_window', 'label': 'Trend Window', 'step': 1, 'min': 1},
+        ],
+    },
+    {
+        'key': 'ema',
+        'label': 'EMA',
+        'defaults': {'short_window': 12, 'medium_window': 26, 'long_window': 50, 'atr_window': 14},
+        'fields': [
+            {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1},
+            {'key': 'medium_window', 'label': 'Medium Window', 'step': 1, 'min': 1},
+            {'key': 'long_window', 'label': 'Long Window', 'step': 1, 'min': 1},
+            {'key': 'atr_window', 'label': 'ATR Window', 'step': 1, 'min': 1},
+        ],
+    },
+    {
+        'key': 'cci',
+        'label': 'CCI',
+        'defaults': {'period': 20, 'ceiling': 150, 'floor': -150},
+        'fields': [
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
+            {'key': 'ceiling', 'label': 'Ceiling', 'step': 0.1},
+            {'key': 'floor', 'label': 'Floor', 'step': 0.1},
+        ],
+    },
+    {
+        'key': 'macd',
+        'label': 'MACD',
+        'defaults': {'fast': 12, 'slow': 26, 'signal': 9},
+        'fields': [
+            {'key': 'fast', 'label': 'Fast EMA', 'step': 1, 'min': 1},
+            {'key': 'slow', 'label': 'Slow EMA', 'step': 1, 'min': 1},
+            {'key': 'signal', 'label': 'Signal EMA', 'step': 1, 'min': 1},
+        ],
+    },
+    {
+        'key': 'vwap',
+        'label': 'VWAP',
+        'defaults': {'window': 20},
+        'fields': [
+            {'key': 'window', 'label': 'Window', 'step': 1, 'min': 1}
+        ],
+    },
+    {
+        'key': 'adx',
+        'label': 'ADX',
+        'defaults': {'period': 14, 'threshold': 25},
+        'fields': [
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
+            {'key': 'threshold', 'label': 'Trend Threshold', 'step': 0.1},
+        ],
+    },
+    {
+        'key': 'atr',
+        'label': 'ATR',
+        'defaults': {'period': 14},
+        'fields': [
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1}
+        ],
+    },
+    {
+        'key': 'obv',
+        'label': 'OBV',
+        'defaults': {'ma_period': 20},
+        'fields': [
+            {'key': 'ma_period', 'label': 'OBV MA Period', 'step': 1, 'min': 1}
+        ],
+    },
+]
+
+PLOT_OPTIONS = [('Candlestick', 'candlestick')] + [
+    (definition['label'], definition['key'])
+    for definition in INDICATOR_DEFINITIONS
 ]
 
 CHART_ELEMENT_OPTIONS = [
-    ('Candlesticks', 'candlesticks'),
-    ('Bollinger Bands', 'bollinger'),
-    ('SMA', 'sma'),
-    ('EMA', 'ema'),
-    ('Buy/Sell Signals', 'signals'),
-    ('Legend', 'legend')
+    (definition['label'], definition['value'])
+    for definition in CHART_ELEMENT_DEFINITIONS
 ]
 
 SIGNAL_OPTIONS = [
@@ -230,133 +344,85 @@ SIGNAL_OPTIONS = [
 # INDICATOR SETTINGS
 # =============================================================================
 
-DEFAULT_INDICATOR_SETTINGS = {
-    'volume': {
-        'ma_period': 20
-    },
-    'rsi': {
-        'period': 14,
-        'overbought': 70,
-        'oversold': 30
-    },
-    'bollinger': {
-        'window': 20,
-        'window_dev': 2,
-        'squeeze_threshold': 0.1,
-        'double_bottom_threshold': 0.02
-    },
-    'sma': {
-        'short_window': 5,
-        'medium_window': 20,
-        'long_window': 50,
-        'trend_window': 200
-    },
-    'ema': {
-        'short_window': 12,
-        'medium_window': 26,
-        'long_window': 50,
-        'atr_window': 14
-    },
-    'cci': {
-        'period': 20,
-        'ceiling': 150,
-        'floor': -150
-    },
-    'macd': {
-        'fast': 12,
-        'slow': 26,
-        'signal': 9
-    },
-    'adx': {
-        'period': 14,
-        'threshold': 25
-    },
-    'atr': {
-        'period': 14
-    },
-    'obv': {
-        'ma_period': 20
-    }
+_BASE_INDICATOR_SETTINGS = {
+    definition['key']: copy.deepcopy(definition['defaults'])
+    for definition in INDICATOR_DEFINITIONS
 }
 
 INDICATOR_SETTING_SCHEMA = {
-    'volume': {
-        'label': 'Volume',
-        'fields': [
-            {'key': 'ma_period', 'label': 'Volume MA Period', 'step': 1, 'min': 1}
-        ]
-    },
-    'rsi': {
-        'label': 'RSI',
-        'fields': [
-            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
-            {'key': 'overbought', 'label': 'Overbought', 'step': 0.1},
-            {'key': 'oversold', 'label': 'Oversold', 'step': 0.1}
-        ]
-    },
-    'bollinger': {
-        'label': 'Bollinger Bands',
-        'fields': [
-            {'key': 'window', 'label': 'Window', 'step': 1, 'min': 1},
-            {'key': 'window_dev', 'label': 'Std Dev', 'step': 0.1, 'min': 0.1},
-            {'key': 'squeeze_threshold', 'label': 'Squeeze Threshold', 'step': 0.01, 'min': 0},
-            {'key': 'double_bottom_threshold', 'label': 'Double Top/Bottom Threshold', 'step': 0.001, 'min': 0}
-        ]
-    },
-    'sma': {
-        'label': 'SMA',
-        'fields': [
-            {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1},
-            {'key': 'medium_window', 'label': 'Medium Window', 'step': 1, 'min': 1},
-            {'key': 'long_window', 'label': 'Long Window', 'step': 1, 'min': 1},
-            {'key': 'trend_window', 'label': 'Trend Window', 'step': 1, 'min': 1}
-        ]
-    },
-    'ema': {
-        'label': 'EMA',
-        'fields': [
-            {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1},
-            {'key': 'medium_window', 'label': 'Medium Window', 'step': 1, 'min': 1},
-            {'key': 'long_window', 'label': 'Long Window', 'step': 1, 'min': 1},
-            {'key': 'atr_window', 'label': 'ATR Window', 'step': 1, 'min': 1}
-        ]
-    },
-    'cci': {
-        'label': 'CCI',
-        'fields': [
-            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
-            {'key': 'ceiling', 'label': 'Ceiling', 'step': 0.1},
-            {'key': 'floor', 'label': 'Floor', 'step': 0.1}
-        ]
-    },
-    'macd': {
-        'label': 'MACD',
-        'fields': [
-            {'key': 'fast', 'label': 'Fast EMA', 'step': 1, 'min': 1},
-            {'key': 'slow', 'label': 'Slow EMA', 'step': 1, 'min': 1},
-            {'key': 'signal', 'label': 'Signal EMA', 'step': 1, 'min': 1}
-        ]
-    },
-    'adx': {
-        'label': 'ADX',
-        'fields': [
-            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
-            {'key': 'threshold', 'label': 'Trend Threshold', 'step': 0.1}
-        ]
-    },
-    'atr': {
-        'label': 'ATR',
-        'fields': [
-            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1}
-        ]
-    },
-    'obv': {
-        'label': 'OBV',
-        'fields': [
-            {'key': 'ma_period', 'label': 'OBV MA Period', 'step': 1, 'min': 1}
-        ]
+    definition['key']: {
+        'label': definition['label'],
+        'fields': copy.deepcopy(definition['fields']),
     }
+    for definition in INDICATOR_DEFINITIONS
 }
+
+
+def _deep_update(base: dict, updates: dict) -> dict:
+    for key, value in (updates or {}).items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_update(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
+def _strategy_yaml_indicator_defaults() -> dict:
+    rsi_cfg = get_strategy_config('rsi')
+    cci_cfg = get_strategy_config('cci')
+    macd_cfg = get_strategy_config('macd')
+    bb_cfg = get_strategy_config('bollinger_bands')
+    sma_cfg = get_strategy_config('sma')
+    ema_cfg = get_strategy_config('ema')
+    vwap_cfg = get_strategy_config('vwap')
+
+    return {
+        'rsi': {
+            'period': rsi_cfg.get('rsi', {}).get('window', 14),
+            'overbought': rsi_cfg.get('overbought_oversold', {}).get('upper_threshold', 70),
+            'oversold': rsi_cfg.get('overbought_oversold', {}).get('lower_threshold', 30)
+        },
+        'cci': {
+            'period': cci_cfg.get('cci', {}).get('window', 20),
+            'ceiling': cci_cfg.get('overbought_oversold', {}).get('upper_threshold', 150),
+            'floor': cci_cfg.get('overbought_oversold', {}).get('lower_threshold', -150)
+        },
+        'macd': {
+            'fast': macd_cfg.get('macd', {}).get('fast_period', 12),
+            'slow': macd_cfg.get('macd', {}).get('slow_period', 26),
+            'signal': macd_cfg.get('macd', {}).get('signal_period', 9)
+        },
+        'bollinger': {
+            'window': bb_cfg.get('bollinger_bands', {}).get('window', 20),
+            'window_dev': bb_cfg.get('bollinger_bands', {}).get('window_dev', 2),
+            'squeeze_threshold': bb_cfg.get('squeeze_strategy', {}).get('squeeze_threshold', 0.1),
+            'double_bottom_threshold': bb_cfg.get('double_bottom_top_strategy', {}).get('threshold', 0.02)
+        },
+        'sma': {
+            'short_window': sma_cfg.get('sma', {}).get('short_window', 5),
+            'medium_window': sma_cfg.get('sma', {}).get('medium_window', 20),
+            'long_window': sma_cfg.get('sma', {}).get('long_window', 50),
+            'trend_window': sma_cfg.get('sma', {}).get('trend_window', 200)
+        },
+        'ema': {
+            'short_window': ema_cfg.get('ema', {}).get('short_window', 12),
+            'medium_window': ema_cfg.get('ema', {}).get('medium_window', 26),
+            'long_window': ema_cfg.get('ema', {}).get('long_window', 50)
+        },
+        'vwap': {
+            'window': vwap_cfg.get('vwap', {}).get('window', 20)
+        }
+    }
+
+
+def merge_indicator_settings(runtime_settings: dict | None = None) -> dict:
+    merged = copy.deepcopy(_BASE_INDICATOR_SETTINGS)
+    _deep_update(merged, _strategy_yaml_indicator_defaults())
+    _deep_update(merged, runtime_settings or {})
+    return merged
+
+
+DEFAULT_INDICATOR_SETTINGS = merge_indicator_settings()
 
 # Optimization methods
 OPTIMIZATION_METHODS = [

@@ -15,6 +15,17 @@ logger = logging.getLogger(__name__)
 
 class CCI_TradingStrategy(BaseTradingStrategy):
     """CCI-based trading strategy implementation."""
+
+    STRATEGY_KEY = 'cci'
+    STRATEGY_PRIORITY = 40
+    SIGNAL_METADATA = {
+        'CCI_Oversold_Buy': 'CCI drops below the oversold threshold.',
+        'CCI_Overbought_Sell': 'CCI rises above the overbought threshold.',
+        'CCI_Reversal_Buy': 'CCI rebounds up from an extreme low.',
+        'CCI_Reversal_Sell': 'CCI turns down from an extreme high.',
+        'CCI_ZeroCross_Buy': 'CCI crosses above zero.',
+        'CCI_ZeroCross_Sell': 'CCI crosses below zero.',
+    }
     
     DEFAULT_CONFIG = {
         'cci': {

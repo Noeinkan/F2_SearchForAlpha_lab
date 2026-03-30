@@ -9,7 +9,7 @@ from dash import callback_context, html, dcc
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 
-from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, FONT_SIZES, get_theme
+from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, FONT_SIZES, get_theme, merge_indicator_settings
 from lib.dash.styles import get_styles
 from lib.dash.helpers import format_df_for_display
 from lib.dash.state import dashboard_state
@@ -316,7 +316,7 @@ def register_signal_callbacks(app) -> None:
         """Render indicator settings panel for the active indicator."""
         theme = get_theme()
         styles = get_styles(theme)
-        settings_store = settings_store or copy.deepcopy(DEFAULT_INDICATOR_SETTINGS)
+        settings_store = merge_indicator_settings(settings_store)
         indicator_ids = [item['id']['indicator'] for item in callback_context.outputs_list]
         panels = []
         for indicator in indicator_ids:
@@ -342,10 +342,10 @@ def register_signal_callbacks(app) -> None:
             indicator_settings = preset_data.get("chart", {}).get("indicator_settings")
             if indicator_settings is None:
                 raise PreventUpdate
-            return indicator_settings
+            return merge_indicator_settings(indicator_settings)
 
         if current_settings is None:
-            current_settings = copy.deepcopy(DEFAULT_INDICATOR_SETTINGS)
+            current_settings = merge_indicator_settings()
         if not callback_context.inputs_list:
             raise PreventUpdate
 
@@ -378,7 +378,7 @@ def register_signal_callbacks(app) -> None:
             raise PreventUpdate
 
         theme = get_theme()
-        indicator_settings = indicator_settings or DEFAULT_INDICATOR_SETTINGS
+        indicator_settings = merge_indicator_settings(indicator_settings)
         df = _rebuild_indicator_dataframe(dashboard_state.df, indicator_settings)
         if df is None or df.empty:
             raise PreventUpdate
