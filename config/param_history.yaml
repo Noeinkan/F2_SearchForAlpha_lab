@@ -1,0 +1,5 @@
+# Promotion history. Each entry is one accepted sfa promote call.
+# Append only; never edit prior entries by hand. Mirrored in sqlite
+# (sfa_promotions) for queryable lookups.
+
+history: []

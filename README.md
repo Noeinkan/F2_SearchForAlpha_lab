@@ -39,14 +39,17 @@ F2_SearchForAlpha_lab/
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.11+ (raised from 3.8 because `ib_async` requires 3.10+)
 - pip or conda package manager
 
 ### Install dependencies
 
 ```bash
-pip install numpy pandas yfinance plotly dash dash-bootstrap-components mplfinance ta matplotlib adjustText tqdm dask pyarrow
+pip install -e ".[dev]"
 ```
+
+The editable install pulls every dependency declared in `pyproject.toml` and
+exposes the `sfa` console script (see CLI section below).
 
 ## ▶️ Run the Dashboard
 
@@ -138,6 +141,31 @@ results = run_backtest(
     amount_per_buy=1000,
 )
 ```
+
+## 🤖 CLI (`sfa`)
+
+The `sfa` console script is the only surface an external agent or operator
+should touch. Every command supports `--json` for machine readable output.
+For full operating instructions for an external agent runtime see
+[AGENTS.md](AGENTS.md).
+
+```bash
+sfa list --json
+sfa backtest --name mean_reversion_rsi_bb --from 2024-01-01 --to 2024-06-30 --json
+sfa optimise --name mean_reversion_rsi_bb --trials 100 --metric sortino --from 2023-01-01 --to 2024-12-31 --json
+sfa trials --name mean_reversion_rsi_bb --top 10 --json
+sfa walkforward --name mean_reversion_rsi_bb --params <trial_id> --json
+sfa promote --name mean_reversion_rsi_bb --trial <trial_id> --json
+sfa run --name mean_reversion_rsi_bb --mode paper
+sfa status --json
+sfa kill --name mean_reversion_rsi_bb
+```
+
+`--mode live` is always refused. Use `--mode paper` against an Interactive
+Brokers Gateway running on the loopback (port 4002 by default; override in
+`config/agent.yaml`). Promotion is gated: a strategy's `live_params` only
+update if a recent walk forward record passes thresholds (OOS Sharpe,
+degradation, age) declared in `config/agent.yaml`.
 
 ## 🧪 Testing
 

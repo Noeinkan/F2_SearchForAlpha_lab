@@ -1,0 +1,26 @@
+# Agent runtime configuration.
+# Read by the sfa CLI for live (paper) trading and the promotion gate.
+
+ib:
+  host: 127.0.0.1
+  port: 4002           # paper port; live (4001) is refused at the CLI layer
+  client_id: 7
+
+guards:
+  max_daily_loss_pct: 0.02
+  max_position_pct: 0.25
+  max_disconnect_seconds: 60
+  max_clock_drift_seconds: 5
+
+promotion:
+  min_oos_sharpe_mean: 1.0
+  max_degradation: 0.4
+  walkforward_max_age_days: 7
+
+optimiser:
+  composite_weights:
+    sortino: 1.0
+    max_drawdown: 2.0
+    turnover: 0.5
+  tpe_seed: 42
+  n_warmup_steps: 20
