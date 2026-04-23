@@ -81,3 +81,25 @@ ml_strategy:
   test_size: 0.2
   random_state: 42
   n_estimators: 100
+
+# Agent strategy bundles. Each entry is a (ticker, signals, params, mode)
+# bundle that the sfa CLI can backtest, optimise, walk forward, and run.
+# Note: the older top level "strategies" key above holds per indicator
+# parameters and is kept untouched. Agent bundles live under their own key
+# to avoid conflicting with that schema.
+agent_strategies:
+  mean_reversion_rsi_bb:
+    description: "RSI oversold and Bollinger lower band entries, RSI overbought exit."
+    ticker: SPY
+    buy_signals: [RSI_Oversold_Buy, BB_MeanReversion_Buy]
+    sell_signals: [RSI_Overbought_Sell, BB_MeanReversion_Sell]
+    mode: trading
+    live_params:
+      rsi_window: 14
+      bb_window: 20
+      bb_std: 2.0
+    search_space:
+      rsi_window: { type: int, low: 5, high: 30 }
+      bb_window: { type: int, low: 10, high: 50 }
+      bb_std: { type: float, low: 1.0, high: 3.0 }
+

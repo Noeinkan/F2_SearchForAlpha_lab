@@ -91,6 +91,26 @@ class ConfigLoader:
         self._config = {}
         return self.load_config(config_path)
 
+    def get_agent_strategies(self) -> Dict[str, Dict[str, Any]]:
+        """Return all agent strategy bundles keyed by name."""
+        return self._config.get('agent_strategies', {}) or {}
+
+    def get_agent_strategy(self, name: str) -> Dict[str, Any]:
+        """Return a single agent strategy bundle by name (empty dict if missing)."""
+        return self.get_agent_strategies().get(name, {})
+
+    def get_agent_config(self) -> Dict[str, Any]:
+        """Read config/agent.yaml if present (live trading + guard settings)."""
+        agent_path = DEFAULT_CONFIG_PATH.parent / 'agent.yaml'
+        if not agent_path.exists():
+            return {}
+        try:
+            with open(agent_path, 'r') as f:
+                return yaml.safe_load(f) or {}
+        except Exception as e:
+            logger.error(f"Error loading agent.yaml: {e}")
+            return {}
+
 
 # Convenience function for direct access
 def get_config() -> ConfigLoader:
@@ -101,11 +121,26 @@ def get_config() -> ConfigLoader:
 def get_strategy_config(strategy_name: str) -> Dict[str, Any]:
     """
     Convenience function to get strategy configuration.
-    
+
     Args:
         strategy_name: Name of the strategy.
-        
+
     Returns:
         Strategy configuration dictionary.
     """
     return get_config().get_strategy_config(strategy_name)
+
+
+def get_agent_strategies() -> Dict[str, Dict[str, Any]]:
+    """Convenience accessor for agent strategy bundles."""
+    return get_config().get_agent_strategies()
+
+
+def get_agent_strategy(name: str) -> Dict[str, Any]:
+    """Convenience accessor for a single agent strategy bundle."""
+    return get_config().get_agent_strategy(name)
+
+
+def get_agent_config() -> Dict[str, Any]:
+    """Convenience accessor for config/agent.yaml content."""
+    return get_config().get_agent_config()
