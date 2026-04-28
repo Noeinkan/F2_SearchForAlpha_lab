@@ -53,16 +53,109 @@ exposes the `sfa` console script (see CLI section below).
 
 ## ▶️ Run the Dashboard
 
+The Dash app is the interactive UI for browsing tickers, overlaying signals,
+running ad hoc backtests, and inspecting trade logs. It runs entirely
+locally and does not need IB Gateway.
+
 ```bash
 python main.py
 ```
 
-By default `main.py` enables a development mode reload. To disable:
+Then open http://127.0.0.1:8050 in a browser. Hot reload is on by default;
+edits to files under `lib/dash/` will auto refresh the page.
+
+To disable the development reload (faster startup, no auto refresh):
 
 ```bash
-set DASH_DEV=0
-python main.py
+# Linux / macOS
+DASH_DEV=0 python main.py
+
+# Windows (cmd)
+set DASH_DEV=0 && python main.py
+
+# Windows (PowerShell)
+$env:DASH_DEV = "0"; python main.py
 ```
+
+What you can do from the UI:
+
+- Pick a ticker and date range, fetch OHLCV from Yahoo, and chart it.
+- Toggle indicator overlays (RSI, MACD, BB, SMA, EMA, CCI, VWAP) and tune
+  their windows interactively.
+- Pick buy and sell signal columns, run a backtest, and view the equity
+  curve, trade markers, and metric cards.
+- Save and reload UI presets via `config/ui_presets.json`.
+
+The dashboard does not place orders. For live (paper) execution use the
+`sfa run` command described below.
+
+## 🏦 Paper Trading via Interactive Brokers
+
+`sfa run --mode paper` connects to an IB Gateway on the loopback,
+subscribes to real time bars, and translates the strategy's signals into
+market orders. `--mode live` is always refused, so you cannot accidentally
+fire real money trades from this build.
+
+### Prerequisites
+
+1. Download **IB Gateway** (lighter than TWS) from the Interactive Brokers
+   client portal and install it.
+2. Create a **paper trading account** in your IB account portal if you do
+   not already have one.
+3. Launch IB Gateway, sign in with your **paper** credentials, and confirm
+   the API socket is listening on port **4002** (paper). The live port is
+   4001 and is intentionally never used by this build.
+4. In Gateway's API settings, enable *Enable ActiveX and Socket Clients*
+   and confirm `127.0.0.1` is in the list of trusted IPs.
+
+### Configure
+
+Defaults are in [config/agent.yaml](config/agent.yaml). Override host,
+port, client id, guard thresholds, or promotion thresholds there:
+
+```yaml
+ib:
+  host: 127.0.0.1
+  port: 4002
+  client_id: 7
+guards:
+  max_daily_loss_pct: 0.02      # stop if daily realised PnL drops 2%
+  max_position_pct: 0.25        # stop if any position exceeds 25% of equity
+  max_disconnect_seconds: 60    # stop if Gateway is unreachable for 60s
+  max_clock_drift_seconds: 5    # stop if local vs IB clock drift exceeds 5s
+```
+
+### Run, observe, kill
+
+```bash
+# Terminal 1: start the runner (blocks until killed)
+sfa run --name mean_reversion_rsi_bb --mode paper
+
+# Terminal 2: snapshot equity, positions, and guard states
+sfa status
+sfa status --json                                 # for piping / agents
+
+# Stop a running runner cleanly
+sfa kill --name mean_reversion_rsi_bb
+```
+
+The runner writes a PID file to `state/running/<name>.pid` and persists
+every fill to the `sfa_fills` table in `state/optuna.db`. Each bar updates
+`sfa_runner_state` with the latest equity, positions, and the result of
+every guard. If any guard trips, the runner cancels open orders for that
+symbol, disconnects, and exits.
+
+### Trouble shooting
+
+- `unknown_strategy`: run `sfa list` to see what bundles exist; names must
+  match exactly.
+- `live_mode_disabled`: you passed `--mode live`. Use `--mode paper`.
+- Connection hangs: confirm Gateway is on port 4002, signed in (not
+  logged out for daily reset), and that no other client is using
+  `client_id: 7`.
+- Want to force a stuck runner off without IB calls: delete the
+  `state/running/<name>.pid` file and the matching row in
+  `sfa_runner_state`, or run `just clean-state`.
 
 ## 📊 Programmatic Usage
 

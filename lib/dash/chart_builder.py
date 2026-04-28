@@ -631,7 +631,8 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             xanchor='left'
         )
 
-    fig.update_xaxes(matches='x')
+    for i in range(2, plot_count + 1):
+        fig.update_xaxes(matches='x', row=i, col=1)
 
 
 def _add_crosshair(fig: go.Figure, plot_count: int) -> None:

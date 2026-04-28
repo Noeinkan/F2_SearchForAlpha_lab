@@ -8,7 +8,16 @@ from dash import callback_context, html
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, FONT_SIZES, get_theme, merge_indicator_settings
+from datetime import date
+
+from lib.dash.dash_config import (
+    DEFAULT_INDICATOR_SETTINGS,
+    DEFAULT_TICKER,
+    FONT_SIZES,
+    START_DATE,
+    get_theme,
+    merge_indicator_settings,
+)
 from lib.dash.helpers import fetch_data_with_cache, format_df_for_display
 from lib.dash.state import dashboard_state
 from lib.signals.indicators import (
@@ -77,6 +86,10 @@ def register_data_loading_callbacks(app) -> None:
         if trigger_id == 'autoload-interval':
             if n_intervals is None or n_intervals < 1:
                 raise PreventUpdate
+            # State may not be populated yet on the single autoload tick — fall back to layout defaults
+            ticker = ticker or DEFAULT_TICKER
+            start_date = start_date or START_DATE
+            end_date = end_date or date.today().isoformat()
         elif trigger_id == 'load-data-button':
             if not n_clicks:
                 raise PreventUpdate
