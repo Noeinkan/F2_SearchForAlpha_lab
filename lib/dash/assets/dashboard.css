@@ -1,0 +1,881 @@
+/* =============================================================================
+   SearchForAlpha — Bloomberg Terminal-inspired (modernized amber)
+   Auto-loaded by Dash from lib/dash/assets/.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+    /* Palette — bloomberg theme */
+    --bg-primary:        #0A0A0A;
+    --bg-secondary:      #111111;
+    --bg-tertiary:       #161616;
+    --bg-hover:          #1F1F1F;
+    --bg-panel:          #0E0E0E;
+    --bg-panel-header:   #1A1A1A;
+
+    --text-primary:      #E8E8E8;
+    --text-secondary:    #A8A8A8;
+    --text-tertiary:     #6E6E6E;
+
+    --accent:            #FFA726;       /* amber primary */
+    --accent-dim:        #B87420;
+    --up:                #26C281;
+    --down:              #EF5350;
+    --warn:              #FFCA28;
+    --info:              #4FC3F7;
+
+    --border-primary:    #1F1F1F;
+    --border-secondary:  #171717;
+    --border-focus:      #FFA726;
+
+    --table-header-bg:   #141414;
+    --table-row-alt:     rgba(20,20,20,0.5);
+    --table-row-hover:   #1A1A1A;
+
+    /* Typography */
+    --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* =============================================================================
+   Base
+   ========================================================================== */
+
+html, body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular numerals for any monospace numeric */
+.num,
+.bbg-num,
+.numeric {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    font-weight: 500;
+    letter-spacing: 0;
+}
+
+.up    { color: var(--up); }
+.down  { color: var(--down); }
+.warn  { color: var(--warn); }
+.muted { color: var(--text-secondary); }
+
+.uppercase {
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+}
+
+/* =============================================================================
+   Status dots (footer / header / section indicators)
+   ========================================================================== */
+
+.dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+    margin-right: 6px;
+    flex: 0 0 6px;
+    vertical-align: middle;
+}
+.dot-up    { background: var(--up); }
+.dot-down  { background: var(--down); }
+.dot-warn  { background: var(--warn); }
+.dot-amber { background: var(--accent); }
+.dot-idle  { background: var(--text-tertiary); }
+
+.dot-pulse {
+    animation: bbg-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes bbg-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+}
+
+/* =============================================================================
+   Bloomberg-styled segmented control (tabs, range buttons, P/TV toggle)
+   ========================================================================== */
+
+.bbg-seg {
+    display: inline-flex;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.bbg-seg > button,
+.bbg-seg > .bbg-seg-item {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: background 80ms ease, color 80ms ease;
+    border-right: 1px solid var(--border-primary);
+}
+.bbg-seg > button:last-child,
+.bbg-seg > .bbg-seg-item:last-child {
+    border-right: none;
+}
+.bbg-seg > button:hover,
+.bbg-seg > .bbg-seg-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.bbg-seg > button.active,
+.bbg-seg > .bbg-seg-item.active {
+    background: var(--accent);
+    color: #000;
+}
+
+.bbg-radio-seg {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.bbg-radio-seg > label {
+    display: inline-flex !important;
+    align-items: center;
+    margin: 0 !important;
+    padding: 4px 10px !important;
+    border-right: 1px solid var(--border-primary);
+    color: var(--text-secondary) !important;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: background 80ms ease, color 80ms ease;
+}
+.bbg-radio-seg > label:last-child {
+    border-right: none;
+}
+.bbg-radio-seg > label:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary) !important;
+}
+.bbg-radio-seg > label:has(input:checked) {
+    background: var(--accent);
+    color: #000 !important;
+}
+.bbg-radio-seg input {
+    display: none !important;
+}
+
+/* =============================================================================
+   Section primitives (sidebar / right panel)
+   ========================================================================== */
+
+.bbg-section {
+    border: 1px solid var(--border-primary);
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+    margin-bottom: 6px;
+}
+.bbg-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-panel-header);
+    border-bottom: 1px solid var(--border-primary);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+.bbg-section.expanded .bbg-section-header {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+details.bbg-section > .bbg-section-header {
+    list-style: none;
+}
+details.bbg-section > .bbg-section-header::-webkit-details-marker {
+    display: none;
+}
+details.bbg-section > .bbg-section-header::after {
+    content: '+';
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    margin-left: auto;
+}
+details.bbg-section[open] > .bbg-section-header {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+details.bbg-section[open] > .bbg-section-header::after {
+    content: '-';
+    color: var(--accent);
+}
+.bbg-section-body {
+    padding: 8px 10px;
+}
+
+/* =============================================================================
+   KPI cell (backtest results grid)
+   ========================================================================== */
+
+.bbg-kpi {
+    border: 1px solid var(--border-primary);
+    background: var(--bg-tertiary);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-radius: 2px;
+}
+.bbg-kpi-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+}
+.bbg-kpi-value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 18px;
+    color: var(--text-primary);
+}
+.bbg-kpi-delta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* =============================================================================
+   Ticker pill (TRIG / REJ counters etc)
+   ========================================================================== */
+
+.bbg-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-radius: 2px;
+}
+.bbg-pill .bbg-pill-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+.bbg-pill.up    .bbg-pill-value { color: var(--up); }
+.bbg-pill.down  .bbg-pill-value { color: var(--down); }
+.bbg-pill.amber .bbg-pill-value { color: var(--accent); }
+
+/* =============================================================================
+   Buttons
+   ========================================================================== */
+
+button.bbg-button {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 8px 14px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: filter 100ms ease;
+}
+button.bbg-button:hover  { filter: brightness(1.1); }
+button.bbg-button:active { filter: brightness(0.9); }
+
+button.bbg-button-outline {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+button.bbg-button-outline:hover {
+    background: var(--accent);
+    color: #000;
+}
+
+button.bbg-button-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-primary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border-radius: 2px;
+}
+button.bbg-button-ghost:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* =============================================================================
+   Inputs (dense)
+   ========================================================================== */
+
+.bbg-input,
+input.bbg-input,
+.bbg-input input {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+    padding: 5px 8px !important;
+    border-radius: 2px !important;
+    height: 28px !important;
+    box-sizing: border-box !important;
+    outline: none;
+    transition: border-color 100ms ease;
+}
+.bbg-input:focus,
+input.bbg-input:focus,
+.bbg-input input:focus {
+    border-color: var(--accent) !important;
+}
+
+/* Hide spinner buttons on number inputs */
+.bbg-input::-webkit-outer-spin-button,
+.bbg-input::-webkit-inner-spin-button,
+input.bbg-input::-webkit-outer-spin-button,
+input.bbg-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input.bbg-input[type=number] { -moz-appearance: textfield; }
+
+/* =============================================================================
+   Header
+   ========================================================================== */
+
+.bbg-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 44px;
+    padding: 0 14px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+}
+.bbg-wordmark {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 2px;
+}
+.bbg-wordmark-sub {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-left: 1px solid var(--border-primary);
+    padding-left: 12px;
+    margin-left: 4px;
+}
+.bbg-tape {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    flex: 1;
+    justify-content: center;
+}
+.bbg-tape-symbol {
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 1px;
+}
+.bbg-tape-price {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.bbg-tape-delta {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+}
+
+/* =============================================================================
+   Status bar (bottom)
+   ========================================================================== */
+
+.bbg-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    height: 24px;
+    padding: 0 12px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-primary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+}
+.bbg-status-segment {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border-right: 1px solid var(--border-primary);
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.bbg-status-segment:last-child { border-right: none; }
+.bbg-status-segment.flex-grow {
+    flex: 1;
+    min-width: 0;
+}
+
+/* =============================================================================
+   Signal list rows (right panel)
+   ========================================================================== */
+
+.bbg-signal-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    height: 24px;
+    border-bottom: 1px solid var(--border-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-primary);
+    transition: background 80ms ease;
+}
+.bbg-signal-row:hover {
+    background: var(--bg-hover);
+}
+.bbg-signal-row .bbg-signal-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bbg-signal-toggle {
+    width: 22px;
+    height: 16px;
+    border: 1px solid var(--border-primary);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-left: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 1px;
+}
+.bbg-signal-toggle.active.buy {
+    background: var(--up);
+    color: #000;
+    border-color: var(--up);
+}
+.bbg-signal-toggle.active.sell {
+    background: var(--down);
+    color: #000;
+    border-color: var(--down);
+}
+
+/* =============================================================================
+   Progress bar (flat amber)
+   ========================================================================== */
+
+.progress-container {
+    width: 100%;
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 0;
+    overflow: hidden;
+    margin: 6px 0;
+}
+.progress-bar {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.3s ease;
+}
+.progress-bar.indeterminate {
+    width: 100%;
+    background: linear-gradient(90deg, var(--bg-tertiary) 0%, var(--accent) 50%, var(--bg-tertiary) 100%);
+    background-size: 200% 100%;
+    animation: bbg-shimmer 1.4s linear infinite;
+}
+@keyframes bbg-shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+}
+
+/* =============================================================================
+   Tabs (right-panel: Backtest / Optimizer / Data)
+   ========================================================================== */
+
+.panel-tab {
+    background: transparent !important;
+    border: none;
+    color: var(--text-secondary) !important;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 8px 14px !important;
+    border-bottom: 2px solid transparent !important;
+    cursor: pointer;
+    transition: color 80ms ease, border-color 80ms ease;
+}
+.panel-tab:hover {
+    color: var(--text-primary) !important;
+}
+.panel-tab.active {
+    color: var(--accent) !important;
+    border-bottom-color: var(--accent) !important;
+    font-weight: 700;
+}
+
+/* Drop the underline animation */
+.panel-tab::after { display: none !important; }
+
+/* =============================================================================
+   Dropdowns (Select / VirtualizedSelect — react-select v1)
+   ========================================================================== */
+
+.Select-control,
+.dark-dropdown .Select-control {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+    min-height: 28px !important;
+    height: 28px !important;
+    transition: border-color 100ms ease !important;
+}
+.Select-control:hover,
+.dark-dropdown .Select-control:hover {
+    border-color: var(--accent) !important;
+}
+.Select.is-focused:not(.is-open) > .Select-control {
+    border-color: var(--accent) !important;
+    box-shadow: none !important;
+}
+.Select-menu-outer,
+.dark-dropdown .Select-menu-outer {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6) !important;
+}
+.Select-option,
+.dark-dropdown .Select-option {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+}
+.Select-option.is-focused,
+.Select-option:hover,
+.dark-dropdown .Select-option.is-focused,
+.dark-dropdown .Select-option:hover {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+}
+.Select-option.is-selected,
+.dark-dropdown .Select-option.is-selected {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+}
+.Select-value-label,
+.Select-placeholder,
+.Select-input > input,
+.dark-dropdown .Select-value-label,
+.dark-dropdown .Select-placeholder,
+.dark-dropdown .Select-input > input {
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+}
+.Select-arrow {
+    border-color: var(--text-secondary) transparent transparent !important;
+}
+.VirtualizedSelectOption {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+}
+.VirtualizedSelectFocusedOption,
+.VirtualizedSelectOption:hover {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+}
+.VirtualizedSelectSelectedOption {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+}
+
+/* =============================================================================
+   Date pickers
+   ========================================================================== */
+
+.SingleDatePickerInput,
+.SingleDatePickerInput__withBorder {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    transition: border-color 100ms ease !important;
+}
+.SingleDatePicker,
+.SingleDatePickerInput,
+.DateInput,
+.DateInput_input {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+.SingleDatePickerInput:hover {
+    border-color: var(--accent) !important;
+}
+.DateInput_input {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+    padding: 5px 8px !important;
+    height: 28px !important;
+    border-bottom: none !important;
+}
+.DateInput_input__focused {
+    border-bottom: none !important;
+}
+.SingleDatePicker_picker {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.6) !important;
+    z-index: 9999 !important;
+}
+.DayPicker,
+.CalendarMonth,
+.CalendarMonth_table {
+    background: var(--bg-secondary) !important;
+}
+.CalendarMonth_caption {
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.DayPicker_weekHeader {
+    color: var(--text-secondary) !important;
+    font-family: var(--font-mono) !important;
+}
+.CalendarDay {
+    border: 1px solid var(--border-primary) !important;
+    color: var(--text-primary) !important;
+    background: var(--bg-secondary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+}
+.CalendarDay__default:hover {
+    background: var(--bg-hover) !important;
+    border-color: var(--accent) !important;
+    color: var(--text-primary) !important;
+}
+.CalendarDay__selected,
+.CalendarDay__selected:hover {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: #000 !important;
+}
+.CalendarDay__outside {
+    color: var(--text-tertiary) !important;
+    background: var(--bg-panel) !important;
+}
+.DayPickerNavigation_button {
+    border: 1px solid var(--border-primary) !important;
+    background: var(--bg-tertiary) !important;
+}
+.DayPickerNavigation_button:hover {
+    border-color: var(--accent) !important;
+}
+.date-picker-end .SingleDatePicker_picker {
+    left: 0 !important;
+    right: auto !important;
+}
+
+/* =============================================================================
+   Scrollbars
+   ========================================================================== */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--bg-hover);
+    border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-dim);
+}
+
+/* =============================================================================
+   Checkboxes / radios (use accent)
+   ========================================================================== */
+
+input[type="checkbox"],
+input[type="radio"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+/* =============================================================================
+   Tooltips
+   ========================================================================== */
+
+.tooltip-inner {
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-primary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+    border-radius: 2px !important;
+    max-width: 260px !important;
+}
+.tooltip.bs-tooltip-top .tooltip-arrow::before,
+.tooltip.bs-tooltip-bottom .tooltip-arrow::before {
+    border-top-color: var(--border-primary) !important;
+    border-bottom-color: var(--border-primary) !important;
+}
+
+/* =============================================================================
+   Alerts
+   ========================================================================== */
+
+.custom-alert {
+    border-left: 3px solid;
+    border-radius: 2px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 8px 10px;
+}
+.custom-alert.success { border-left-color: var(--up);     color: var(--up); }
+.custom-alert.warning { border-left-color: var(--warn);   color: var(--warn); }
+.custom-alert.error   { border-left-color: var(--down);   color: var(--down); }
+.custom-alert.info    { border-left-color: var(--accent); color: var(--accent); }
+
+/* =============================================================================
+   Resizable chart container
+   ========================================================================== */
+
+.resizable-chart {
+    resize: vertical;
+    overflow: auto;
+    min-height: 400px;
+    max-height: calc(100vh - 120px);
+    position: relative;
+}
+.resizable-chart::after {
+    content: 'DRAG';
+    position: absolute;
+    bottom: 1px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-tertiary);
+    letter-spacing: 2px;
+    pointer-events: none;
+    background: var(--accent);
+    color: #000;
+    padding: 0 6px;
+    line-height: 9px;
+}
+.resizable-chart::-webkit-resizer {
+    background: var(--accent);
+}
+
+/* =============================================================================
+   Light theme overrides — flip palette when body has .theme-light
+   ========================================================================== */
+
+body.theme-light {
+    --bg-primary:        #ffffff;
+    --bg-secondary:      #f6f8fa;
+    --bg-tertiary:       #eaeef2;
+    --bg-hover:          #d0d7de;
+    --bg-panel:          #f1f4f7;
+    --bg-panel-header:   #e6ebf0;
+    --text-primary:      #1f2328;
+    --text-secondary:    #656d76;
+    --text-tertiary:     #8c959f;
+    --accent:            #9a6700;
+    --up:                #1a7f37;
+    --down:              #cf222e;
+    --warn:              #9a6700;
+    --info:              #0598bc;
+    --border-primary:    #d0d7de;
+    --border-secondary:  #eaeef2;
+    --border-focus:      #9a6700;
+    --table-header-bg:   #f6f8fa;
+    --table-row-alt:     rgba(246,248,250,0.5);
+    --table-row-hover:   #eaeef2;
+}
+
+/* =============================================================================
+   Misc — keep existing animations available
+   ========================================================================== */
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(-12px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+.fade-in  { animation: fadeIn  0.18s ease-out; }
+.slide-in { animation: slideIn 0.18s ease-out; }

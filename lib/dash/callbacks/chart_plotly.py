@@ -11,6 +11,7 @@ from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 
 from lib.dash.chart_builder import create_chart, create_empty_chart
+from lib.dash.components import ticker_pill
 from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, FONT_SIZES, FONT_MONO, get_theme
 from lib.dash.state import dashboard_state
 from lib.dash.callbacks.shared import (
@@ -180,7 +181,11 @@ def register_plotly_callbacks(app) -> None:
     ):
         theme = get_theme()
         if not data_loaded or dashboard_state.df is None:
-            return html.Span("Signals: --", style={'color': theme['text_secondary']})
+            return html.Div([
+                ticker_pill('TRIG', '--', color='amber'),
+                html.Span('|', className='num', style={'color': theme['border_primary']}),
+                ticker_pill('REJ', '--', color='down'),
+            ], style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'})
 
         df = dashboard_state.df.copy()
         df = _rebuild_indicator_dataframe(df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
@@ -196,33 +201,10 @@ def register_plotly_callbacks(app) -> None:
             signal_cooldown_bars or 0
         )
 
-        label_style = {
-            'fontSize': FONT_SIZES['xs'],
-            'color': theme['text_secondary'],
-            'textTransform': 'uppercase',
-            'letterSpacing': '0.4px',
-        }
-        value_style = {
-            'fontSize': FONT_SIZES['sm'],
-            'fontWeight': '600',
-            'fontFamily': FONT_MONO,
-        }
-        muted_value_style = {
-            **value_style,
-            'color': theme['text_tertiary'],
-        }
-        active_value_style = {
-            **value_style,
-            'color': theme['accent_blue'],
-        }
-        divider_style = {'color': theme['border_secondary'], 'opacity': 0.7}
-
         return html.Div([
-            html.Span("Triggered", style=label_style),
-            html.Span(f"{counts['accepted']}", style=active_value_style),
-            html.Span("|", style=divider_style),
-            html.Span("Rejected", style=label_style),
-            html.Span(f"{counts['rejected']}", style=muted_value_style),
+            ticker_pill('TRIG', counts['accepted'], color='amber'),
+            html.Span('|', className='num', style={'color': theme['border_primary']}),
+            ticker_pill('REJ', counts['rejected'], color='down'),
         ], style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'})
 
     @app.callback(

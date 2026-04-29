@@ -66,6 +66,9 @@ def register_data_loading_callbacks(app) -> None:
          Output('signals-unified-store', 'data'),
          Output('chart-title', 'children'),
          Output('chart-subtitle', 'children'),
+         Output('header-ticker-symbol', 'children'),
+         Output('header-ticker-price', 'children'),
+         Output('header-ticker-change', 'children'),
          Output('data-table-container', 'children')],
         [Input('load-data-button', 'n_clicks'),
          Input('autoload-interval', 'n_intervals')],
@@ -99,15 +102,20 @@ def register_data_loading_callbacks(app) -> None:
         try:
             df = fetch_data_with_cache(ticker, start_date, end_date)
             if df.empty:
-                    return (
-                        html.Div([
-                            html.Span("\u26a0", style={'color': theme['accent_orange'], 'marginRight': '6px'}),
-                            html.Span("No data available for this symbol",
-                                      style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_orange']})
-                        ]),
-                        "Strategy order: --",
-                        False, [], [], [], "No data", "", None
-                    )
+                return (
+                    "NO DATA",
+                    "--",
+                    False,
+                    [],
+                    [],
+                    [],
+                    "No data",
+                    "",
+                    (ticker or DEFAULT_TICKER).upper(),
+                    "$--",
+                    html.Span("NO CHANGE", className='muted'),
+                    None,
+                )
 
             effective_settings = merge_indicator_settings(indicator_settings or DEFAULT_INDICATOR_SETTINGS)
             df = add_indicators(df, effective_settings)
@@ -127,26 +135,47 @@ def register_data_loading_callbacks(app) -> None:
 
             # Calculate subtitle info
             subtitle = _create_price_subtitle(df, theme)
+            latest_close = df['Close'].iloc[-1]
+            prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
+            change = latest_close - prev_close
+            change_pct = (change / prev_close) * 100 if prev_close else 0
+            change_prefix = '\u25b2' if change >= 0 else '\u25bc'
+            change_sign = '+' if change >= 0 else ''
+            change_color = theme['accent_green'] if change >= 0 else theme['accent_red']
 
-            # Success status with animation
             strategy_order_text = format_strategy_order_debug_text()
-            status = html.Div([
-                html.Span("\u2713", style={'color': theme['accent_green'], 'marginRight': '6px', 'fontWeight': 'bold'}),
+            return (
+                f"{len(df)} ROWS",
+                strategy_order_text,
+                True,
+                buy_options,
+                sell_options,
+                unified_rows,
+                ticker,
+                subtitle,
+                (ticker or DEFAULT_TICKER).upper(),
+                f"${latest_close:.2f}",
                 html.Span(
-                    f"{len(df)} rows loaded",
-                    title=f"Strategy order: {strategy_order_text}",
-                    style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_green']}
-                )
-            ], className='fade-in')
-            return status, f"Strategy order: {strategy_order_text}", True, buy_options, sell_options, unified_rows, ticker, subtitle, data_table
+                    f"{change_prefix} {change_sign}{change:.2f} ({change_sign}{change_pct:.2f}%)",
+                    className='num',
+                    style={'color': change_color}
+                ),
+                data_table,
+            )
 
         except Exception as e:
             logger.error(f"Error loading data: {e}")
             return (
-                html.Div([
-                    html.Span("\u2715", style={'color': theme['accent_red'], 'marginRight': '6px', 'fontWeight': 'bold'}),
-                    html.Span(str(e)[:40], style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_red']})
-                ]),
-                "Strategy order: --",
-                False, [], [], [], "Error", "", None
+                "ERROR",
+                "--",
+                False,
+                [],
+                [],
+                [],
+                "Error",
+                "",
+                (ticker or DEFAULT_TICKER).upper(),
+                "$--",
+                html.Span(str(e)[:40].upper(), style={'color': theme['accent_red']}),
+                None,
             )

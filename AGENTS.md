@@ -11,13 +11,27 @@ is code. Parameter search runs through Optuna. Guards are code. The agent
 chooses *what to run next*, parses JSON, and reports concise results to the
 human. Anything beyond that is out of scope.
 
+Optimisation is performed with `sfa optimise` and `sfa walkforward`.
+`sfa run --mode paper` is the post-promotion paper execution step for
+observation and guard monitoring; it is not the optimiser itself.
+
 ## Invocation
 
-Every call uses this shape (adjust paths if your install differs):
+Every call uses one of these shapes (adjust paths if your install differs):
 
 ```
 cd /opt/searchforalpha && uv run sfa <command> --json
 ```
+
+Windows / local virtualenv fallback when `sfa` is not on PATH:
+
+```powershell
+Set-Location C:\Users\andre\Downloads\F2_SearchForAlpha_lab
+.\.venv\Scripts\python.exe -m lib.cli.app <command> --json
+```
+
+If `sfa` is unavailable on PATH, use the interpreter form above instead of
+guessing another launcher.
 
 Always pass `--json`. Treat any non-zero exit code as an error.
 

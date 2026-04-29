@@ -17,7 +17,7 @@ from lib.dash.helpers import (
     format_df_for_display, extract_signals,
     generate_signal_combinations, evaluate_signal_combination
 )
-from lib.dash.dash_config import get_theme, THEMES
+from lib.dash.dash_config import DEFAULT_THEME, get_theme, THEMES
 
 
 # =============================================================================
@@ -92,7 +92,7 @@ class TestDashboardState:
         assert state.df is None
         assert state.all_tickers_df is None
         assert state.backtest_results is None
-        assert state.theme_name == 'dark'
+        assert state.theme_name == DEFAULT_THEME
 
     def test_df_property(self, sample_df):
         """Test DataFrame property setter/getter."""
@@ -104,15 +104,15 @@ class TestDashboardState:
     def test_theme_switching(self):
         """Test theme switching."""
         state = DashboardState()
-        assert state.theme_name == 'dark'
+        assert state.theme_name == DEFAULT_THEME
 
         state.set_theme('light')
         assert state.theme_name == 'light'
         assert state.theme['bg_primary'] == '#ffffff'
 
-        state.set_theme('dark')
-        assert state.theme_name == 'dark'
-        assert state.theme['bg_primary'] == '#0d1117'
+        state.set_theme(DEFAULT_THEME)
+        assert state.theme_name == DEFAULT_THEME
+        assert state.theme['bg_primary'] == THEMES[DEFAULT_THEME]['bg_primary']
 
     def test_caching(self, sample_df):
         """Test data caching functionality."""
@@ -180,7 +180,7 @@ class TestDashboardState:
         state.reset()
         assert state.df is None
         assert state.get_cached_data('key1') is None
-        assert state.theme_name == 'dark'
+        assert state.theme_name == DEFAULT_THEME
 
 
 # =============================================================================

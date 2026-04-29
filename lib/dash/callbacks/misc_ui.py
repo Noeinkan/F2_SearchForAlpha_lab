@@ -22,11 +22,12 @@ def register_misc_callbacks(app) -> None:
          Output('tab-data', 'style')],
         [Input('tab-backtest', 'n_clicks'),
          Input('tab-optimizer', 'n_clicks'),
-         Input('tab-data', 'n_clicks')]
+         Input('tab-data', 'n_clicks')],
+        [State('theme-store', 'data')]
     )
-    def switch_panel(backtest_clicks, optimizer_clicks, data_clicks):
+    def switch_panel(backtest_clicks, optimizer_clicks, data_clicks, theme_name):
         """Switch between right panel tabs."""
-        theme = get_theme()
+        theme = get_theme(theme_name or DEFAULT_THEME)
         styles = get_styles(theme)
 
         ctx = callback_context
@@ -72,12 +73,14 @@ def register_misc_callbacks(app) -> None:
         )
 
     @app.callback(
-        Output('header-status', 'children'),
+        [Output('header-status', 'children'),
+         Output('status-clock', 'children')],
         [Input('startup-interval', 'n_intervals')]
     )
     def update_header_status(_):
         """Update header status."""
-        return datetime.now().strftime("%H:%M:%S")
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        return timestamp, timestamp
 
     @app.callback(
         [Output('theme-store', 'data'),
@@ -87,13 +90,31 @@ def register_misc_callbacks(app) -> None:
     )
     def toggle_theme(n_clicks, current_theme):
         """Toggle between dark and light themes."""
-        if not n_clicks:
-            return DEFAULT_THEME, "\u2600\ufe0f"
+        current_theme = current_theme or DEFAULT_THEME
 
-        new_theme = 'light' if current_theme == 'dark' else 'dark'
-        icon = "\U0001f319" if new_theme == 'light' else "\u2600\ufe0f"
+        def _format_theme_label(theme_name):
+            return '[ LIGHT ]' if theme_name == 'light' else '[ DARK ]'
+
+        if not n_clicks:
+            return DEFAULT_THEME, _format_theme_label(DEFAULT_THEME)
+
+        new_theme = 'light' if current_theme != 'light' else DEFAULT_THEME
         dashboard_state.set_theme(new_theme)
-        return new_theme, icon
+        return new_theme, _format_theme_label(new_theme)
+
+    app.clientside_callback(
+        """
+        function(themeName) {
+            document.body.classList.remove('theme-light');
+            if (themeName === 'light') {
+                document.body.classList.add('theme-light');
+            }
+            return themeName;
+        }
+        """,
+        Output('theme-class-sync', 'children'),
+        Input('theme-store', 'data')
+    )
 
     # Register clientside callback for keyboard shortcuts
     app.clientside_callback(

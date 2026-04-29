@@ -3,13 +3,173 @@ Dashboard UI Components
 Reusable component builders for the trading dashboard.
 """
 
-from dash import html
+from typing import Any
+
+from dash import dcc, html
 import dash_bootstrap_components as dbc
 
 from lib.dash.dash_config import (
-    FONT_SIZES, FONT_MONO, BORDER_RADIUS, get_theme
+    FONT_SIZES, FONT_MONO, FONT_WEIGHT_NUMERIC, BORDER_RADIUS, get_theme
 )
 from lib.dash.styles import get_styles
+
+
+def _normalize_children(children: Any) -> list[Any]:
+    """Return Dash children as a list without splitting strings into characters."""
+    if children is None:
+        return []
+    if isinstance(children, (list, tuple)):
+        return list(children)
+    return [children]
+
+
+def bloomberg_section(
+    title: Any,
+    children: Any,
+    *,
+    collapsible: bool = False,
+    accent_dot: bool = False,
+    open: bool = True,
+    summary: Any = None,
+    theme: dict = None,
+    body_style: dict | None = None,
+    className: str = '',
+) -> html.Div:
+    """Build a Bloomberg-style section container, optionally collapsible."""
+    if theme is None:
+        theme = get_theme()
+
+    title_node = title if hasattr(title, 'to_plotly_json') else html.Span(title)
+    title_row = html.Div(
+        [
+            html.Div(
+                [
+                    html.Span(className='dot dot-amber') if accent_dot else None,
+                    title_node,
+                ],
+                style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}
+            ),
+            html.Span(summary, className='num muted') if summary is not None else None,
+        ],
+        style={
+            'display': 'flex',
+            'alignItems': 'center',
+            'justifyContent': 'space-between',
+            'gap': '8px',
+            'width': '100%',
+        }
+    )
+    body = html.Div(_normalize_children(children), className='bbg-section-body', style=body_style or {})
+    section_class = 'bbg-section'
+    if open:
+        section_class += ' expanded'
+    if className:
+        section_class += f' {className}'
+
+    if collapsible:
+        return html.Details(
+            [html.Summary(title_row, className='bbg-section-header'), body],
+            open=open,
+            className=section_class,
+        )
+
+    return html.Div([
+        html.Div(title_row, className='bbg-section-header'),
+        body,
+    ], className=section_class)
+
+
+def kpi_cell(
+    label: str,
+    value: str,
+    *,
+    delta: str | None = None,
+    delta_color: str | None = None,
+    mono: bool = True,
+    theme: dict = None,
+    info_text: str | None = None,
+) -> html.Div:
+    """Build a terminal-style KPI cell."""
+    if theme is None:
+        theme = get_theme()
+
+    value_style = {
+        'color': theme['text_primary'],
+        'fontWeight': '600',
+    }
+    if mono:
+        value_style.update({
+            'fontFamily': FONT_MONO,
+            'fontVariantNumeric': 'tabular-nums',
+            'fontWeight': FONT_WEIGHT_NUMERIC,
+        })
+
+    delta_style = {
+        'color': delta_color or theme['text_secondary'],
+        'fontFamily': FONT_MONO,
+        'fontVariantNumeric': 'tabular-nums',
+    }
+
+    return html.Div(
+        [
+            html.Div(label, className='bbg-kpi-label'),
+            html.Div(value, className='bbg-kpi-value', style=value_style),
+            html.Div(delta or ' ', className='bbg-kpi-delta', style=delta_style),
+        ],
+        className='bbg-kpi',
+        title=info_text or None,
+    )
+
+
+def ticker_pill(
+    label: str,
+    value: Any,
+    *,
+    color: str = 'neutral',
+    value_id: str | None = None,
+    className: str = '',
+) -> html.Div:
+    """Build a compact pill for counters and tape-style metrics."""
+    pill_class = 'bbg-pill'
+    if color in {'up', 'down', 'amber'}:
+        pill_class += f' {color}'
+    if className:
+        pill_class += f' {className}'
+    value_props = {'className': 'bbg-pill-value num'}
+    if value_id is not None:
+        value_props['id'] = value_id
+    return html.Div(
+        [
+            html.Span(label),
+            html.Span(value, **value_props),
+        ],
+        className=pill_class,
+    )
+
+
+def dense_input(
+    *,
+    id: str,
+    value: Any = None,
+    type: str = 'text',
+    placeholder: str | None = None,
+    style: dict | None = None,
+    className: str = '',
+    **kwargs,
+) -> dcc.Input:
+    """Build a dense monospace input with the shared Bloomberg styling."""
+    input_class = 'bbg-input'
+    if className:
+        input_class += f' {className}'
+    return dcc.Input(
+        id=id,
+        value=value,
+        type=type,
+        placeholder=placeholder,
+        className=input_class,
+        style=style or {},
+        **kwargs,
+    )
 
 
 def build_metric_card(
@@ -54,7 +214,7 @@ def build_metric_card(
         ],
         style=card_style,
         className='metric-card-animated' if animated else '',
-        title=info_text or None
+        title=info_text or None,
     )
 
 

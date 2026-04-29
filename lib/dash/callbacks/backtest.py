@@ -9,7 +9,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.data_processing import create_backtest_results
-from lib.dash.components import build_alert, build_metric_card
+from lib.dash.components import build_alert, kpi_cell
 from lib.dash.dash_config import get_theme
 from lib.dash.state import dashboard_state
 from lib.strategy import run_backtest
@@ -135,65 +135,115 @@ def register_backtest_callbacks(app) -> None:
 
             # Calculate metrics
             total_return = backtest_results['total_return']
-            is_positive = total_return >= 0
             metric_help = {
-                "Portfolio Value": "Final account value after the backtest period.",
                 "Total Return": "Percent gain/loss from initial capital.",
                 "Sharpe Ratio": "Risk-adjusted return (higher is better).",
                 "Max Drawdown": "Largest peak-to-trough loss during the period.",
+                "Trade Count": "Number of completed trades in the backtest.",
                 "Win Rate": "Percent of trades that were profitable.",
+                "Profit Factor": "Gross profits divided by gross losses.",
             }
+            return_color = theme['accent_green'] if total_return >= 0 else theme['accent_red']
+            sharpe_color = theme['accent_green'] if backtest_results['sharpe_ratio'] >= 1 else theme['accent_red']
+            drawdown_color = theme['accent_green'] if backtest_results['max_drawdown'] >= -20 else theme['accent_red']
+            win_rate_color = theme['accent_green'] if backtest_results['win_rate'] >= 50 else theme['accent_red']
+            profit_factor_color = theme['accent_green'] if backtest_results.get('profit_factor', 0) >= 1 else theme['accent_red']
+            cost_color = theme['accent_green'] if cost_drag_pct >= 0 else theme['accent_red']
 
             return html.Div([
                 build_alert("Backtest completed successfully!", "success", dismissable=False, theme=theme),
                 html.Div([
-                    build_metric_card(
-                        "Return Before Costs",
-                        f"{baseline_metrics['total_return']:+.2f}%",
-                        baseline_metrics['total_return'] >= 0,
-                        theme,
-                        info_text="Backtest return with 0% fees and 0% slippage."
-                    ),
-                    build_metric_card(
-                        "Cost Drag",
-                        f"{cost_drag_pct:+.2f}%",
-                        cost_drag_pct >= 0,
-                        theme,
-                        info_text="Difference between net return and zero-cost return."
-                    ),
-                    build_metric_card(
-                        "Cost Impact",
-                        f"${cost_drag_value:,.2f}",
-                        cost_drag_value >= 0,
-                        theme,
-                        info_text="Final portfolio impact of fees and slippage."
-                    ),
-                ], style={'marginTop': '10px'}),
-                html.Div([
-                    build_metric_card(
+                    html.Span("PORTFOLIO", style={'color': theme['text_secondary'], 'letterSpacing': '1.5px'}),
+                    html.Span(
                         "Portfolio Value",
-                        f"${backtest_results['final_portfolio_value']:,.2f}",
-                        None,
-                        theme,
-                        info_text=metric_help["Portfolio Value"]
+                        style={'display': 'none'}
                     ),
-                    build_metric_card(
+                    html.Span(
+                        f"${backtest_results['final_portfolio_value']:,.2f}",
+                        className='num',
+                        style={'color': theme['text_primary'], 'fontSize': '16px', 'fontWeight': '600'}
+                    ),
+                    html.Span("|", style={'color': theme['border_primary']}),
+                    html.Span("NO COSTS", style={'color': theme['text_secondary'], 'letterSpacing': '1.5px'}),
+                    html.Span(
+                        f"{baseline_metrics['total_return']:+.2f}%",
+                        className='num',
+                        style={'color': theme['accent_blue'], 'fontWeight': '600'}
+                    ),
+                    html.Span("|", style={'color': theme['border_primary']}),
+                    html.Span("COST DRAG", style={'color': theme['text_secondary'], 'letterSpacing': '1.5px'}),
+                    html.Span(
+                        f"{cost_drag_pct:+.2f}% / ${cost_drag_value:,.2f}",
+                        className='num',
+                        style={'color': cost_color, 'fontWeight': '600'}
+                    ),
+                ], style={
+                    'display': 'flex',
+                    'alignItems': 'center',
+                    'gap': '8px',
+                    'marginTop': '10px',
+                    'padding': '6px 8px',
+                    'border': f'1px solid {theme["border_primary"]}',
+                    'backgroundColor': theme['bg_secondary'],
+                    'fontFamily': '"JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace',
+                    'fontSize': '11px',
+                    'flexWrap': 'wrap',
+                }),
+                html.Div([
+                    kpi_cell(
                         "Total Return",
                         f"{total_return:+.2f}%",
-                        is_positive,
-                        theme,
+                        delta=f"NO COSTS {baseline_metrics['total_return']:+.2f}%",
+                        delta_color=theme['accent_blue'],
+                        theme=theme,
                         info_text=metric_help["Total Return"]
                     ),
-                    build_metric_card("Sharpe Ratio", f"{backtest_results['sharpe_ratio']:.2f}",
-                                     backtest_results['sharpe_ratio'] > 1, theme,
-                                     info_text=metric_help["Sharpe Ratio"]),
-                    build_metric_card("Max Drawdown", f"{backtest_results['max_drawdown']:.2f}%",
-                                     backtest_results['max_drawdown'] > -20, theme,
-                                     info_text=metric_help["Max Drawdown"]),
-                    build_metric_card("Win Rate", f"{backtest_results['win_rate']:.1f}%",
-                                     backtest_results['win_rate'] > 50, theme,
-                                     info_text=metric_help["Win Rate"]),
-                ], style={'marginTop': '12px'}),
+                    kpi_cell(
+                        "Sharpe",
+                        f"{backtest_results['sharpe_ratio']:.2f}",
+                        delta='ROBUST' if backtest_results['sharpe_ratio'] >= 1 else 'WEAK',
+                        delta_color=sharpe_color,
+                        theme=theme,
+                        info_text=metric_help["Sharpe Ratio"],
+                    ),
+                    kpi_cell(
+                        "Max DD",
+                        f"{backtest_results['max_drawdown']:.2f}%",
+                        delta='CONTROLLED' if backtest_results['max_drawdown'] >= -20 else 'ELEVATED',
+                        delta_color=drawdown_color,
+                        theme=theme,
+                        info_text=metric_help["Max Drawdown"],
+                    ),
+                    kpi_cell(
+                        "Trade Count",
+                        f"{backtest_results.get('num_trades', 0):,}",
+                        delta=str(strategy_mode or 'trading').replace('_', ' ').upper(),
+                        delta_color=theme['accent_blue'],
+                        theme=theme,
+                        info_text=metric_help["Trade Count"],
+                    ),
+                    kpi_cell(
+                        "Win Rate",
+                        f"{backtest_results['win_rate']:.1f}%",
+                        delta='ABOVE 50%' if backtest_results['win_rate'] >= 50 else 'BELOW 50%',
+                        delta_color=win_rate_color,
+                        theme=theme,
+                        info_text=metric_help["Win Rate"],
+                    ),
+                    kpi_cell(
+                        "Profit Factor",
+                        f"{backtest_results.get('profit_factor', 0.0):.2f}",
+                        delta='ABOVE 1.00' if backtest_results.get('profit_factor', 0.0) >= 1 else 'BELOW 1.00',
+                        delta_color=profit_factor_color,
+                        theme=theme,
+                        info_text=metric_help["Profit Factor"],
+                    ),
+                ], style={
+                    'marginTop': '12px',
+                    'display': 'grid',
+                    'gridTemplateColumns': 'repeat(2, minmax(0, 1fr))',
+                    'gap': '6px',
+                }),
             ], className='fade-in')
 
         except Exception as e:

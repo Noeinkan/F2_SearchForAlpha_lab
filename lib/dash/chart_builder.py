@@ -15,7 +15,7 @@ from ta.trend import CCIIndicator, MACD, ADXIndicator
 from ta.volatility import AverageTrueRange
 from ta.volume import VolumeWeightedAveragePrice
 
-from lib.dash.dash_config import FONT_FAMILY
+from lib.dash.dash_config import FONT_FAMILY, FONT_MONO
 from lib.dash.overlay_registry import build_overlay_visibility, get_plotly_overlay_specs
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
 
         _add_range_selector(fig, theme)
         _update_layout(fig, plot_count, config.get('show_legend', False), config, theme)
-        _add_crosshair(fig, plot_count)
+        _add_crosshair(fig, plot_count, theme)
 
 
         return fig
@@ -187,10 +187,10 @@ def _add_volume_chart(fig: go.Figure, df: pd.DataFrame, row: int, col: int, conf
         x=df.index, y=df['Volume'],
         name="Volume",
         marker=dict(color=colors, line=dict(width=0)),
-        opacity=0.7,
+        opacity=0.6,
         hovertemplate='%{x|%Y-%m-%d}<br>Vol: %{y:,.0f}<extra></extra>'
     ), row=row, col=col)
-    if ma_period > 1:
+    if config.get('show_volume_ma', False) and ma_period > 1:
         volume_ma = df['Volume'].rolling(window=ma_period, min_periods=1).mean()
         fig.add_trace(go.Scatter(
             x=df.index, y=volume_ma,
@@ -534,7 +534,7 @@ def _add_range_selector(fig: go.Figure, theme: dict) -> None:
                 ]),
                 bgcolor='rgba(0,0,0,0)',
                 activecolor=theme['accent_blue'],
-                font=dict(color=theme['text_primary'], size=11),
+                font=dict(color=theme['text_secondary'], size=10, family=FONT_MONO),
                 bordercolor=theme['border_primary'],
                 borderwidth=1,
                 x=0,
@@ -563,15 +563,15 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
         autosize=True,
         height=calculated_height,
         showlegend=show_legend,
-        plot_bgcolor=theme['chart_bg'],
-        paper_bgcolor=theme['chart_bg'],
-        margin=dict(l=60, r=20, t=80 if title_text else 60, b=40),
+        plot_bgcolor=theme['bg_primary'],
+        paper_bgcolor=theme['bg_primary'],
+        margin=dict(l=60, r=20, t=76 if title_text else 56, b=36),
         font=dict(family=FONT_FAMILY, color=theme['text_primary'], size=12),
         title=dict(
             text=title_text,
             x=0.5,
             xanchor='center',
-            font=dict(size=16, color=theme['text_primary'])
+            font=dict(size=14, color=theme['text_primary'], family=FONT_MONO)
         ) if title_text else None,
         legend=dict(
             orientation="h",
@@ -580,12 +580,12 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             xanchor="right",
             x=1,
             bgcolor='rgba(0,0,0,0)',
-            font=dict(size=11)
+            font=dict(size=10, family=FONT_MONO)
         ) if show_legend else None,
         hoverlabel=dict(
             bgcolor=theme['bg_tertiary'],
-            font_size=12,
-            font_family=FONT_FAMILY,
+            font_size=11,
+            font_family=FONT_MONO,
             bordercolor=theme['border_primary']
         )
     )
@@ -596,11 +596,12 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             showgrid=True,
             gridcolor=theme['chart_grid'],
             gridwidth=0.5,
+            griddash='dot',
             showline=True,
-            linecolor=theme['border_secondary'],
+            linecolor=theme['border_primary'],
             linewidth=1,
             zeroline=False,
-            tickfont=dict(color=theme['text_secondary'], size=9),
+            tickfont=dict(color=theme['text_secondary'], size=10, family=FONT_MONO),
             ticks='outside',
             ticklen=4,
             row=i, col=1
@@ -609,11 +610,12 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             showgrid=True,
             gridcolor=theme['chart_grid'],
             gridwidth=0.5,
+            griddash='dot',
             showline=True,
-            linecolor=theme['border_secondary'],
+            linecolor=theme['border_primary'],
             linewidth=1,
             zeroline=False,
-            tickfont=dict(color=theme['text_secondary'], size=9),
+            tickfont=dict(color=theme['text_secondary'], size=10, family=FONT_MONO),
             ticks='outside',
             ticklen=4,
             side='right',
@@ -626,7 +628,8 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
     # Update subplot titles styling
     for annotation in fig.layout.annotations:
         annotation.update(
-            font=dict(size=11, color=theme['text_secondary']),
+            text=str(annotation.text or '').upper(),
+            font=dict(size=10, color=theme['text_secondary'], family=FONT_MONO),
             x=0.01,
             xanchor='left'
         )
@@ -635,7 +638,7 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
         fig.update_xaxes(matches='x', row=i, col=1)
 
 
-def _add_crosshair(fig: go.Figure, plot_count: int) -> None:
+def _add_crosshair(fig: go.Figure, plot_count: int, theme: dict) -> None:
     """Add crosshair functionality with spikes on all subplots."""
     fig.update_layout(
         hovermode="x unified",
@@ -646,21 +649,21 @@ def _add_crosshair(fig: go.Figure, plot_count: int) -> None:
         # Vertical spikes (x-axis) - handled by clientside callback for cross-subplot sync
         fig.update_xaxes(
             showspikes=True,
-            spikecolor="rgba(128,128,128,0.5)",
+            spikecolor=theme['accent_blue'],
             spikethickness=1,
             spikemode="across",
             spikesnap="cursor",
-            spikedash="dot",
+            spikedash="dash",
             row=i, col=1
         )
         # Horizontal spikes (y-axis) - show in each subplot individually
         fig.update_yaxes(
             showspikes=True,
-            spikecolor="rgba(128,128,128,0.7)",
+            spikecolor=theme['accent_blue'],
             spikethickness=1,
             spikemode="across",
             spikesnap="cursor",
-            spikedash="dot",
+            spikedash="dash",
             row=i, col=1
         )
 
@@ -670,9 +673,9 @@ def create_empty_chart(theme: dict, message: str = "Load data to view chart") ->
     fig = go.Figure()
     fig.update_layout(
         template='plotly_dark',
-        plot_bgcolor=theme['chart_bg'],
-        paper_bgcolor=theme['chart_bg'],
-        font=dict(color=theme['text_secondary']),
+        plot_bgcolor=theme['bg_primary'],
+        paper_bgcolor=theme['bg_primary'],
+        font=dict(color=theme['text_secondary'], family=FONT_MONO),
         xaxis=dict(showgrid=False, visible=False),
         yaxis=dict(showgrid=False, visible=False),
         annotations=[dict(
@@ -680,7 +683,7 @@ def create_empty_chart(theme: dict, message: str = "Load data to view chart") ->
             xref="paper", yref="paper",
             x=0.5, y=0.5,
             showarrow=False,
-            font=dict(size=16, color=theme['text_tertiary'])
+            font=dict(size=14, color=theme['text_tertiary'], family=FONT_MONO)
         )]
     )
     return fig

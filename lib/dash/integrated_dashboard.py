@@ -38,6 +38,7 @@ from lib.dash.dash_config import (
 )
 from lib.dash.state import dashboard_state  # noqa: F401 - used by callbacks
 from lib.dash.styles import get_styles, CUSTOM_CSS
+from lib.dash.components import bloomberg_section, dense_input, ticker_pill
 from lib.dash.chart_builder import create_chart
 from lib.dash.callbacks import register_callbacks
 from lib.signals.indicators import get_signal_categories
@@ -78,6 +79,7 @@ def create_dashboard_layout(theme: dict) -> html.Div:
 
         # Keyboard shortcut listener
         html.Div(id='keyboard-listener', style={'display': 'none'}),
+        html.Div(id='theme-class-sync', style={'display': 'none'}),
 
         # Header
         _create_header(styles, theme),
@@ -94,6 +96,8 @@ def create_dashboard_layout(theme: dict) -> html.Div:
             _create_right_panel(styles, theme),
 
         ], style=styles['main_container']),
+
+        _create_status_bar(styles, theme),
 
         # Hidden elements
         html.Div(id='hidden-output', style={'display': 'none'}),
@@ -117,45 +121,67 @@ def _create_header(styles: dict, theme: dict) -> html.Header:
     """Create the dashboard header."""
     return html.Header([
         html.Div([
-            html.Div("S", style=styles['logo_icon']),
-            html.Span("SearchForAlpha", style=styles['logo_text']),
+            html.Div("SFA", style=styles['logo_icon'], className='bbg-wordmark'),
+            html.Span("Terminal", style=styles['logo_text'], className='bbg-wordmark-sub'),
         ], style=styles['logo']),
 
         html.Div([
-            # Theme toggle
-            html.Button(
-                id='theme-toggle',
-                children=[html.Span("\u2600\ufe0f", id='theme-label')],
-                style={**styles['button_outline'], 'fontSize': '16px', 'padding': '6px 12px'},
-                n_clicks=0
-            ),
-            dbc.Tooltip("Toggle light/dark theme", target='theme-toggle', placement='bottom'),
-            # Current time/status
+            html.Span(DEFAULT_TICKER, id='header-ticker-symbol', className='bbg-tape-symbol'),
+            html.Span('$--', id='header-ticker-price', className='bbg-tape-price num'),
+            html.Span('READY', id='header-ticker-change', className='bbg-tape-delta muted'),
+        ], style=styles['header_tape'], className='bbg-tape'),
+
+        html.Div([
+            html.Span(className='dot dot-up'),
+            html.Span('CONNECTED', style={
+                'fontSize': FONT_SIZES['xs'],
+                'color': theme['text_secondary'],
+                'fontFamily': FONT_MONO,
+                'letterSpacing': '1px',
+            }),
+            html.Span('│', style={'color': theme['border_primary'], 'fontFamily': FONT_MONO}),
             html.Div(id='header-status', style={
                 'fontSize': FONT_SIZES['sm'],
                 'color': theme['text_secondary'],
                 'fontFamily': FONT_MONO,
-            }),
+            }, className='num'),
+            # Theme toggle
+            html.Button(
+                id='theme-toggle',
+                children=[html.Span('[ DARK ]', id='theme-label')],
+                style=styles['button_outline'],
+                className='bbg-button-ghost',
+                n_clicks=0
+            ),
+            dbc.Tooltip("Toggle light/dark theme", target='theme-toggle', placement='bottom'),
         ], style=styles['header_controls']),
-    ], style=styles['header'])
+    ], style=styles['header'], className='bbg-header')
+
+
+def _create_status_bar(styles: dict, theme: dict) -> html.Div:
+    """Create the dense bottom status bar."""
+    return html.Div([
+        html.Div([
+            html.Span(className='dot dot-up'),
+            html.Span('READY'),
+        ], style=styles['status_segment'], className='bbg-status-segment'),
+        html.Div([
+            html.Span('DATA:'),
+            html.Span('WAITING', id='data-status', className='num', style={'marginLeft': '6px'}),
+        ], style=styles['status_segment'], className='bbg-status-segment'),
+        html.Div([
+            html.Span('STRATEGY:'),
+            html.Span('--', id='strategy-order-status', className='num', style={'marginLeft': '6px'}),
+        ], style={**styles['status_segment'], 'flex': 1, 'minWidth': 0}, className='bbg-status-segment flex-grow'),
+        html.Div([
+            html.Span(id='status-clock', className='num'),
+        ], style={**styles['status_segment'], 'borderRight': 'none'}, className='bbg-status-segment'),
+    ], style=styles['status_bar'], className='bbg-status-bar')
 
 
 def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
     """Create the left sidebar with controls."""
-    help_icon_style = {
-        'display': 'inline-flex',
-        'alignItems': 'center',
-        'justifyContent': 'center',
-        'width': '16px',
-        'height': '16px',
-        'borderRadius': '50%',
-        'border': f'1px solid {theme["border_secondary"]}',
-        'color': theme['text_secondary'],
-        'fontSize': '11px',
-        'fontWeight': '600',
-        'cursor': 'help',
-        'marginLeft': '6px',
-    }
+    help_icon_style = styles['help_icon']
 
     market_section = html.Div([
         html.Div([
@@ -195,30 +221,22 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
 
             html.Div([
                 html.Label("Initial Capital", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '4px', 'display': 'block'}),
-                dcc.Input(
+                dense_input(
                     id='initial-capital',
                     type='number',
                     value=INITIAL_CAPITAL,
-                    style={**styles['input'], 'fontFamily': FONT_MONO}
+                    style={**styles['input'], 'textAlign': 'right'}
                 ),
             ], style={'marginBottom': '12px'}),
 
             html.Button(
-                [html.Span("Load Data"), html.Span(" \u2318\u21b5", style={'opacity': '0.5', 'marginLeft': '8px', 'fontSize': '10px'})],
+                [html.Span("LOAD DATA"), html.Span(" ENTER", style={'opacity': '0.65', 'marginLeft': '8px', 'fontSize': '10px'})],
                 id='load-data-button',
                 style={**styles['button_primary'], 'width': '100%'},
                 n_clicks=0
             ),
             dbc.Tooltip("Fetch market data and calculate indicators (Ctrl+Enter)", target='load-data-button', placement='right'),
-
-            dcc.Loading(
-                id='loading-data',
-                type='dot',
-                color=theme['accent_blue'],
-                children=[html.Div(id='data-status', style={'marginTop': '8px', 'fontSize': FONT_SIZES['xs']})]
-            ),
-                html.Div(id='strategy-order-status', style={'marginTop': '6px', 'fontSize': FONT_SIZES['xs'], 'color': theme['text_tertiary']})
-        ], style=styles['sidebar_section'])
+        ])
 
     presets_section = html.Div([
         html.Div([
@@ -288,7 +306,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
             ),
         ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '6px'}),
         html.Div(id='preset-status', style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary']}),
-    ], style=styles['sidebar_section'])
+    ])
 
     chart_section = html.Div([
         html.Div([
@@ -455,36 +473,21 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
             placement='right',
             trigger='hover focus',
         ),
-    ], style={**styles['sidebar_section'], 'flex': 1, 'overflowY': 'auto'})
+    ])
 
     return html.Aside([
-        dbc.Accordion(
-            [
-                dbc.AccordionItem(
-                    market_section,
-                    title="Market Data",
-                    item_id='sidebar-market-data',
-                ),
-                dbc.AccordionItem(
-                    presets_section,
-                    title="Saved Configurations",
-                    item_id='sidebar-saved-configs',
-                ),
-                dbc.AccordionItem(
-                    chart_section,
-                    title=html.Div([
-                        html.Span("Chart Settings"),
-                        html.Span("?", id='help-chart-settings', style=help_icon_style),
-                    ], className='accordion-title-row'),
-                    item_id='sidebar-chart-settings',
-                ),
-            ],
-            className='compact-accordion',
-            always_open=True,
-            active_item=['sidebar-market-data', 'sidebar-saved-configs', 'sidebar-chart-settings'],
-            flush=True,
-            style={'flex': 1, 'overflowY': 'auto'},
-        )
+        bloomberg_section('Market Data', market_section, collapsible=True, open=True, theme=theme),
+        bloomberg_section('Saved Configurations', presets_section, collapsible=True, open=True, theme=theme),
+        bloomberg_section(
+            html.Div([
+                html.Span('Chart Settings'),
+                html.Span('?', id='help-chart-settings', style=help_icon_style),
+            ], style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}),
+            chart_section,
+            collapsible=True,
+            open=True,
+            theme=theme,
+        ),
     ], style=styles['sidebar'])
 
 
@@ -495,15 +498,19 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
         html.Div([
             html.Div([
                 html.H2(id='chart-title', children="Select a symbol to begin", style={
-                    'fontSize': FONT_SIZES['lg'],
+                    'fontSize': FONT_SIZES['sm'],
                     'fontWeight': '600',
                     'color': theme['text_primary'],
                     'margin': 0,
+                    'fontFamily': FONT_MONO,
+                    'letterSpacing': '1.5px',
+                    'textTransform': 'uppercase',
                 }),
                 html.Span(id='chart-subtitle', style={
-                    'fontSize': FONT_SIZES['sm'],
+                    'fontSize': FONT_SIZES['xs'],
                     'color': theme['text_secondary'],
                     'marginLeft': '12px',
+                    'fontFamily': FONT_MONO,
                 }),
             ], style={'display': 'flex', 'alignItems': 'baseline'}),
 
@@ -515,7 +522,8 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
                         {'label': 'TradingView', 'value': 'tradingview', 'disabled': True}
                     ],
                     value='plotly',
-                    inline=True
+                    inline=True,
+                    className='bbg-radio-seg'
                 ),
                 html.Button("Export CSV", id='export-csv-btn', style=styles['button_outline'], n_clicks=0),
                 html.Button("Export Image", id='export-img-btn', style=styles['button_outline'], n_clicks=0),
@@ -553,7 +561,11 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
                     ),
                     html.Div(
                         id='signal-count-bar',
-                        children=html.Span("Signals: --", style={'color': theme['text_secondary']}),
+                        children=html.Div([
+                            ticker_pill('TRIG', '--', color='amber'),
+                            html.Span('|', className='num', style={'color': theme['border_primary']}),
+                            ticker_pill('REJ', '--', color='down'),
+                        ], style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}),
                         style=styles['signal_count_bar']
                     )
                 ],
@@ -586,7 +598,7 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
             )
         ], style={
             **styles['chart_area'],
-            'height': 'calc(100vh - 56px - 60px)',
+            'height': 'calc(100vh - 44px - 24px - 32px)',
             'minHeight': '400px',
             'resize': 'vertical',
             'overflow': 'auto',
@@ -602,11 +614,13 @@ def _create_right_panel(styles: dict, theme: dict) -> html.Aside:
         html.Div([
             html.Button("Backtest", id='tab-backtest', n_clicks=0,
                        style={**styles['tab'], **styles['tab_active']}, className='panel-tab active'),
+            html.Span('│', className='num', style={'color': theme['border_primary'], 'alignSelf': 'center'}),
             html.Button("Optimizer", id='tab-optimizer', n_clicks=0,
                        style=styles['tab'], className='panel-tab'),
+            html.Span('│', className='num', style={'color': theme['border_primary'], 'alignSelf': 'center'}),
             html.Button("Data", id='tab-data', n_clicks=0,
                        style=styles['tab'], className='panel-tab'),
-        ], style=styles['tab_container']),
+        ], style=styles['panel_header']),
 
         # Panel Content
         html.Div([
@@ -630,28 +644,15 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
 
     # Strategy mode card style
     mode_card_base = {
-        'padding': '10px 12px',
-        'borderRadius': BORDER_RADIUS['md'],
-        'border': f'2px solid {theme["border_secondary"]}',
-        'backgroundColor': theme['bg_tertiary'],
+        'padding': '8px 10px',
+        'borderRadius': BORDER_RADIUS['sm'],
+        'border': f'1px solid {theme["border_primary"]}',
+        'backgroundColor': theme['bg_secondary'],
         'cursor': 'pointer',
-        'transition': 'all 0.2s ease',
-        'marginBottom': '6px',
+        'transition': 'all 0.1s ease',
+        'marginBottom': '4px',
     }
-    help_icon_style = {
-        'display': 'inline-flex',
-        'alignItems': 'center',
-        'justifyContent': 'center',
-        'width': '16px',
-        'height': '16px',
-        'borderRadius': '50%',
-        'border': f'1px solid {theme["border_secondary"]}',
-        'color': theme['text_secondary'],
-        'fontSize': '11px',
-        'fontWeight': '600',
-        'cursor': 'help',
-        'marginLeft': '6px',
-    }
+    help_icon_style = styles['help_icon']
 
     signal_categories = get_signal_categories()
 
@@ -1472,9 +1473,9 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
         ),
 
         html.Button(
-            "Run Backtest",
+            "RUN BACKTEST",
             id='run-backtest-btn',
-            style={**styles['button_success'], 'width': '100%', 'padding': '8px 16px'},
+            style={**styles['button_primary'], 'width': '100%', 'padding': '10px 14px'},
             n_clicks=0
         ),
         dbc.Tooltip("Simulate trading with selected buy/sell signals", target='run-backtest-btn', placement='top'),
@@ -1487,25 +1488,12 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
     """Create the optimizer panel content with progress and enhanced controls."""
     card_style = {
         'backgroundColor': theme['bg_tertiary'],
-        'borderRadius': '6px',
-        'padding': '12px',
-        'marginBottom': '12px',
-        'border': f'1px solid {theme["border_secondary"]}'
+        'borderRadius': BORDER_RADIUS['sm'],
+        'padding': '8px 10px',
+        'marginBottom': '10px',
+        'border': f'1px solid {theme["border_primary"]}'
     }
-    help_icon_style = {
-        'display': 'inline-flex',
-        'alignItems': 'center',
-        'justifyContent': 'center',
-        'width': '16px',
-        'height': '16px',
-        'borderRadius': '50%',
-        'border': f'1px solid {theme["border_secondary"]}',
-        'color': theme['text_secondary'],
-        'fontSize': '11px',
-        'fontWeight': '600',
-        'cursor': 'help',
-        'marginLeft': '6px',
-    }
+    help_icon_style = styles['help_icon']
 
     return html.Div(id='panel-optimizer', children=[
         # Signal Preview Card
@@ -1521,17 +1509,12 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
             ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '8px'}),
             html.Div(id='signal-preview', children=[
                 html.Div([
-                    html.Span("Buy Signals: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['xs']}),
-                    html.Span("0", id='preview-buy-count', style={'color': theme['accent_green'], 'fontWeight': '600'}),
-                ], style={'marginBottom': '4px'}),
-                html.Div([
-                    html.Span("Sell Signals: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['xs']}),
-                    html.Span("0", id='preview-sell-count', style={'color': theme['accent_red'], 'fontWeight': '600'}),
-                ], style={'marginBottom': '4px'}),
-                html.Div([
-                    html.Span("Est. Combinations: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['xs']}),
-                    html.Span("0", id='preview-combo-count', style={'color': theme['accent_blue'], 'fontWeight': '600'}),
-                ]),
+                    ticker_pill('BUY', '0', color='up', value_id='preview-buy-count'),
+                    html.Span('│', className='num', style={'color': theme['border_primary']}),
+                    ticker_pill('SELL', '0', color='down', value_id='preview-sell-count'),
+                    html.Span('│', className='num', style={'color': theme['border_primary']}),
+                    ticker_pill('COMBOS', '0', color='amber', value_id='preview-combo-count'),
+                ], style={'display': 'flex', 'alignItems': 'center', 'gap': '6px', 'flexWrap': 'wrap'}),
             ]),
         ], style=card_style),
 
@@ -1563,12 +1546,12 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
                 }),
                 html.Span("?", id='help-max-combos', style=help_icon_style),
             ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '4px'}),
-            dcc.Input(
+            dense_input(
                 id='max-combos-input',
                 type='number',
                 value=100,
                 min=10, max=1000,
-                style={**styles['input'], 'fontFamily': FONT_MONO}
+                style=styles['input']
             ),
         ], style={'marginBottom': '16px'}),
 
@@ -1583,17 +1566,17 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
                 }),
                 html.Span("?", id='help-sort-metric', style=help_icon_style),
             ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '4px'}),
-            dcc.Dropdown(
+            dcc.RadioItems(
                 id='sort-metric-dropdown',
                 options=[
-                    {'label': 'Total Return %', 'value': 'Total_Return_%'},
-                    {'label': 'Sharpe Ratio', 'value': 'Sharpe_Ratio'},
-                    {'label': 'Max Drawdown %', 'value': 'Max_Drawdown_%'},
-                    {'label': 'Trade Count', 'value': 'Trades'},
+                    {'label': 'RET', 'value': 'Total_Return_%'},
+                    {'label': 'SHARPE', 'value': 'Sharpe_Ratio'},
+                    {'label': 'DD', 'value': 'Max_Drawdown_%'},
+                    {'label': 'TRADES', 'value': 'Trades'},
                 ],
                 value='Total_Return_%',
-                clearable=False,
-                style={'fontSize': FONT_SIZES['xs']}
+                inline=True,
+                className='bbg-radio-seg'
             ),
         ], style={'marginBottom': '16px'}),
         dbc.Tooltip(
@@ -1623,9 +1606,9 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
 
         # Run Button
         html.Button(
-            "Run Optimization",
+            "RUN OPTIMIZER",
             id='run-optimization-btn',
-            style={**styles['button_primary'], 'width': '100%', 'backgroundColor': theme['accent_orange']},
+            style={**styles['button_primary'], 'width': '100%'},
             n_clicks=0
         ),
         dbc.Tooltip("Test all signal combinations to find the best strategy", target='run-optimization-btn', placement='top'),

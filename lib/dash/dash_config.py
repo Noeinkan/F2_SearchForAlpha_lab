@@ -14,6 +14,44 @@ import os
 from lib.config_loader import get_strategy_config
 
 THEMES = {
+    'bloomberg': {
+        # Core colors — modernized amber on near-black
+        'bg_primary': '#0A0A0A',       # Near-black canvas
+        'bg_secondary': '#111111',     # Header / toolbars
+        'bg_tertiary': '#161616',      # Cards / inputs
+        'bg_hover': '#1F1F1F',         # Hover states
+        'bg_panel': '#0E0E0E',         # Sidebar / right panel
+        'bg_panel_header': '#1A1A1A',  # Section headers
+
+        # Text colors
+        'text_primary': '#E8E8E8',
+        'text_secondary': '#A8A8A8',
+        'text_tertiary': '#6E6E6E',
+
+        # Accent colors — amber primary, P&L greens/reds
+        'accent_blue': '#FFA726',      # Repurposed: amber primary action
+        'accent_green': '#26C281',     # Buy / up
+        'accent_red': '#EF5350',       # Sell / down
+        'accent_orange': '#FFCA28',    # Warning
+        'accent_purple': '#BA68C8',
+        'accent_cyan': '#4FC3F7',
+
+        # Border colors
+        'border_primary': '#1F1F1F',
+        'border_secondary': '#171717',
+        'border_focus': '#FFA726',
+
+        # Chart specific
+        'chart_bg': '#0A0A0A',
+        'chart_grid': 'rgba(60, 60, 60, 0.35)',
+        'chart_candle_up': '#26C281',
+        'chart_candle_down': '#EF5350',
+
+        # Data table
+        'table_header_bg': '#141414',
+        'table_row_alt': 'rgba(20, 20, 20, 0.5)',
+        'table_row_hover': '#1A1A1A',
+    },
     'dark': {
         # Core colors
         'bg_primary': '#0d1117',       # Deep dark background
@@ -93,7 +131,7 @@ THEMES = {
 }
 
 # Default theme
-DEFAULT_THEME = 'dark'
+DEFAULT_THEME = 'bloomberg'
 
 # Active theme colors (for backwards compatibility)
 def get_theme(theme_name: str = DEFAULT_THEME) -> dict:
@@ -110,18 +148,20 @@ CHART_BACKGROUND_COLOR = _theme['bg_secondary']
 # TYPOGRAPHY
 # =============================================================================
 
-FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif'
-FONT_MONO = 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace'
+FONT_FAMILY = '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif'
+FONT_MONO = '"JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace'
 
 FONT_SIZES = {
-    'xs': '11px',
-    'sm': '12px',
-    'base': '14px',
-    'lg': '16px',
-    'xl': '20px',
-    '2xl': '24px',
-    '3xl': '32px',
+    'xs':   '11px',
+    'sm':   '12px',
+    'base': '13px',
+    'lg':   '15px',
+    'xl':   '18px',
+    '2xl':  '22px',
+    '3xl':  '28px',
 }
+
+FONT_WEIGHT_NUMERIC = '500'
 
 # =============================================================================
 # SPACING & LAYOUT
@@ -141,17 +181,20 @@ SPACING = {
 }
 
 BORDER_RADIUS = {
-    'sm': '4px',
-    'md': '6px',
-    'lg': '8px',
-    'xl': '12px',
+    'sm': '2px',
+    'md': '3px',
+    'lg': '4px',
+    'xl': '6px',
     'full': '9999px',
 }
 
 # Panel widths (desktop-first)
 MAIN_CONTENT_WIDTH = '75%'
-SIDEBAR_WIDTH = '25%'
-MIN_PANEL_WIDTH = '300px'
+SIDEBAR_WIDTH = '260px'
+RIGHT_PANEL_WIDTH = '320px'
+HEADER_HEIGHT = '44px'
+STATUS_BAR_HEIGHT = '24px'
+MIN_PANEL_WIDTH = '260px'
 
 # Chart
 CHART_HEIGHT = '65vh'
