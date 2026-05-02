@@ -9,7 +9,10 @@
       "Bash(python -c:*)",
       "Bash(python -m pip install:*)",
       "Bash(mkdir -p \"c:\\\\Users\\\\andre\\\\Downloads\\\\F2_SearchForAlpha_lab\\\\.claude\\\\commands\")",
-      "Bash(mkdir -p \"c:\\\\Users\\\\andre\\\\Downloads\\\\F2_SearchForAlpha_lab\\\\.claude\\\\agents\")"
+      "Bash(mkdir -p \"c:\\\\Users\\\\andre\\\\Downloads\\\\F2_SearchForAlpha_lab\\\\.claude\\\\agents\")",
+      "Bash(ssh -o StrictHostKeyChecking=no root@77.42.70.26 \"ls /opt/searchforalpha/\")",
+      "Bash(ssh -o StrictHostKeyChecking=no root@77.42.70.26 \"cd /opt/searchforalpha && source /root/.local/bin/env && uv venv && uv sync 2>&1 | tail -10\")",
+      "Bash(ssh -o StrictHostKeyChecking=no root@77.42.70.26 \"cd /opt/searchforalpha && source /root/.local/bin/env && mkdir -p state results && uv run sfa list --json 2>&1\")"
     ]
   }
 }

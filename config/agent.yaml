@@ -11,6 +11,8 @@ guards:
   max_position_pct: 0.25
   max_disconnect_seconds: 60
   max_clock_drift_seconds: 5
+  max_order_quantity: 1000
+  max_order_notional: 100000.0
 
 promotion:
   min_oos_sharpe_mean: 1.0

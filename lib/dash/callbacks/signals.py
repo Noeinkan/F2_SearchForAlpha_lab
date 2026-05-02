@@ -19,7 +19,7 @@ from lib.dash.callbacks.shared import (
     _build_signal_options,
     _build_unified_signal_rows,
     _create_data_table,
-    _rebuild_indicator_dataframe,
+    get_enriched,
 )
 
 
@@ -379,10 +379,9 @@ def register_signal_callbacks(app) -> None:
 
         theme = get_theme()
         indicator_settings = merge_indicator_settings(indicator_settings)
-        df = _rebuild_indicator_dataframe(dashboard_state.df, indicator_settings)
+        df = get_enriched(dashboard_state.df, indicator_settings)
         if df is None or df.empty:
             raise PreventUpdate
-        dashboard_state.df = df
 
         buy_columns = [col for col in df.columns if 'buy' in col.lower()]
         sell_columns = [col for col in df.columns if 'sell' in col.lower()]

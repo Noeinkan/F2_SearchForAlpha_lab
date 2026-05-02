@@ -75,14 +75,16 @@ def _insert_walkforward(
     params: dict,
     aggregate: dict,
     recorded_at: datetime,
+    schema_version: int = 2,
 ):
     with trials_store.connect(db_path) as conn:
         conn.execute(
             """
             INSERT INTO sfa_walkforward (
                 walkforward_id, strategy_name, params_json, aggregate_json,
-                windows_json, robust, oos_sharpe_mean, degradation, recorded_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                windows_json, robust, oos_sharpe_mean, degradation, recorded_at,
+                schema_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 f"wf_{recorded_at.strftime('%Y%m%d_%H%M%S')}",
@@ -94,6 +96,7 @@ def _insert_walkforward(
                 float(aggregate["oos_sharpe_mean"]),
                 float(aggregate["degradation"]),
                 recorded_at.isoformat(),
+                schema_version,
             ),
         )
 
@@ -224,3 +227,35 @@ def test_diff_params_only_changed_keys():
     assert diff["b"] == {"from": 2, "to": 5}
     assert diff["c"] == {"from": 3, "to": None}
     assert diff["d"] == {"from": None, "to": 7}
+
+
+def test_legacy_records_ignored(isolated_db):
+    """schema_version=1 walkforward rows are invisible to find_recent_walkforward."""
+    from lib.walkforward.runner import find_recent_walkforward
+
+    _insert_walkforward(
+        isolated_db,
+        strategy="mean_reversion_rsi_bb",
+        params=NEW_PARAMS,
+        aggregate={"robust": True, "oos_sharpe_mean": 1.4, "degradation": 0.2, "robust_reason": "ok"},
+        recorded_at=datetime.now(UTC),
+        schema_version=1,
+    )
+    result = find_recent_walkforward("mean_reversion_rsi_bb", NEW_PARAMS, db_path=isolated_db)
+    assert result is None, "Legacy schema_version=1 records must be ignored by the gate"
+
+
+def test_schema_version_2_records_found(isolated_db):
+    """schema_version=2 walkforward rows are visible to find_recent_walkforward."""
+    from lib.walkforward.runner import find_recent_walkforward
+
+    _insert_walkforward(
+        isolated_db,
+        strategy="mean_reversion_rsi_bb",
+        params=NEW_PARAMS,
+        aggregate={"robust": True, "oos_sharpe_mean": 1.4, "degradation": 0.2, "robust_reason": "ok"},
+        recorded_at=datetime.now(UTC),
+        schema_version=2,
+    )
+    result = find_recent_walkforward("mean_reversion_rsi_bb", NEW_PARAMS, db_path=isolated_db)
+    assert result is not None, "schema_version=2 records must be found"

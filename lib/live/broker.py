@@ -34,6 +34,7 @@ class Order:
     quantity: float
     order_type: str = "MKT"
     limit_price: float | None = None
+    client_order_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -224,6 +225,8 @@ class IBBroker:
         self.port = port
         self.client_id = client_id
         self._ib: Any = None
+        self._bar_queues: dict[str, Any] = {}
+        self._bar_tasks: dict[str, Any] = {}
 
     def _ensure_ib(self) -> Any:
         if self._ib is None:
@@ -277,6 +280,8 @@ class IBBroker:
         contract = Stock(order.symbol, "SMART", "USD")
         await ib.qualifyContractsAsync(contract)
         ib_order = MarketOrder(order.side.upper(), abs(float(order.quantity)))
+        if order.client_order_id:
+            ib_order.orderRef = order.client_order_id
         trade = ib.placeOrder(contract, ib_order)
         while not trade.isDone():
             await ib.waitOnUpdate(timeout=1)
@@ -300,12 +305,28 @@ class IBBroker:
             ib.cancelOrder(trade.order)
 
     async def subscribe_bars(self, symbol: str, on_bar: BarHandler) -> None:
+        import asyncio as _asyncio
         from ib_async import Stock  # type: ignore
 
         ib = self._ensure_ib()
         contract = Stock(symbol, "SMART", "USD")
         await ib.qualifyContractsAsync(contract)
         bars = ib.reqRealTimeBars(contract, 5, "TRADES", False)
+
+        queue: _asyncio.Queue = _asyncio.Queue()
+        self._bar_queues[symbol] = queue
+
+        async def _consumer() -> None:
+            while True:
+                bar = await queue.get()
+                try:
+                    await on_bar(bar)
+                finally:
+                    queue.task_done()
+
+        loop = _asyncio.get_event_loop()
+        task = loop.create_task(_consumer())
+        self._bar_tasks[symbol] = task
 
         def _on_update(updated_bars: Any, has_new_bar: bool) -> None:
             if not has_new_bar:
@@ -319,6 +340,6 @@ class IBBroker:
                 close=float(last.close),
                 volume=float(last.volume),
             )
-            ib.loop.create_task(on_bar(bar))
+            loop.call_soon_threadsafe(queue.put_nowait, bar)
 
         bars.updateEvent += _on_update

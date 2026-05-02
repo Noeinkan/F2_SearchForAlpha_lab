@@ -133,6 +133,8 @@ def _build_objective(
     db_path: Path,
     window_from: str,
     window_to: str,
+    search_to: str,
+    held_out_to: str,
 ) -> Callable[[optuna.trial.Trial], float]:
     def objective(trial: optuna.trial.Trial) -> float:
         params = suggest_from_space(trial, bundle.search_space)
@@ -146,7 +148,7 @@ def _build_objective(
             strategy_name=bundle.name,
             ticker=bundle.ticker,
             window_from=window_from,
-            window_to=window_to,
+            window_to=search_to,
             params=params,
             buy_signals=bundle.buy_signals,
             sell_signals=bundle.sell_signals,
@@ -156,6 +158,10 @@ def _build_objective(
         score = score_metrics(metric, result.metrics)
         wall = time.perf_counter() - started
 
+        trial_metrics = result.metrics.as_dict()
+        trial_metrics["search_to"] = search_to
+        trial_metrics["held_out_to"] = held_out_to
+
         trials_store.save_trial(
             study_id=study_id,
             strategy_name=bundle.name,
@@ -163,7 +169,7 @@ def _build_objective(
             metric=metric,
             objective_value=score,
             params=params,
-            metrics=result.metrics.as_dict(),
+            metrics=trial_metrics,
             seed=seed,
             wall_seconds=wall,
             db_path=db_path,
@@ -180,12 +186,17 @@ def run_study(
     metric: str = "sortino",
     window_from: str | None = None,
     window_to: str | None = None,
+    held_out_months: int = 6,
     seed: int = DEFAULT_TPE_SEED,
     study_id: str | None = None,
     storage_url: str | None = None,
     db_path: Path | None = None,
 ) -> OptimisationResult:
-    """Run an Optuna TPE study end to end and return the best trial."""
+    """Run an Optuna TPE study end to end and return the best trial.
+
+    The last *held_out_months* of data are withheld from the parameter search
+    so that walk-forward validation has genuinely unseen out-of-sample evidence.
+    """
     if metric not in VALID_METRICS:
         raise ValueError(f"Unknown metric {metric!r}; expected one of {VALID_METRICS}")
 
@@ -198,7 +209,6 @@ def run_study(
         raise ValueError("window_from and window_to are required for optimisation")
 
     set_global_seed(seed)
-    # Resolve defaults at call time so monkeypatched module attributes are honoured.
     if storage_url is None:
         storage_url = DEFAULT_STORAGE_URL
     if db_path is None:
@@ -206,6 +216,9 @@ def run_study(
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     base_df = fetch_data(bundle.ticker, window_from, window_to)
+    search_to_dt = pd.to_datetime(window_to) - pd.DateOffset(months=held_out_months)
+    search_to = search_to_dt.strftime("%Y-%m-%d")
+    search_df = base_df[base_df.index < search_to_dt]
     sid = study_id or _make_study_id(strategy_name)
 
     sampler = TPESampler(seed=seed, n_startup_trials=10)
@@ -221,13 +234,15 @@ def run_study(
 
     objective = _build_objective(
         bundle=bundle,
-        base_df=base_df,
+        base_df=search_df,
         metric=metric,
         seed=seed,
         study_id=sid,
         db_path=db_path,
         window_from=window_from,
         window_to=window_to,
+        search_to=search_to,
+        held_out_to=window_to,
     )
 
     started = time.perf_counter()

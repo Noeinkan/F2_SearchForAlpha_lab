@@ -389,6 +389,34 @@ def _instantiate_strategy(registration: StrategyRegistration, indicator_settings
         return registration.class_ref()
 
 
+_WINDOWED_PARAM_KEYS: frozenset[str] = frozenset({
+    "sma_short", "sma_medium", "sma_long",
+    "ema_short", "ema_medium", "ema_long",
+    "rsi_window", "bb_window", "cci_window",
+    "macd_fast", "macd_slow", "macd_signal",
+    "vwap_window", "period",
+})
+
+
+def longest_lookback(settings: dict | None) -> int:
+    """Return a warmup bar count large enough to initialise all windowed indicators.
+
+    Scans *settings* for recognised window-parameter keys and returns
+    ``max(all_windows) * 2`` capped at a minimum of 60 and a default of 90 when
+    no windows are found.
+    """
+    if not settings:
+        return 90
+    max_window = 0
+    for indicator_cfg in settings.values():
+        if not isinstance(indicator_cfg, dict):
+            continue
+        for key, value in indicator_cfg.items():
+            if key in _WINDOWED_PARAM_KEYS and isinstance(value, (int, float)):
+                max_window = max(max_window, int(value))
+    return max(max_window * 2, 60) if max_window else 90
+
+
 def add_indicators(df: pd.DataFrame, indicator_settings: dict | None = None) -> pd.DataFrame:
     """
     Add technical indicators to the DataFrame.

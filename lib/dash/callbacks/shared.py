@@ -7,6 +7,7 @@ from __future__ import annotations
 import copy
 import logging
 import re
+from collections import OrderedDict
 from typing import Tuple, List, Any, Dict, cast
 
 import numpy as np
@@ -152,6 +153,52 @@ def _rebuild_indicator_dataframe(df: pd.DataFrame, indicator_settings: Dict[str,
     base_df = add_indicators(base_df, indicator_settings)
     base_df, _ = generate_signals(base_df, indicator_settings)
     return base_df
+
+
+# ---------------------------------------------------------------------------
+# Memoised enrichment cache — avoids redundant indicator rebuilds when
+# multiple callbacks receive the same indicator-settings-store update.
+# ---------------------------------------------------------------------------
+
+_ENRICHED_CACHE: OrderedDict[tuple, pd.DataFrame] = OrderedDict()
+_ENRICHED_CACHE_MAX = 8
+
+
+def _hashable(v: Any) -> Any:
+    if isinstance(v, dict):
+        return tuple(sorted((k2, _hashable(v2)) for k2, v2 in v.items()))
+    if isinstance(v, list):
+        return tuple(v)
+    return v
+
+
+def _settings_key(settings: Dict[str, Any]) -> tuple:
+    return tuple(sorted((k, _hashable(v)) for k, v in settings.items()))
+
+
+def get_enriched(source_df: pd.DataFrame, settings: Dict[str, Any]) -> pd.DataFrame:
+    """Return a cached enriched DataFrame, recomputing only when necessary.
+
+    The cache key includes the object identity and length of *source_df* so a
+    fresh load (new object, new length) always misses. Capacity is capped at
+    ``_ENRICHED_CACHE_MAX`` entries with LRU eviction.
+    """
+    if source_df is None or source_df.empty:
+        return source_df
+    key = (id(source_df), len(source_df), _settings_key(settings))
+    if key in _ENRICHED_CACHE:
+        _ENRICHED_CACHE.move_to_end(key)
+        return _ENRICHED_CACHE[key]
+    enriched = _rebuild_indicator_dataframe(source_df, settings)
+    _ENRICHED_CACHE[key] = enriched
+    if len(_ENRICHED_CACHE) > _ENRICHED_CACHE_MAX:
+        _ENRICHED_CACHE.popitem(last=False)
+    return enriched
+
+
+def clear_enriched_cache() -> None:
+    """Discard all cached enriched DataFrames (called on new data load or state reset)."""
+    _ENRICHED_CACHE.clear()
 
 
 def _normalize_timestamp(value: Any) -> pd.Timestamp | None:

@@ -148,3 +148,60 @@ def test_find_recent_walkforward_misses_on_different_params(isolated_db):
         {"rsi_window": 99, "bb_window": 20, "bb_std": 2.0},
     )
     assert miss is None
+
+
+def test_non_overlapping_default(isolated_db):
+    """Consecutive train windows must not overlap when step_months is None."""
+    with patch("lib.walkforward.runner.fetch_data", side_effect=_fake_long_fetch):
+        payload = wf_runner.run_walkforward(
+            strategy_name="mean_reversion_rsi_bb",
+            params={"rsi_window": 14, "bb_window": 20, "bb_std": 2.0},
+            options=wf_runner.WalkForwardOptions(n_windows=3, train_months=6, test_months=2),
+        )
+
+    windows = payload["windows"]
+    for i in range(len(windows) - 1):
+        current_train_end = windows[i]["train"]["to"]
+        next_train_start = windows[i + 1]["train"]["from"]
+        assert next_train_start >= current_train_end, (
+            f"Window {i+1} train start {next_train_start!r} overlaps window {i} "
+            f"train end {current_train_end!r}"
+        )
+
+
+def test_params_drive_sizing(isolated_db):
+    """params with position_sizing_params reach _backtest_metrics without error."""
+    params_with_sizing = {
+        "rsi_window": 14,
+        "bb_window": 20,
+        "bb_std": 2.0,
+        "position_sizing_strategy": "percentage_of_portfolio",
+        "position_sizing_params": {"percent": 0.5},
+    }
+    with patch("lib.walkforward.runner.fetch_data", side_effect=_fake_long_fetch):
+        payload = wf_runner.run_walkforward(
+            strategy_name="mean_reversion_rsi_bb",
+            params=params_with_sizing,
+            options=wf_runner.WalkForwardOptions(n_windows=2, train_months=6, test_months=2),
+        )
+    assert len(payload["windows"]) == 2
+
+
+def test_walkforward_schema_version_2(isolated_db):
+    """run_walkforward persists records with schema_version=2."""
+    with patch("lib.walkforward.runner.fetch_data", side_effect=_fake_long_fetch):
+        payload = wf_runner.run_walkforward(
+            strategy_name="mean_reversion_rsi_bb",
+            params={"rsi_window": 14, "bb_window": 20, "bb_std": 2.0},
+            options=wf_runner.WalkForwardOptions(n_windows=2, train_months=6, test_months=2),
+        )
+
+    from lib.store import trials as trials_store
+
+    with trials_store.connect(isolated_db) as conn:
+        row = conn.execute(
+            "SELECT schema_version FROM sfa_walkforward WHERE walkforward_id = ?",
+            (payload["walkforward_id"],),
+        ).fetchone()
+    assert row is not None
+    assert row["schema_version"] == 2, f"Expected schema_version=2, got {row['schema_version']}"

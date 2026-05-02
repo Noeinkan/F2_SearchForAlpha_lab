@@ -18,6 +18,7 @@ from lib.dash.callbacks.shared import (
     _collect_selected_plots,
     _build_plot_toggle_values,
     _rebuild_indicator_dataframe,
+    get_enriched,
     _normalize_timestamp,
     _compute_y_ranges_by_axis,
     _pad_range,
@@ -109,10 +110,7 @@ def register_plotly_callbacks(app) -> None:
         if not data_loaded or dashboard_state.df is None:
             return create_empty_chart(theme)
 
-        df = dashboard_state.df
-        df = df.copy()
-        df = _rebuild_indicator_dataframe(df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
-        dashboard_state.df = df
+        df = get_enriched(dashboard_state.df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
 
         buy_signals = buy_signals or []
         sell_signals = sell_signals or []
@@ -187,8 +185,7 @@ def register_plotly_callbacks(app) -> None:
                 ticker_pill('REJ', '--', color='down'),
             ], style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'})
 
-        df = dashboard_state.df.copy()
-        df = _rebuild_indicator_dataframe(df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
+        df = get_enriched(dashboard_state.df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
 
         counts = _compute_trigger_counts(
             df,

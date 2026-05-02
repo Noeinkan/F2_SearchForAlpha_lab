@@ -22,7 +22,7 @@ from lib.dash.tv_chart_builder import (
     convert_volume_to_tv_format,
     get_tv_chart_options
 )
-from lib.dash.callbacks.shared import _collect_selected_plots, _rebuild_indicator_dataframe
+from lib.dash.callbacks.shared import _collect_selected_plots, get_enriched
 
 
 def register_tv_callbacks(app) -> None:
@@ -48,10 +48,7 @@ def register_tv_callbacks(app) -> None:
         if not data_loaded or dashboard_state.df is None:
             return html.Div("Load data to view chart", style={'color': theme['text_secondary']})
 
-        df = dashboard_state.df
-        df = df.copy()
-        df = _rebuild_indicator_dataframe(df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
-        dashboard_state.df = df
+        df = get_enriched(dashboard_state.df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
 
         buy_signals = buy_signals or []
         sell_signals = sell_signals or []

@@ -155,6 +155,8 @@ class DashboardState:
         self._data_cache.clear()
         self._current_theme = DEFAULT_THEME
         self._optimization_state = self._create_empty_optimization_state()
+        from lib.dash.callbacks.shared import clear_enriched_cache
+        clear_enriched_cache()
         logger.info("Dashboard state reset")
 
 

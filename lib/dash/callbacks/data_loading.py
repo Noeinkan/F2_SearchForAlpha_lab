@@ -31,6 +31,7 @@ from lib.dash.callbacks.shared import (
     _build_unified_signal_rows,
     _create_data_table,
     _create_price_subtitle,
+    clear_enriched_cache,
 )
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,7 @@ def register_data_loading_callbacks(app) -> None:
             effective_settings = merge_indicator_settings(indicator_settings or DEFAULT_INDICATOR_SETTINGS)
             df = add_indicators(df, effective_settings)
             df, _ = generate_signals(df, effective_settings)
+            clear_enriched_cache()
             dashboard_state.df = df
 
             classified = classify_signal_columns(df.columns.tolist())

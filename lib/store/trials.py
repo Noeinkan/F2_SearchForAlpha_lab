@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS sfa_walkforward (
     robust INTEGER NOT NULL,
     oos_sharpe_mean REAL NOT NULL,
     degradation REAL NOT NULL,
-    recorded_at TEXT NOT NULL
+    recorded_at TEXT NOT NULL,
+    schema_version INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_sfa_wf_strategy ON sfa_walkforward(strategy_name);
 """
@@ -67,9 +68,19 @@ def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
     try:
         conn.row_factory = sqlite3.Row
         conn.executescript(_SCHEMA)
+        _migrate(conn)
         yield conn
     finally:
         conn.close()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Apply additive schema migrations for existing databases."""
+    wf_cols = {row[1] for row in conn.execute("PRAGMA table_info(sfa_walkforward)").fetchall()}
+    if "schema_version" not in wf_cols:
+        conn.execute(
+            "ALTER TABLE sfa_walkforward ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1"
+        )
 
 
 def get_git_commit() -> str | None:

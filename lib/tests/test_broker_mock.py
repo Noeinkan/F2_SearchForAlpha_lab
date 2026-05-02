@@ -124,6 +124,43 @@ async def test_runner_writes_runner_state_on_each_bar(isolated_db):
     assert "equity" in snap
 
 
+def test_fills_schema_migration(tmp_path, monkeypatch):
+    """Pre-create old sfa_fills schema, run _ensure_table, assert new columns added without data loss."""
+    db_path = tmp_path / "migration.db"
+    monkeypatch.setattr(trials_store, "DEFAULT_DB_PATH", db_path)
+
+    with trials_store.connect(db_path) as conn:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS sfa_fills (
+                fill_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                strategy_name TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                price REAL NOT NULL,
+                commission REAL NOT NULL DEFAULT 0,
+                realised_pnl REAL,
+                timestamp TEXT NOT NULL
+            );
+        """)
+        conn.execute(
+            "INSERT INTO sfa_fills"
+            " (strategy_name, symbol, side, quantity, price, commission, timestamp)"
+            " VALUES ('legacy', 'SPY', 'BUY', 10, 100.0, 0, '2024-01-01T00:00:00')"
+        )
+
+    with trials_store.connect(db_path) as conn:
+        fills_store._ensure_table(conn)
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(sfa_fills)").fetchall()}
+
+    assert "client_order_id" in cols, "client_order_id column missing after migration"
+    assert "status" in cols, "status column missing after migration"
+
+    rows = fills_store.list_fills("legacy", db_path=db_path)
+    assert len(rows) == 1, "Existing row should survive migration"
+    assert rows[0]["symbol"] == "SPY"
+
+
 def test_pid_file_lifecycle(tmp_path):
     state_store.write_pid("phase4_demo", pid_dir=tmp_path)
     assert (tmp_path / "phase4_demo.pid").exists()

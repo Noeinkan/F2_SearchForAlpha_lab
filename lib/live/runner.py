@@ -19,6 +19,7 @@ backtest engine are unaffected by anything here.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -69,6 +70,8 @@ class _RunnerState:
     last_sell_emitted: bool = False
     triggered_guard: guard_module.GuardResult | None = None
     stop_event: asyncio.Event = field(default_factory=asyncio.Event)
+    bar_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    inflight: set[str] = field(default_factory=set)
 
 
 class PaperRunner:
@@ -103,50 +106,105 @@ class PaperRunner:
         await self.state.stop_event.wait()
 
     async def _on_bar(self, bar: Bar) -> None:
-        if self.state.triggered_guard is not None:
-            return
-        self.state.bars.append(bar)
-        if len(self.state.bars) > self.options.rolling_buffer_bars:
-            self.state.bars = self.state.bars[-self.options.rolling_buffer_bars :]
-        self.state.last_connected_at = datetime.now(UTC)
+        async with self.state.bar_lock:
+            if self.state.triggered_guard is not None:
+                return
+            self.state.bars.append(bar)
+            if len(self.state.bars) > self.options.rolling_buffer_bars:
+                self.state.bars = self.state.bars[-self.options.rolling_buffer_bars :]
+            self.state.last_connected_at = datetime.now(UTC)
 
-        df = self._buffer_to_df()
-        if len(df) < 30:
+            df = self._buffer_to_df()
+            if len(df) < 30:
+                await self._evaluate_guards()
+                return
+
+            indicator_settings = params_to_indicator_settings(self.options.bundle.live_params)
+            df_with_ind = add_indicators(df.copy(), indicator_settings)
+            df_with_signals, _ = generate_signals(df_with_ind, indicator_settings)
+
+            buy_now = self._latest_combined(df_with_signals, self.options.bundle.buy_signals)
+            sell_now = self._latest_combined(df_with_signals, self.options.bundle.sell_signals)
+
+            positions = await self.broker.get_positions()
+            held = next((p for p in positions if p.symbol == self.options.bundle.ticker), None)
+
+            if buy_now and not self.state.last_buy_emitted and held is None:
+                await self._submit(side="BUY", quantity=self.options.quantity_per_signal, bar=bar)
+            if sell_now and not self.state.last_sell_emitted and held is not None and held.quantity > 0:
+                await self._submit(side="SELL", quantity=float(held.quantity), bar=bar)
+
+            self.state.last_buy_emitted = bool(buy_now)
+            self.state.last_sell_emitted = bool(sell_now)
+
             await self._evaluate_guards()
+
+    async def _submit(self, *, side: str, quantity: float, bar: Bar) -> None:
+        coid = hashlib.sha1(
+            f"{self.options.name}|{bar.timestamp.isoformat()}|{side}|{quantity}".encode()
+        ).hexdigest()[:16]
+
+        if coid in self.state.inflight:
+            logger.warning(
+                "runner.submit_skipped_inflight",
+                coid=coid,
+                strategy=self.options.name,
+            )
             return
 
-        indicator_settings = params_to_indicator_settings(self.options.bundle.live_params)
-        df_with_ind = add_indicators(df.copy(), indicator_settings)
-        df_with_signals, _ = generate_signals(df_with_ind, indicator_settings)
+        max_qty = float(self._guards_config.get("max_order_quantity", float("inf")))
+        max_notional = float(self._guards_config.get("max_order_notional", float("inf")))
 
-        buy_now = self._latest_combined(df_with_signals, self.options.bundle.buy_signals)
-        sell_now = self._latest_combined(df_with_signals, self.options.bundle.sell_signals)
+        if quantity > max_qty:
+            logger.warning(
+                "runner.pretrade_reject",
+                reason="quantity_exceeded",
+                qty=quantity,
+                limit=max_qty,
+                strategy=self.options.name,
+            )
+            return
 
-        positions = await self.broker.get_positions()
-        held = next((p for p in positions if p.symbol == self.options.bundle.ticker), None)
+        notional = quantity * bar.close
+        if notional > max_notional:
+            logger.warning(
+                "runner.pretrade_reject",
+                reason="notional_exceeded",
+                notional=notional,
+                limit=max_notional,
+                strategy=self.options.name,
+            )
+            return
 
-        if buy_now and not self.state.last_buy_emitted and held is None:
-            await self._submit(side="BUY", quantity=self.options.quantity_per_signal)
-        if sell_now and not self.state.last_sell_emitted and held is not None and held.quantity > 0:
-            await self._submit(side="SELL", quantity=float(held.quantity))
-
-        self.state.last_buy_emitted = bool(buy_now)
-        self.state.last_sell_emitted = bool(sell_now)
-
-        await self._evaluate_guards()
-
-    async def _submit(self, *, side: str, quantity: float) -> None:
-        order = Order(symbol=self.options.bundle.ticker, side=side, quantity=quantity)
-        fill = await self.broker.submit_order(order)
-        fills_store.save_fill(self.options.name, fill, db_path=self.options.db_path)
-        logger.info(
-            "runner.fill",
-            strategy=self.options.name,
-            side=side,
-            qty=quantity,
-            price=fill.price,
-            realised_pnl=fill.realised_pnl,
+        fills_store.record_intent(
+            self.options.name,
+            self.options.bundle.ticker,
+            side,
+            quantity,
+            coid,
+            db_path=self.options.db_path,
         )
+        self.state.inflight.add(coid)
+        try:
+            order = Order(
+                symbol=self.options.bundle.ticker,
+                side=side,
+                quantity=quantity,
+                client_order_id=coid,
+            )
+            fill = await self.broker.submit_order(order)
+            fills_store.mark_filled(coid, fill, db_path=self.options.db_path)
+            logger.info(
+                "runner.fill",
+                strategy=self.options.name,
+                side=side,
+                qty=quantity,
+                price=fill.price,
+                realised_pnl=fill.realised_pnl,
+                coid=coid,
+            )
+        finally:
+            self.state.inflight.discard(coid)
 
     async def _evaluate_guards(self) -> None:
         snapshot = await self._snapshot()
@@ -254,6 +312,14 @@ def run_paper_cli(*, name: str, json_output: bool) -> None:
     typer.echo(json.dumps(payload, default=str) if json_output else f"Started paper runner for {name} (pid {os.getpid()})")
 
     async def _run() -> None:
+        loop = asyncio.get_running_loop()
+        try:
+            loop.add_signal_handler(
+                signal.SIGTERM,
+                lambda: asyncio.create_task(runner.stop()),
+            )
+        except (NotImplementedError, OSError):
+            pass  # Windows does not support add_signal_handler
         try:
             await runner.start()
             await runner.wait_until_done()
@@ -262,7 +328,7 @@ def run_paper_cli(*, name: str, json_output: bool) -> None:
 
     try:
         asyncio.run(_run())
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         state_store.remove_pid(name)
 
 
@@ -289,8 +355,6 @@ def kill_cli(*, name: str, flatten: bool, json_output: bool) -> None:
         raise typer.Exit(code=2)
 
     if flatten:
-        # Flattening requires its own broker session; deferred to operator
-        # tooling so this command does not silently open IB connections.
         typer.echo(
             json.dumps({
                 "killed": False,

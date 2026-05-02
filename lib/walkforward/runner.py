@@ -2,13 +2,14 @@
 Rolling walk forward orchestrator.
 
 For each of N windows: take a (train_months) IS slice and an immediately
-following (test_months) OOS slice from the fetched OHLCV. Re run the signal
-pipeline with the candidate params on the slice, backtest each segment, and
-collect the metric breakdown for both. Defer the robust verdict to
-verdict.aggregate.
+following (test_months) OOS slice from the fetched OHLCV. Indicators are
+computed **per slice** (including a warmup prefix) to eliminate look-ahead
+bias. Slice windows are non-overlapping by default.  Candidate params are
+passed through to the backtest so position-sizing settings are honoured.
 
-Records persist to sqlite (sfa_walkforward) so the promotion gate can later
-look up "is there a recent walk forward record for these exact params?"
+Records persist to sqlite (sfa_walkforward, schema_version=2) so the
+promotion gate can later look up "is there a recent walk forward record for
+these exact params?"
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from lib.backtest_result import metrics_from_result_df
 from lib.cli.contracts import CliError
 from lib.data_processing import fetch_data
 from lib.seeds import set_global_seed
-from lib.signals.indicators import add_indicators, generate_signals
+from lib.signals.indicators import add_indicators, generate_signals, longest_lookback
 from lib.store import trials as trials_store
 from lib.strategy import backtest
 
@@ -47,6 +48,7 @@ class WalkForwardOptions:
     n_windows: int = 5
     train_months: int = 12
     test_months: int = 3
+    step_months: int | None = None   # None → non-overlapping default (train + test)
     initial_capital: float = 10_000.0
     seed: int = 42
 
@@ -74,14 +76,21 @@ def _to_date(value: str | datetime) -> datetime:
     return datetime.strptime(value, "%Y-%m-%d")
 
 
-def _backtest_metrics(slice_df: pd.DataFrame, bundle: AgentStrategyBundle, capital: float) -> dict[str, Any]:
+def _backtest_metrics(
+    slice_df: pd.DataFrame,
+    bundle: AgentStrategyBundle,
+    capital: float,
+    params: dict[str, Any],
+) -> dict[str, Any]:
     if slice_df.empty:
         return {"sharpe": 0.0, "sortino": 0.0, "max_drawdown": 0.0, "num_trades": 0, "total_return": 0.0}
+    pos_strategy = params.get("position_sizing_strategy", "percentage_of_portfolio")
+    pos_params = params.get("position_sizing_params", {"percent": 0.1})
     result_df = backtest(
         df=slice_df,
         initial_capital=capital,
-        position_sizing_strategy="percentage_of_portfolio",
-        position_sizing_params={"percent": 0.1},
+        position_sizing_strategy=pos_strategy,
+        position_sizing_params=pos_params,
         buy_indicators=bundle.buy_signals,
         sell_indicators=bundle.sell_signals,
         strategy_mode=bundle.mode,
@@ -102,13 +111,13 @@ def run_walkforward(
     bundle = load_bundle(strategy_name)
     set_global_seed(options.seed)
 
-    # Total span: (n - 1) * test_months + train_months + test_months months.
-    today = datetime.now(UTC).replace(tzinfo=None)
-    total_months = (options.n_windows - 1) * options.test_months + options.train_months + options.test_months
-    base_end = today
-    base_start = base_end - relativedelta(months=total_months) - relativedelta(months=2)  # warmup buffer
+    step = options.step_months or (options.train_months + options.test_months)
+    total_months = (options.n_windows - 1) * step + options.train_months + options.test_months
 
-    # Use a fixed window relative to today so tests can monkeypatch fetch_data.
+    today = datetime.now(UTC).replace(tzinfo=None)
+    base_end = today
+    base_start = base_end - relativedelta(months=total_months) - relativedelta(months=2)
+
     base_df = fetch_data(
         bundle.ticker,
         base_start.strftime("%Y-%m-%d"),
@@ -116,21 +125,34 @@ def run_walkforward(
     )
 
     indicator_settings = params_to_indicator_settings(params)
-    enriched = add_indicators(base_df.copy(), indicator_settings)
-    enriched, _ = generate_signals(enriched, indicator_settings)
+    warmup_days = longest_lookback(indicator_settings)
 
     windows: list[dict[str, Any]] = []
     span_start = base_end - relativedelta(months=total_months)
     for k in range(options.n_windows):
-        train_start = span_start + relativedelta(months=k * options.test_months)
+        train_start = span_start + relativedelta(months=k * step)
         train_end = train_start + relativedelta(months=options.train_months)
         test_end = train_end + relativedelta(months=options.test_months)
+
+        warmup_offset = relativedelta(days=warmup_days)
+        raw = _slice(base_df, train_start - warmup_offset, test_end)
+        if raw.empty:
+            logger.warning("walkforward.empty_raw_slice", window=k)
+            enriched = raw
+        else:
+            enriched = generate_signals(add_indicators(raw.copy(), indicator_settings), indicator_settings)[0]
+            # Drop warmup prefix rows
+            if isinstance(enriched.index[0], pd.Timestamp):
+                cutoff = pd.Timestamp(train_start)
+            else:
+                cutoff = train_start.date() if hasattr(train_start, "date") else train_start
+            enriched = enriched[enriched.index >= cutoff]
 
         train_df = _slice(enriched, train_start, train_end)
         test_df = _slice(enriched, train_end, test_end)
 
-        train_metrics = _backtest_metrics(train_df, bundle, options.initial_capital)
-        test_metrics = _backtest_metrics(test_df, bundle, options.initial_capital)
+        train_metrics = _backtest_metrics(train_df, bundle, options.initial_capital, params)
+        test_metrics = _backtest_metrics(test_df, bundle, options.initial_capital, params)
 
         windows.append(
             {
@@ -183,8 +205,9 @@ def _persist(payload: dict[str, Any], db_path: Path | None = None) -> None:
             """
             INSERT INTO sfa_walkforward (
                 walkforward_id, strategy_name, params_json, aggregate_json,
-                windows_json, robust, oos_sharpe_mean, degradation, recorded_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                windows_json, robust, oos_sharpe_mean, degradation, recorded_at,
+                schema_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 payload["walkforward_id"],
@@ -196,6 +219,7 @@ def _persist(payload: dict[str, Any], db_path: Path | None = None) -> None:
                 float(payload["aggregate"]["oos_sharpe_mean"]),
                 float(payload["aggregate"]["degradation"]),
                 payload["recorded_at"],
+                2,
             ),
         )
 
@@ -206,7 +230,7 @@ def find_recent_walkforward(
     *,
     db_path: Path | None = None,
 ) -> dict[str, Any] | None:
-    """Return the most recent walk forward record for this strategy + exact params."""
+    """Return the most recent walk forward record (schema_version=2) for this strategy + exact params."""
     canon = json.dumps(params, sort_keys=True)
     with trials_store.connect(db_path) as conn:
         row = conn.execute(
@@ -214,7 +238,7 @@ def find_recent_walkforward(
             SELECT walkforward_id, params_json, aggregate_json, windows_json,
                    robust, oos_sharpe_mean, degradation, recorded_at
             FROM sfa_walkforward
-            WHERE strategy_name = ? AND params_json = ?
+            WHERE strategy_name = ? AND params_json = ? AND schema_version = 2
             ORDER BY recorded_at DESC
             LIMIT 1
             """,
@@ -253,9 +277,15 @@ def run_walkforward_cli(
     windows: int,
     train_months: int,
     test_months: int,
+    step_months: int | None = None,
     seed: int,
     json_output: bool,
 ) -> None:
+    """CLI entry point for sfa walkforward.
+
+    Uses non-overlapping windows by default (step = train + test months).
+    Pass --step-months to override the stride between windows.
+    """
     try:
         params = _resolve_params(params_arg)
     except (ValueError, json.JSONDecodeError) as exc:
@@ -270,6 +300,7 @@ def run_walkforward_cli(
                 n_windows=windows,
                 train_months=train_months,
                 test_months=test_months,
+                step_months=step_months,
                 seed=seed,
             ),
         )
