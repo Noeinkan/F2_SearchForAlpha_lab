@@ -38,7 +38,8 @@ class BB_TradingStrategy(BaseTradingStrategy):
             'squeeze_threshold': 0.1
         },
         'double_bottom_top_strategy': {
-            'threshold': 0.02
+            'threshold': 0.02,
+            'lookback_window': 10,
         }
     }
 
@@ -90,25 +91,39 @@ class BB_TradingStrategy(BaseTradingStrategy):
         return df
 
     def BB_double_bottom_top_strategy(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Generate double bottom/top signals."""
-        threshold = self.config['double_bottom_top_strategy']['threshold']
-        df['Lower_Touch'] = (df['Close'] < df['BB_lower']).astype(int)
-        df['Upper_Touch'] = (df['Close'] > df['BB_upper']).astype(int)
-        
+        """Generate double bottom/top signals using a rolling lookback window.
+
+        A double bottom fires when:
+          - At least 2 lower-band touches occurred within the last `lookback_window` bars.
+          - The previous bar was a touch (Close < BB_lower).
+          - The current bar rebounded above the lower band (entry confirmation).
+
+        A double top mirrors this logic using the upper band.
+
+        The previous implementation required two *consecutive* bars below the band
+        AND a same-day >2% move *while still below the band* — a condition that
+        essentially never fired on daily SPY, producing 0 trades.
+        """
+        lookback = int(self.config['double_bottom_top_strategy'].get('lookback_window', 10))
+
+        below_lower = df['Close'] < df['BB_lower']
+        above_upper = df['Close'] > df['BB_upper']
+
+        lower_touch_count = below_lower.rolling(window=lookback, min_periods=1).sum()
+        upper_touch_count = above_upper.rolling(window=lookback, min_periods=1).sum()
+
         df['BB_DoubleBottom_Buy'] = (
-            (df['Lower_Touch'] == 1) &
-            (df['Lower_Touch'].shift(1) == 1) &
-            (df['Close'] > df['Close'].shift(1)) &
-            (df['Close'].pct_change().abs() > threshold)
+            (lower_touch_count >= 2) &
+            (below_lower.shift(1)) &   # was at lower band yesterday
+            (~below_lower)             # today closed back above lower band
         ).astype(int)
-        
+
         df['BB_DoubleTop_Sell'] = (
-            (df['Upper_Touch'] == 1) &
-            (df['Upper_Touch'].shift(1) == 1) &
-            (df['Close'] < df['Close'].shift(1)) &
-            (df['Close'].pct_change().abs() > threshold)
+            (upper_touch_count >= 2) &
+            (above_upper.shift(1)) &   # was at upper band yesterday
+            (~above_upper)             # today closed back below upper band
         ).astype(int)
-        
+
         return df
 
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:

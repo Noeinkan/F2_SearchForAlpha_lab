@@ -153,6 +153,8 @@ def _build_objective(
             buy_signals=bundle.buy_signals,
             sell_signals=bundle.sell_signals,
             strategy_mode=bundle.mode,
+            signal_logic=bundle.signal_logic,
+            signal_window=bundle.signal_window,
             seed=seed,
         )
         score = score_metrics(metric, result.metrics)

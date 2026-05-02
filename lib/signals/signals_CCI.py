@@ -64,15 +64,21 @@ class CCI_TradingStrategy(BaseTradingStrategy):
         return df
 
     def cci_trend_reversal_strategy(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Generate trend reversal signals."""
+        """Generate trend reversal signals.
+
+        Fires when CCI *exits* the extreme zone — i.e. a rebound above -extreme
+        (Buy) or a turn-down below +extreme (Sell).  The previous (broken)
+        implementation fired on the *entry* into the extreme zone, which was a
+        falling-knife / rising-knife signal and explains the catastrophic Sharpe.
+        """
         extreme = self.config['trend_reversal']['extreme_threshold']
         df['CCI_Reversal_Buy'] = (
-            (df['CCI'] < -extreme) & 
-            (df['CCI'].shift(1) >= -extreme)
+            (df['CCI'] > -extreme) &          # CCI has rebounded above -extreme
+            (df['CCI'].shift(1) <= -extreme)  # CCI was in (or at) the extreme low zone
         ).astype(int)
         df['CCI_Reversal_Sell'] = (
-            (df['CCI'] > extreme) & 
-            (df['CCI'].shift(1) <= extreme)
+            (df['CCI'] < extreme) &           # CCI has pulled back below +extreme
+            (df['CCI'].shift(1) >= extreme)   # CCI was in (or at) the extreme high zone
         ).astype(int)
         return df
 

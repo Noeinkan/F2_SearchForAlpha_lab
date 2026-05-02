@@ -171,6 +171,8 @@ def run_backtest_result(
     sell_signals: list[str],
     initial_capital: float = 10_000.0,
     strategy_mode: str = "trading",
+    signal_logic: str = "or",
+    signal_window: int = 0,
     seed: int = DEFAULT_SEED,
     backtest_kwargs: dict[str, Any] | None = None,
 ) -> BacktestResult:
@@ -182,6 +184,8 @@ def run_backtest_result(
     extra.setdefault("position_sizing_strategy", "percentage_of_portfolio")
     extra.setdefault("position_sizing_params", {"percent": 0.1})
     extra.setdefault("strategy_mode", strategy_mode)
+    extra.setdefault("signal_logic", signal_logic)
+    extra.setdefault("signal_window", signal_window)
 
     result_df = backtest(
         df=df_with_signals,

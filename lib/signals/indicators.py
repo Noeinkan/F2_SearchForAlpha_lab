@@ -335,6 +335,7 @@ def _build_strategy_config_mappers() -> dict[str, Callable[[dict], dict]]:
             },
             'double_bottom_top_strategy': {
                 'threshold': settings.get('double_bottom_threshold', 0.02),
+                'lookback_window': settings.get('lookback_window', 10),
             },
         },
         'sma': lambda settings: {

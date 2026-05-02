@@ -72,6 +72,8 @@ def register(app: typer.Typer) -> None:
             sell_signals=bundle.sell_signals,
             initial_capital=initial_capital,
             strategy_mode=bundle.mode,
+            signal_logic=bundle.signal_logic,
+            signal_window=bundle.signal_window,
             seed=seed,
         )
 

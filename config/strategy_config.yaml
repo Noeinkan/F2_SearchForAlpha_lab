@@ -144,18 +144,16 @@ agent_strategies:
     ticker: SPY
     buy_signals: [CCI_ZeroCross_Buy, MACD_Histogram_Buy]
     sell_signals: [CCI_ZeroCross_Sell, MACD_Histogram_Sell]
+    signal_logic: and
+    signal_window: 3
     mode: trading
     live_params:
       cci_window: 20
-      cci_upper: 100
-      cci_lower: -100
       macd_fast: 12
       macd_slow: 26
       macd_signal: 9
     search_space:
       cci_window: { type: int, low: 10, high: 40 }
-      cci_upper: { type: int, low: 80, high: 200 }
-      cci_lower: { type: int, low: -200, high: -80 }
       macd_fast: { type: int, low: 5, high: 20 }
       macd_slow: { type: int, low: 20, high: 50 }
       macd_signal: { type: int, low: 5, high: 15 }
@@ -212,9 +210,11 @@ agent_strategies:
     live_params:
       bb_window: 20
       bb_std: 2.0
+      bb_double_lookback: 10
     search_space:
       bb_window: { type: int, low: 10, high: 50 }
       bb_std: { type: float, low: 1.5, high: 3.0 }
+      bb_double_lookback: { type: int, low: 5, high: 20 }
 
   macd_zero_cross:
     description: "MACD zero line cross trend reversal long and short."
@@ -275,12 +275,10 @@ agent_strategies:
     mode: trading
     live_params:
       cci_window: 20
-      cci_upper: 100
-      cci_lower: -100
+      cci_extreme: 180
     search_space:
       cci_window: { type: int, low: 10, high: 40 }
-      cci_upper: { type: int, low: 80, high: 200 }
-      cci_lower: { type: int, low: -200, high: -80 }
+      cci_extreme: { type: int, low: 120, high: 250 }
 
   cci_oversold_meanrev:
     description: "CCI oversold long, overbought short; classic Lambert mean reversion."

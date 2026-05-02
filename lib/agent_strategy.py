@@ -32,9 +32,11 @@ PARAM_KEY_MAP: dict[str, tuple[str, str]] = {
     "rsi_oversold": ("rsi", "oversold"),
     "bb_window": ("bollinger", "window"),
     "bb_std": ("bollinger", "window_dev"),
+    "bb_double_lookback": ("bollinger", "lookback_window"),
     "cci_window": ("cci", "period"),
     "cci_upper": ("cci", "ceiling"),
     "cci_lower": ("cci", "floor"),
+    "cci_extreme": ("cci", "extreme_threshold"),
     "macd_fast": ("macd", "fast"),
     "macd_slow": ("macd", "slow"),
     "macd_signal": ("macd", "signal"),
@@ -62,6 +64,8 @@ class AgentStrategyBundle:
     mode: str
     live_params: dict[str, Any]
     search_space: dict[str, dict[str, Any]]
+    signal_logic: str = "or"
+    signal_window: int = 0
     last_promoted: str | None = None
 
 
@@ -78,6 +82,8 @@ def load_bundle(name: str) -> AgentStrategyBundle:
         mode=str(raw.get("mode", "trading")),
         live_params=dict(raw.get("live_params", {}) or {}),
         search_space=dict(raw.get("search_space", {}) or {}),
+        signal_logic=str(raw.get("signal_logic", "or")),
+        signal_window=int(raw.get("signal_window", 0)),
         last_promoted=raw.get("last_promoted"),
     )
 
