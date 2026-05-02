@@ -105,13 +105,63 @@ def calculate_calmar_ratio(
 
 
 def count_trades(df: pd.DataFrame) -> int:
-    """Count completed buy + sell triggers from the result frame."""
-    if "Buy_Trigger_Accepted" in df.columns and "Sell_Trigger_Accepted" in df.columns:
-        return int(df["Buy_Trigger_Accepted"].sum() + df["Sell_Trigger_Accepted"].sum())
+    """Count actual filled orders (rows where units actually changed hands)."""
+    if "Units_to_buy" in df.columns and "Units_to_sell" in df.columns:
+        buys = int((df["Units_to_buy"] > 0).sum())
+        sells = int((df["Units_to_sell"] > 0).sum())
+        return buys + sells
     if "Units" in df.columns:
         diffs = df["Units"].diff().fillna(0)
         return int((diffs != 0).sum())
     return 0
+
+
+def _per_trade_metrics(df: pd.DataFrame) -> tuple[float, float]:
+    """
+    Compute win rate and profit factor from completed round-trip trades.
+
+    A round-trip is defined as a transition from Units == 0 to Units > 0
+    (entry) and back to Units == 0 (full exit).  Partial exits are ignored
+    so this is conservative but unambiguous.
+
+    Returns (win_rate, profit_factor).  Returns bar-level fallback values
+    when round-trip data is unavailable or no trades closed.
+    """
+    if "Units" not in df.columns or "Portfolio_Value" not in df.columns:
+        return 0.0, 0.0
+
+    units = df["Units"].values
+    pv = df["Portfolio_Value"].values
+
+    wins: list[float] = []
+    losses: list[float] = []
+    entry_pv: float | None = None
+
+    for i in range(1, len(units)):
+        prev_u, curr_u = units[i - 1], units[i]
+        if prev_u == 0 and curr_u > 0:
+            entry_pv = pv[i]
+        elif prev_u > 0 and curr_u == 0 and entry_pv is not None:
+            pnl = pv[i] - entry_pv
+            if pnl > 0:
+                wins.append(pnl)
+            elif pnl < 0:
+                losses.append(abs(pnl))
+            entry_pv = None
+
+    total_closed = len(wins) + len(losses)
+    if total_closed == 0:
+        return 0.0, 0.0
+
+    win_rate = len(wins) / total_closed
+    gross_profit = sum(wins)
+    gross_loss = sum(losses)
+    if gross_loss == 0:
+        profit_factor = 999.0 if gross_profit > 0 else 0.0
+    else:
+        profit_factor = gross_profit / gross_loss
+
+    return win_rate, profit_factor
 
 
 def calculate_turnover(df: pd.DataFrame) -> float:
@@ -141,9 +191,13 @@ def metrics_from_result_df(df: pd.DataFrame, initial_capital: float) -> Backtest
     max_dd = abs(max_dd_signed)
     sortino = calculate_sortino_ratio(returns) if len(returns) else 0.0
     calmar = calculate_calmar_ratio(returns, max_dd_signed) if max_dd_signed else 0.0
-    win_rate = _safe_float(calculate_win_rate(df))
-    profit_factor = _safe_float(calculate_profit_factor(df))
     num_trades = count_trades(df)
+    win_rate, profit_factor = _per_trade_metrics(df)
+    if win_rate == 0.0 and profit_factor == 0.0:
+        # No closed round-trips — fall back to bar-level metrics
+        win_rate = _safe_float(calculate_win_rate(df))
+        pf_raw = calculate_profit_factor(df)
+        profit_factor = 999.0 if (np.isinf(pf_raw) and pf_raw > 0) else _safe_float(pf_raw)
     turnover = calculate_turnover(df)
 
     return BacktestMetrics(
@@ -183,6 +237,7 @@ def run_backtest_result(
     extra = dict(backtest_kwargs or {})
     extra.setdefault("position_sizing_strategy", "percentage_of_portfolio")
     extra.setdefault("position_sizing_params", {"percent": 0.1})
+    extra.setdefault("position_scaling", 1.0)
     extra.setdefault("strategy_mode", strategy_mode)
     extra.setdefault("signal_logic", signal_logic)
     extra.setdefault("signal_window", signal_window)
