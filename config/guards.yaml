@@ -1,0 +1,12 @@
+The user wants me to apply the suggested edit to the original code. The original code was provided in a diff-like format showing the thresholds and comments. The suggested edit shows the complete modified file.
+
+Let me reconstruct what the original file likely looked like based on the information provided, then apply the changes.
+
+From the ORIGINAL CODE description:
+- daily_loss: threshold: 0.02 (with comment likely saying 2%)
+- position_size: threshold: 0.10 (with comment likely saying 10%)
+- max_drawdown: threshold: 0.05 (with comment likely saying 5%)
+- clock_drift: threshold: 300 (with comment likely saying 300 seconds)
+
+The SUGGESTED EDIT provides the exact output format:
+

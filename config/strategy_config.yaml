@@ -100,6 +100,226 @@ agent_strategies:
       bb_std: 2.0
     search_space:
       rsi_window: { type: int, low: 5, high: 30 }
+      rsi_overbought: { type: int, low: 65, high: 85 }
+      rsi_oversold: { type: int, low: 15, high: 35 }
       bb_window: { type: int, low: 10, high: 50 }
       bb_std: { type: float, low: 1.0, high: 3.0 }
+
+  trend_macd_ema:
+    description: "Trend follower: MACD signal cross with EMA triple alignment, MACD signal cross exit."
+    ticker: SPY
+    buy_signals: [MACD_SignalCross_Buy, EMA_TripleCross_Buy]
+    sell_signals: [MACD_SignalCross_Sell]
+    mode: trading
+    live_params:
+      macd_fast: 12
+      macd_slow: 26
+      macd_signal: 9
+      ema_short: 12
+      ema_medium: 26
+      ema_long: 50
+    search_space:
+      macd_fast: { type: int, low: 5, high: 20 }
+      macd_slow: { type: int, low: 20, high: 50 }
+      macd_signal: { type: int, low: 5, high: 15 }
+      ema_short: { type: int, low: 5, high: 20 }
+      ema_medium: { type: int, low: 20, high: 60 }
+      ema_long: { type: int, low: 60, high: 200 }
+
+  breakout_bb_squeeze:
+    description: "Bollinger squeeze breakout long, squeeze breakdown short."
+    ticker: SPY
+    buy_signals: [BB_Squeeze_Buy]
+    sell_signals: [BB_Squeeze_Sell]
+    mode: trading
+    live_params:
+      bb_window: 20
+      bb_std: 2.0
+    search_space:
+      bb_window: { type: int, low: 10, high: 50 }
+      bb_std: { type: float, low: 1.5, high: 3.0 }
+
+  momentum_cci_macd:
+    description: "Momentum: CCI zero cross confirmed by MACD histogram flip, both ways."
+    ticker: SPY
+    buy_signals: [CCI_ZeroCross_Buy, MACD_Histogram_Buy]
+    sell_signals: [CCI_ZeroCross_Sell, MACD_Histogram_Sell]
+    mode: trading
+    live_params:
+      cci_window: 20
+      cci_upper: 100
+      cci_lower: -100
+      macd_fast: 12
+      macd_slow: 26
+      macd_signal: 9
+    search_space:
+      cci_window: { type: int, low: 10, high: 40 }
+      cci_upper: { type: int, low: 80, high: 200 }
+      cci_lower: { type: int, low: -200, high: -80 }
+      macd_fast: { type: int, low: 5, high: 20 }
+      macd_slow: { type: int, low: 20, high: 50 }
+      macd_signal: { type: int, low: 5, high: 15 }
+
+  golden_cross_sma:
+    description: "Slow trend: SMA triple cross long and short."
+    ticker: SPY
+    buy_signals: [SMA_TripleCross_Buy]
+    sell_signals: [SMA_TripleCross_Sell]
+    mode: trading
+    live_params:
+      sma_short: 20
+      sma_medium: 50
+      sma_long: 200
+    search_space:
+      sma_short: { type: int, low: 5, high: 30 }
+      sma_medium: { type: int, low: 30, high: 100 }
+      sma_long: { type: int, low: 100, high: 250 }
+
+  connors_rsi2:
+    description: "Larry Connors 2-period RSI mean reversion: deep oversold long, overbought exit."
+    ticker: SPY
+    buy_signals: [RSI_Oversold_Buy]
+    sell_signals: [RSI_Overbought_Sell]
+    mode: trading
+    live_params:
+      rsi_window: 2
+      rsi_oversold: 10
+      rsi_overbought: 70
+    search_space:
+      rsi_window: { type: int, low: 2, high: 5 }
+      rsi_oversold: { type: int, low: 5, high: 25 }
+      rsi_overbought: { type: int, low: 60, high: 85 }
+
+  bb_breakout:
+    description: "Classic Bollinger band breakout long, breakdown short."
+    ticker: SPY
+    buy_signals: [BB_Breakout_Buy]
+    sell_signals: [BB_Breakout_Sell]
+    mode: trading
+    live_params:
+      bb_window: 20
+      bb_std: 2.0
+    search_space:
+      bb_window: { type: int, low: 10, high: 50 }
+      bb_std: { type: float, low: 1.5, high: 3.0 }
+
+  bb_double_pattern:
+    description: "Bollinger double bottom long, double top short."
+    ticker: SPY
+    buy_signals: [BB_DoubleBottom_Buy]
+    sell_signals: [BB_DoubleTop_Sell]
+    mode: trading
+    live_params:
+      bb_window: 20
+      bb_std: 2.0
+    search_space:
+      bb_window: { type: int, low: 10, high: 50 }
+      bb_std: { type: float, low: 1.5, high: 3.0 }
+
+  macd_zero_cross:
+    description: "MACD zero line cross trend reversal long and short."
+    ticker: SPY
+    buy_signals: [MACD_ZeroCross_Buy]
+    sell_signals: [MACD_ZeroCross_Sell]
+    mode: trading
+    live_params:
+      macd_fast: 12
+      macd_slow: 26
+      macd_signal: 9
+    search_space:
+      macd_fast: { type: int, low: 5, high: 20 }
+      macd_slow: { type: int, low: 20, high: 50 }
+      macd_signal: { type: int, low: 5, high: 15 }
+
+  macd_histogram_flip:
+    description: "MACD histogram momentum flip, both directions."
+    ticker: SPY
+    buy_signals: [MACD_Histogram_Buy]
+    sell_signals: [MACD_Histogram_Sell]
+    mode: trading
+    live_params:
+      macd_fast: 12
+      macd_slow: 26
+      macd_signal: 9
+    search_space:
+      macd_fast: { type: int, low: 5, high: 20 }
+      macd_slow: { type: int, low: 20, high: 50 }
+      macd_signal: { type: int, low: 5, high: 15 }
+
+  macd_rsi_combo:
+    description: "MACD signal cross confirmed by RSI extreme; widely cited combo (~73% win rate backtest)."
+    ticker: SPY
+    buy_signals: [MACD_SignalCross_Buy, RSI_Oversold_Buy]
+    sell_signals: [MACD_SignalCross_Sell, RSI_Overbought_Sell]
+    mode: trading
+    live_params:
+      macd_fast: 12
+      macd_slow: 26
+      macd_signal: 9
+      rsi_window: 14
+      rsi_oversold: 30
+      rsi_overbought: 70
+    search_space:
+      macd_fast: { type: int, low: 5, high: 20 }
+      macd_slow: { type: int, low: 20, high: 50 }
+      macd_signal: { type: int, low: 5, high: 15 }
+      rsi_window: { type: int, low: 5, high: 30 }
+      rsi_oversold: { type: int, low: 15, high: 40 }
+      rsi_overbought: { type: int, low: 60, high: 85 }
+
+  cci_extreme_reversal:
+    description: "CCI rebound from extreme low, turn down from extreme high."
+    ticker: SPY
+    buy_signals: [CCI_Reversal_Buy]
+    sell_signals: [CCI_Reversal_Sell]
+    mode: trading
+    live_params:
+      cci_window: 20
+      cci_upper: 100
+      cci_lower: -100
+    search_space:
+      cci_window: { type: int, low: 10, high: 40 }
+      cci_upper: { type: int, low: 80, high: 200 }
+      cci_lower: { type: int, low: -200, high: -80 }
+
+  cci_oversold_meanrev:
+    description: "CCI oversold long, overbought short; classic Lambert mean reversion."
+    ticker: SPY
+    buy_signals: [CCI_Oversold_Buy]
+    sell_signals: [CCI_Overbought_Sell]
+    mode: trading
+    live_params:
+      cci_window: 20
+      cci_upper: 100
+      cci_lower: -100
+    search_space:
+      cci_window: { type: int, low: 10, high: 40 }
+      cci_upper: { type: int, low: 80, high: 200 }
+      cci_lower: { type: int, low: -200, high: -80 }
+
+  ema_pullback_value:
+    description: "Buy the dip into EMA value zone in uptrend, mirror in downtrend."
+    ticker: SPY
+    buy_signals: [EMA_ValueZone_Buy]
+    sell_signals: [EMA_ValueZone_Sell]
+    mode: trading
+    live_params:
+      ema_short: 12
+      ema_medium: 26
+      ema_long: 50
+    search_space:
+      ema_short: { type: int, low: 5, high: 20 }
+      ema_medium: { type: int, low: 20, high: 60 }
+      ema_long: { type: int, low: 60, high: 200 }
+
+  vwap_cross:
+    description: "Price crosses above VWAP long, below VWAP short."
+    ticker: SPY
+    buy_signals: [VWAP_CrossAbove_Buy]
+    sell_signals: [VWAP_CrossBelow_Sell]
+    mode: trading
+    live_params:
+      vwap_window: 20
+    search_space:
+      vwap_window: { type: int, low: 5, high: 60 }
 

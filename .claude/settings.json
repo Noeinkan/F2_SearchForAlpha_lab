@@ -5,7 +5,9 @@
       "Read(//c/Users/andre/.claude/projects/c--Users-andre-Downloads-F2-SearchForAlpha-lab/memory/**)",
       "Bash(netstat -ano)",
       "Bash(python main.py)",
-      "Bash(taskkill //PID 19988 //F)"
+      "Bash(taskkill //PID 19988 //F)",
+      "WebSearch",
+      "Bash(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@77.42.70.26 \"whoami && uname -a\")"
     ]
   }
 }
