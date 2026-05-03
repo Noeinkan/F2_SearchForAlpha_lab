@@ -123,6 +123,8 @@ Keep the note concise — maximum 6 lines.
   sections of that file (e.g. `live_params`, `guards`) require a proposed
   diff and human approval before applying.
 - Never pass `--mode live`. Only `--mode paper` is supported.
+- Never pass `--force` to `sfa promote`. The flag bypasses the "strategy is
+  running" guard and is never permitted.
 - Promotion requires explicit human confirmation: show walkforward verdict,
   wait for approval, then call `sfa promote`. No exceptions.
 - Never retry a command more than twice. Report stderr verbatim and stop.
