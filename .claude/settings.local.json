@@ -16,7 +16,8 @@
       "Bash(ssh -i __TRACKED_VAR__/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes root@77.42.70.26 'sed -i '\\\\''s/rsi_overbought: { type: int, low: [0-9]*, high: [0-9]* }/rsi_overbought: { type: int, low: 90, high: 100 }/'\\\\'' /opt/searchforalpha/config/strategy_config.yaml && chown openclaw /opt/searchforalpha/config/strategy_config.yaml && chmod 644 /opt/searchforalpha/config/strategy_config.yaml && chmod 444 /opt/searchforalpha/config/agent.yaml && grep '\\\\''rsi_overbought'\\\\'' /opt/searchforalpha/config/strategy_config.yaml')",
       "Bash(ssh -i __TRACKED_VAR__/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes root@77.42.70.26 'which setfacl && getfacl /opt/searchforalpha/config/strategy_config.yaml 2>&1')",
       "Bash(ssh -i __TRACKED_VAR__/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes root@77.42.70.26 'grep -n '\\\\''ticker\\\\|connors_rsi2\\\\|rsi_overbought'\\\\'' /opt/searchforalpha/config/strategy_config.yaml')",
-      "Bash(ssh -i __TRACKED_VAR__/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes root@77.42.70.26 'cat > /opt/searchforalpha/AGENTS.md')"
+      "Bash(ssh -i __TRACKED_VAR__/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes root@77.42.70.26 'cat > /opt/searchforalpha/AGENTS.md')",
+      "Bash(ssh -i __TRACKED_VAR__/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes root@77.42.70.26 ' *)"
     ]
   }
 }

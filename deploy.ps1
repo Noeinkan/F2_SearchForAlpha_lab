@@ -99,7 +99,6 @@ if (-not $DryRun) {
     Write-Step "Fixing remote permissions..."
     $fixResult = ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no `
                      -o BatchMode=yes `
-                     -o ControlMaster=auto -o "ControlPath=$CM_PATH" -o ControlPersist=30s `
                      $SERVER `
                      "chmod -R 755 $REMOTE/lib $REMOTE/config && setfacl -m u:openclaw:rw $REMOTE/config/strategy_config.yaml && setfacl -m u:openclaw:r-- $REMOTE/config/agent.yaml" 2>&1
     if ($LASTEXITCODE -ne 0) { Write-Err "setfacl failed: $fixResult"; exit 1 }
