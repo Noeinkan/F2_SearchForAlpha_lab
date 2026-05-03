@@ -26,3 +26,69 @@ optimiser:
     turnover: 0.5
   tpe_seed: 42
   n_warmup_steps: 20
+
+# ── Research context (read by the agent, not by execution logic) ──────────────
+# These settings guide OpenClaw's research commentary and sweep decisions.
+# They do NOT affect backtesting or guard behaviour — those are above.
+
+research:
+  # Ticker universe for cross-validation sweeps.
+  # Agent proposes which to test; human approves before sfa optimise runs.
+  ticker_universe:
+    etf_broad:
+      - SPY    # S&P 500 — baseline for all strategies
+      - QQQ    # Nasdaq 100 — higher beta, stronger momentum signals
+      - IWM    # Russell 2000 — small cap, more mean-reversion alpha
+    etf_sector:
+      - XLK    # Technology — trend-following friendly
+      - XLF    # Financials — rate-sensitive, good for regime tests
+      - XLE    # Energy — high volatility, good for BB/CCI strategies
+    single_stock:
+      - AAPL   # Liquid mega-cap, tight spreads
+      - MSFT   # Stable trend, good for EMA/MACD
+      - NVDA   # High volatility, good for RSI mean reversion
+    notes: >
+      Start sweeps with etf_broad only. Add single_stock only for strategies
+      that show Sortino > 1.5 on at least two ETFs.
+
+  # Cost model for Research notes (not used in backtest engine).
+  cost_model:
+    slippage_bps: 5          # conservative estimate for liquid ETFs
+    commission_usd: 0.0      # IB paper account: zero commissions
+    annual_drag_estimate: >
+      Multiply (avg_trades_per_year × slippage_bps / 10000) by capital
+      to get estimated annual cost drag. Flag strategies above 2% drag.
+
+  # Canonical backtest windows for research sweeps.
+  backtest_windows:
+    in_sample:
+      from: "2020-01-01"
+      to:   "2023-12-31"
+      label: "4-year in-sample (bull + COVID + bear + recovery)"
+    stress:
+      from: "2022-01-01"
+      to:   "2022-12-31"
+      label: "2022 bear market — rate-hike regime"
+    recent:
+      from: "2023-01-01"
+      to:   "2025-12-31"
+      label: "2023-2025 AI-driven bull run"
+    notes: >
+      Always run in_sample first. Run stress if Sortino > 1.0 in-sample.
+      Run recent to check for regime decay in promoted strategies.
+
+  # Regime detection hints (descriptive — agent uses these for commentary).
+  regime_signals:
+    trending:   "SPY closing price above its 200-day SMA"
+    ranging:    "SPY within 5% of 200-day SMA for 30+ days"
+    volatile:   "realised 30-day vol > 20% annualised"
+    bear:       "SPY down > 20% from 52-week high"
+
+  # Strategy-to-ticker affinity hints.
+  # Based on academic literature and community backtests.
+  strategy_affinity:
+    mean_reversion:   [SPY, IWM, QQQ]   # works best on liquid, range-bound
+    trend_following:  [QQQ, XLK, NVDA]  # works best on trending, high-beta
+    momentum:         [QQQ, XLE, NVDA]  # sector rotation and breakouts
+    volatility_play:  [IWM, XLE, NVDA]  # wider BB bands on volatile names
+    vwap_intraday:    [SPY, QQQ, AAPL]  # daily VWAP proxy on high-volume

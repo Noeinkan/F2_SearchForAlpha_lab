@@ -842,6 +842,8 @@ input[type="radio"] {
    Light theme overrides — flip palette when body has .theme-light
    ========================================================================== */
 
+/* In light mode the label override still works correctly because
+   --text-primary is now dark (#1f2328) matching the light background. */
 body.theme-light {
     --bg-primary:        #ffffff;
     --bg-secondary:      #f6f8fa;
@@ -863,6 +865,271 @@ body.theme-light {
     --table-header-bg:   #f6f8fa;
     --table-row-alt:     rgba(246,248,250,0.5);
     --table-row-hover:   #eaeef2;
+}
+
+/* =============================================================================
+   Bootstrap Accordion dark-theme overrides (compact-accordion)
+   Bootstrap defaults use white bg + dark text; override everything here.
+   ========================================================================== */
+
+.compact-accordion .accordion-item {
+    background-color: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid var(--border-primary) !important;
+}
+
+.compact-accordion .accordion-item:last-child {
+    border-bottom: none !important;
+}
+
+.compact-accordion .accordion-button {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    padding: 8px 10px !important;
+    box-shadow: none !important;
+    border-bottom: 1px solid var(--border-primary) !important;
+}
+
+.compact-accordion .accordion-button:not(.collapsed) {
+    background-color: var(--bg-panel-header) !important;
+    color: var(--accent) !important;
+    border-bottom-color: var(--accent) !important;
+}
+
+.compact-accordion .accordion-button::after {
+    filter: invert(1) !important;
+    opacity: 0.6;
+}
+
+.compact-accordion .accordion-button:not(.collapsed)::after {
+    filter: invert(1) brightness(2) sepia(1) hue-rotate(5deg) saturate(5) !important;
+    opacity: 1;
+}
+
+.compact-accordion .accordion-body {
+    background-color: var(--bg-panel) !important;
+    color: var(--text-primary) !important;
+    padding: 8px 6px !important;
+}
+
+/* accordion title row — title + summary side by side */
+.accordion-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 8px;
+    font-family: var(--font-mono);
+}
+
+.accordion-title-summary {
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--text-tertiary);
+    text-transform: none;
+    letter-spacing: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+/* =============================================================================
+   Strategy mode radio cards (left sidebar)
+   ========================================================================== */
+
+.strategy-mode-radio {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* The RadioItems label wraps the entire card div */
+.strategy-mode-radio label {
+    color: var(--text-primary) !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    cursor: pointer;
+}
+
+.strategy-mode-card {
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    padding: 6px 8px;
+    background: var(--bg-tertiary);
+    transition: background 80ms ease, border-color 80ms ease;
+    cursor: pointer;
+}
+
+.strategy-mode-card:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-focus);
+}
+
+/* Highlight the selected card (sibling input checked → parent label) */
+.strategy-mode-radio input[type="radio"]:checked + label .strategy-mode-card,
+.strategy-mode-radio label:has(input:checked) .strategy-mode-card {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+}
+
+/* Signal logic OR / AND radio toggle */
+.signal-logic-toggle {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.signal-logic-toggle label {
+    color: var(--text-secondary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+    border-radius: 2px;
+    transition: background 80ms ease, color 80ms ease;
+}
+
+.signal-logic-toggle label:has(input:checked) {
+    color: var(--text-primary) !important;
+    background: var(--bg-hover);
+}
+
+/* =============================================================================
+   Signal panel — left sidebar signal list
+   ========================================================================== */
+
+/* Force all labels and text to use theme colour, overriding Bootstrap's
+   dark default (#212529) that bleeds in on dark backgrounds. */
+label,
+.form-check-label,
+.form-label {
+    color: var(--text-primary) !important;
+}
+
+.signals-filter-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    margin-bottom: 3px;
+}
+
+.signals-category-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+.signals-category-filter .form-check {
+    padding-left: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+}
+
+.signals-category-filter .form-check-input {
+    margin: 0;
+}
+
+.signals-unified-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border-primary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+}
+
+.signals-unified-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-height: 340px;
+    overflow-y: auto;
+}
+
+.signal-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 6px;
+    border-bottom: 1px solid var(--border-secondary);
+    transition: background 80ms ease;
+    gap: 6px;
+    min-height: 26px;
+}
+
+.signal-row:hover {
+    background: var(--bg-hover);
+}
+
+.signal-name {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* Buy/sell toggle checkboxes inside signal rows */
+.signal-toggle {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+}
+
+.signal-toggle .form-check {
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
+.signal-toggle .form-check-input {
+    margin: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.buy-toggle .form-check-input {
+    accent-color: var(--up);
+    border-color: var(--up);
+}
+
+.sell-toggle .form-check-input {
+    accent-color: var(--down);
+    border-color: var(--down);
+}
+
+/* Ensure any label inside signal rows is always visible */
+.signal-row label,
+.signal-toggle label {
+    color: var(--text-primary) !important;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    margin: 0;
+    cursor: pointer;
 }
 
 /* =============================================================================
