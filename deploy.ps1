@@ -92,7 +92,7 @@ if (-not $DryRun) {
     Write-Step "Fixing remote permissions (chmod 755 lib/ config/)..."
     $fixResult = ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no `
                      -o BatchMode=yes $SERVER `
-                     "chmod -R 755 $REMOTE/lib $REMOTE/config && chmod 444 $REMOTE/config/agent.yaml" 2>&1
+                     "chmod -R 755 $REMOTE/lib $REMOTE/config && chown openclaw $REMOTE/config/strategy_config.yaml && chmod 644 $REMOTE/config/strategy_config.yaml && chmod 444 $REMOTE/config/agent.yaml" 2>&1
     if ($LASTEXITCODE -ne 0) { Write-Err "chmod failed: $fixResult"; exit 1 }
-    Write-Ok "Permissions fixed (agent.yaml locked read-only)"
+    Write-Ok "Permissions fixed (strategy_config.yaml writable by openclaw, agent.yaml locked read-only)"
 }
