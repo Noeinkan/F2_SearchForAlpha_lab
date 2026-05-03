@@ -25,21 +25,29 @@ observation and guard monitoring; it is not the optimiser itself.
 
 ## Invocation
 
-Every call uses one of these shapes (adjust paths if your install differs):
+### On the Linux server (primary — use this)
 
-```
-cd /opt/searchforalpha && uv run sfa <command> --json
+```bash
+cd /opt/searchforalpha
+/opt/searchforalpha/.venv/bin/python -m lib.cli.app <command> --json
 ```
 
-Windows / local virtualenv fallback when `sfa` is not on PATH:
+`uv` is installed under `/root/.local/bin/` and is NOT on the PATH for the
+`openclaw` user. Always use the `.venv` Python path above.
+
+Short alias you can use once per session to reduce typing:
+
+```bash
+alias sfa='/opt/searchforalpha/.venv/bin/python -m lib.cli.app'
+cd /opt/searchforalpha && sfa list --json
+```
+
+### Windows / local fallback (when not on the server)
 
 ```powershell
 Set-Location C:\Users\andre\Downloads\F2_SearchForAlpha_lab
 .\.venv\Scripts\python.exe -m lib.cli.app <command> --json
 ```
-
-If `sfa` is unavailable on PATH, use the interpreter form above instead of
-guessing another launcher.
 
 Always pass `--json`. Treat any non-zero exit code as an error.
 

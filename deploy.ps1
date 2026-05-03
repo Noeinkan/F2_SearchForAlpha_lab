@@ -84,3 +84,15 @@ if ($hasRsync) {
 }
 
 Write-Ok "Deploy complete → $SERVER`:$REMOTE"
+
+# ── Fix permissions so non-root users (e.g. openclaw) can read the modules ───
+# scp -r resets directory permissions to root's umask (700). This ensures
+# lib/ and config/ are always world-readable after every deploy.
+if (-not $DryRun) {
+    Write-Step "Fixing remote permissions (chmod 755 lib/ config/)..."
+    $fixResult = ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no `
+                     -o BatchMode=yes $SERVER `
+                     "chmod -R 755 $REMOTE/lib $REMOTE/config" 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Err "chmod failed: $fixResult"; exit 1 }
+    Write-Ok "Permissions fixed"
+}
