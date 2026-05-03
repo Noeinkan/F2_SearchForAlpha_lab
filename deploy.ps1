@@ -11,7 +11,13 @@ param(
 $SERVER   = "root@77.42.70.26"
 $REMOTE   = "/opt/searchforalpha"
 $SSH_KEY  = "$env:USERPROFILE\.ssh\id_ed25519"
-$SSH_OPTS = "-i `"$SSH_KEY`" -o StrictHostKeyChecking=no -o BatchMode=yes"
+
+# SSH ControlMaster: first connection opens a shared socket; subsequent calls reuse it.
+# Saves ~1-2 s per extra handshake — 3 operations become 1 handshake + 2 free reuses.
+$CM_DIR   = "$env:USERPROFILE\.ssh\sockets"
+if (-not (Test-Path $CM_DIR)) { New-Item -ItemType Directory -Path $CM_DIR | Out-Null }
+$CM_PATH  = ($CM_DIR -replace "\\", "/") + "/cm_%r@%h_%p"
+$SSH_OPTS = "-i `"$SSH_KEY`" -o StrictHostKeyChecking=no -o BatchMode=yes -o ControlMaster=auto -o ControlPath=`"$CM_PATH`" -o ControlPersist=30s"
 
 # Directories to sync (relative to project root)
 $SYNC_DIRS = @("lib", "config")
@@ -60,7 +66,7 @@ if ($hasRsync) {
     foreach ($dir in $SYNC_DIRS) {
         Write-Step "  $dir/"
         $args = @(
-            "-avz", "--delete",
+            "-av", "--delete",   # no -z: compression adds CPU overhead with no benefit on a fast link
             "-e", "ssh $SSH_OPTS",
             $dryArg
         ) + $excludeArgs + @("$dir/", "$SERVER`:$REMOTE/$dir/")
@@ -89,9 +95,11 @@ Write-Ok "Deploy complete → $SERVER`:$REMOTE"
 # scp -r resets directory permissions to root's umask (700). This ensures
 # lib/ and config/ are always world-readable after every deploy.
 if (-not $DryRun) {
-    Write-Step "Fixing remote permissions (chmod 755 lib/ config/)..."
+    Write-Step "Fixing remote permissions..."
     $fixResult = ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no `
-                     -o BatchMode=yes $SERVER `
+                     -o BatchMode=yes `
+                     -o ControlMaster=auto -o "ControlPath=$CM_PATH" -o ControlPersist=30s `
+                     $SERVER `
                      "chmod -R 755 $REMOTE/lib $REMOTE/config && chown openclaw $REMOTE/config/strategy_config.yaml && chmod 644 $REMOTE/config/strategy_config.yaml && chmod 444 $REMOTE/config/agent.yaml" 2>&1
     if ($LASTEXITCODE -ne 0) { Write-Err "chmod failed: $fixResult"; exit 1 }
     Write-Ok "Permissions fixed (strategy_config.yaml writable by openclaw, agent.yaml locked read-only)"
