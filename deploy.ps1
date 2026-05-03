@@ -92,15 +92,16 @@ if ($hasRsync) {
 Write-Ok "Deploy complete → $SERVER`:$REMOTE"
 
 # ── Fix permissions so non-root users (e.g. openclaw) can read the modules ───
-# scp -r resets directory permissions to root's umask (700). This ensures
-# lib/ and config/ are always world-readable after every deploy.
+# Uses POSIX ACLs (setfacl) so openclaw write-access survives rsync re-deploys
+# without changing file ownership. The config/ directory also has a default ACL
+# so any future file created there automatically inherits openclaw:rw.
 if (-not $DryRun) {
     Write-Step "Fixing remote permissions..."
     $fixResult = ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no `
                      -o BatchMode=yes `
                      -o ControlMaster=auto -o "ControlPath=$CM_PATH" -o ControlPersist=30s `
                      $SERVER `
-                     "chmod -R 755 $REMOTE/lib $REMOTE/config && chown openclaw $REMOTE/config/strategy_config.yaml && chmod 644 $REMOTE/config/strategy_config.yaml && chmod 444 $REMOTE/config/agent.yaml" 2>&1
-    if ($LASTEXITCODE -ne 0) { Write-Err "chmod failed: $fixResult"; exit 1 }
-    Write-Ok "Permissions fixed (strategy_config.yaml writable by openclaw, agent.yaml locked read-only)"
+                     "chmod -R 755 $REMOTE/lib $REMOTE/config && setfacl -m u:openclaw:rw $REMOTE/config/strategy_config.yaml && setfacl -m u:openclaw:r-- $REMOTE/config/agent.yaml" 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Err "setfacl failed: $fixResult"; exit 1 }
+    Write-Ok "Permissions fixed (strategy_config.yaml writable by openclaw via ACL, agent.yaml read-only)"
 }
