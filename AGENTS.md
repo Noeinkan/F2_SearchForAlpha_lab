@@ -116,8 +116,12 @@ Keep the note concise — maximum 6 lines.
 ## Hard rules
 
 - Never invent a strategy name. Always call `sfa list` first.
-- Never modify repository files (Python, YAML, TOML, JSON). If something
-  needs to change, propose the exact diff in chat and ask the human to apply it.
+- Never modify Python, TOML, or JSON files. Never modify YAML files other
+  than `config/strategy_config.yaml`.
+- In `config/strategy_config.yaml` you may directly edit `search_space`
+  blocks under `agent_strategies` (parameter bounds only). All other
+  sections of that file (e.g. `live_params`, `guards`) require a proposed
+  diff and human approval before applying.
 - Never pass `--mode live`. Only `--mode paper` is supported.
 - Promotion requires explicit human confirmation: show walkforward verdict,
   wait for approval, then call `sfa promote`. No exceptions.
