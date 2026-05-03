@@ -122,6 +122,20 @@ Keep the note concise — maximum 6 lines.
   blocks under `agent_strategies` (parameter bounds only). All other
   sections of that file (e.g. `live_params`, `guards`) require a proposed
   diff and human approval before applying.
+- When editing `config/strategy_config.yaml`, **do not use `sed -i`** — it
+  requires directory write permission which the `openclaw` user does not have.
+  Use this Python pattern instead (overwrites the file in-place without a
+  temp-file rename):
+
+  ```bash
+  python3 -c "
+  content = open('/opt/searchforalpha/config/strategy_config.yaml').read()
+  content = content.replace('old_value', 'new_value')
+  open('/opt/searchforalpha/config/strategy_config.yaml', 'w').write(content)
+  "
+  ```
+
+  Always `grep` the file after writing to verify the change was applied.
 - Never pass `--mode live`. Only `--mode paper` is supported.
 - Never pass `--force` to `sfa promote`. The flag bypasses the "strategy is
   running" guard and is never permitted.
