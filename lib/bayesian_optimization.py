@@ -243,6 +243,8 @@ def run_study(
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     base_df = fetch_data(bundle.ticker, window_from, window_to)
+    if not isinstance(base_df.index, pd.DatetimeIndex):
+        base_df.index = pd.to_datetime(base_df.index)
     search_to_dt = pd.to_datetime(window_to) - pd.DateOffset(months=held_out_months)
     search_to = search_to_dt.strftime("%Y-%m-%d")
     search_df = base_df[base_df.index < search_to_dt]
