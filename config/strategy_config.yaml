@@ -210,7 +210,7 @@ agent_strategies:
     live_params:
       bb_window: 20
       bb_std: 2.0
-      bb_double_lookback: 10
+      bb_double_lookback: 20
     search_space:
       bb_window: { type: int, low: 10, high: 50 }
       bb_std: { type: float, low: 1.5, high: 3.0 }

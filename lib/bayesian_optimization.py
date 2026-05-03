@@ -63,6 +63,30 @@ VALID_METRICS = ("sharpe", "sortino", "calmar", "composite")
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
+def _make_progress_callback(
+    n_trials: int,
+    metric: str,
+    json_output: bool,
+) -> Callable[[optuna.study.Study, optuna.trial.FrozenTrial], None]:
+    """Return an Optuna callback that prints per-trial progress to stderr."""
+    import sys
+
+    def callback(study: optuna.study.Study, trial: optuna.trial.FrozenTrial) -> None:
+        if json_output:
+            return
+        n = trial.number + 1
+        score = trial.value if trial.value is not None else float("nan")
+        best = study.best_value
+        params_short = ", ".join(f"{k}={v}" for k, v in trial.params.items())
+        print(
+            f"  trial {n:>3}/{n_trials}  {metric}={score:+.4f}  best={best:+.4f}  [{params_short}]",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    return callback
+
+
 @dataclass(frozen=True)
 class OptimisationResult:
     study_id: str
@@ -193,6 +217,7 @@ def run_study(
     study_id: str | None = None,
     storage_url: str | None = None,
     db_path: Path | None = None,
+    json_output: bool = False,
 ) -> OptimisationResult:
     """Run an Optuna TPE study end to end and return the best trial.
 
@@ -247,8 +272,18 @@ def run_study(
         held_out_to=window_to,
     )
 
+    if not json_output:
+        import sys
+        print(
+            f"Optimising {strategy_name!r}  metric={metric}  trials={n_trials}  "
+            f"search window={window_from}→{search_to}  held-out→{window_to}",
+            file=sys.stderr,
+            flush=True,
+        )
+
     started = time.perf_counter()
-    study.optimize(objective, n_trials=int(n_trials), show_progress_bar=False)
+    progress_cb = _make_progress_callback(n_trials, metric, json_output)
+    study.optimize(objective, n_trials=int(n_trials), callbacks=[progress_cb], show_progress_bar=False)
     duration = time.perf_counter() - started
 
     best = study.best_trial
@@ -290,6 +325,7 @@ def run_optimise_cli(
             window_to=window_to,
             seed=seed,
             study_id=study_id,
+            json_output=json_output,
         )
     except StrategyNotFoundError:
         typer.echo(json.dumps(CliError("unknown_strategy", f"No agent strategy named {name!r}.").as_dict()))
