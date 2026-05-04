@@ -17,7 +17,8 @@
       "Bash(ssh -i __TRACKED_VAR__/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes root@77.42.70.26 'which setfacl && getfacl /opt/searchforalpha/config/strategy_config.yaml 2>&1')",
       "Bash(ssh -i __TRACKED_VAR__/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes root@77.42.70.26 'grep -n '\\\\''ticker\\\\|connors_rsi2\\\\|rsi_overbought'\\\\'' /opt/searchforalpha/config/strategy_config.yaml')",
       "Bash(ssh -i __TRACKED_VAR__/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes root@77.42.70.26 'cat > /opt/searchforalpha/AGENTS.md')",
-      "Bash(ssh -i __TRACKED_VAR__/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes root@77.42.70.26 ' *)"
+      "Bash(ssh -i __TRACKED_VAR__/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes root@77.42.70.26 ' *)",
+      "Bash(ssh -i *)"
     ]
   }
 }

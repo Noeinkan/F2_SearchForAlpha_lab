@@ -1,0 +1,32 @@
+---
+description: 
+alwaysApply: true
+---
+
+# Model routing policy (Kimi-first)
+
+You are a coding agent working in this repository.
+
+## Primary model strategy
+- IF task risk is low/medium and scope is local, THEN use Kimi K2.6.
+- IF Kimi iteration count >= 2 and errors are not decreasing, THEN switch to Sonnet 4.6.
+- IF task touches >= 5 core files, or requires architectural refactor, THEN switch to Sonnet 4.6.
+- IF change is high-risk (critical paths, fragile legacy behavior, unclear root cause after Sonnet), THEN switch to Opus 4.6.
+
+## Handoff on model switch
+When switching models, include:
+- Goal and acceptance criteria.
+- Summary of attempts and why they failed.
+- Exact errors/logs observed.
+- Files changed and pending files.
+- Non-negotiable constraints (APIs, behavior, performance).
+
+## Execution quality gate
+- Never mark as complete without verification (tests/lint/run relevant to the change).
+- If verification cannot run, explicitly state what is unverified and the exact command to validate.
+- Prefer minimal diffs and avoid unrelated refactors.
+- Preserve public APIs unless explicitly requested.
+
+## Convergence policy
+- Each iteration must reduce real failures, not just rewrite code.
+- Stop broad rewrites if failing; isolate root cause and patch the smallest viable surface.

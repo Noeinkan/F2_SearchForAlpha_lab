@@ -2,10 +2,12 @@
 # Usage:  .\deploy.ps1
 #         .\deploy.ps1 -DryRun        # show what would be transferred, no write
 #         .\deploy.ps1 -File lib/bayesian_optimization.py   # single file only
+#         .\deploy.ps1 -PushConfig    # also upload config/strategy_config.yaml (server live_params)
 
 param(
     [switch]$DryRun,
-    [string]$File
+    [string]$File,
+    [switch]$PushConfig
 )
 
 $SERVER   = "root@77.42.70.26"
@@ -22,6 +24,10 @@ $SSH_OPTS = "-i `"$SSH_KEY`" -o StrictHostKeyChecking=no -o BatchMode=yes -o Con
 # Directories to sync (relative to project root)
 $SYNC_DIRS = @("lib", "config")
 
+# Config files uploaded on every deploy (strategy_config.yaml is opt-in via -PushConfig
+# so server-side promotions / openclaw edits are not overwritten).
+$CONFIG_FILES_ALWAYS = @("agent.yaml", "ui_presets.json", "param_history.yaml")
+
 # Files / patterns to exclude from rsync
 $EXCLUDES = @(
     "__pycache__/",
@@ -32,7 +38,8 @@ $EXCLUDES = @(
     ".git/",
     "results/",
     "export/",
-    "state/"
+    "state/",
+    "strategy_config.yaml"
 )
 
 function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
@@ -74,22 +81,59 @@ if ($hasRsync) {
         & rsync @args
         if ($LASTEXITCODE -ne 0) { Write-Err "rsync failed for $dir"; exit 1 }
     }
-} else {
-    Write-Step "rsync not found — falling back to scp -r"
     if ($DryRun) {
-        Write-Host "  [dry-run] would scp -r: $($SYNC_DIRS -join ', ')"
+        if ($PushConfig) {
+            Write-Step "PushConfig: would upload config/strategy_config.yaml (separate scp; rsync excludes it)"
+            Write-Host "  [dry-run] scp config/strategy_config.yaml → $SERVER`:$REMOTE/config/"
+        } else {
+            Write-Host "  [dry-run] skip config/strategy_config.yaml (use -PushConfig to upload)"
+        }
+    }
+} else {
+    Write-Step "rsync not found — falling back to scp (lib/ recursive; config/ per-file)"
+    if ($DryRun) {
+        Write-Host "  [dry-run] scp -r lib/ → $SERVER`:$REMOTE/"
+        foreach ($cfg in $CONFIG_FILES_ALWAYS) {
+            $p = Join-Path "config" $cfg
+            if (Test-Path $p) { Write-Host "  [dry-run] scp $p → $SERVER`:$REMOTE/config/" }
+        }
+        if ($PushConfig) {
+            Write-Host "  [dry-run] scp config/strategy_config.yaml → $SERVER`:$REMOTE/config/"
+        } else {
+            Write-Host "  [dry-run] skip config/strategy_config.yaml (use -PushConfig to upload)"
+        }
         exit 0
     }
-    foreach ($dir in $SYNC_DIRS) {
-        Write-Step "  $dir/"
-        $result = scp -r -i "$SSH_KEY" -o StrictHostKeyChecking=no `
-                      -o BatchMode=yes "$dir" "$SERVER`:$REMOTE/" 2>&1
-        if ($LASTEXITCODE -ne 0) { Write-Err $result; exit 1 }
-        Write-Ok "$dir uploaded"
+    Write-Step "  lib/"
+    $result = scp -r -i "$SSH_KEY" -o StrictHostKeyChecking=no `
+                  -o BatchMode=yes "lib" "$SERVER`:$REMOTE/" 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Err $result; exit 1 }
+    Write-Ok "lib uploaded"
+    Write-Step "  config/ (partial — strategy_config.yaml skipped unless -PushConfig)"
+    foreach ($cfg in $CONFIG_FILES_ALWAYS) {
+        $localPath = Join-Path "config" $cfg
+        if (-not (Test-Path $localPath)) { continue }
+        Write-Step "    $cfg"
+        $remote = "$SERVER`:$REMOTE/config/$cfg"
+        $r = scp -i "$SSH_KEY" -o StrictHostKeyChecking=no `
+                  -o BatchMode=yes $localPath $remote 2>&1
+        if ($LASTEXITCODE -ne 0) { Write-Err $r; exit 1 }
+        Write-Ok "$cfg uploaded"
     }
 }
 
-Write-Ok "Deploy complete → $SERVER`:$REMOTE"
+if ($PushConfig -and -not $DryRun) {
+    Write-Step "PushConfig: uploading config/strategy_config.yaml"
+    $r = scp -i "$SSH_KEY" -o StrictHostKeyChecking=no `
+              -o BatchMode=yes "config/strategy_config.yaml" "$SERVER`:$REMOTE/config/strategy_config.yaml" 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Err $r; exit 1 }
+    Write-Ok "strategy_config.yaml uploaded"
+}
+
+$deployNote = if (-not $PushConfig) {
+    " (strategy_config.yaml not pushed — use -PushConfig when you intend to overwrite server bundle)"
+} else { "" }
+Write-Ok "Deploy complete → $SERVER`:$REMOTE$deployNote"
 
 # ── Fix permissions so non-root users (e.g. openclaw) can read the modules ───
 # Uses POSIX ACLs (setfacl) so openclaw write-access survives rsync re-deploys

@@ -147,6 +147,25 @@ Keep the note concise — maximum 6 lines.
 - Never recommend a position size larger than `guards.max_position_pct` (25%).
 - Never suggest disabling or relaxing guards — propose tightening them instead.
 - A "Research note" is advisory only. The human decides whether to act on it.
+- **Pre-registration (comparison budget):** Before calling `sfa optimise`, declare
+  in writing to the human: target ticker, optimisation metric, `search_space`
+  bounds, in-sample window, and economic rationale. Any change to ticker, metric,
+  bounds, or window counts as a *new* test and consumes the comparison budget.
+  The human sets the maximum number of tests (default 3). If the budget is
+  exhausted without a robust result, do not keep fishing — reject the strategy
+  for this research cycle.
+- **Cross-asset robustness before promote:** Before recommending `sfa promote`,
+  run walkforward on at least three economically similar tickers (e.g. SPY,
+  QQQ, IWM for US broad equity). The walkforward gate must pass on **at least
+  two of three** tickers. A pass means the same thresholds as the promotion
+  gate: OOS Sharpe mean ≥ 1.0, degradation ≤ 0.4, and at least 4/5 windows
+  passing. Do not recommend promotion if this rule is not met.
+- **Parameter plateau before promote:** Before recommending `sfa promote`,
+  inspect `sfa trials --name <s> --top 20`. Trials whose parameters are within
+  ±10% of the best trial's numeric parameters should show in-sample Sortino
+  within 20% of the best trial's Sortino. If only the top trial is an outlier
+  and nearby parameter sets are much worse, flag likely overfitting and do not
+  recommend promotion.
 
 ## Output discipline
 
