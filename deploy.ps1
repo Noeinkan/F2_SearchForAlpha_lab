@@ -3,11 +3,13 @@
 #         .\deploy.ps1 -DryRun        # show what would be transferred, no write
 #         .\deploy.ps1 -File lib/bayesian_optimization.py   # single file only
 #         .\deploy.ps1 -PushConfig    # also upload config/strategy_config.yaml (server live_params)
+#         .\deploy.ps1 -SkipFixPerms  # skip remote openclaw/sfa permission helper after sync
 
 param(
     [switch]$DryRun,
     [string]$File,
-    [switch]$PushConfig
+    [switch]$PushConfig,
+    [switch]$SkipFixPerms
 )
 
 $SERVER   = "root@77.42.70.26"
@@ -157,16 +159,14 @@ $deployNote = if (-not $PushConfig) {
 } else { "" }
 Write-Ok "Deploy complete → $SERVER`:$REMOTE$deployNote"
 
-# ── Fix permissions so non-root users (e.g. openclaw) can read the modules ───
-# Uses POSIX ACLs (setfacl) so openclaw write-access survives rsync re-deploys
-# without changing file ownership. The config/ directory also has a default ACL
-# so any future file created there automatically inherits openclaw:rw.
-if (-not $DryRun) {
-    Write-Step "Fixing remote permissions..."
-    $fixResult = ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no `
-                     -o BatchMode=yes `
-                     $SERVER `
-                     "chmod -R 755 $REMOTE/lib $REMOTE/config && setfacl -m u:openclaw:rw $REMOTE/config/strategy_config.yaml && setfacl -m u:openclaw:r-- $REMOTE/config/agent.yaml" 2>&1
-    if ($LASTEXITCODE -ne 0) { Write-Err "setfacl failed: $fixResult"; exit 1 }
-    Write-Ok "Permissions fixed (strategy_config.yaml writable by openclaw via ACL, agent.yaml read-only)"
+# ── Fix permissions (full helper: venv, state/, param_history.yaml ACL, /usr/local/bin/sfa) ───
+if (-not $DryRun -and -not $SkipFixPerms) {
+    Write-Step "Fixing remote permissions (scripts/fix_openclaw_server_perms.ps1)..."
+    $fixPs1 = Join-Path $PSScriptRoot "scripts\fix_openclaw_server_perms.ps1"
+    if (-not (Test-Path $fixPs1)) {
+        Write-Err "Missing $fixPs1"
+        exit 1
+    }
+    & $fixPs1 -Server $SERVER -Remote $REMOTE -SshKey $SSH_KEY
+    if ($LASTEXITCODE -ne 0) { exit 1 }
 }

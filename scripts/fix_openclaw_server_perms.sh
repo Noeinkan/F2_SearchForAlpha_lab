@@ -3,7 +3,8 @@
 # access to the venv, Optuna state, project tree, and installs /usr/local/bin/sfa.
 #
 # Default app root is /opt/searchforalpha. Override with SFA_APP for a non-standard
-# path (e.g. WSL clone). This script is not meant for native Windows — use SSH to the server.
+# path (e.g. WSL clone). From Windows, run scripts/fix_openclaw_server_perms.ps1 instead
+# (uploads this file and runs it over SSH).
 set -euo pipefail
 
 APP="${SFA_APP:-/opt/searchforalpha}"
