@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 # Run on the Linux host as root (e.g. via deploy.ps1). Fixes OpenClaw / non-root
 # access to the venv, Optuna state, project tree, and installs /usr/local/bin/sfa.
+#
+# Default app root is /opt/searchforalpha. Override with SFA_APP for a non-standard
+# path (e.g. WSL clone). This script is not meant for native Windows — use SSH to the server.
 set -euo pipefail
 
 APP="${SFA_APP:-/opt/searchforalpha}"
 
 if [[ ! -d "$APP" ]]; then
   echo "error: directory not found: $APP" >&2
+  echo "" >&2
+  echo "This script is for the Linux server (production path: /opt/searchforalpha)." >&2
+  echo "Run it over SSH on that host as root, not from PowerShell on Windows." >&2
+  echo "" >&2
+  echo "If the app lives elsewhere on Linux (e.g. WSL), set:" >&2
+  echo "  export SFA_APP=/path/to/F2_SearchForAlpha_lab" >&2
+  echo "  sudo bash scripts/fix_openclaw_server_perms.sh" >&2
   exit 1
 fi
 
