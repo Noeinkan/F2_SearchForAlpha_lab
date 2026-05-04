@@ -218,6 +218,37 @@ def test_gate_passes_and_promotes_to_yaml(isolated_db, tmp_config, tmp_history):
     assert history["history"][-1]["strategy"] == "mean_reversion_rsi_bb"
 
 
+def test_promote_rolls_back_live_when_history_write_fails(isolated_db, tmp_config, tmp_history, monkeypatch):
+    _insert_walkforward(
+        isolated_db,
+        strategy="mean_reversion_rsi_bb",
+        params=NEW_PARAMS,
+        aggregate={"robust": True, "oos_sharpe_mean": 1.4, "degradation": 0.2, "robust_reason": "ok"},
+        recorded_at=datetime.now(UTC),
+    )
+
+    def _boom(*_a, **_kw):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(promotion_gate, "append_history_yaml", _boom)
+
+    payload = promotion_gate.promote(
+        strategy_name="mean_reversion_rsi_bb",
+        candidate_params=NEW_PARAMS,
+        config_path=tmp_config,
+        history_path=tmp_history,
+    )
+    assert payload["promoted"] is False
+    assert payload["reason"] == "history_write_failed"
+    assert "rolled back" in payload["details"]
+
+    yaml = YAML()
+    with tmp_config.open("r", encoding="utf-8") as f:
+        doc = yaml.load(f)
+    assert dict(doc["agent_strategies"]["mean_reversion_rsi_bb"]["live_params"]) == SEED_PARAMS
+    assert "last_promoted" not in doc["agent_strategies"]["mean_reversion_rsi_bb"]
+
+
 def test_diff_params_only_changed_keys():
     diff = promotion_registry.diff_params(
         {"a": 1, "b": 2, "c": 3},

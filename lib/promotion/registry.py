@@ -20,6 +20,8 @@ from ruamel.yaml import YAML
 from lib.store import trials as trials_store
 
 CONFIG_PATH = Path("config/strategy_config.yaml")
+# update_live_params(..., last_promoted=...) default: stamp a new promotion time
+_LAST_PROMOTED_STAMP_NEW = object()
 HISTORY_PATH = Path("config/param_history.yaml")
 HISTORY_SQL = Path(__file__).parent / "history.sql"
 
@@ -31,13 +33,35 @@ def _yaml() -> YAML:
     return y
 
 
+def get_last_promoted(strategy_name: str, *, config_path: Path | None = None) -> str | None:
+    """Return the bundle's last_promoted ISO string if set, else None."""
+    target = Path(config_path) if config_path else CONFIG_PATH
+    yaml = _yaml()
+    with target.open("r", encoding="utf-8") as f:
+        data = yaml.load(f)
+    bundles = data.get("agent_strategies") or {}
+    if strategy_name not in bundles:
+        raise KeyError(f"agent_strategies.{strategy_name} not found in {target}")
+    raw = bundles[strategy_name].get("last_promoted")
+    if raw is None:
+        return None
+    return str(raw)
+
+
 def update_live_params(
     strategy_name: str,
     new_params: dict[str, Any],
     *,
     config_path: Path | None = None,
+    last_promoted: Any = _LAST_PROMOTED_STAMP_NEW,
 ) -> dict[str, Any]:
-    """Overwrite live_params on the named strategy bundle. Return the prior values."""
+    """Overwrite live_params on the named strategy bundle. Return the prior values.
+
+    ``last_promoted``:
+      * default — set ``last_promoted`` to the current UTC time (normal promotion).
+      * ``str`` — set to that value (rollback restore).
+      * ``None`` — remove ``last_promoted`` from the bundle.
+    """
     target = Path(config_path) if config_path else CONFIG_PATH
     yaml = _yaml()
     with target.open("r", encoding="utf-8") as f:
@@ -49,7 +73,12 @@ def update_live_params(
 
     prior = dict(bundles[strategy_name].get("live_params") or {})
     bundles[strategy_name]["live_params"] = dict(new_params)
-    bundles[strategy_name]["last_promoted"] = datetime.now(UTC).isoformat()
+    if last_promoted is _LAST_PROMOTED_STAMP_NEW:
+        bundles[strategy_name]["last_promoted"] = datetime.now(UTC).isoformat()
+    elif last_promoted is None:
+        bundles[strategy_name].pop("last_promoted", None)
+    else:
+        bundles[strategy_name]["last_promoted"] = str(last_promoted)
 
     with target.open("w", encoding="utf-8") as f:
         yaml.dump(data, f)

@@ -29,6 +29,7 @@ from lib.config_loader import get_agent_config
 from lib.promotion.registry import (
     append_history_yaml,
     diff_params,
+    get_last_promoted,
     record_promotion,
     update_live_params,
 )
@@ -145,6 +146,7 @@ def promote(
     if isinstance(decision, GateRefusal):
         return decision.as_contract()
 
+    prior_last_promoted = get_last_promoted(strategy_name, config_path=config_path)
     prior_params = update_live_params(strategy_name, candidate_params, config_path=config_path)
     diff = diff_params(prior_params, candidate_params)
     history_entry_id = f"promo_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S_%f')}"
@@ -163,7 +165,20 @@ def promote(
         },
         "promoted_at": promoted_at,
     }
-    append_history_yaml(entry, path=history_path)
+    try:
+        append_history_yaml(entry, path=history_path)
+    except Exception as exc:
+        update_live_params(
+            strategy_name,
+            prior_params,
+            config_path=config_path,
+            last_promoted=prior_last_promoted,
+        )
+        return GateRefusal(
+            "history_write_failed",
+            f"Could not append to param history ({exc!r}); live_params were rolled back. "
+            "Fix permissions on config/param_history.yaml (see scripts/fix_openclaw_server_perms.sh).",
+        ).as_contract()
     record_promotion(entry, db_path=db_path)
     return {
         "promoted": True,

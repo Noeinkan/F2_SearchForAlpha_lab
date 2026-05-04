@@ -25,8 +25,18 @@ mkdir -p "$APP/state"
 if id openclaw &>/dev/null; then
   chown -R openclaw:openclaw "$APP/state" || true
   chmod -R u+rwX "$APP/state"
-  setfacl -m "u:openclaw:rw" "$APP/config/strategy_config.yaml"
-  setfacl -m "u:openclaw:r--" "$APP/config/agent.yaml"
+  if ! setfacl -m "u:openclaw:rw" "$APP/config/strategy_config.yaml" 2>/dev/null; then
+    echo "warn: setfacl failed for strategy_config.yaml (install acl package?)" >&2
+  fi
+  if ! setfacl -m "u:openclaw:r--" "$APP/config/agent.yaml" 2>/dev/null; then
+    echo "warn: setfacl failed for agent.yaml" >&2
+  fi
+  # promote appends here; without write access openclaw used to get EACCES mid-promote
+  touch "$APP/config/param_history.yaml" 2>/dev/null || true
+  if ! setfacl -m "u:openclaw:rw" "$APP/config/param_history.yaml" 2>/dev/null; then
+    chown openclaw:openclaw "$APP/config/param_history.yaml" 2>/dev/null || true
+    chmod u+rw "$APP/config/param_history.yaml" 2>/dev/null || true
+  fi
 else
   echo "warn: user openclaw not found — skipped chown state and setfacl" >&2
 fi
