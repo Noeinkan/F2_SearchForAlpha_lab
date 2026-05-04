@@ -31,12 +31,23 @@ Write-Step "Ensuring $Remote/scripts on $Server"
 $null = ssh -i $SshKey -o StrictHostKeyChecking=no -o BatchMode=yes $Server "mkdir -p $Remote/scripts" 2>&1
 if ($LASTEXITCODE -ne 0) { Write-Err "ssh mkdir failed"; exit 1 }
 
-Write-Step "Uploading fix_openclaw_server_perms.sh"
-$r = scp -i $SshKey -o StrictHostKeyChecking=no -o BatchMode=yes $LocalPosix $RemoteSpec 2>&1
-if ($LASTEXITCODE -ne 0) { Write-Err $r; exit 1 }
+Write-Step "Uploading fix_openclaw_server_perms.sh (LF line endings)"
+$tmpSh = Join-Path ([IO.Path]::GetTempPath()) ("sfa_fix_perms_{0}.sh" -f [Guid]::NewGuid().ToString("n"))
+try {
+    $raw = [System.IO.File]::ReadAllText($BashLocal)
+    $unix = $raw -replace "`r`n", "`n" -replace "`r", "`n"
+    [System.IO.File]::WriteAllText($tmpSh, $unix, [System.Text.UTF8Encoding]::new($false))
+    $tmpPosix = ((Resolve-Path -LiteralPath $tmpSh).Path -replace "\\", "/")
+    $r = scp -i $SshKey -o StrictHostKeyChecking=no -o BatchMode=yes $tmpPosix $RemoteSpec 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Err $r; exit 1 }
+} finally {
+    Remove-Item -LiteralPath $tmpSh -Force -ErrorAction SilentlyContinue
+}
 
 Write-Step "Running remote fix (SFA_APP=$Remote)"
-$run = ssh -i $SshKey -o StrictHostKeyChecking=no -o BatchMode=yes $Server "SFA_APP=$Remote bash $RemoteScript" 2>&1
+$remoteBash = '/bin/bash'
+$run = ssh -i $SshKey -o StrictHostKeyChecking=no -o BatchMode=yes $Server `
+    "export SFA_APP=$Remote; exec $remoteBash $RemoteScript" 2>&1
 Write-Host $run
 if ($LASTEXITCODE -ne 0) { Write-Err "remote bash failed"; exit 1 }
 

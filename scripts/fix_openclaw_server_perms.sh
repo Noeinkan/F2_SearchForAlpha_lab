@@ -5,7 +5,9 @@
 # Default app root is /opt/searchforalpha. Override with SFA_APP for a non-standard
 # path (e.g. WSL clone). From Windows, run scripts/fix_openclaw_server_perms.ps1 instead
 # (uploads this file and runs it over SSH).
-set -euo pipefail
+# Avoid `pipefail` here: some environments invoke this script with a minimal sh;
+# CRLF from Windows uploads can also break `set -o` parsing on Linux.
+set -eu
 
 APP="${SFA_APP:-/opt/searchforalpha}"
 
