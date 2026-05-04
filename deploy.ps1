@@ -46,18 +46,35 @@ function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host " ok  $msg" -ForegroundColor Green }
 function Write-Err($msg)  { Write-Host " ERR $msg" -ForegroundColor Red }
 
+# OpenSSH scp on Windows mishandles unquoted user@host:path and backslash locals;
+# always quote dest and use / for local paths so the remote target is one argv.
+function Get-ScpLocalPosix([string]$Path) {
+    if ([string]::IsNullOrEmpty($Path)) { return $Path }
+    $full = if ([System.IO.Path]::IsPathRooted($Path)) {
+        (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    } else {
+        (Join-Path (Get-Location).Path $Path)
+    }
+    return ($full -replace '\\', '/')
+}
+function Get-ScpRemoteDest([string]$RelPath) {
+    $unix = ($RelPath -replace '\\', '/').TrimStart('/')
+    return "${SERVER}:${REMOTE}/$unix"
+}
+
 # ── single-file shortcut ─────────────────────────────────────────────────────
 if ($File) {
-    $local  = $File -replace "\\", "/"
-    $remote = "$SERVER`:$REMOTE/$local"
-    Write-Step "Uploading $local → $remote"
+    $local = $File -replace "\\", "/"
+    $remoteSpec = Get-ScpRemoteDest $local
+    Write-Step "Uploading $local → $remoteSpec"
     if (-not $DryRun) {
+        $localPosix = Get-ScpLocalPosix $File
         $result = scp -i "$SSH_KEY" -o StrictHostKeyChecking=no `
-                      -o BatchMode=yes $File "$remote" 2>&1
+                      -o BatchMode=yes "$localPosix" "$remoteSpec" 2>&1
         if ($LASTEXITCODE -ne 0) { Write-Err $result; exit 1 }
         Write-Ok "done"
     } else {
-        Write-Host "  [dry-run] scp $File $remote"
+        Write-Host "  [dry-run] scp $(Get-ScpLocalPosix $File) $remoteSpec"
     }
     exit 0
 }
@@ -105,8 +122,10 @@ if ($hasRsync) {
         exit 0
     }
     Write-Step "  lib/"
+    $libLocal = Get-ScpLocalPosix "lib"
+    $libDest  = Get-ScpRemoteDest ""
     $result = scp -r -i "$SSH_KEY" -o StrictHostKeyChecking=no `
-                  -o BatchMode=yes "lib" "$SERVER`:$REMOTE/" 2>&1
+                  -o BatchMode=yes "$libLocal" "$libDest" 2>&1
     if ($LASTEXITCODE -ne 0) { Write-Err $result; exit 1 }
     Write-Ok "lib uploaded"
     Write-Step "  config/ (partial — strategy_config.yaml skipped unless -PushConfig)"
@@ -114,9 +133,10 @@ if ($hasRsync) {
         $localPath = Join-Path "config" $cfg
         if (-not (Test-Path $localPath)) { continue }
         Write-Step "    $cfg"
-        $remote = "$SERVER`:$REMOTE/config/$cfg"
+        $localPosix = Get-ScpLocalPosix $localPath
+        $remoteSpec = Get-ScpRemoteDest "config/$cfg"
         $r = scp -i "$SSH_KEY" -o StrictHostKeyChecking=no `
-                  -o BatchMode=yes $localPath $remote 2>&1
+                  -o BatchMode=yes "$localPosix" "$remoteSpec" 2>&1
         if ($LASTEXITCODE -ne 0) { Write-Err $r; exit 1 }
         Write-Ok "$cfg uploaded"
     }
@@ -124,8 +144,10 @@ if ($hasRsync) {
 
 if ($PushConfig -and -not $DryRun) {
     Write-Step "PushConfig: uploading config/strategy_config.yaml"
+    $scYamlLocal = Get-ScpLocalPosix "config/strategy_config.yaml"
+    $scYamlDest  = Get-ScpRemoteDest "config/strategy_config.yaml"
     $r = scp -i "$SSH_KEY" -o StrictHostKeyChecking=no `
-              -o BatchMode=yes "config/strategy_config.yaml" "$SERVER`:$REMOTE/config/strategy_config.yaml" 2>&1
+              -o BatchMode=yes "$scYamlLocal" "$scYamlDest" 2>&1
     if ($LASTEXITCODE -ne 0) { Write-Err $r; exit 1 }
     Write-Ok "strategy_config.yaml uploaded"
 }
