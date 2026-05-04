@@ -157,21 +157,16 @@ $deployNote = if (-not $PushConfig) {
 } else { "" }
 Write-Ok "Deploy complete → $SERVER`:$REMOTE$deployNote"
 
-# ── Fix permissions so non-root users (e.g. openclaw) can run sfa ───────────
-# - Traversable /opt + app root, world-readable+executable .venv, state/ owned
-#   by openclaw (Optuna DB), YAML ACLs, and /usr/local/bin/sfa wrapper.
-# Script: scripts/fix_openclaw_server_perms.sh
+# ── Fix permissions so non-root users (e.g. openclaw) can read the modules ───
+# Uses POSIX ACLs (setfacl) so openclaw write-access survives rsync re-deploys
+# without changing file ownership. The config/ directory also has a default ACL
+# so any future file created there automatically inherits openclaw:rw.
 if (-not $DryRun) {
-    Write-Step "Fixing remote permissions (openclaw + sfa)..."
-    $fixScript = Join-Path $PSScriptRoot "scripts" "fix_openclaw_server_perms.sh"
-    if (-not (Test-Path -LiteralPath $fixScript)) {
-        Write-Err "Missing $fixScript"
-        exit 1
-    }
-    $fixBody = Get-Content -LiteralPath $fixScript -Raw -Encoding utf8
-    $fixResult = $fixBody | ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o BatchMode=yes `
-        -o ControlMaster=auto -o ControlPath="$CM_PATH" -o ControlPersist=30s `
-        $SERVER "SFA_APP=$REMOTE bash -s --" 2>&1
-    if ($LASTEXITCODE -ne 0) { Write-Err "Remote permission fix failed: $fixResult"; exit 1 }
-    Write-Ok "Permissions fixed (venv, state/, ACLs, /usr/local/bin/sfa)"
+    Write-Step "Fixing remote permissions..."
+    $fixResult = ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no `
+                     -o BatchMode=yes `
+                     $SERVER `
+                     "chmod -R 755 $REMOTE/lib $REMOTE/config && setfacl -m u:openclaw:rw $REMOTE/config/strategy_config.yaml && setfacl -m u:openclaw:r-- $REMOTE/config/agent.yaml" 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Err "setfacl failed: $fixResult"; exit 1 }
+    Write-Ok "Permissions fixed (strategy_config.yaml writable by openclaw via ACL, agent.yaml read-only)"
 }
