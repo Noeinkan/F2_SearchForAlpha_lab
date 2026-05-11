@@ -17,6 +17,7 @@ $REMOTE   = "/opt/searchforalpha"
 $SSH_KEY  = "$env:USERPROFILE\.ssh\id_ed25519"
 $SCP_BASE_ARGS = @(
     "-i", $SSH_KEY,
+    "-q",
     "-o", "StrictHostKeyChecking=no",
     "-o", "BatchMode=yes",
     "-o", "ConnectTimeout=10"
