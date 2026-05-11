@@ -23,12 +23,9 @@ $SCP_BASE_ARGS = @(
     "-o", "ConnectTimeout=10"
 )
 
-# SSH ControlMaster: first connection opens a shared socket; subsequent calls reuse it.
-# Saves ~1-2 s per extra handshake — 3 operations become 1 handshake + 2 free reuses.
-$CM_DIR   = "$env:USERPROFILE\.ssh\sockets"
-if (-not (Test-Path $CM_DIR)) { New-Item -ItemType Directory -Path $CM_DIR | Out-Null }
-$CM_PATH  = ($CM_DIR -replace "\\", "/") + "/cm_%r@%h_%p"
-$SSH_OPTS = "-i `"$SSH_KEY`" -o StrictHostKeyChecking=no -o BatchMode=yes -o ControlMaster=auto -o ControlPath=`"$CM_PATH`" -o ControlPersist=30s"
+# Keep the rsync SSH transport compatible with Windows OpenSSH.
+# ControlMaster/ControlPath socket reuse is unreliable here and breaks rsync.
+$SSH_OPTS = "-i `"$SSH_KEY`" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
 
 # Directories to sync (relative to project root)
 $SYNC_DIRS = @("lib", "config")
@@ -57,6 +54,61 @@ function Write-Err($msg)  { Write-Host " ERR $msg" -ForegroundColor Red }
 function Invoke-Scp([string[]]$ScpArgs, [string]$FailureMessage) {
     # Stream scp output so recursive uploads do not appear stalled at the current step.
     & scp @ScpArgs
+    if ($LASTEXITCODE -ne 0) { Write-Err $FailureMessage; exit 1 }
+}
+function Convert-ToMsysPath([string]$Path) {
+    $full = if ([System.IO.Path]::IsPathRooted($Path)) {
+        (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    } else {
+        (Join-Path (Get-Location).Path $Path)
+    }
+
+    $unix = $full -replace '\\', '/'
+    if ($unix -match '^([A-Za-z]):/(.*)$') {
+        return "/$($matches[1].ToLowerInvariant())/$($matches[2])"
+    }
+
+    return $unix
+}
+function Convert-ToBashLiteral([string]$Value) {
+    return "'" + ($Value -replace "'", "'`"'`"'") + "'"
+}
+function Resolve-RsyncCommand() {
+    $command = Get-Command rsync -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+
+    $candidates = @(
+        "C:\msys64\usr\bin\rsync.exe",
+        "C:\Program Files\Git\usr\bin\rsync.exe"
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) { return $candidate }
+    }
+
+    return $null
+}
+function Resolve-MsysBashCommand() {
+    $candidates = @(
+        "C:\msys64\usr\bin\bash.exe"
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) { return $candidate }
+    }
+
+    return $null
+}
+function Invoke-Rsync([string[]]$RsyncArgs, [string]$FailureMessage) {
+    if ($script:RsyncUsesMsysBash) {
+        $projectDir = Convert-ToMsysPath (Get-Location).Path
+        $quotedArgs = $RsyncArgs | ForEach-Object { Convert-ToBashLiteral $_ }
+        $command = "cd $(Convert-ToBashLiteral $projectDir) && rsync $($quotedArgs -join ' ')"
+        & $script:MsysBashCmd -lc $command
+    } else {
+        & $script:RsyncCmd @RsyncArgs
+    }
+
     if ($LASTEXITCODE -ne 0) { Write-Err $FailureMessage; exit 1 }
 }
 
@@ -92,23 +144,50 @@ if ($File) {
 }
 
 # ── full sync via rsync (preferred) or scp -r (fallback) ────────────────────
-$hasRsync = $null -ne (Get-Command rsync -ErrorAction SilentlyContinue)
+$rsyncCmd = Resolve-RsyncCommand
+$hasRsync = $null -ne $rsyncCmd
+$msysBashCmd = Resolve-MsysBashCommand
+$rsyncUsesMsysBash = $rsyncCmd -eq "C:\msys64\usr\bin\rsync.exe" -and $null -ne $msysBashCmd
 
 if ($hasRsync) {
     Write-Step "rsync available - syncing changed files only"
     $excludeArgs = $EXCLUDES | ForEach-Object { "--exclude=$_" }
     $dryArg      = if ($DryRun) { "--dry-run" } else { "" }
+    $rsyncSshOpts = if ($rsyncUsesMsysBash) {
+        $sshKeyMsys = Convert-ToMsysPath $SSH_KEY
+        "ssh -i $sshKeyMsys -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
+    } else {
+        $SSH_OPTS
+    }
 
     foreach ($dir in $SYNC_DIRS) {
+        if ($dir -eq "config") {
+            Write-Step "  config/ (per-file - strategy_config.yaml skipped unless -PushConfig)"
+            foreach ($cfg in $CONFIG_FILES_ALWAYS) {
+                $localPath = Join-Path "config" $cfg
+                if (-not (Test-Path $localPath)) { continue }
+                if ($DryRun) {
+                    Write-Host "  [dry-run] scp $localPath → $SERVER`:$REMOTE/config/"
+                    continue
+                }
+
+                Write-Step "    $cfg"
+                $localPosix = Get-ScpLocalPosix $localPath
+                $remoteSpec = Get-ScpRemoteDest "config/$cfg"
+                Invoke-Scp ($SCP_BASE_ARGS + @($localPosix, $remoteSpec)) "scp failed for config/$cfg"
+                Write-Ok "$cfg uploaded"
+            }
+            continue
+        }
+
         Write-Step "  $dir/"
         $args = @(
             "-av", "--delete",   # no -z: compression adds CPU overhead with no benefit on a fast link
-            "-e", "ssh $SSH_OPTS",
+            "-e", $rsyncSshOpts,
             $dryArg
         ) + $excludeArgs + @("$dir/", "$SERVER`:$REMOTE/$dir/")
         $args = $args | Where-Object { $_ -ne "" }
-        & rsync @args
-        if ($LASTEXITCODE -ne 0) { Write-Err "rsync failed for $dir"; exit 1 }
+        Invoke-Rsync $args "rsync failed for $dir"
     }
     if ($DryRun) {
         if ($PushConfig) {
