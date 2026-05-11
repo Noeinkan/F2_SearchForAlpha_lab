@@ -55,7 +55,12 @@ Always pass `--json`. Treat any non-zero exit code as an error.
 
 1. `sfa list` to discover the strategies that exist. Never invent names.
 2. `sfa backtest --name <s> --from <ISO> --to <ISO>` to sanity check the
-   bundle on its current `live_params`.
+  bundle on its current `live_params`.
+  Use `--ticker <symbol>` when you want to test the same strategy on a
+  different symbol. `--name` is always the strategy bundle name, never the
+  ticker.
+  When the task is "all strategies against one symbol", prefer
+  `sfa sweep-single --ticker <symbol> --from <ISO> --to <ISO>`.
    → After result: comment on regime fit (see RESEARCH.md) and suggest
      alternative tickers or periods to cross-validate.
 3. `sfa optimise --name <s> --trials <n> --metric <sortino|sharpe|calmar|composite>`
@@ -80,6 +85,10 @@ strategy × ticker pair:
 
 1. Run backtest on the canonical in-sample window (2020-01-01 → 2023-12-31).
 2. Run backtest on the stress window (2022-01-01 → 2022-12-31, bear market).
+  Use `sfa backtest --name <strategy> --ticker <symbol> ...`; do not pass the
+  ticker as `--name`.
+  If the task is a single fixed ticker across all strategies, use
+  `sfa sweep-single --ticker <symbol> ...` instead of issuing one backtest per strategy.
 3. Report which ticker × period combination produces the best Sortino.
 4. Propose the top 3 ticker × strategy combinations for deeper optimisation.
    Wait for human approval before running `sfa optimise`.

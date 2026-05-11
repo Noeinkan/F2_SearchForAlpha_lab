@@ -35,6 +35,39 @@ class StrategyList:
 
 
 @dataclass(frozen=True)
+class StrategySweepFailure:
+    strategy: str
+    error: str
+    message: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class StrategySweep:
+    ticker: str
+    window_from: str
+    window_to: str
+    strategy_count: int
+    success_count: int
+    failure_count: int
+    results: list[dict[str, Any]] = field(default_factory=list)
+    failures: list[StrategySweepFailure] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "ticker": self.ticker,
+            "window": {"from": self.window_from, "to": self.window_to},
+            "strategy_count": self.strategy_count,
+            "success_count": self.success_count,
+            "failure_count": self.failure_count,
+            "results": self.results,
+            "failures": [failure.as_dict() for failure in self.failures],
+        }
+
+
+@dataclass(frozen=True)
 class CliError:
     error: str
     message: str

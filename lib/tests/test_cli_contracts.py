@@ -21,6 +21,7 @@ from typer.testing import CliRunner
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from lib.cli.app import app
+from lib.cli.commands.instructions_cmd import _build_briefing
 from lib.cli.commands.list_cmd import build_strategy_list
 
 
@@ -145,3 +146,60 @@ def test_backtest_invalid_params_json_returns_error():
     assert result.exit_code == 2
     payload = json.loads(result.output)
     assert payload["error"] == "invalid_params"
+
+
+def test_sweep_single_contract_shape():
+    with patch("lib.agent_strategy.fetch_data", side_effect=_fake_fetch):
+        result = runner.invoke(
+            app,
+            [
+                "sweep-single",
+                "--ticker", "TSLA",
+                "--from", "2024-01-01",
+                "--to", "2024-10-01",
+                "--json",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+
+    payload = json.loads(result.output)
+    expected_names = {entry.name for entry in build_strategy_list().strategies}
+    result_names = {entry["strategy"] for entry in payload["results"]}
+
+    assert payload["ticker"] == "TSLA"
+    assert payload["window"] == {"from": "2024-01-01", "to": "2024-10-01"}
+    assert payload["strategy_count"] == len(expected_names)
+    assert payload["success_count"] == len(payload["results"])
+    assert payload["failure_count"] == len(payload["failures"])
+    assert payload["failure_count"] == 0
+    assert result_names == expected_names
+    assert all(entry["ticker"] == "TSLA" for entry in payload["results"])
+
+
+def test_instructions_single_target_backtest_syntax_uses_ticker_override():
+    briefing = _build_briefing(
+        {
+            "research": {
+                "single_target_mode": {
+                    "enabled": True,
+                    "ticker": "TSLA",
+                    "window": "in_sample",
+                },
+                "backtest_windows": {
+                    "in_sample": {
+                        "from": "2020-01-01",
+                        "to": "2023-12-31",
+                    }
+                },
+            },
+            "promotion": {},
+        }
+    )
+
+    assert briefing["mode"] == "single_target"
+    assert briefing["target"] == "TSLA"
+    assert briefing["loop"][1].startswith("2:sweep-single")
+    assert "--name NAME --ticker TSLA" in briefing["syntax"]["backtest"]
+    assert "sweep-single" in briefing["syntax"]
+    assert any("--name is always the strategy bundle name" in rule for rule in briefing["rules"])
+    assert any("prefer `sfa sweep-single`" in rule for rule in briefing["rules"])

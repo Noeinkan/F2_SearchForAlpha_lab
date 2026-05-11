@@ -8,7 +8,7 @@ from typing import Annotated
 
 import typer
 
-from lib.agent_strategy import StrategyNotFoundError, load_bundle, prepare_dataframe
+from lib.agent_strategy import AgentStrategyBundle, StrategyNotFoundError, load_bundle, prepare_dataframe
 from lib.backtest_result import run_backtest_result
 from lib.cli.contracts import CliError
 
@@ -25,6 +25,42 @@ def _parse_params(raw: str | None) -> dict | None:
         typer.echo(json.dumps(CliError("invalid_params", "--params must be a JSON object").as_dict()))
         raise typer.Exit(code=2)
     return parsed
+
+
+def build_backtest_contract(
+    bundle: AgentStrategyBundle,
+    *,
+    window_from: str,
+    window_to: str,
+    params: dict | None,
+    ticker_override: str | None,
+    initial_capital: float,
+    seed: int,
+) -> dict:
+    df = prepare_dataframe(
+        bundle,
+        window_from=window_from,
+        window_to=window_to,
+        params=params,
+        ticker_override=ticker_override,
+    )
+
+    result = run_backtest_result(
+        df,
+        strategy_name=bundle.name,
+        ticker=ticker_override or bundle.ticker,
+        window_from=window_from,
+        window_to=window_to,
+        params=params,
+        buy_signals=bundle.buy_signals,
+        sell_signals=bundle.sell_signals,
+        initial_capital=initial_capital,
+        strategy_mode=bundle.mode,
+        signal_logic=bundle.signal_logic,
+        signal_window=bundle.signal_window,
+        seed=seed,
+    )
+    return result.to_contract()
 
 
 def register(app: typer.Typer) -> None:
@@ -50,34 +86,18 @@ def register(app: typer.Typer) -> None:
         effective_params = param_override if param_override is not None else bundle.live_params
 
         try:
-            df = prepare_dataframe(
+            contract = build_backtest_contract(
                 bundle,
                 window_from=from_,
                 window_to=to,
                 params=effective_params,
                 ticker_override=ticker,
+                initial_capital=initial_capital,
+                seed=seed,
             )
         except Exception as exc:
             typer.echo(json.dumps(CliError("data_preparation_failed", str(exc)).as_dict()))
             raise typer.Exit(code=3) from exc
-
-        result = run_backtest_result(
-            df,
-            strategy_name=bundle.name,
-            ticker=ticker or bundle.ticker,
-            window_from=from_,
-            window_to=to,
-            params=effective_params,
-            buy_signals=bundle.buy_signals,
-            sell_signals=bundle.sell_signals,
-            initial_capital=initial_capital,
-            strategy_mode=bundle.mode,
-            signal_logic=bundle.signal_logic,
-            signal_window=bundle.signal_window,
-            seed=seed,
-        )
-
-        contract = result.to_contract()
         if json_output:
             typer.echo(json.dumps(contract, indent=2, default=str))
             return
