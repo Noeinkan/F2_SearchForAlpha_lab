@@ -14,6 +14,7 @@ import typer
 
 from lib.cli.commands import (
     backtest_cmd,
+    instructions_cmd,
     kill_cmd,
     list_cmd,
     optimise_cmd,
@@ -41,6 +42,7 @@ def build_app() -> typer.Typer:
         add_completion=False,
         no_args_is_help=True,
     )
+    instructions_cmd.register(app)
     list_cmd.register(app)
     backtest_cmd.register(app)
     optimise_cmd.register(app)

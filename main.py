@@ -28,17 +28,6 @@ def reload_modules() -> None:
             importlib.reload(sys.modules[module])
 
 
-# Import necessary modules (explicit imports, no star imports)
-from lib.signals.indicators import add_indicators, generate_signals
-from lib.data_processing import fetch_data, get_all_tickers, create_backtest_results
-from lib.visualization import plot_financial_chart
-from lib.utils import TradingStrategyInput, get_user_input, export_priceaction_to_excel
-from lib.strategy import backtest, run_backtest, percentage_of_portfolio
-from lib.signal_combo_optimisation import generate_ordered_combinations, test_combination
-
-from lib.dash.integrated_dashboard import run_dashboard
-
-
 def main():
     """Main entry point for the application."""
     reload_modules()

@@ -85,7 +85,7 @@ if ($File) {
 $hasRsync = $null -ne (Get-Command rsync -ErrorAction SilentlyContinue)
 
 if ($hasRsync) {
-    Write-Step "rsync available — syncing changed files only"
+    Write-Step "rsync available - syncing changed files only"
     $excludeArgs = $EXCLUDES | ForEach-Object { "--exclude=$_" }
     $dryArg      = if ($DryRun) { "--dry-run" } else { "" }
 
@@ -102,14 +102,14 @@ if ($hasRsync) {
     }
     if ($DryRun) {
         if ($PushConfig) {
-            Write-Step "PushConfig: would upload config/strategy_config.yaml (separate scp; rsync excludes it)"
+            Write-Step 'PushConfig: would upload config/strategy_config.yaml (separate scp; rsync excludes it)'
             Write-Host "  [dry-run] scp config/strategy_config.yaml → $SERVER`:$REMOTE/config/"
         } else {
             Write-Host "  [dry-run] skip config/strategy_config.yaml (use -PushConfig to upload)"
         }
     }
 } else {
-    Write-Step "rsync not found — falling back to scp (lib/ recursive; config/ per-file)"
+    Write-Step 'rsync not found - falling back to scp (lib/ recursive; config/ per-file)'
     if ($DryRun) {
         Write-Host "  [dry-run] scp -r lib/ → $SERVER`:$REMOTE/"
         foreach ($cfg in $CONFIG_FILES_ALWAYS) {
@@ -130,7 +130,7 @@ if ($hasRsync) {
                   -o BatchMode=yes "$libLocal" "$libDest" 2>&1
     if ($LASTEXITCODE -ne 0) { Write-Err $result; exit 1 }
     Write-Ok "lib uploaded"
-    Write-Step "  config/ (partial — strategy_config.yaml skipped unless -PushConfig)"
+    Write-Step "  config/ (partial - strategy_config.yaml skipped unless -PushConfig)"
     foreach ($cfg in $CONFIG_FILES_ALWAYS) {
         $localPath = Join-Path "config" $cfg
         if (-not (Test-Path $localPath)) { continue }
@@ -155,7 +155,7 @@ if ($PushConfig -and -not $DryRun) {
 }
 
 $deployNote = if (-not $PushConfig) {
-    " (strategy_config.yaml not pushed — use -PushConfig when you intend to overwrite server bundle)"
+    " (strategy_config.yaml not pushed - use -PushConfig when you intend to overwrite server bundle)"
 } else { "" }
 Write-Ok "Deploy complete → $SERVER`:$REMOTE$deployNote"
 

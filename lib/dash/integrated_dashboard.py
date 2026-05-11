@@ -1647,6 +1647,16 @@ def find_available_port(start_port: int = START_PORT, max_tries: int = MAX_PORT_
     raise RuntimeError("No available ports found")
 
 
+def _get_env_port(default_port: int) -> int:
+    """Read DASH_PORT from env with safe integer fallback."""
+    raw_port = os.getenv("DASH_PORT", str(default_port)).strip()
+    try:
+        return int(raw_port)
+    except (TypeError, ValueError):
+        logger.warning("Invalid DASH_PORT=%r; falling back to %d", raw_port, default_port)
+        return default_port
+
+
 def run_dashboard(dev_mode: bool = False) -> None:
     """Run the professional trading dashboard."""
     theme = get_theme(DEFAULT_THEME)
@@ -1690,12 +1700,14 @@ def run_dashboard(dev_mode: bool = False) -> None:
 
     # In dev mode the reloader spawns two processes; keep a fixed port to
     # avoid the second process auto-selecting the next free port.
-    port = START_PORT if dev_mode else find_available_port()
+    # For production/deploy, prefer explicit env-based binding.
+    host = "127.0.0.1" if dev_mode else os.getenv("DASH_HOST", "127.0.0.1").strip()
+    port = START_PORT if dev_mode else _get_env_port(8060)
     should_open_browser = (not dev_mode) or (os.environ.get("WERKZEUG_RUN_MAIN") == "true")
     if should_open_browser:
         Timer(1, open_browser).start()
-    logger.info(f"Starting dashboard on port {port}")
-    app.run(debug=dev_mode, use_reloader=dev_mode, port=port)
+    logger.info("Starting dashboard on %s:%s", host, port)
+    app.run(debug=dev_mode, use_reloader=dev_mode, host=host, port=port)
 
 
 # =============================================================================
