@@ -15,6 +15,12 @@ param(
 $SERVER   = "root@77.42.70.26"
 $REMOTE   = "/opt/searchforalpha"
 $SSH_KEY  = "$env:USERPROFILE\.ssh\id_ed25519"
+$SCP_BASE_ARGS = @(
+    "-i", $SSH_KEY,
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=10"
+)
 
 # SSH ControlMaster: first connection opens a shared socket; subsequent calls reuse it.
 # Saves ~1-2 s per extra handshake — 3 operations become 1 handshake + 2 free reuses.
@@ -47,6 +53,11 @@ $EXCLUDES = @(
 function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host " ok  $msg" -ForegroundColor Green }
 function Write-Err($msg)  { Write-Host " ERR $msg" -ForegroundColor Red }
+function Invoke-Scp([string[]]$ScpArgs, [string]$FailureMessage) {
+    # Stream scp output so recursive uploads do not appear stalled at the current step.
+    & scp @ScpArgs
+    if ($LASTEXITCODE -ne 0) { Write-Err $FailureMessage; exit 1 }
+}
 
 # OpenSSH scp on Windows mishandles unquoted user@host:path and backslash locals;
 # always quote dest and use / for local paths so the remote target is one argv.
@@ -71,9 +82,7 @@ if ($File) {
     Write-Step "Uploading $local → $remoteSpec"
     if (-not $DryRun) {
         $localPosix = Get-ScpLocalPosix $File
-        $result = scp -i "$SSH_KEY" -o StrictHostKeyChecking=no `
-                      -o BatchMode=yes "$localPosix" "$remoteSpec" 2>&1
-        if ($LASTEXITCODE -ne 0) { Write-Err $result; exit 1 }
+        Invoke-Scp ($SCP_BASE_ARGS + @($localPosix, $remoteSpec)) "scp failed for $local"
         Write-Ok "done"
     } else {
         Write-Host "  [dry-run] scp $(Get-ScpLocalPosix $File) $remoteSpec"
@@ -126,9 +135,7 @@ if ($hasRsync) {
     Write-Step "  lib/"
     $libLocal = Get-ScpLocalPosix "lib"
     $libDest  = Get-ScpRemoteDest ""
-    $result = scp -r -i "$SSH_KEY" -o StrictHostKeyChecking=no `
-                  -o BatchMode=yes "$libLocal" "$libDest" 2>&1
-    if ($LASTEXITCODE -ne 0) { Write-Err $result; exit 1 }
+    Invoke-Scp ($SCP_BASE_ARGS + @("-r", $libLocal, $libDest)) "scp failed for lib/"
     Write-Ok "lib uploaded"
     Write-Step "  config/ (partial - strategy_config.yaml skipped unless -PushConfig)"
     foreach ($cfg in $CONFIG_FILES_ALWAYS) {
@@ -137,9 +144,7 @@ if ($hasRsync) {
         Write-Step "    $cfg"
         $localPosix = Get-ScpLocalPosix $localPath
         $remoteSpec = Get-ScpRemoteDest "config/$cfg"
-        $r = scp -i "$SSH_KEY" -o StrictHostKeyChecking=no `
-                  -o BatchMode=yes "$localPosix" "$remoteSpec" 2>&1
-        if ($LASTEXITCODE -ne 0) { Write-Err $r; exit 1 }
+        Invoke-Scp ($SCP_BASE_ARGS + @($localPosix, $remoteSpec)) "scp failed for config/$cfg"
         Write-Ok "$cfg uploaded"
     }
 }
@@ -148,9 +153,7 @@ if ($PushConfig -and -not $DryRun) {
     Write-Step "PushConfig: uploading config/strategy_config.yaml"
     $scYamlLocal = Get-ScpLocalPosix "config/strategy_config.yaml"
     $scYamlDest  = Get-ScpRemoteDest "config/strategy_config.yaml"
-    $r = scp -i "$SSH_KEY" -o StrictHostKeyChecking=no `
-              -o BatchMode=yes "$scYamlLocal" "$scYamlDest" 2>&1
-    if ($LASTEXITCODE -ne 0) { Write-Err $r; exit 1 }
+    Invoke-Scp ($SCP_BASE_ARGS + @($scYamlLocal, $scYamlDest)) "scp failed for config/strategy_config.yaml"
     Write-Ok "strategy_config.yaml uploaded"
 }
 

@@ -80,18 +80,28 @@ Always pass `--json`. Treat any non-zero exit code as an error.
 ## Research sweep (autonomous multi-ticker loop)
 
 When asked to run a full research sweep, iterate over the ticker universe
-defined in `config/agent.yaml` under `research.ticker_universe`. For each
-strategy × ticker pair:
+defined in `config/agent.yaml` under `research.ticker_universe`. Run the sweep
+in stages, not as one flat list:
 
-1. Run backtest on the canonical in-sample window (2020-01-01 → 2023-12-31).
-2. Run backtest on the stress window (2022-01-01 → 2022-12-31, bear market).
+1. Start with liquid benchmark ETF sleeves first: `etf_broad`, then the most
+  relevant cross-asset benchmark sleeve such as `etf_fixed_income`,
+  `etf_international`, or `etf_commodity_physical`.
+2. For each approved strategy × ticker pair, run backtest on the canonical
+  in-sample window (2020-01-01 → 2023-12-31).
+3. Run backtest on the stress window (2022-01-01 → 2022-12-31, bear market).
   Use `sfa backtest --name <strategy> --ticker <symbol> ...`; do not pass the
   ticker as `--name`.
   If the task is a single fixed ticker across all strategies, use
   `sfa sweep-single --ticker <symbol> ...` instead of issuing one backtest per strategy.
-3. Report which ticker × period combination produces the best Sortino.
-4. Propose the top 3 ticker × strategy combinations for deeper optimisation.
-   Wait for human approval before running `sfa optimise`.
+4. Expand to `etf_sector`, `etf_style_factor`, or other specialist ETF sleeves
+  only if Sortino > 1.5 on at least two benchmark ETFs.
+5. Treat `etf_commodity_futures` as second-pass research only. These are valid
+  test targets, but their returns can be dominated by roll yield and curve
+  shape rather than spot-price moves.
+6. Use `sp500_*` stock baskets only after ETF robustness is established.
+7. Report which ticker × period combination produces the best Sortino.
+8. Propose the top 3 ticker × strategy combinations for deeper optimisation.
+  Wait for human approval before running `sfa optimise`.
 
 Never run more than 3 backtests without pausing to summarise findings.
 
@@ -117,7 +127,7 @@ Regime:      [trending | ranging | volatile | unknown]
 Ticker fit:  [good | marginal | poor] — one sentence reason
 Param sense: [yes | flag] — flag if any param is at a search-space boundary
 Next action: [what you recommend running next and why]
-Cost impact: [estimated round-trip cost at 5 bps slippage × avg trade freq]
+Cost impact: [estimated round-trip cost using asset-class slippage × avg trade freq]
 ```
 
 Keep the note concise — maximum 6 lines.
@@ -155,6 +165,9 @@ Keep the note concise — maximum 6 lines.
 - Never share secrets, credentials, broker account numbers, or `.env` contents.
 - Never recommend a position size larger than `guards.max_position_pct` (25%).
 - Never suggest disabling or relaxing guards — propose tightening them instead.
+- Treat futures-based commodity ETFs (e.g. `DBC`, `PDBC`, `DBA`, `USO`, `UNG`)
+  as exposure sleeves, not spot proxies. Mention roll yield / curve-shape risk
+  in the Research note whenever it is materially relevant.
 - A "Research note" is advisory only. The human decides whether to act on it.
 - **Pre-registration (comparison budget):** Before calling `sfa optimise`, declare
   in writing to the human: target ticker, optimisation metric, `search_space`
@@ -164,11 +177,12 @@ Keep the note concise — maximum 6 lines.
   exhausted without a robust result, do not keep fishing — reject the strategy
   for this research cycle.
 - **Cross-asset robustness before promote:** Before recommending `sfa promote`,
-  run walkforward on at least three economically similar tickers (e.g. SPY,
-  QQQ, IWM for US broad equity). The walkforward gate must pass on **at least
-  two of three** tickers. A pass means the same thresholds as the promotion
-  gate: OOS Sharpe mean ≥ 1.0, degradation ≤ 0.4, and at least 4/5 windows
-  passing. Do not recommend promotion if this rule is not met.
+  run walkforward on at least three economically similar tickers from the same
+  sleeve (e.g. SPY, QQQ, IWM for US broad equity; AGG, IEF, TLT for duration;
+  GLD, IAU, SLV for precious metals). The walkforward gate must pass on **at
+  least two of three** tickers. A pass means the same thresholds as the
+  promotion gate: OOS Sharpe mean ≥ 1.0, degradation ≤ 0.4, and at least 4/5
+  windows passing. Do not recommend promotion if this rule is not met.
 - **Parameter plateau before promote:** Before recommending `sfa promote`,
   inspect `sfa trials --name <s> --top 20`. Trials whose parameters are within
   ±10% of the best trial's numeric parameters should show in-sample Sortino

@@ -22,6 +22,8 @@ def _build_briefing(cfg: dict) -> dict:
     stm = research.get("single_target_mode", {})
     promotion = cfg.get("promotion", {})
     windows = research.get("backtest_windows", {})
+    ticker_universe = research.get("ticker_universe", {})
+    etf_universe_groups = [name for name in ticker_universe if name.startswith("etf_")]
 
     mode = "single_target" if stm.get("enabled") else "sweep"
     target = stm.get("ticker", "SPY")
@@ -52,7 +54,11 @@ def _build_briefing(cfg: dict) -> dict:
         )
     else:
         rules.insert(0,
-            "SWEEP MODE: start with etf_broad; expand to sectors only if Sortino>1.5 on 2+ ETFs"
+            "SWEEP MODE: start with liquid benchmark ETF groups; expand to sector or specialist ETFs only if Sortino>1.5 on 2+ benchmark ETFs"
+        )
+        rules.insert(
+            1,
+            "treat futures-based commodity ETFs as second-pass research because roll yield and curve shape can dominate returns",
         )
 
     backtest_syntax = "sfa backtest --name NAME --from YYYY-MM-DD --to YYYY-MM-DD --json"
@@ -76,6 +82,7 @@ def _build_briefing(cfg: dict) -> dict:
 
     return {
         "mode": mode,
+        "etf_universe_groups": etf_universe_groups,
         **({"target": target, "window": win_key,
             "from": win.get("from"), "to": win.get("to")} if mode == "single_target" else {}),
         "loop": loop,

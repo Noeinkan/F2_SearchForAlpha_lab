@@ -27,16 +27,50 @@ Use these when interpreting backtest results across different windows.
 
 ## Ticker Reference
 
-### ETFs (preferred for initial research)
+### Benchmark ETFs (preferred for initial research)
 
-| Ticker | Full name              | Avg daily vol | Beta vs SPY | Best strategy type     |
-|--------|------------------------|---------------|-------------|------------------------|
-| SPY    | S&P 500 ETF            | ~80M shares   | 1.00        | All strategies, baseline |
-| QQQ    | Nasdaq 100 ETF         | ~50M shares   | 1.18        | Trend following, MACD  |
-| IWM    | Russell 2000 ETF       | ~30M shares   | 1.15        | Mean reversion, RSI    |
-| XLK    | Technology sector ETF  | ~12M shares   | 1.30        | EMA crossover, BB      |
-| XLF    | Financials sector ETF  | ~25M shares   | 1.05        | CCI, regime-sensitive  |
-| XLE    | Energy sector ETF      | ~15M shares   | 0.90        | BB squeeze, CCI extreme|
+| Ticker | Sleeve             | Characteristics                        | Best first use                |
+|--------|--------------------|----------------------------------------|-------------------------------|
+| SPY    | Broad equity       | Most liquid US equity benchmark        | Baseline for all strategies   |
+| QQQ    | Broad equity       | Higher beta, stronger growth/momentum  | Trend following, MACD         |
+| IWM    | Broad equity       | Small-cap, noisier, more mean reversion| Mean reversion, RSI           |
+| DIA    | Broad equity       | Lower-beta industrial-heavy benchmark  | Robustness check vs SPY/QQQ   |
+| VTI    | Broad equity       | Total-market beta, less mega-cap tilt  | Breadth confirmation          |
+| AGG    | Fixed income       | Core bond benchmark                    | Macro / defensive validation  |
+| TLT    | Fixed income       | Long-duration Treasury sensitivity     | Rates / duration regime tests |
+| EFA    | International      | Developed ex-US benchmark              | Cross-region validation       |
+| VXUS   | International      | Total international equity benchmark   | Global breadth check          |
+| GLD    | Commodity physical | Most liquid precious-metals proxy      | Inflation / crisis validation |
+
+### Sector and style ETFs (second pass after benchmark validation)
+
+| Ticker | Sleeve         | Characteristics                      | Best strategy type            |
+|--------|----------------|--------------------------------------|-------------------------------|
+| XLK    | Sector          | Technology leadership / high beta    | EMA crossover, trend following|
+| XLF    | Sector          | Rate-sensitive financials            | CCI, regime-sensitive         |
+| XLE    | Sector          | Volatile energy sleeve              | BB squeeze, momentum          |
+| XLV    | Sector          | Defensive growth                    | Lower-beta trend confirmation |
+| XLY    | Sector          | Consumer risk-on proxy              | Momentum, regime rotation     |
+| XLP    | Sector          | Defensive staples                   | Mean reversion, defensive tests|
+| MTUM   | Style / factor  | Dedicated momentum factor           | Momentum specialist check     |
+| QUAL   | Style / factor  | Quality factor, smoother drawdowns  | Defensive trend confirmation  |
+| USMV   | Style / factor  | Low-vol factor                      | Range-bound / defensive tests |
+| SCHD   | Style / factor  | Dividend quality / slower turnover  | Lower-frequency robustness    |
+
+### Commodity ETFs
+
+| Ticker | Exposure type          | Use case                              | Caution                               |
+|--------|------------------------|---------------------------------------|----------------------------------------|
+| GLD    | Physical metal         | Gold benchmark, crisis hedge          | Tracks spot more closely than futures  |
+| IAU    | Physical metal         | Alternative gold benchmark            | Similar sleeve to GLD                  |
+| SLV    | Physical metal         | Higher-beta precious metals exposure  | More volatile than gold                |
+| DBC    | Futures-based basket   | Diversified commodity benchmark       | Roll yield can dominate long-run PnL   |
+| PDBC   | Futures-based basket   | Diversified commodity sleeve with roll optimisation | Still not a spot proxy     |
+| DBA    | Futures-based basket   | Agriculture / softs exposure          | Seasonal and curve effects matter      |
+| USO    | Futures-based single   | Oil exposure                          | Severe contango / roll sensitivity     |
+| UNG    | Futures-based single   | Natural gas exposure                  | Very high volatility and curve risk    |
+| GDX    | Equity-linked commodity| Gold miners, equity beta to metals    | More equity-like than spot gold        |
+| COPX   | Equity-linked commodity| Copper miners, industrial cycle proxy | Mining-equity risk overlays commodity  |
 
 ### Single stocks (use only after ETF validation)
 
@@ -45,6 +79,23 @@ Use these when interpreting backtest results across different windows.
 | AAPL   | Liquid, mean-reverting, tight spread| Earnings vol 4×/year                 |
 | MSFT   | Stable trend, good EMA signals      | Less volatile than QQQ constituents  |
 | NVDA   | High vol, strong momentum           | Can gap ±15% on earnings/AI news     |
+
+---
+
+## Commodity ETF caveats
+
+- Physical-metal ETFs like `GLD`, `IAU`, and `SLV` are closer to spot proxies,
+	so they are acceptable benchmark commodity sleeves.
+- Futures-based ETFs like `DBC`, `PDBC`, `DBA`, `USO`, and `UNG` embed spot
+	moves, roll yield, and collateral returns. They are valid research targets
+	but should be treated as second-pass specialist sleeves, not first-pass spot
+	proxies.
+- `USO` and `UNG` are especially prone to curve-driven distortions. A strategy
+	that looks strong on these products may be harvesting curve conditions rather
+	than a stable directional edge.
+- Equity-linked commodity ETFs like `GDX` or `COPX` behave partly like equities
+	and partly like commodity beta. Compare them to similar ETFs, not directly to
+	pure commodity exposure alone.
 
 ---
 
@@ -61,6 +112,8 @@ unfavourable regime before concluding a strategy "works" or "fails".
 | BB squeeze         | Pre-breakout   | Already-trended| Few signals generated (<10/year)   |
 | VWAP cross (daily) | Any            | Low-volume days| Signal quality degrades on thin days|
 | RSI(2) Connors     | Ranging + vol  | Strong trend   | Avg hold < 2 days, high turnover   |
+| Bond / macro ETFs  | Growth scares, rate cuts | Reflation spikes | Duration dominates signal     |
+| Commodity ETFs     | Inflation shock, supply stress | Deep disinflation, steep contango | ETF returns diverge from spot |
 
 ---
 
@@ -85,9 +138,12 @@ Flag any of the following in the Research note as **"param sense: flag"**:
 ### Estimated costs (paper trading context, IB)
 
 - Commission: $0 (IB paper account)
-- Slippage estimate: 5 bps per side for liquid ETFs (SPY, QQQ, IWM)
-- Slippage estimate: 10 bps per side for sector ETFs and single stocks
-- Round-trip cost: 10 bps (ETF) or 20 bps (stock) per trade
+- Slippage estimate: 5 bps per side for liquid benchmark ETFs (SPY, QQQ, IWM, DIA, VTI)
+- Slippage estimate: 7-10 bps per side for sector, factor, and international ETFs
+- Slippage estimate: 8 bps per side for physical commodity ETFs
+- Slippage estimate: 12 bps per side or more for futures-based commodity ETFs like USO / UNG
+- Slippage estimate: 10 bps per side for single stocks in normal conditions
+- Round-trip cost: use the asset-class-appropriate per-side estimate × 2
 
 ### Annual drag formula (for Research notes)
 
@@ -96,6 +152,8 @@ annual_drag_pct = avg_trades_per_year × round_trip_bps / 10000 × 100
 ```
 
 Example: 36 trades/year on SPY → 36 × 10 / 10000 × 100 = 0.36% drag
+
+Example: 24 trades/year on USO at 24 bps round-trip → 24 × 24 / 10000 × 100 = 0.576% drag
 
 **Flag** any strategy where annual drag > 2% of capital.
 

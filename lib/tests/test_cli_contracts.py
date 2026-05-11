@@ -203,3 +203,25 @@ def test_instructions_single_target_backtest_syntax_uses_ticker_override():
     assert "sweep-single" in briefing["syntax"]
     assert any("--name is always the strategy bundle name" in rule for rule in briefing["rules"])
     assert any("prefer `sfa sweep-single`" in rule for rule in briefing["rules"])
+
+
+def test_instructions_sweep_mode_uses_etf_first_multi_asset_guidance():
+    briefing = _build_briefing(
+        {
+            "research": {
+                "ticker_universe": {
+                    "etf_broad": ["SPY"],
+                    "etf_sector": ["XLK"],
+                    "sp500_energy": ["XOM"],
+                    "etf_fixed_income": ["AGG"],
+                }
+            },
+            "promotion": {},
+        }
+    )
+
+    assert briefing["mode"] == "sweep"
+    assert briefing["etf_universe_groups"] == ["etf_broad", "etf_sector", "etf_fixed_income"]
+    assert any("liquid benchmark ETF groups" in rule for rule in briefing["rules"])
+    assert any("futures-based commodity ETFs" in rule for rule in briefing["rules"])
+    assert not any("expand to sectors only" in rule for rule in briefing["rules"])

@@ -47,10 +47,53 @@ research:
       - SPY    # S&P 500 — baseline for all strategies
       - QQQ    # Nasdaq 100 — higher beta, stronger momentum signals
       - IWM    # Russell 2000 — small cap, more mean-reversion alpha
+      - DIA    # Dow Industrials — lower-beta broad equity benchmark
+      - VTI    # Total US market — broad beta without mega-cap concentration
     etf_sector:
       - XLK    # Technology — trend-following friendly
       - XLF    # Financials — rate-sensitive, good for regime tests
       - XLE    # Energy — high volatility, good for BB/CCI strategies
+      - XLV    # Health care — defensive growth, lower beta
+      - XLI    # Industrials — cyclical trend confirmation
+      - XLY    # Consumer discretionary — growth / risk-on proxy
+      - XLP    # Consumer staples — defensive mean-reversion check
+      - XLU    # Utilities — defensive / rates-sensitive sleeve
+    etf_style_factor:
+      - VUG    # Growth factor — momentum-friendly benchmark
+      - VTV    # Value factor — slower regime rotation benchmark
+      - MTUM   # Momentum factor — specialist trend sleeve
+      - QUAL   # Quality factor — defensive trend sleeve
+      - USMV   # Minimum volatility — low-vol regime benchmark
+      - SCHD   # Dividend quality — slower, income-oriented benchmark
+    etf_international:
+      - EFA    # Developed ex-US — broad international benchmark
+      - VXUS   # Total international — all-world ex-US check
+      - EEM    # EM large-cap — higher-vol international sleeve
+      - IEMG   # Core EM — broader emerging markets exposure
+      - EWJ    # Japan — liquid single-country developed market
+      - VGK    # Europe — developed macro / rates sensitivity
+    etf_fixed_income:
+      - AGG    # US aggregate bonds — core duration benchmark
+      - TLT    # Long duration Treasuries — macro / rates convexity
+      - IEF    # Intermediate Treasuries — smoother duration proxy
+      - TIP    # Inflation-linked Treasuries — inflation regime check
+      - LQD    # Investment grade credit — spread-sensitive benchmark
+      - HYG    # High yield credit — risk-on / spread beta sleeve
+    etf_commodity_physical:
+      - GLD    # Physical gold proxy — crisis / inflation hedge
+      - IAU    # Physical gold proxy — lower-fee gold benchmark
+      - SLV    # Physical silver proxy — higher-beta precious metals
+    etf_commodity_futures:
+      - DBC    # Broad commodity basket — diversified futures sleeve
+      - PDBC   # Broad commodity basket with optimized roll methodology
+      - DBA    # Agriculture futures basket — food / softs exposure
+      - USO    # Oil futures sleeve — high roll-yield sensitivity
+      - UNG    # Natural gas futures sleeve — very high curve sensitivity
+    etf_commodity_equity_linked:
+      - GDX    # Gold miners — equity-linked commodity beta
+      - GDXJ   # Junior gold miners — higher-vol precious metals beta
+      - COPX   # Copper miners — industrial metals cycle proxy
+      - URA    # Uranium / nuclear theme — specialist commodity equity sleeve
     sp500_communication_services:
       - CHTR
       - CMCSA
@@ -566,15 +609,23 @@ research:
       - WEC
       - XEL
     notes: >
-      Start sweeps with etf_broad only. Expand to sp500_* sectors only for
-      strategies that show Sortino > 1.5 on at least two ETFs. Use sector
-      groupings to target strategy_affinity (e.g. trend_following → sp500_information_technology,
-      volatility_play → sp500_energy).
+      Start sweeps with liquid benchmark ETF sleeves first: etf_broad, then the
+      most relevant cross-asset benchmark sleeve such as etf_fixed_income,
+      etf_international, or etf_commodity_physical. Expand to etf_sector,
+      etf_style_factor, and commodity specialist sleeves only for strategies
+      that show Sortino > 1.5 on at least two benchmark ETFs. Treat
+      etf_commodity_futures as second-pass research because roll yield and curve
+      shape can dominate returns. Use sp500_* stock baskets only after ETF
+      robustness is established.
 
   # Cost model for Research notes (not used in backtest engine).
   cost_model:
     slippage_bps: 5          # conservative estimate for liquid ETFs
     commission_usd: 0.0      # IB paper account: zero commissions
+    sector_etf_slippage_bps: 7
+    international_etf_slippage_bps: 8
+    commodity_physical_slippage_bps: 8
+    commodity_futures_slippage_bps: 12
     annual_drag_estimate: >
       Multiply (avg_trades_per_year × slippage_bps / 10000) by capital
       to get estimated annual cost drag. Flag strategies above 2% drag.
@@ -607,8 +658,8 @@ research:
   # Strategy-to-ticker affinity hints.
   # Based on academic literature and community backtests.
   strategy_affinity:
-    mean_reversion:   [SPY, IWM, QQQ]   # works best on liquid, range-bound
-    trend_following:  [QQQ, XLK, NVDA]  # works best on trending, high-beta
-    momentum:         [QQQ, XLE, NVDA]  # sector rotation and breakouts
-    volatility_play:  [IWM, XLE, NVDA]  # wider BB bands on volatile names
-    vwap_intraday:    [SPY, QQQ, AAPL]  # daily VWAP proxy on high-volume
+    mean_reversion:   [SPY, IWM, XLP, AGG]   # liquid, range-bound, defensive sleeves
+    trend_following:  [QQQ, XLK, MTUM, EFA]  # trending equity + factor benchmarks
+    momentum:         [QQQ, XLE, MTUM, EEM]  # breakouts and higher-beta rotations
+    volatility_play:  [IWM, XLE, HYG, GLD]   # wider bands on volatile / macro sleeves
+    vwap_intraday:    [SPY, QQQ, XLF, GLD]   # highest-liquidity ETF proxies
