@@ -618,6 +618,30 @@ research:
       shape can dominate returns. Use sp500_* stock baskets only after ETF
       robustness is established.
 
+  # Optional seeded exploration layer.
+  # Keep this disabled for deterministic default sweeps.
+  # When enabled, always run the benchmark groups first, then sample extra ETFs
+  # from eligible_groups using each listed seed. Exploration is advisory only:
+  # do not optimise, promote, or paper-run from a single lucky seed.
+  exploration:
+    enabled: true
+    mode: seeded_stratified
+    benchmark_groups:
+      - etf_broad
+      - etf_fixed_income
+      - etf_commodity_physical
+    eligible_groups:
+      - etf_sector
+      - etf_style_factor
+      - etf_international
+      - etf_commodity_equity_linked
+    excluded_groups:
+      - etf_commodity_futures
+    seeds: [11, 23, 47]
+    sample_per_group: 1
+    max_random_tickers: 4
+    advisory_only: true
+
   # Cost model for Research notes (not used in backtest engine).
   cost_model:
     slippage_bps: 5          # conservative estimate for liquid ETFs

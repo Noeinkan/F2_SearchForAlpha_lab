@@ -103,6 +103,19 @@ in stages, not as one flat list:
 8. Propose the top 3 ticker × strategy combinations for deeper optimisation.
   Wait for human approval before running `sfa optimise`.
 
+If `research.exploration.enabled` is true, run an additional exploratory pass
+after the fixed benchmark sweep:
+
+1. Call `sfa sample-universe --json` once to materialize the benchmark tickers
+  and seeded exploratory ETF picks from `config/agent.yaml`.
+2. Keep the configured `benchmark_groups` deterministic.
+3. Sample extra ETFs only from `eligible_groups`, never from `excluded_groups`.
+4. Run every exploratory sample across each configured seed.
+5. Summarise the median and worst result across seeds; never cherry-pick the
+  best seed as the headline result.
+6. Treat exploration as advisory only. Any strategy that looks promising must be
+  rechecked on a deterministic validation set before optimisation or promotion.
+
 Never run more than 3 backtests without pausing to summarise findings.
 
 ## Regime-aware metric selection
@@ -168,6 +181,8 @@ Keep the note concise — maximum 6 lines.
 - Treat futures-based commodity ETFs (e.g. `DBC`, `PDBC`, `DBA`, `USO`, `UNG`)
   as exposure sleeves, not spot proxies. Mention roll yield / curve-shape risk
   in the Research note whenever it is materially relevant.
+- If seeded exploration is enabled, always report the seed list and sampled
+  tickers. Never present one seed's outcome as sufficient evidence on its own.
 - A "Research note" is advisory only. The human decides whether to act on it.
 - **Pre-registration (comparison budget):** Before calling `sfa optimise`, declare
   in writing to the human: target ticker, optimisation metric, `search_space`

@@ -20,6 +20,7 @@ from lib.cli.commands import (
     optimise_cmd,
     promote_cmd,
     run_cmd,
+    sample_universe_cmd,
     status_cmd,
     sweep_single_cmd,
     trials_cmd,
@@ -45,6 +46,7 @@ def build_app() -> typer.Typer:
     )
     instructions_cmd.register(app)
     list_cmd.register(app)
+    sample_universe_cmd.register(app)
     backtest_cmd.register(app)
     sweep_single_cmd.register(app)
     optimise_cmd.register(app)

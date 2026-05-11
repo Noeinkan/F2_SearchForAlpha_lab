@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from lib.cli.app import app
 from lib.cli.commands.instructions_cmd import _build_briefing
 from lib.cli.commands.list_cmd import build_strategy_list
+from lib.cli.commands.sample_universe_cmd import build_sample_universe_contract
 
 
 runner = CliRunner()
@@ -176,6 +177,81 @@ def test_sweep_single_contract_shape():
     assert all(entry["ticker"] == "TSLA" for entry in payload["results"])
 
 
+def test_sample_universe_contract_shape():
+    payload = build_sample_universe_contract(
+        {
+            "research": {
+                "ticker_universe": {
+                    "etf_broad": ["SPY", "QQQ"],
+                    "etf_fixed_income": ["AGG"],
+                    "etf_sector": ["XLK"],
+                    "etf_style_factor": ["QUAL"],
+                    "etf_commodity_futures": ["DBC"],
+                },
+                "exploration": {
+                    "enabled": True,
+                    "benchmark_groups": ["etf_broad", "etf_fixed_income"],
+                    "eligible_groups": ["etf_sector", "etf_style_factor", "etf_commodity_futures"],
+                    "excluded_groups": ["etf_commodity_futures"],
+                    "seeds": [7, 19],
+                    "sample_per_group": 1,
+                    "max_random_tickers": 2,
+                    "advisory_only": True,
+                },
+            }
+        }
+    )
+
+    assert payload["enabled"] is True
+    assert payload["mode"] == "seeded_stratified"
+    assert payload["benchmark_groups"] == ["etf_broad", "etf_fixed_income"]
+    assert payload["benchmark_tickers"] == ["SPY", "QQQ", "AGG"]
+    assert payload["eligible_groups"] == ["etf_sector", "etf_style_factor"]
+    assert payload["excluded_groups"] == ["etf_commodity_futures"]
+    assert payload["etf_group_roles"] == {
+        "etf_broad": "benchmark",
+        "etf_fixed_income": "benchmark",
+        "etf_sector": "specialist",
+        "etf_style_factor": "specialist",
+        "etf_commodity_futures": "specialist",
+    }
+    assert payload["sample_per_group"] == 1
+    assert payload["max_random_tickers"] == 2
+    assert payload["seeds"] == [7, 19]
+    assert len(payload["seed_samples"]) == 2
+    assert payload["seed_samples"][0]["sampled_groups"] == {
+        "etf_sector": ["XLK"],
+        "etf_style_factor": ["QUAL"],
+    }
+    assert payload["seed_samples"][0]["random_tickers"] == ["XLK", "QUAL"]
+    assert payload["seed_samples"][0]["all_tickers"] == ["SPY", "QQQ", "AGG", "XLK", "QUAL"]
+
+
+def test_sample_universe_command_contract_shape():
+    result = runner.invoke(app, ["sample-universe", "--json"])
+    assert result.exit_code == 0, result.output
+
+    payload = json.loads(result.output)
+    for key in (
+        "enabled",
+        "mode",
+        "benchmark_groups",
+        "benchmark_tickers",
+        "eligible_groups",
+        "excluded_groups",
+        "etf_group_roles",
+        "sample_per_group",
+        "max_random_tickers",
+        "seeds",
+        "seed_samples",
+    ):
+        assert key in payload, f"missing key {key!r} in sample-universe payload"
+    assert isinstance(payload["benchmark_tickers"], list)
+    assert isinstance(payload["etf_group_roles"], dict)
+    assert isinstance(payload["seed_samples"], list)
+    assert payload["seed_samples"], "sample-universe should emit at least one seeded plan"
+
+
 def test_instructions_single_target_backtest_syntax_uses_ticker_override():
     briefing = _build_briefing(
         {
@@ -214,7 +290,17 @@ def test_instructions_sweep_mode_uses_etf_first_multi_asset_guidance():
                     "etf_sector": ["XLK"],
                     "sp500_energy": ["XOM"],
                     "etf_fixed_income": ["AGG"],
-                }
+                },
+                "exploration": {
+                    "enabled": True,
+                    "benchmark_groups": ["etf_broad", "etf_fixed_income"],
+                    "eligible_groups": ["etf_sector", "etf_international"],
+                    "excluded_groups": ["etf_commodity_futures"],
+                    "seeds": [7, 19, 31],
+                    "sample_per_group": 2,
+                    "max_random_tickers": 5,
+                    "advisory_only": True,
+                },
             },
             "promotion": {},
         }
@@ -222,6 +308,24 @@ def test_instructions_sweep_mode_uses_etf_first_multi_asset_guidance():
 
     assert briefing["mode"] == "sweep"
     assert briefing["etf_universe_groups"] == ["etf_broad", "etf_sector", "etf_fixed_income"]
+    assert briefing["etf_group_roles"] == {
+        "etf_broad": "benchmark",
+        "etf_sector": "specialist",
+        "etf_fixed_income": "benchmark",
+    }
+    assert briefing["exploration"] == {
+        "enabled": True,
+        "mode": "seeded_stratified",
+        "benchmark_groups": ["etf_broad", "etf_fixed_income"],
+        "eligible_groups": ["etf_sector", "etf_international"],
+        "excluded_groups": ["etf_commodity_futures"],
+        "seeds": [7, 19, 31],
+        "sample_per_group": 2,
+        "max_random_tickers": 5,
+        "advisory_only": True,
+    }
+    assert "sample-universe" in briefing["syntax"]
     assert any("liquid benchmark ETF groups" in rule for rule in briefing["rules"])
     assert any("futures-based commodity ETFs" in rule for rule in briefing["rules"])
+    assert any("sample-universe --json" in rule for rule in briefing["rules"])
     assert not any("expand to sectors only" in rule for rule in briefing["rules"])

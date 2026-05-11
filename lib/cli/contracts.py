@@ -68,6 +68,49 @@ class StrategySweep:
 
 
 @dataclass(frozen=True)
+class UniverseSeedSample:
+    seed: int
+    sampled_groups: dict[str, list[str]] = field(default_factory=dict)
+    random_tickers: list[str] = field(default_factory=list)
+    all_tickers: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class UniverseSamplePlan:
+    enabled: bool
+    mode: str
+    advisory_only: bool
+    benchmark_groups: list[str]
+    benchmark_tickers: list[str]
+    eligible_groups: list[str]
+    excluded_groups: list[str]
+    etf_group_roles: dict[str, str]
+    sample_per_group: int
+    max_random_tickers: int
+    seeds: list[int] = field(default_factory=list)
+    seed_samples: list[UniverseSeedSample] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "mode": self.mode,
+            "advisory_only": self.advisory_only,
+            "benchmark_groups": self.benchmark_groups,
+            "benchmark_tickers": self.benchmark_tickers,
+            "eligible_groups": self.eligible_groups,
+            "excluded_groups": self.excluded_groups,
+            "etf_group_roles": self.etf_group_roles,
+            "sample_per_group": self.sample_per_group,
+            "max_random_tickers": self.max_random_tickers,
+            "seeds": self.seeds,
+            "seed_samples": [sample.as_dict() for sample in self.seed_samples],
+        }
+
+
+@dataclass(frozen=True)
 class CliError:
     error: str
     message: str

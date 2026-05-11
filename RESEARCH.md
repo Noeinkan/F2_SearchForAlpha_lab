@@ -99,6 +99,24 @@ Use these when interpreting backtest results across different windows.
 
 ---
 
+## Seeded exploration mode
+
+- Use randomness for exploration, not for final evaluation. A seeded
+	exploratory sweep is a way to inject novelty into the research queue without
+	changing the deterministic benchmark core.
+- Use `sfa sample-universe --json` to materialize the fixed benchmark ETFs and
+	the per-seed exploratory ticker picks before running novelty passes.
+- Keep a fixed benchmark ETF set for comparability, then sample additional ETFs
+	from approved sleeves using logged seeds.
+- Summarise exploratory results across seeds using median and worst-case
+	outcomes. Never highlight the best seed in isolation.
+- Any promising result from an exploratory pass must be rechecked on a fixed,
+	deterministic validation set before optimisation or promotion.
+- Do not mix multiple moving parts at once. If you randomise tickers, keep the
+	metric, windows, and thresholds fixed for that pass.
+
+---
+
 ## Strategy × Regime affinity
 
 Use this table to assess whether a backtest result is in a favourable or

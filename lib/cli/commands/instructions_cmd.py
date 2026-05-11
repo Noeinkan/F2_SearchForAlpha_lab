@@ -8,6 +8,13 @@ from typing import Annotated
 import typer
 import yaml
 
+from lib.cli.research_utils import (
+    build_exploration_config,
+    get_etf_group_roles,
+    get_etf_universe_groups,
+    get_ticker_universe,
+)
+
 
 def _load_research_cfg() -> dict:
     try:
@@ -22,8 +29,10 @@ def _build_briefing(cfg: dict) -> dict:
     stm = research.get("single_target_mode", {})
     promotion = cfg.get("promotion", {})
     windows = research.get("backtest_windows", {})
-    ticker_universe = research.get("ticker_universe", {})
-    etf_universe_groups = [name for name in ticker_universe if name.startswith("etf_")]
+    ticker_universe = get_ticker_universe(research)
+    exploration = build_exploration_config(research)
+    etf_universe_groups = get_etf_universe_groups(ticker_universe)
+    etf_group_roles = get_etf_group_roles(ticker_universe, exploration["benchmark_groups"])
 
     mode = "single_target" if stm.get("enabled") else "sweep"
     target = stm.get("ticker", "SPY")
@@ -60,6 +69,11 @@ def _build_briefing(cfg: dict) -> dict:
             1,
             "treat futures-based commodity ETFs as second-pass research because roll yield and curve shape can dominate returns",
         )
+        if exploration["enabled"]:
+            rules.insert(
+                2,
+                "use `sfa sample-universe --json` to materialize the fixed benchmark ETFs and seeded exploratory ETF picks before running novelty passes",
+            )
 
     backtest_syntax = "sfa backtest --name NAME --from YYYY-MM-DD --to YYYY-MM-DD --json"
     if mode == "single_target":
@@ -83,6 +97,8 @@ def _build_briefing(cfg: dict) -> dict:
     return {
         "mode": mode,
         "etf_universe_groups": etf_universe_groups,
+        "etf_group_roles": etf_group_roles,
+        "exploration": exploration,
         **({"target": target, "window": win_key,
             "from": win.get("from"), "to": win.get("to")} if mode == "single_target" else {}),
         "loop": loop,
@@ -98,6 +114,7 @@ def _build_briefing(cfg: dict) -> dict:
             "run":         "sfa run --name NAME --mode paper --json",
             "status":      "sfa status --json",
             "kill":        "sfa kill --name NAME --json",
+            "sample-universe": "sfa sample-universe --json",
             "instructions": "sfa instructions --json",
         },
     }
