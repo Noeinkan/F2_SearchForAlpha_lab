@@ -16,6 +16,7 @@ def register(app: typer.Typer) -> None:
         name: Annotated[str, typer.Option("--name", help="Strategy bundle name.")],
         trials: Annotated[int, typer.Option("--trials")] = 50,
         metric: Annotated[str, typer.Option("--metric")] = "sortino",
+        ticker: Annotated[str | None, typer.Option("--ticker", help="Override the bundle ticker.")] = None,
         from_: Annotated[str | None, typer.Option("--from")] = None,
         to: Annotated[str | None, typer.Option("--to")] = None,
         study: Annotated[str | None, typer.Option("--study")] = None,
@@ -34,4 +35,5 @@ def register(app: typer.Typer) -> None:
             study_id=study,
             seed=seed,
             json_output=json_output,
+            ticker=ticker,
         )

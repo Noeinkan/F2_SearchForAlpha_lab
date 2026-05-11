@@ -107,7 +107,7 @@ def _build_briefing(cfg: dict) -> dict:
             "list":        "sfa list --json",
             "backtest":    backtest_syntax,
             "sweep-single": "sfa sweep-single --ticker SYMBOL --from YYYY-MM-DD --to YYYY-MM-DD --json",
-            "optimise":    "sfa optimise --name NAME --trials N --metric METRIC --json",
+            "optimise":    "sfa optimise --name NAME --trials N --metric METRIC [--ticker SYMBOL] --json",
             "trials":      "sfa trials --name NAME --top 10 --json",
             "walkforward": "sfa walkforward --name NAME --params TRIAL_ID --json",
             "promote":     "sfa promote --name NAME --trial TRIAL_ID --json",

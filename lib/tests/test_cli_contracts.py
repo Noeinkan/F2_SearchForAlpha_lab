@@ -325,6 +325,7 @@ def test_instructions_sweep_mode_uses_etf_first_multi_asset_guidance():
         "advisory_only": True,
     }
     assert "sample-universe" in briefing["syntax"]
+    assert "--ticker SYMBOL" in briefing["syntax"]["optimise"]
     assert any("liquid benchmark ETF groups" in rule for rule in briefing["rules"])
     assert any("futures-based commodity ETFs" in rule for rule in briefing["rules"])
     assert any("sample-universe --json" in rule for rule in briefing["rules"])

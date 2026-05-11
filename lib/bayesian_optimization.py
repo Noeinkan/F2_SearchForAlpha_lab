@@ -147,6 +147,12 @@ def _make_study_id(strategy_name: str) -> str:
     return f"{strategy_name}_{stamp}"
 
 
+def _study_strategy_name(strategy_name: str, ticker_override: str | None) -> str:
+    if not ticker_override:
+        return strategy_name
+    return f"{strategy_name}__{ticker_override}"
+
+
 def _build_objective(
     *,
     bundle: AgentStrategyBundle,
@@ -159,6 +165,7 @@ def _build_objective(
     window_to: str,
     search_to: str,
     held_out_to: str,
+    ticker: str,
 ) -> Callable[[optuna.trial.Trial], float]:
     def objective(trial: optuna.trial.Trial) -> float:
         params = suggest_from_space(trial, bundle.search_space)
@@ -170,7 +177,7 @@ def _build_objective(
         result = run_backtest_result(
             df,
             strategy_name=bundle.name,
-            ticker=bundle.ticker,
+            ticker=ticker,
             window_from=window_from,
             window_to=search_to,
             params=params,
@@ -218,6 +225,7 @@ def run_study(
     storage_url: str | None = None,
     db_path: Path | None = None,
     json_output: bool = False,
+    ticker_override: str | None = None,
 ) -> OptimisationResult:
     """Run an Optuna TPE study end to end and return the best trial.
 
@@ -231,6 +239,9 @@ def run_study(
     if not bundle.search_space:
         raise ValueError(f"Strategy {strategy_name!r} has no search_space configured")
     validate_space(bundle.search_space)
+    ticker = ticker_override or bundle.ticker
+    if not ticker:
+        raise ValueError(f"Strategy {strategy_name!r} has no ticker configured")
 
     if not window_from or not window_to:
         raise ValueError("window_from and window_to are required for optimisation")
@@ -242,13 +253,13 @@ def run_study(
         db_path = DEFAULT_DB_PATH
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    base_df = fetch_data(bundle.ticker, window_from, window_to)
+    base_df = fetch_data(ticker, window_from, window_to)
     if not isinstance(base_df.index, pd.DatetimeIndex):
         base_df.index = pd.to_datetime(base_df.index)
     search_to_dt = pd.to_datetime(window_to) - pd.DateOffset(months=held_out_months)
     search_to = search_to_dt.strftime("%Y-%m-%d")
     search_df = base_df[base_df.index < search_to_dt]
-    sid = study_id or _make_study_id(strategy_name)
+    sid = study_id or _make_study_id(_study_strategy_name(strategy_name, ticker_override))
 
     sampler = TPESampler(seed=seed, n_startup_trials=10)
     pruner = MedianPruner(n_warmup_steps=DEFAULT_N_WARMUP_STEPS)
@@ -272,6 +283,7 @@ def run_study(
         window_to=window_to,
         search_to=search_to,
         held_out_to=window_to,
+        ticker=ticker,
     )
 
     if not json_output:
@@ -317,6 +329,7 @@ def run_optimise_cli(
     study_id: str | None,
     seed: int,
     json_output: bool,
+    ticker: str | None,
 ) -> None:
     try:
         result = run_study(
@@ -328,6 +341,7 @@ def run_optimise_cli(
             seed=seed,
             study_id=study_id,
             json_output=json_output,
+            ticker_override=ticker,
         )
     except StrategyNotFoundError:
         typer.echo(json.dumps(CliError("unknown_strategy", f"No agent strategy named {name!r}.").as_dict()))

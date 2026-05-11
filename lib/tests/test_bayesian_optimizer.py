@@ -186,3 +186,38 @@ def test_optimise_contract_shape(isolated_db):
     for key in ("trial_id", "params", "value", "metric"):
         assert key in bt
     assert payload["trials_completed"] == 3
+
+
+def test_optimise_accepts_ticker_override(isolated_db):
+    from typer.testing import CliRunner
+
+    from lib.cli.app import app
+
+    runner = CliRunner()
+    seen_symbols: list[str] = []
+
+    def fake_fetch(symbol: str, start_date: str, end_date: str, validate: bool = True) -> pd.DataFrame:
+        seen_symbols.append(symbol)
+        return _fake_fetch(symbol, start_date, end_date, validate)
+
+    with patch("lib.bayesian_optimization.fetch_data", side_effect=fake_fetch):
+        result = runner.invoke(
+            app,
+            [
+                "optimise",
+                "--name", "trend_macd_ema",
+                "--ticker", "QQQ",
+                "--trials", "3",
+                "--metric", "sortino",
+                "--from", "2023-01-01",
+                "--to", "2024-01-01",
+                "--seed", "5",
+                "--json",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["trials_completed"] == 3
+    assert seen_symbols == ["QQQ"]
+    assert payload["study_id"].startswith("trend_macd_ema__QQQ_")
