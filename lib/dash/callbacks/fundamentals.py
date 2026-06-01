@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Sequence
 
-from dash import callback_context, dash_table, dcc, html
+from dash import callback_context, dash_table, dcc, html, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 def register_fundamentals_callbacks(app) -> None:
+    @app.callback(
+        Output('fundamentals-global-symbol', 'children'),
+        Input('ticker-dropdown', 'value'),
+    )
+    def sync_fundamentals_global_symbol(ticker):
+        return f"GLOBAL {str(ticker or DEFAULT_TICKER).upper()}"
+
     @app.callback(
         Output('fundamentals-ticker-input', 'value'),
         Input('open-fundamentals-button', 'n_clicks'),
@@ -38,6 +45,7 @@ def register_fundamentals_callbacks(app) -> None:
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
+
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         return trigger_id != 'close-fundamentals-button'
 
@@ -60,7 +68,8 @@ def register_fundamentals_callbacks(app) -> None:
     @app.callback(
         [Output('fundamentals-store', 'data'),
          Output('fundamentals-title', 'children'),
-         Output('fundamentals-status', 'children')],
+         Output('fundamentals-status', 'children'),
+         Output('ticker-dropdown', 'value', allow_duplicate=True)],
         [Input('open-fundamentals-button', 'n_clicks'),
          Input('refresh-fundamentals-button', 'n_clicks'),
          Input('load-fundamentals-ticker-button', 'n_clicks'),
@@ -81,16 +90,19 @@ def register_fundamentals_callbacks(app) -> None:
             symbol = str(overlay_ticker or ticker or DEFAULT_TICKER).strip().upper()
 
         if not symbol:
-            return None, 'Invalid ticker', 'ERROR: ticker is required'
+            return None, 'Invalid ticker', 'ERROR: ticker is required', no_update
 
         try:
             payload = fetch_fundamentals(symbol)
         except Exception as exc:
             logger.exception("Error loading fundamentals for %s", symbol)
-            return None, f'{symbol} fundamentals', f'ERROR: {exc}'
+            return None, f'{symbol} fundamentals', f'ERROR: {exc}', no_update
 
         title = f"{payload['company_name']} ({payload['ticker']})"
-        return payload, title, f"LOADED {payload['as_of']}"
+        # Promote overlay ticker edits to global symbol only when user explicitly
+        # loads/submits a ticker from fundamentals.
+        update_global_ticker = symbol if trigger_id in {'load-fundamentals-ticker-button', 'fundamentals-ticker-input'} else no_update
+        return payload, title, f"LOADED {payload['as_of']}", update_global_ticker
 
     @app.callback(
         Output('fundamentals-content', 'children'),
@@ -277,14 +289,14 @@ def _table_cell_style(theme: dict) -> dict[str, Any]:
         'backgroundColor': theme['bg_tertiary'],
         'color': theme['text_primary'],
         'border': f'1px solid {theme["border_secondary"]}',
-        'fontSize': '11px',
+        'fontSize': '12px',
         'fontFamily': FONT_MONO,
         'fontVariantNumeric': 'tabular-nums',
         'whiteSpace': 'nowrap',
-        'lineHeight': '16px',
-        'height': '22px',
-        'minHeight': '22px',
-        'maxHeight': '22px',
+        'lineHeight': '18px',
+        'height': '24px',
+        'minHeight': '24px',
+        'maxHeight': '24px',
         'overflow': 'hidden',
         'textOverflow': 'ellipsis',
     }
@@ -296,11 +308,11 @@ def _table_header_style(theme: dict) -> dict[str, Any]:
         'backgroundColor': theme['bg_secondary'],
         'color': theme['text_secondary'],
         'textTransform': 'uppercase',
-        'fontSize': '11px',
+        'fontSize': '12px',
         'border': f'1px solid {theme["border_primary"]}',
-        'height': '22px',
-        'minHeight': '22px',
-        'maxHeight': '22px',
+        'height': '24px',
+        'minHeight': '24px',
+        'maxHeight': '24px',
     }
 
 
@@ -310,11 +322,11 @@ def _valuation_header_style(theme: dict) -> dict[str, Any]:
         'backgroundColor': theme['bg_secondary'],
         'color': theme['text_secondary'],
         'textTransform': 'uppercase',
-        'fontSize': '11px',
+        'fontSize': '12px',
         'border': f'1px solid {theme["border_primary"]}',
         'padding': '5px 7px',
         'fontFamily': FONT_MONO,
-        'lineHeight': '16px',
+        'lineHeight': '18px',
     }
 
 
@@ -327,9 +339,9 @@ def _valuation_cells(row: dict[str, Any], theme: dict) -> list[html.Div]:
         'color': theme['text_primary'],
         'border': f'1px solid {theme["border_secondary"]}',
         'padding': '5px 7px',
-        'fontSize': '11px',
+        'fontSize': '12px',
         'fontFamily': FONT_MONO,
-        'lineHeight': '16px',
+        'lineHeight': '18px',
         'whiteSpace': 'nowrap',
         'overflow': 'hidden',
         'textOverflow': 'ellipsis',

@@ -962,6 +962,31 @@ input[type="radio"] {
     width: 100%;
 }
 
+/* Dash DataTable applies default active/selected styles that can wash out text.
+   Force readable contrast for fundamentals tables, including fixed-column clones. */
+.sfa-fundamentals-panel .dash-spreadsheet tr:hover td,
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected,
+.sfa-fundamentals-panel .dash-spreadsheet td.focused,
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected.focused {
+    color: var(--text-primary) !important;
+    background: var(--table-row-hover) !important;
+    opacity: 1 !important;
+}
+
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected,
+.sfa-fundamentals-panel .dash-spreadsheet td.focused,
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected.focused {
+    border-color: var(--info) !important;
+}
+
+.sfa-fundamentals-panel .dash-spreadsheet tr:hover td .dash-cell-value,
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected .dash-cell-value,
+.sfa-fundamentals-panel .dash-spreadsheet td.focused .dash-cell-value,
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected.focused .dash-cell-value {
+    color: var(--text-primary) !important;
+    opacity: 1 !important;
+}
+
 .sfa-fundamentals-charts {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

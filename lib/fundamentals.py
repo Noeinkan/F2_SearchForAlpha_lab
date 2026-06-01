@@ -1,17 +1,25 @@
 """
 Fundamental analysis helpers for the dashboard.
 
-The fetch layer is intentionally thin around yfinance; the calculation layer is
-kept pure so valuation and growth formulas can be tested with fixed fixtures.
+Fetch strategy:
+  1. SEC EDGAR XBRL (free, no API key, long annual history) — primary for U.S. stocks.
+  2. yfinance — fallback for non-U.S. / tickers not found in EDGAR, and supplemental
+     source for analyst estimates (forwardPE, earningsGrowth) not available in filings.
+
+The calculation layer (build_fundamentals_result) stays pure so it can be tested
+with fixed fixtures independent of any remote source.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import json
 import logging
 import math
 from typing import Any
+import urllib.error
+import urllib.request
 
 import numpy as np
 import pandas as pd
@@ -19,6 +27,49 @@ import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# SEC EDGAR configuration
+# ---------------------------------------------------------------------------
+# EDGAR requires a descriptive User-Agent identifying the application and a
+# contact address.  See https://www.sec.gov/os/accessing-edgar-data
+_SEC_UA = "SearchForAlpha/research contact@searchforalpha.local"
+_SEC_HEADERS = {"User-Agent": _SEC_UA, "Accept": "application/json"}
+
+# In-process cache: populated once per process from company_tickers.json
+_CIK_CACHE: dict[str, str] = {}
+
+# XBRL concept maps: (display_label, [concepts_in_priority_order], negate)
+# Labels match exactly what _series_from_statement() looks up so the
+# downstream calculation layer needs no changes.
+_INCOME_CONCEPTS: list[tuple[str, list[str], bool]] = [
+    ("Total Revenue", ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
+                       "SalesRevenueNet", "SalesRevenueGoodsNet",
+                       "RevenueFromContractWithCustomerIncludingAssessedTax"], False),
+    ("Operating Income", ["OperatingIncomeLoss"], False),
+    ("Pretax Income", ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+                       "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"], False),
+    ("Tax Provision", ["IncomeTaxExpenseBenefit"], False),
+    ("Net Income", ["NetIncomeLoss", "ProfitLoss",
+                    "NetIncomeLossAvailableToCommonStockholdersBasic"], False),
+    ("Diluted EPS", ["EarningsPerShareDiluted"], False),
+    ("Basic EPS", ["EarningsPerShareBasic"], False),
+]
+_BALANCE_CONCEPTS: list[tuple[str, list[str], bool]] = [
+    ("Stockholders Equity", ["StockholdersEquity",
+                              "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"], False),
+    ("Current Debt", ["LongTermDebtCurrent", "ShortTermBorrowings", "DebtCurrent"], False),
+    ("Long Term Debt", ["LongTermDebtNoncurrent", "LongTermDebt"], False),
+    ("Total Debt", ["DebtAndCapitalLeaseObligations", "LongTermDebtAndCapitalLeaseObligations"], False),
+    ("Cash And Cash Equivalents", ["CashAndCashEquivalentsAtCarryingValue",
+                                    "CashCashEquivalentsAndShortTermInvestments"], False),
+]
+# Capital Expenditure: SEC reports positive payments; negate to match yfinance
+# sign convention (negative = cash outflow) so FCF = OCF + CAPEX works correctly.
+_CASHFLOW_CONCEPTS: list[tuple[str, list[str], bool]] = [
+    ("Operating Cash Flow", ["NetCashProvidedByUsedInOperatingActivities"], False),
+    ("Capital Expenditure", ["PaymentsToAcquirePropertyPlantAndEquipment",
+                              "PaymentsForCapitalImprovements"], True),
+]
 
 DEFAULT_MARR = 0.15
 DEFAULT_MARGIN_OF_SAFETY = 0.50
@@ -56,22 +107,48 @@ class FundamentalResult:
 
 
 def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> dict[str, Any]:
-    """Fetch annual fundamentals from yfinance and return dashboard-ready data."""
+    """Fetch annual fundamentals and return dashboard-ready data.
+
+    Primary source: SEC EDGAR XBRL (free, long annual history for U.S. stocks).
+    Fallback: yfinance statements (used when the ticker is not found in EDGAR).
+    yfinance is always queried for supplemental analyst estimates (forwardPE,
+    earningsGrowth, trailingEps) which are not available in SEC filings.
+    Price history for year-end closes is always sourced from yfinance.
+    """
     symbol = (ticker or "").strip().upper()
     if not symbol:
         raise ValueError("Ticker is required")
 
+    # --- primary: SEC EDGAR ---------------------------------------------------
+    sec_income, sec_balance, sec_cashflow, sec_info = _fetch_sec_fundamentals(symbol)
+    sec_available = not sec_income.empty
+
+    # --- supplemental: yfinance (info + prices) --------------------------------
     ticker_obj = yf.Ticker(symbol)
-    info = _safe_info(ticker_obj)
-    income = _safe_statement(ticker_obj, ("income_stmt", "financials"))
-    balance = _safe_statement(ticker_obj, ("balance_sheet", "balancesheet"))
-    cashflow = _safe_statement(ticker_obj, ("cashflow",))
+    yf_info = _safe_info(ticker_obj)
+
+    if sec_available:
+        income = sec_income
+        balance = sec_balance
+        cashflow = sec_cashflow
+        # yfinance supplies analyst estimates; SEC supplies entity name / currency.
+        # Merge order: yfinance base, SEC overrides metadata keys.
+        info = {**yf_info, **sec_info}
+        data_source = "SEC EDGAR"
+        logger.info("Using SEC EDGAR data for %s", symbol)
+    else:
+        logger.info("SEC data unavailable for %s — falling back to yfinance statements", symbol)
+        income = _safe_statement(ticker_obj, ("income_stmt", "financials"))
+        balance = _safe_statement(ticker_obj, ("balance_sheet", "balancesheet"))
+        cashflow = _safe_statement(ticker_obj, ("cashflow",))
+        info = yf_info
+        data_source = "yfinance (fallback)"
 
     first_year = _first_statement_year(income, balance, cashflow)
     history = _safe_history(ticker_obj, first_year)
     yearly_prices = _yearly_close_prices(history)
 
-    return build_fundamentals_result(
+    result = build_fundamentals_result(
         ticker=symbol,
         info=info,
         income=income,
@@ -80,6 +157,8 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
         yearly_prices=yearly_prices,
         years=years,
     ).to_dict()
+    result["quality_notes"] = [f"Data source: {data_source}"] + result["quality_notes"]
+    return result
 
 
 def build_fundamentals_result(
@@ -125,6 +204,147 @@ def build_fundamentals_result(
         as_of=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 
+
+# ---------------------------------------------------------------------------
+# SEC EDGAR fetch helpers
+# ---------------------------------------------------------------------------
+
+def _sec_cik(ticker: str) -> str | None:
+    """Resolve a ticker symbol to a zero-padded 10-digit CIK string.
+
+    On the first call the full ticker→CIK mapping is fetched from EDGAR and
+    cached in-process.  Subsequent calls are local dictionary lookups.
+    """
+    if not _CIK_CACHE:
+        url = "https://www.sec.gov/files/company_tickers.json"
+        try:
+            req = urllib.request.Request(url, headers=_SEC_HEADERS)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data: dict = json.loads(resp.read())
+            _CIK_CACHE.update(
+                {entry["ticker"].upper(): str(entry["cik_str"]).zfill(10)
+                 for entry in data.values()}
+            )
+        except Exception as exc:
+            logger.warning("SEC ticker\u2192CIK mapping unavailable: %s", exc)
+            return None
+    return _CIK_CACHE.get(ticker)
+
+
+def _sec_company_facts(cik: str) -> dict[str, Any] | None:
+    """Fetch the full XBRL company-facts JSON for the given CIK."""
+    url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+    try:
+        req = urllib.request.Request(url, headers=_SEC_HEADERS)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())
+    except Exception as exc:
+        logger.warning("SEC company facts unavailable for CIK %s: %s", cik, exc)
+        return None
+
+
+def _sec_annual_series(usgaap: dict[str, Any], concept: str) -> dict[int, float]:
+    """Return a fiscal-year\u2192value dict from SEC XBRL for one concept.
+
+    Only 10-K and 10-K/A filings are included.  When a fiscal year has
+    multiple entries (e.g. original + amendment) the latest-filed value wins.
+    """
+    concept_data = usgaap.get(concept)
+    if not concept_data:
+        return {}
+    for unit in ("USD", "USD/shares", "shares"):
+        entries = concept_data.get("units", {}).get(unit)
+        if not entries:
+            continue
+        best: dict[int, tuple[str, float]] = {}  # fy \u2192 (filed_date, val)
+        for entry in entries:
+            if entry.get("form") not in ("10-K", "10-K/A"):
+                continue
+            fy = entry.get("fy")
+            if not isinstance(fy, int):
+                continue
+            val = entry.get("val")
+            if val is None:
+                continue
+            filed = entry.get("filed", "")
+            if fy not in best or filed > best[fy][0]:
+                best[fy] = (filed, float(val))
+        if best:
+            return {fy: val for fy, (_, val) in best.items()}
+    return {}
+
+
+def _build_sec_statement(
+    concepts: list[tuple[str, list[str], bool]],
+    usgaap: dict[str, Any],
+) -> pd.DataFrame:
+    """Build a statement DataFrame from SEC XBRL concept definitions.
+
+    Returns a DataFrame with row labels matching the names that
+    _series_from_statement() already looks up and integer year columns,
+    identical in shape to a cleaned yfinance statement.
+    """
+    rows: dict[str, dict[int, float]] = {}
+    for label, concept_names, negate in concepts:
+        series: dict[int, float] = {}
+        for concept in concept_names:
+            series = _sec_annual_series(usgaap, concept)
+            if series:
+                break
+        if series:
+            rows[label] = {fy: -val if negate else val for fy, val in series.items()}
+
+    if not rows:
+        return pd.DataFrame()
+
+    all_years = sorted({fy for s in rows.values() for fy in s})
+    df = pd.DataFrame(
+        {label: [series.get(yr, np.nan) for yr in all_years]
+         for label, series in rows.items()},
+        index=all_years,
+    ).T
+    df.columns = pd.Index(all_years)
+    return df
+
+
+def _fetch_sec_fundamentals(
+    ticker: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    """Fetch annual income, balance, and cashflow statements from SEC EDGAR XBRL.
+
+    Returns empty DataFrames and an empty dict if the ticker cannot be resolved
+    or EDGAR is unreachable, so the caller can transparently fall back.
+    """
+    _empty: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]] = (
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
+    )
+
+    cik = _sec_cik(ticker)
+    if not cik:
+        return _empty
+
+    facts = _sec_company_facts(cik)
+    if not facts:
+        return _empty
+
+    usgaap = facts.get("facts", {}).get("us-gaap", {})
+    if not usgaap:
+        return _empty
+
+    income = _build_sec_statement(_INCOME_CONCEPTS, usgaap)
+    balance = _build_sec_statement(_BALANCE_CONCEPTS, usgaap)
+    cashflow = _build_sec_statement(_CASHFLOW_CONCEPTS, usgaap)
+
+    sec_info: dict[str, Any] = {
+        "longName": facts.get("entityName", ticker),
+        "financialCurrency": "USD",
+    }
+    return income, balance, cashflow, sec_info
+
+
+# ---------------------------------------------------------------------------
+# yfinance fetch helpers
+# ---------------------------------------------------------------------------
 
 def _safe_info(ticker_obj: Any) -> dict[str, Any]:
     try:
@@ -174,13 +394,16 @@ def _clean_statement(statement: pd.DataFrame | None) -> pd.DataFrame:
 
     converted_columns = {}
     for column in df.columns:
-        try:
-            converted_columns[column] = pd.Timestamp(column).year
-        except Exception:
+        if isinstance(column, (int, np.integer)):
+            converted_columns[column] = int(column)
+        else:
             try:
-                converted_columns[column] = int(column)
+                converted_columns[column] = pd.Timestamp(column).year
             except Exception:
-                continue
+                try:
+                    converted_columns[column] = int(column)
+                except Exception:
+                    continue
 
     df = df.rename(columns=converted_columns)
     df = df[[column for column in df.columns if isinstance(column, int)]]

@@ -51,6 +51,7 @@ def create_dashboard_layout(theme: dict) -> html.Div:
     styles = get_styles(theme)
 
     return html.Div([
+        dcc.Location(id='app-url', refresh=False),
         # Hidden stores
         dcc.Store(id='theme-store', data=DEFAULT_THEME, storage_type='local'),
         dcc.Store(id='data-loaded-store', data=False),
@@ -203,6 +204,13 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
                 }),
             ]),
             html.Div([
+                html.Span(id='fundamentals-global-symbol', children=f'GLOBAL {DEFAULT_TICKER}', className='num muted', style={
+                    'fontFamily': FONT_MONO,
+                    'fontSize': FONT_SIZES['xs'],
+                    'color': theme['text_secondary'],
+                    'alignSelf': 'center',
+                    'marginRight': '6px',
+                }),
                 html.Span(id='fundamentals-status', children='READY', className='num muted', style={
                     'fontFamily': FONT_MONO,
                     'fontSize': FONT_SIZES['xs'],
