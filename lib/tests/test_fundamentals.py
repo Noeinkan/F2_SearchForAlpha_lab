@@ -59,8 +59,9 @@ class TestFundamentalsResult(unittest.TestCase):
         self.assertEqual(payload["company_name"], "Test Corp")
         self.assertEqual(payload["years"][0], 2013)
         self.assertEqual(payload["years"][-1], 2023)
-        self.assertEqual(len(payload["financials"]), 11)
+        self.assertEqual(len(payload["financials"]), 13)
         self.assertEqual(len(payload["big_five"]), 7)
+        self.assertIn("big_five_note", payload)
         self.assertIn("Entry Price", [row["metric"] for row in payload["valuation"]])
         self.assertIn("ROIC", payload["chart_series"])
 

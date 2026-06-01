@@ -691,7 +691,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
 .dash-dropdown-search-container {
     background: var(--bg-secondary) !important;
     border-bottom: 1px solid var(--border-primary) !important;
-    padding: 8px !important;
+    padding: 8px 8px 10px !important;
 }
 .dash-dropdown-search {
     background: var(--bg-secondary) !important;
@@ -713,6 +713,8 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
 .dash-dropdown-options,
 .dash-options-list {
     background: var(--bg-secondary) !important;
+    margin-top: 4px !important;
+    border-top: 1px solid var(--border-primary) !important;
 }
 .dash-dropdown-option,
 .dash-options-list-option {

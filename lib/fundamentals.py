@@ -33,6 +33,7 @@ class FundamentalResult:
     years: list[int]
     financials: list[dict[str, Any]]
     big_five: list[dict[str, Any]]
+    big_five_note: str
     valuation: list[dict[str, Any]]
     chart_series: dict[str, list[float | None]]
     quality_notes: list[str]
@@ -46,6 +47,7 @@ class FundamentalResult:
             "years": self.years,
             "financials": self.financials,
             "big_five": self.big_five,
+            "big_five_note": self.big_five_note,
             "valuation": self.valuation,
             "chart_series": self.chart_series,
             "quality_notes": self.quality_notes,
@@ -116,6 +118,7 @@ def build_fundamentals_result(
         years=all_years,
         financials=_rows_from_map(financial_map, all_years),
         big_five=big_five,
+        big_five_note="NOTE: Big Five should be >= 10% per year over the last 10 years.",
         valuation=valuation,
         chart_series=_chart_series(financial_map, all_years),
         quality_notes=notes,
@@ -306,7 +309,7 @@ def _growth_metric(label: str, values: pd.Series) -> dict[str, Any]:
 def _rows_from_map(financial_map: dict[str, dict[str, Any]], years: list[int]) -> list[dict[str, Any]]:
     row_keys = [
         "sales", "equity", "eps", "fcf", "nopat", "net_income", "avg_invested_capital",
-        "current_debt", "long_debt", "total_debt", "stock_price",
+        "current_debt", "long_debt", "total_debt", "stock_price", "debt_ratio", "pe_ratio",
     ]
     return [_display_row(financial_map[key], years) for key in row_keys]
 
@@ -318,11 +321,17 @@ def _build_big_five(financial_map: dict[str, dict[str, Any]], years: list[int]) 
         row = _display_row(metric, years)
         source = metric.get("source_values", metric["values"])
         if key == "roic":
-            row.update(_summary_averages(metric["values"], percent=True))
+            summary = _summary_average_values(metric["values"])
+            row.update(_format_summary_values(summary, percent=True))
+            row.update(_big_five_statuses(summary, threshold=0.10))
         elif metric["kind"] == "growth":
-            row.update(_summary_cagrs(source))
+            summary = _summary_cagr_values(source)
+            row.update(_format_summary_values(summary, percent=True))
+            row.update(_big_five_statuses(summary, threshold=0.10))
         else:
-            row.update(_summary_averages(metric["values"], percent=False))
+            summary = _summary_average_values(metric["values"])
+            row.update(_format_summary_values(summary, percent=False))
+            row.update(_big_five_statuses(summary, threshold=None))
         rows.append(row)
     return rows
 
@@ -387,21 +396,51 @@ def _display_row(metric: dict[str, Any], years: list[int]) -> dict[str, Any]:
 
 
 def _summary_averages(values: pd.Series, *, percent: bool) -> dict[str, str]:
-    formatter = _format_pct if percent else _format_number
-    return {
-        "10Y": formatter(values.dropna().tail(10).mean()) if not values.dropna().empty else "--",
-        "5Y": formatter(values.dropna().tail(5).mean()) if not values.dropna().empty else "--",
-        "1Y": formatter(_latest(values)),
-    }
+    return _format_summary_values(_summary_average_values(values), percent=percent)
 
 
 def _summary_cagrs(values: pd.Series) -> dict[str, str]:
+    return _format_summary_values(_summary_cagr_values(values), percent=True)
+
+
+def _summary_average_values(values: pd.Series) -> dict[str, float]:
     clean = values.dropna()
     return {
-        "10Y": _format_pct(_cagr(clean, 10)),
-        "5Y": _format_pct(_cagr(clean, 5)),
-        "1Y": _format_pct(clean.pct_change().iloc[-1] if len(clean) >= 2 else np.nan),
+        "10Y": clean.tail(10).mean() if not clean.empty else np.nan,
+        "5Y": clean.tail(5).mean() if not clean.empty else np.nan,
+        "1Y": _latest(clean),
     }
+
+
+def _summary_cagr_values(values: pd.Series) -> dict[str, float]:
+    clean = values.dropna()
+    return {
+        "10Y": _cagr(clean, 10),
+        "5Y": _cagr(clean, 5),
+        "1Y": clean.pct_change().iloc[-1] if len(clean) >= 2 else np.nan,
+    }
+
+
+def _format_summary_values(summary: dict[str, float], *, percent: bool) -> dict[str, str]:
+    formatter = _format_pct if percent else _format_number
+    return {label: formatter(value) for label, value in summary.items()}
+
+
+def _big_five_statuses(summary: dict[str, float], *, threshold: float | None) -> dict[str, str]:
+    return {f"status_{label}": _status_for_value(value, threshold) for label, value in summary.items()}
+
+
+def _status_for_value(value: float, threshold: float | None) -> str:
+    if not _is_number(value):
+        return "na"
+    number = float(value)
+    if threshold is None:
+        return "neutral"
+    if number >= threshold:
+        return "good"
+    if number > 0:
+        return "warn"
+    return "bad"
 
 
 def _cagr(values: pd.Series, periods: int) -> float:

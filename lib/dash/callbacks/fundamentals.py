@@ -18,6 +18,17 @@ logger = logging.getLogger(__name__)
 
 def register_fundamentals_callbacks(app) -> None:
     @app.callback(
+        Output('fundamentals-ticker-input', 'value'),
+        Input('open-fundamentals-button', 'n_clicks'),
+        State('ticker-dropdown', 'value'),
+        prevent_initial_call=True,
+    )
+    def seed_fundamentals_ticker(open_clicks, ticker):
+        if not open_clicks:
+            raise PreventUpdate
+        return str(ticker or DEFAULT_TICKER).upper()
+
+    @app.callback(
         Output('fundamentals-overlay', 'style'),
         [Input('open-fundamentals-button', 'n_clicks'),
          Input('close-fundamentals-button', 'n_clicks')],
@@ -45,15 +56,27 @@ def register_fundamentals_callbacks(app) -> None:
          Output('fundamentals-title', 'children'),
          Output('fundamentals-status', 'children')],
         [Input('open-fundamentals-button', 'n_clicks'),
-         Input('refresh-fundamentals-button', 'n_clicks')],
-        [State('ticker-dropdown', 'value')],
+         Input('refresh-fundamentals-button', 'n_clicks'),
+         Input('load-fundamentals-ticker-button', 'n_clicks'),
+         Input('fundamentals-ticker-input', 'n_submit')],
+        [State('ticker-dropdown', 'value'),
+         State('fundamentals-ticker-input', 'value')],
         prevent_initial_call=True,
     )
-    def load_fundamentals(open_clicks, refresh_clicks, ticker):
+    def load_fundamentals(open_clicks, refresh_clicks, load_clicks, input_submit, ticker, overlay_ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
-        symbol = str(ticker or DEFAULT_TICKER).upper()
+
+        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        if trigger_id == 'open-fundamentals-button':
+            symbol = str(ticker or DEFAULT_TICKER).strip().upper()
+        else:
+            symbol = str(overlay_ticker or ticker or DEFAULT_TICKER).strip().upper()
+
+        if not symbol:
+            return None, 'Invalid ticker', 'ERROR: ticker is required'
+
         try:
             payload = fetch_fundamentals(symbol)
         except Exception as exc:
@@ -91,6 +114,7 @@ def _render_payload(payload: dict[str, Any], theme: dict) -> html.Div:
         ], className='sfa-fundamentals-top'),
         html.Div([
             _panel_title('Big Five', theme),
+            _big_five_note(payload.get('big_five_note', ''), theme),
             _big_five_table(payload.get('big_five', []), years, theme),
         ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-big-five'),
         html.Div([
@@ -156,8 +180,8 @@ def _financial_table(rows: list[dict[str, Any]], years: list[str], theme: dict) 
         'style_table': {'overflowX': 'auto', 'width': '100%', 'minWidth': '100%'},
         'style_cell': _table_cell_style(theme),
         'style_cell_conditional': [
-            {'if': {'column_id': 'metric'}, 'textAlign': 'left', 'fontWeight': 700, 'minWidth': '150px', 'width': '16%'},
-            {'if': {'column_id': 'unit'}, 'textAlign': 'center', 'width': '44px', 'maxWidth': '52px'},
+            {'if': {'column_id': 'metric'}, 'textAlign': 'left', 'fontWeight': 700, 'minWidth': '165px', 'width': '18%'},
+            {'if': {'column_id': 'unit'}, 'textAlign': 'center', 'width': '52px', 'maxWidth': '58px'},
         ],
         'style_header': _table_header_style(theme),
         'style_data_conditional': _financial_conditionals(theme),
@@ -167,6 +191,7 @@ def _financial_table(rows: list[dict[str, Any]], years: list[str], theme: dict) 
 
 
 def _big_five_table(rows: list[dict[str, Any]], years: list[str], theme: dict) -> dash_table.DataTable:
+    rows = _decorate_big_five_rows(rows)
     columns = [{'name': 'Metric', 'id': 'metric'}, {'name': 'Unit', 'id': 'unit'}]
     columns += [{'name': year, 'id': year} for year in years]
     columns += [{'name': label, 'id': label} for label in ('10Y', '5Y', '1Y')]
@@ -177,14 +202,46 @@ def _big_five_table(rows: list[dict[str, Any]], years: list[str], theme: dict) -
         'style_table': {'overflowX': 'auto', 'width': '100%', 'minWidth': '100%'},
         'style_cell': _table_cell_style(theme),
         'style_cell_conditional': [
-            {'if': {'column_id': 'metric'}, 'textAlign': 'left', 'fontWeight': 700, 'minWidth': '130px', 'width': '14%'},
-            {'if': {'column_id': 'unit'}, 'textAlign': 'center', 'width': '42px', 'maxWidth': '48px'},
+            {'if': {'column_id': 'metric'}, 'textAlign': 'left', 'fontWeight': 700, 'minWidth': '150px', 'width': '16%'},
+            {'if': {'column_id': 'unit'}, 'textAlign': 'center', 'width': '52px', 'maxWidth': '58px'},
             {'if': {'column_id': '10Y'}, 'borderLeft': f'2px solid {theme["accent_blue"]}'},
         ],
         'style_header': _table_header_style(theme),
         'style_data_conditional': _big_five_conditionals(theme, years + ['10Y', '5Y', '1Y']),
     }
     return dash_table.DataTable(**props)
+
+
+def _decorate_big_five_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    arrow_by_status = {
+        'good': '↑',
+        'warn': '→',
+        'bad': '↓',
+    }
+    decorated: list[dict[str, Any]] = []
+    for row in rows:
+        new_row = dict(row)
+        for summary_label in ('10Y', '5Y', '1Y'):
+            status = str(new_row.get(f'status_{summary_label}', ''))
+            value = str(new_row.get(summary_label, '--'))
+            arrow = arrow_by_status.get(status)
+            if arrow and value != '--':
+                new_row[summary_label] = f'{arrow} {value}'
+        decorated.append(new_row)
+    return decorated
+
+
+def _big_five_note(note: str, theme: dict) -> html.Div:
+    if not note:
+        return html.Div()
+    return html.Div(note, style={
+        'fontFamily': FONT_MONO,
+        'fontSize': FONT_SIZES['xs'],
+        'fontWeight': 700,
+        'color': theme['accent_red'],
+        'marginBottom': '4px',
+        'lineHeight': '1.25',
+    })
 
 
 def _valuation_table(rows: list[dict[str, Any]], theme: dict) -> html.Div:
@@ -210,18 +267,18 @@ def _valuation_table(rows: list[dict[str, Any]], theme: dict) -> html.Div:
 def _table_cell_style(theme: dict) -> dict[str, Any]:
     return {
         'textAlign': 'right',
-        'padding': '4px 6px',
+        'padding': '5px 7px',
         'backgroundColor': theme['bg_tertiary'],
         'color': theme['text_primary'],
         'border': f'1px solid {theme["border_secondary"]}',
-        'fontSize': '10px',
+        'fontSize': '11px',
         'fontFamily': FONT_MONO,
         'fontVariantNumeric': 'tabular-nums',
         'whiteSpace': 'nowrap',
-        'lineHeight': '14px',
-        'height': '18px',
-        'minHeight': '18px',
-        'maxHeight': '18px',
+        'lineHeight': '16px',
+        'height': '22px',
+        'minHeight': '22px',
+        'maxHeight': '22px',
         'overflow': 'hidden',
         'textOverflow': 'ellipsis',
     }
@@ -233,11 +290,11 @@ def _table_header_style(theme: dict) -> dict[str, Any]:
         'backgroundColor': theme['bg_secondary'],
         'color': theme['text_secondary'],
         'textTransform': 'uppercase',
-        'fontSize': '10px',
+        'fontSize': '11px',
         'border': f'1px solid {theme["border_primary"]}',
-        'height': '18px',
-        'minHeight': '18px',
-        'maxHeight': '18px',
+        'height': '22px',
+        'minHeight': '22px',
+        'maxHeight': '22px',
     }
 
 
@@ -247,11 +304,11 @@ def _valuation_header_style(theme: dict) -> dict[str, Any]:
         'backgroundColor': theme['bg_secondary'],
         'color': theme['text_secondary'],
         'textTransform': 'uppercase',
-        'fontSize': '10px',
+        'fontSize': '11px',
         'border': f'1px solid {theme["border_primary"]}',
-        'padding': '4px 6px',
+        'padding': '5px 7px',
         'fontFamily': FONT_MONO,
-        'lineHeight': '14px',
+        'lineHeight': '16px',
     }
 
 
@@ -263,10 +320,10 @@ def _valuation_cells(row: dict[str, Any], theme: dict) -> list[html.Div]:
         'backgroundColor': theme['bg_tertiary'],
         'color': theme['text_primary'],
         'border': f'1px solid {theme["border_secondary"]}',
-        'padding': '4px 6px',
-        'fontSize': '10px',
+        'padding': '5px 7px',
+        'fontSize': '11px',
         'fontFamily': FONT_MONO,
-        'lineHeight': '14px',
+        'lineHeight': '16px',
         'whiteSpace': 'nowrap',
         'overflow': 'hidden',
         'textOverflow': 'ellipsis',
@@ -291,23 +348,32 @@ def _valuation_metric_style(metric: str, theme: dict) -> dict[str, Any]:
 
 def _financial_conditionals(theme: dict) -> list[dict[str, Any]]:
     return [
-        {'if': {'filter_query': '{metric} = "Sales (Rev)"'}, 'backgroundColor': f'{theme["accent_green"]}18'},
-        {'if': {'filter_query': '{metric} = "Equity"'}, 'backgroundColor': f'{theme["accent_green"]}18'},
-        {'if': {'filter_query': '{metric} = "EPS"'}, 'backgroundColor': f'{theme["accent_green"]}18'},
-        {'if': {'filter_query': '{metric} = "FCF"'}, 'backgroundColor': f'{theme["accent_green"]}18'},
-        {'if': {'filter_query': '{metric} = "NOPAT"'}, 'backgroundColor': f'{theme["accent_red"]}16'},
-        {'if': {'filter_query': '{metric} contains "Debt"'}, 'backgroundColor': f'{theme["accent_cyan"]}18'},
-        {'if': {'filter_query': '{metric} = "Avg. Invested Capital"'}, 'backgroundColor': f'{theme["accent_orange"]}16'},
+        {'if': {'filter_query': '{metric} = "Sales (Rev)"'}, 'backgroundColor': f'{theme["accent_green"]}24'},
+        {'if': {'filter_query': '{metric} = "Equity"'}, 'backgroundColor': f'{theme["accent_green"]}24'},
+        {'if': {'filter_query': '{metric} = "EPS"'}, 'backgroundColor': f'{theme["accent_green"]}24'},
+        {'if': {'filter_query': '{metric} = "FCF"'}, 'backgroundColor': f'{theme["accent_green"]}24'},
+        {'if': {'filter_query': '{metric} = "NOPAT"'}, 'backgroundColor': f'{theme["accent_red"]}22'},
+        {'if': {'filter_query': '{metric} contains "Debt"'}, 'backgroundColor': f'{theme["accent_cyan"]}24'},
+        {'if': {'filter_query': '{metric} = "Debt Ratio"'}, 'backgroundColor': f'{theme["accent_cyan"]}28'},
+        {'if': {'filter_query': '{metric} = "PE Ratio"'}, 'backgroundColor': f'{theme["accent_orange"]}24'},
+        {'if': {'filter_query': '{metric} = "Avg. Invested Capital"'}, 'backgroundColor': f'{theme["accent_orange"]}22'},
     ]
 
 
 def _big_five_conditionals(theme: dict, value_columns: list[str]) -> list[dict[str, Any]]:
-    conditionals = [{'if': {'filter_query': '{metric} = "ROIC"'}, 'backgroundColor': f'{theme["accent_green"]}18'}]
+    conditionals = [{'if': {'filter_query': '{metric} = "ROIC"'}, 'backgroundColor': f'{theme["accent_green"]}24'}]
     for column in value_columns:
         conditionals.extend([
             {'if': {'column_id': column, 'filter_query': f'{{{column}}} contains "--"'}, 'color': theme['text_tertiary']},
-            {'if': {'column_id': column, 'filter_query': f'{{{column}}} contains "-"'}, 'backgroundColor': f'{theme["accent_red"]}18', 'color': theme['accent_red']},
-            {'if': {'column_id': column, 'filter_query': f'{{{column}}} contains "0.00%"'}, 'backgroundColor': f'{theme["accent_red"]}18'},
+            {'if': {'column_id': column, 'filter_query': f'{{{column}}} contains "-"'}, 'backgroundColor': f'{theme["accent_red"]}26', 'color': theme['accent_red'], 'fontWeight': 700},
+            {'if': {'column_id': column, 'filter_query': f'{{{column}}} contains "0.00%"'}, 'backgroundColor': f'{theme["accent_red"]}26', 'color': theme['accent_red'], 'fontWeight': 700},
+        ])
+    for summary_label in ('10Y', '5Y', '1Y'):
+        status_key = f'status_{summary_label}'
+        conditionals.extend([
+            {'if': {'column_id': summary_label, 'filter_query': f'{{{status_key}}} = "good"'}, 'backgroundColor': f'{theme["accent_green"]}30', 'color': theme['accent_green'], 'fontWeight': 700},
+            {'if': {'column_id': summary_label, 'filter_query': f'{{{status_key}}} = "warn"'}, 'backgroundColor': f'{theme["accent_orange"]}30', 'color': theme['accent_orange'], 'fontWeight': 700},
+            {'if': {'column_id': summary_label, 'filter_query': f'{{{status_key}}} = "bad"'}, 'backgroundColor': f'{theme["accent_red"]}30', 'color': theme['accent_red'], 'fontWeight': 700},
         ])
     return conditionals
 

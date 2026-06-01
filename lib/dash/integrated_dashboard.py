@@ -207,6 +207,19 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
                     'color': theme['text_secondary'],
                     'alignSelf': 'center',
                 }),
+                dcc.Input(
+                    id='fundamentals-ticker-input',
+                    type='text',
+                    value=DEFAULT_TICKER,
+                    placeholder='Ticker',
+                    debounce=True,
+                    style={
+                        **styles['input'],
+                        'width': '88px',
+                        'textTransform': 'uppercase',
+                    },
+                ),
+                html.Button("LOAD", id='load-fundamentals-ticker-button', n_clicks=0, style=styles['button_outline']),
                 html.Button("REFRESH", id='refresh-fundamentals-button', n_clicks=0, style=styles['button_outline']),
                 html.Button("CLOSE", id='close-fundamentals-button', n_clicks=0, style={
                     **styles['button_outline'],
