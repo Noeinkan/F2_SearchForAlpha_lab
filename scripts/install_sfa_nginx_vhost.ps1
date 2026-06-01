@@ -39,17 +39,15 @@ path = Path('/opt/bep-generator/nginx/conf.d/default.conf')
 content = path.read_text()
 start = '# BEGIN SFA DASHBOARD VHOST'
 end = '# END SFA DASHBOARD VHOST'
-block = f"""{start}
-$conf
-{end}
-"""
+conf = """$conf"""
+block = start + "\n" + conf + "\n" + end + "\n"
 
 if start in content and end in content:
     before, rest = content.split(start, 1)
     _, after = rest.split(end, 1)
     content = before + block + after
 else:
-    content = content.rstrip() + "\\n\\n" + block + "\\n"
+  content = content.rstrip() + "\n\n" + block + "\n"
 
 path.write_text(content)
 PY

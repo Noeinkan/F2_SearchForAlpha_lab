@@ -379,9 +379,9 @@ def _build_valuation(
         ("MOS", _format_pct(margin_of_safety)),
         ("Fut. Market Price (10 Y)", _format_money(future_market_price)),
         ("Sticker Price", _format_money(sticker_price)),
-        ("Current Price", _format_money(price)),
+        ("Year-end Close", _format_money(price)),
         ("Entry Price", _format_money(entry_price)),
-        ("Current/Entry price ratio", _format_number(current_entry_ratio, 1)),
+        ("Close/Entry price ratio", _format_number(current_entry_ratio, 1)),
     ]
     return [{"metric": metric, "value": value} for metric, value in rows]
 

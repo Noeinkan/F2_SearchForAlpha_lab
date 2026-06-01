@@ -19,58 +19,62 @@ def register_misc_callbacks(app) -> None:
          Output('panel-data', 'style'),
          Output('tab-backtest', 'style'),
          Output('tab-optimizer', 'style'),
-         Output('tab-data', 'style')],
+         Output('tab-data', 'style'),
+         Output('active-tab-store', 'data')],
         [Input('tab-backtest', 'n_clicks'),
          Input('tab-optimizer', 'n_clicks'),
          Input('tab-data', 'n_clicks')],
-        [State('theme-store', 'data')]
+        [State('theme-store', 'data'),
+         State('active-tab-store', 'data')]
     )
-    def switch_panel(backtest_clicks, optimizer_clicks, data_clicks, theme_name):
+    def switch_panel(backtest_clicks, optimizer_clicks, data_clicks, theme_name, active_tab):
         """Switch between right panel tabs."""
         theme = get_theme(theme_name or DEFAULT_THEME)
         styles = get_styles(theme)
 
-        ctx = callback_context
-        if not ctx.triggered:
-            # Default to backtest tab
+        def _styles_for_tab(tab_name):
+            if tab_name == 'optimizer':
+                return (
+                    {'display': 'none'},
+                    {'display': 'block'},
+                    {'display': 'none'},
+                    styles['tab'],
+                    {**styles['tab'], **styles['tab_active']},
+                    styles['tab'],
+                    'optimizer'
+                )
+            if tab_name == 'data':
+                return (
+                    {'display': 'none'},
+                    {'display': 'none'},
+                    {'display': 'block'},
+                    styles['tab'],
+                    styles['tab'],
+                    {**styles['tab'], **styles['tab_active']},
+                    'data'
+                )
             return (
                 {'display': 'block'},
                 {'display': 'none'},
                 {'display': 'none'},
                 {**styles['tab'], **styles['tab_active']},
                 styles['tab'],
-                styles['tab']
+                styles['tab'],
+                'backtest'
             )
+
+        ctx = callback_context
+        if not ctx.triggered:
+            return _styles_for_tab(active_tab or 'backtest')
 
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
         if button_id == 'tab-backtest':
-            return (
-                {'display': 'block'},
-                {'display': 'none'},
-                {'display': 'none'},
-                {**styles['tab'], **styles['tab_active']},
-                styles['tab'],
-                styles['tab']
-            )
+            return _styles_for_tab('backtest')
         if button_id == 'tab-optimizer':
-            return (
-                {'display': 'none'},
-                {'display': 'block'},
-                {'display': 'none'},
-                styles['tab'],
-                {**styles['tab'], **styles['tab_active']},
-                styles['tab']
-            )
+            return _styles_for_tab('optimizer')
         # tab-data
-        return (
-            {'display': 'none'},
-            {'display': 'none'},
-            {'display': 'block'},
-            styles['tab'],
-            styles['tab'],
-            {**styles['tab'], **styles['tab_active']}
-        )
+        return _styles_for_tab('data')
 
     @app.callback(
         [Output('header-status', 'children'),

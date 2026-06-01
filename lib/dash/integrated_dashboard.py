@@ -52,12 +52,14 @@ def create_dashboard_layout(theme: dict) -> html.Div:
 
     return html.Div([
         # Hidden stores
-        dcc.Store(id='theme-store', data=DEFAULT_THEME),
+        dcc.Store(id='theme-store', data=DEFAULT_THEME, storage_type='local'),
         dcc.Store(id='data-loaded-store', data=False),
         dcc.Store(id='layout-store', data={}),
         dcc.Store(id='presets-store', data={'presets': {}}),
         dcc.Store(id='active-preset-name', data=None),
         dcc.Store(id='preset-apply-store', data=None),
+        dcc.Store(id='active-tab-store', data='backtest', storage_type='local'),
+        dcc.Store(id='fundamentals-overlay-open-store', data=False, storage_type='session'),
         dcc.Store(id='optimization-running', data=False),
         dcc.Store(id='optimization-state', data={
             'running': False,
@@ -72,7 +74,7 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         dcc.Store(id='indicator-settings-store', data=DEFAULT_INDICATOR_SETTINGS),
         dcc.Store(id='active-indicator-store', data=None),
         dcc.Store(id='export-img-store', data=None),
-        dcc.Store(id='fundamentals-store', data=None),
+        dcc.Store(id='fundamentals-store', data=None, storage_type='session'),
         dcc.Download(id='download-csv'),
         dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
         dcc.Interval(id='autoload-interval', interval=1000, max_intervals=1),
@@ -213,6 +215,8 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
                     value=DEFAULT_TICKER,
                     placeholder='Ticker',
                     debounce=True,
+                    persistence=True,
+                    persistence_type='session',
                     style={
                         **styles['input'],
                         'width': '88px',

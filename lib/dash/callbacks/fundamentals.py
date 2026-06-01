@@ -29,26 +29,32 @@ def register_fundamentals_callbacks(app) -> None:
         return str(ticker or DEFAULT_TICKER).upper()
 
     @app.callback(
-        Output('fundamentals-overlay', 'style'),
+        Output('fundamentals-overlay-open-store', 'data'),
         [Input('open-fundamentals-button', 'n_clicks'),
          Input('close-fundamentals-button', 'n_clicks')],
-        [State('fundamentals-overlay', 'style'),
-         State('theme-store', 'data')],
         prevent_initial_call=True,
     )
-    def toggle_fundamentals(open_clicks, close_clicks, current_style, theme_name):
+    def set_fundamentals_open_state(open_clicks, close_clicks):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
+        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        return trigger_id != 'close-fundamentals-button'
 
+    @app.callback(
+        Output('fundamentals-overlay', 'style'),
+        [Input('fundamentals-overlay-open-store', 'data'),
+         Input('theme-store', 'data')],
+        State('fundamentals-overlay', 'style'),
+    )
+    def render_fundamentals_overlay(open_state, theme_name, current_style):
         theme = get_theme(theme_name or DEFAULT_THEME)
         style = dict(current_style or {})
-        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         style.update({
             'backgroundColor': theme['bg_primary'],
             'border': f'1px solid {theme["border_primary"]}',
+            'display': 'block' if open_state else 'none',
         })
-        style['display'] = 'none' if trigger_id == 'close-fundamentals-button' else 'block'
         return style
 
     @app.callback(
@@ -357,6 +363,8 @@ def _financial_conditionals(theme: dict) -> list[dict[str, Any]]:
         {'if': {'filter_query': '{metric} = "Debt Ratio"'}, 'backgroundColor': f'{theme["accent_cyan"]}28'},
         {'if': {'filter_query': '{metric} = "PE Ratio"'}, 'backgroundColor': f'{theme["accent_orange"]}24'},
         {'if': {'filter_query': '{metric} = "Avg. Invested Capital"'}, 'backgroundColor': f'{theme["accent_orange"]}22'},
+        {'if': {'state': 'active'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
+        {'if': {'state': 'selected'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
     ]
 
 
@@ -375,6 +383,10 @@ def _big_five_conditionals(theme: dict, value_columns: list[str]) -> list[dict[s
             {'if': {'column_id': summary_label, 'filter_query': f'{{{status_key}}} = "warn"'}, 'backgroundColor': f'{theme["accent_orange"]}30', 'color': theme['accent_orange'], 'fontWeight': 700},
             {'if': {'column_id': summary_label, 'filter_query': f'{{{status_key}}} = "bad"'}, 'backgroundColor': f'{theme["accent_red"]}30', 'color': theme['accent_red'], 'fontWeight': 700},
         ])
+    conditionals.extend([
+        {'if': {'state': 'active'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
+        {'if': {'state': 'selected'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
+    ])
     return conditionals
 
 
