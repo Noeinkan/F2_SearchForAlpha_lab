@@ -240,13 +240,14 @@ def register_fundamentals_callbacks(app) -> None:
         [Input('fundamentals-financial-table', 'active_cell'),
          Input('fundamentals-big-five-table', 'active_cell'),
          Input('fundamentals-valuation-table', 'active_cell'),
+         Input('fundamentals-esc-signal', 'value'),
          Input('theme-store', 'data')],
         [State('fundamentals-financial-table', 'data'),
          State('fundamentals-big-five-table', 'data'),
          State('fundamentals-big-five-table', 'columns'),
          State('fundamentals-valuation-table', 'data')],
     )
-    def update_fundamentals_explainability(fin_active, big_active, val_active, theme_name, fin_rows, big_rows, big_columns, val_rows):
+    def update_fundamentals_explainability(fin_active, big_active, val_active, esc_signal, theme_name, fin_rows, big_rows, big_columns, val_rows):
         theme = get_theme(theme_name or DEFAULT_THEME)
         value_columns = _big_five_value_columns(big_columns)
         financial_style = _financial_conditionals(theme)
@@ -254,6 +255,10 @@ def register_fundamentals_callbacks(app) -> None:
         valuation_style = _valuation_conditionals(theme)
         explain_style = _valuation_explain_style(theme, visible=False)
         explain_children = []
+
+        trigger = callback_context.triggered[0]['prop_id'].split('.')[0] if callback_context.triggered else ''
+        if trigger == 'fundamentals-esc-signal' and esc_signal:
+            return financial_style, big_five_style, valuation_style, explain_children, explain_style
 
         metric = _resolve_selected_metric(fin_active, big_active, val_active, fin_rows, big_rows, val_rows)
         if not metric:
@@ -263,18 +268,21 @@ def register_fundamentals_callbacks(app) -> None:
         explain = _VALUATION_EXPLAIN_MAP.get(canonical_metric)
 
         if explain:
-            sources = explain.get('sources', {})
-            financial_style += _highlight_metric_rules(sources.get('financial', []), theme)
-            big_five_style += _highlight_metric_rules(sources.get('big_five', []), theme)
-            valuation_style += _highlight_metric_rules(sources.get('valuation', []), theme)
-            valuation_style += _highlight_metric_rules([canonical_metric], theme)
+            layers = _dependency_layers(canonical_metric)
+            financial_style += _highlight_metric_rules(layers['direct_financial'], theme, tone='direct')
+            financial_style += _highlight_metric_rules(layers['indirect_financial'], theme, tone='indirect')
+            big_five_style += _highlight_metric_rules(layers['direct_big_five'], theme, tone='direct')
+            big_five_style += _highlight_metric_rules(layers['indirect_big_five'], theme, tone='indirect')
+            valuation_style += _highlight_metric_rules(layers['direct_valuation'], theme, tone='direct')
+            valuation_style += _highlight_metric_rules(layers['indirect_valuation'], theme, tone='indirect')
+            valuation_style += _highlight_metric_rules([canonical_metric], theme, tone='selected')
             explain_children = _valuation_explain_content(canonical_metric, explain, theme)
         else:
             dependents = _REVERSE_DEPENDENCY_MAP.get(canonical_metric, [])
             if dependents:
-                valuation_style += _highlight_metric_rules(dependents, theme)
-                financial_style += _highlight_metric_rules([canonical_metric], theme)
-                big_five_style += _highlight_metric_rules([canonical_metric], theme)
+                valuation_style += _highlight_metric_rules(dependents, theme, tone='direct')
+                financial_style += _highlight_metric_rules([canonical_metric], theme, tone='selected')
+                big_five_style += _highlight_metric_rules([canonical_metric], theme, tone='selected')
                 explain_children = _valuation_source_content(canonical_metric, dependents, theme)
             else:
                 explain_children = _valuation_generic_content(canonical_metric, theme)
@@ -562,6 +570,7 @@ def _valuation_explain_style(theme: dict, *, visible: bool) -> dict[str, Any]:
 
 
 def _valuation_explain_content(metric: str, explain: dict[str, Any], theme: dict) -> list[html.Div]:
+    layers = _dependency_layers(metric)
     return [
         html.Div(f"Calculation detail: {metric}", style={
             'fontFamily': FONT_MONO,
@@ -588,6 +597,13 @@ def _valuation_explain_content(metric: str, explain: dict[str, Any], theme: dict
             'fontSize': FONT_SIZES['xs'],
             'color': theme['text_secondary'],
             'marginTop': '5px',
+        }),
+        html.Div(_layer_summary_text(layers), style={
+            'fontFamily': FONT_MONO,
+            'fontSize': FONT_SIZES['xs'],
+            'color': theme['text_secondary'],
+            'marginTop': '4px',
+            'lineHeight': '1.35',
         }),
     ]
 
@@ -681,19 +697,90 @@ def _big_five_value_columns(columns: list[dict[str, Any]] | None) -> list[str]:
     ]
 
 
-def _highlight_metric_rules(metrics: list[str], theme: dict) -> list[dict[str, Any]]:
+def _highlight_metric_rules(metrics: list[str], theme: dict, *, tone: str = 'direct') -> list[dict[str, Any]]:
+    styles = {
+        'direct': {
+            'textDecorationColor': theme['accent_orange'],
+            'borderBottom': f'2px solid {theme["accent_orange"]}',
+        },
+        'indirect': {
+            'textDecorationColor': theme['accent_cyan'],
+            'borderBottom': f'2px solid {theme["accent_cyan"]}',
+        },
+        'selected': {
+            'textDecorationColor': theme['accent_blue'],
+            'borderBottom': f'2px solid {theme["accent_blue"]}',
+            'border': f'1px solid {theme["accent_blue"]}',
+        },
+    }
+    style = styles.get(tone, styles['direct'])
     rules = []
     for metric in metrics:
         canonical = _canonical_metric(metric)
         rules.append({
             'if': {'filter_query': f'{{metric}} = "{_escape_filter(canonical)}"'},
             'textDecoration': 'underline',
-            'textDecorationColor': theme['accent_orange'],
+            'textDecorationColor': style['textDecorationColor'],
             'textDecorationThickness': '2px',
             'fontWeight': 700,
-            'borderBottom': f'2px solid {theme["accent_orange"]}',
+            'borderBottom': style['borderBottom'],
+            **({'border': style['border']} if 'border' in style else {}),
         })
     return rules
+
+
+def _dependency_layers(metric: str) -> dict[str, list[str]]:
+    canonical = _canonical_metric(metric)
+    explain = _VALUATION_EXPLAIN_MAP.get(canonical, {})
+    direct_sources = explain.get('sources', {})
+    direct_valuation = [_canonical_metric(m) for m in direct_sources.get('valuation', [])]
+    direct_financial = [_canonical_metric(m) for m in direct_sources.get('financial', [])]
+    direct_big_five = [_canonical_metric(m) for m in direct_sources.get('big_five', [])]
+
+    visited: set[str] = set()
+    stack = list(direct_valuation)
+    while stack:
+        current = _canonical_metric(stack.pop())
+        if current in visited:
+            continue
+        visited.add(current)
+        nested = _VALUATION_EXPLAIN_MAP.get(current, {}).get('sources', {}).get('valuation', [])
+        stack.extend(_canonical_metric(value) for value in nested)
+
+    indirect_valuation = sorted(visited.difference(direct_valuation))
+
+    indirect_financial: set[str] = set()
+    indirect_big_five: set[str] = set()
+    for nested_metric in indirect_valuation:
+        nested_sources = _VALUATION_EXPLAIN_MAP.get(nested_metric, {}).get('sources', {})
+        indirect_financial.update(_canonical_metric(value) for value in nested_sources.get('financial', []))
+        indirect_big_five.update(_canonical_metric(value) for value in nested_sources.get('big_five', []))
+
+    return {
+        'direct_valuation': sorted(set(direct_valuation)),
+        'indirect_valuation': indirect_valuation,
+        'direct_financial': sorted(set(direct_financial)),
+        'indirect_financial': sorted(indirect_financial.difference(direct_financial)),
+        'direct_big_five': sorted(set(direct_big_five)),
+        'indirect_big_five': sorted(indirect_big_five.difference(direct_big_five)),
+    }
+
+
+def _layer_summary_text(layers: dict[str, list[str]]) -> str:
+    segments = []
+    if layers.get('direct_valuation'):
+        segments.append(f"Direct valuation sources: {', '.join(layers['direct_valuation'])}")
+    if layers.get('indirect_valuation'):
+        segments.append(f"Indirect valuation sources: {', '.join(layers['indirect_valuation'])}")
+    if layers.get('direct_financial'):
+        segments.append(f"Direct financial sources: {', '.join(layers['direct_financial'])}")
+    if layers.get('indirect_financial'):
+        segments.append(f"Indirect financial sources: {', '.join(layers['indirect_financial'])}")
+    if layers.get('direct_big_five'):
+        segments.append(f"Direct big-five sources: {', '.join(layers['direct_big_five'])}")
+    if layers.get('indirect_big_five'):
+        segments.append(f"Indirect big-five sources: {', '.join(layers['indirect_big_five'])}")
+    return ' | '.join(segments) if segments else 'No dependency rows for this metric.'
 
 
 def _canonical_metric(metric: str) -> str:

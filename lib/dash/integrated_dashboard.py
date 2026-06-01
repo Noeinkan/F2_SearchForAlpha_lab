@@ -76,6 +76,7 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         dcc.Store(id='active-indicator-store', data=None),
         dcc.Store(id='export-img-store', data=None),
         dcc.Store(id='fundamentals-store', data=None, storage_type='session'),
+        dcc.Input(id='fundamentals-esc-signal', type='text', value='', style={'display': 'none'}),
         dcc.Download(id='download-csv'),
         dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
         dcc.Interval(id='autoload-interval', interval=1000, max_intervals=1),
