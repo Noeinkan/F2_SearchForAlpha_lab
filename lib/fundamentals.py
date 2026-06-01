@@ -420,7 +420,7 @@ def _yearly_close_prices(history: pd.DataFrame) -> pd.Series:
     if prices.empty:
         return pd.Series(dtype="float64")
     prices.index = pd.to_datetime(prices.index)
-    yearly = prices.groupby(pd.DatetimeIndex(prices.index).year).last()
+    yearly = prices.groupby(prices.index.year).last()
     yearly.index = yearly.index.astype(int)
     return yearly.astype(float)
 
