@@ -72,6 +72,7 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         dcc.Store(id='indicator-settings-store', data=DEFAULT_INDICATOR_SETTINGS),
         dcc.Store(id='active-indicator-store', data=None),
         dcc.Store(id='export-img-store', data=None),
+        dcc.Store(id='fundamentals-store', data=None),
         dcc.Download(id='download-csv'),
         dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
         dcc.Interval(id='autoload-interval', interval=1000, max_intervals=1),
@@ -98,6 +99,8 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         ], style=styles['main_container']),
 
         _create_status_bar(styles, theme),
+
+        _create_fundamentals_overlay(styles, theme),
 
         # Hidden elements
         html.Div(id='hidden-output', style={'display': 'none'}),
@@ -179,6 +182,71 @@ def _create_status_bar(styles: dict, theme: dict) -> html.Div:
     ], style=styles['status_bar'], className='bbg-status-bar')
 
 
+def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
+    """Create the on-demand fundamentals workspace."""
+    return html.Div([
+        html.Div([
+            html.Div([
+                html.Div("FUNDAMENTALS", style={
+                    'fontFamily': FONT_MONO,
+                    'fontSize': FONT_SIZES['xs'],
+                    'letterSpacing': '1.6px',
+                    'color': theme['text_secondary'],
+                }),
+                html.Div(id='fundamentals-title', children='Select a symbol', style={
+                    'fontFamily': FONT_MONO,
+                    'fontSize': FONT_SIZES['lg'],
+                    'fontWeight': 700,
+                    'color': theme['text_primary'],
+                }),
+            ]),
+            html.Div([
+                html.Span(id='fundamentals-status', children='READY', className='num muted', style={
+                    'fontFamily': FONT_MONO,
+                    'fontSize': FONT_SIZES['xs'],
+                    'color': theme['text_secondary'],
+                    'alignSelf': 'center',
+                }),
+                html.Button("REFRESH", id='refresh-fundamentals-button', n_clicks=0, style=styles['button_outline']),
+                html.Button("CLOSE", id='close-fundamentals-button', n_clicks=0, style={
+                    **styles['button_outline'],
+                    'color': theme['accent_red'],
+                    'borderColor': theme['accent_red'],
+                }),
+            ], style={'display': 'flex', 'alignItems': 'center', 'gap': '8px'}),
+        ], style={
+            'height': '36px',
+            'padding': '0 8px',
+            'display': 'flex',
+            'alignItems': 'center',
+            'justifyContent': 'space-between',
+            'backgroundColor': theme['bg_secondary'],
+            'borderBottom': f'1px solid {theme["border_primary"]}',
+        }),
+        html.Div(id='fundamentals-content', children=[
+            html.Div("Open fundamentals after selecting a stock.", style={
+                'fontFamily': FONT_MONO,
+                'fontSize': FONT_SIZES['sm'],
+                'color': theme['text_secondary'],
+                'padding': '18px',
+            })
+        ], style={
+            'height': 'calc(100% - 36px)',
+            'overflow': 'auto',
+            'padding': '6px',
+        }, className='sfa-fundamentals-content'),
+    ], id='fundamentals-overlay', style={
+        'display': 'none',
+        'position': 'fixed',
+        'inset': '42px 6px 24px 6px',
+        'zIndex': 20,
+        'backgroundColor': theme['bg_primary'],
+        'border': f'1px solid {theme["border_primary"]}',
+        'boxShadow': '0 18px 60px rgba(0, 0, 0, 0.45)',
+        'overflow': 'hidden',
+    }, className='sfa-fundamentals-overlay')
+
+
 def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
     """Create the left sidebar with controls."""
     help_icon_style = styles['help_icon']
@@ -236,6 +304,13 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                 n_clicks=0
             ),
             dbc.Tooltip("Fetch market data and calculate indicators (Ctrl+Enter)", target='load-data-button', placement='right'),
+            html.Button(
+                "OPEN FUNDAMENTALS",
+                id='open-fundamentals-button',
+                style={**styles['button_outline'], 'width': '100%', 'marginTop': '8px', 'padding': '7px 10px'},
+                n_clicks=0,
+            ),
+            dbc.Tooltip("Open 10-year fundamentals and Rule #1 valuation for the selected symbol", target='open-fundamentals-button', placement='right'),
         ])
 
     presets_section = html.Div([

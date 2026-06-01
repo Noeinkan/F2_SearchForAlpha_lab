@@ -649,6 +649,93 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
     color: var(--accent) !important;
 }
 
+/* Dash >= 2.18 dropdown classes (Radix-based) */
+.dash-dropdown.dark-dropdown {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+    min-height: 28px !important;
+    height: 28px !important;
+    width: 100% !important;
+}
+.dash-dropdown.dark-dropdown:hover,
+.dash-dropdown.dark-dropdown[data-state="open"],
+.dash-dropdown.dark-dropdown:focus-visible {
+    border-color: var(--accent) !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+.dash-dropdown-trigger-icon,
+.dash-dropdown-search-icon {
+    color: var(--text-secondary) !important;
+}
+.dash-dropdown-value {
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+}
+.dash-dropdown-placeholder {
+    color: var(--text-secondary) !important;
+}
+.dash-dropdown-content {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.65) !important;
+    color: var(--text-primary) !important;
+    z-index: 1100 !important;
+}
+.dash-dropdown-search-container {
+    background: var(--bg-secondary) !important;
+    border-bottom: 1px solid var(--border-primary) !important;
+    padding: 8px !important;
+}
+.dash-dropdown-search {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+    padding: 7px 10px 7px 28px !important;
+}
+.dash-dropdown-search::placeholder {
+    color: var(--text-secondary) !important;
+}
+.dash-dropdown-search:focus {
+    border-color: var(--accent) !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+.dash-dropdown-options,
+.dash-options-list {
+    background: var(--bg-secondary) !important;
+}
+.dash-dropdown-option,
+.dash-options-list-option {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    border-bottom: 1px solid var(--border-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+}
+.dash-dropdown-option:last-child,
+.dash-options-list-option:last-child {
+    border-bottom: none !important;
+}
+.dash-dropdown-option:hover,
+.dash-dropdown-option[aria-selected="true"],
+.dash-dropdown-option[data-state="checked"],
+.dash-options-list-option:hover,
+.dash-options-list-option[aria-selected="true"],
+.dash-options-list-option[data-state="checked"] {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+}
+
 /* =============================================================================
    Date pickers
    ========================================================================== */
@@ -836,6 +923,99 @@ input[type="radio"] {
 }
 .resizable-chart::-webkit-resizer {
     background: var(--accent);
+}
+
+/* =============================================================================
+   Fundamentals workspace
+   ========================================================================== */
+
+.sfa-fundamentals-content {
+    scrollbar-gutter: stable;
+}
+
+.sfa-fundamentals-root {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sfa-fundamentals-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.sfa-fundamentals-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 22vw);
+    gap: 6px;
+    align-items: start;
+}
+
+.sfa-fundamentals-panel,
+.sfa-fundamentals-panel .dash-table-container,
+.sfa-fundamentals-panel .dash-spreadsheet-container,
+.sfa-fundamentals-panel .dash-spreadsheet-inner,
+.sfa-fundamentals-panel table {
+    min-width: 0;
+    width: 100%;
+}
+
+.sfa-fundamentals-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 6px;
+}
+
+.sfa-valuation-grid {
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) minmax(58px, 0.45fr) minmax(120px, 1fr) minmax(58px, 0.45fr);
+}
+
+.sfa-valuation-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.sfa-fundamentals-chart .js-plotly-plot,
+.sfa-fundamentals-chart .plot-container,
+.sfa-fundamentals-chart .svg-container {
+    width: 100% !important;
+}
+
+@media (min-width: 1800px) {
+    .sfa-fundamentals-top {
+        grid-template-columns: minmax(0, 1fr) minmax(420px, 20vw);
+    }
+
+    .sfa-fundamentals-charts {
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    }
+}
+
+@media (max-width: 1180px) {
+    .sfa-fundamentals-top {
+        grid-template-columns: 1fr;
+    }
+
+    .sfa-fundamentals-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 720px) {
+    .sfa-fundamentals-summary,
+    .sfa-fundamentals-charts {
+        grid-template-columns: 1fr;
+    }
+
+    .sfa-valuation-grid {
+        grid-template-columns: minmax(120px, 1fr) minmax(58px, 0.45fr);
+    }
+
+    .sfa-valuation-grid > :nth-child(n+3) {
+        margin-top: 4px;
+    }
 }
 
 /* =============================================================================
