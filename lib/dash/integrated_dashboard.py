@@ -18,7 +18,7 @@ import dash_bootstrap_components as dbc
 # have `dash_tvlwc` installed (it's an optional dependency). Provide a safe
 # fallback so the app can run without the package.
 try:
-    from dash_tvlwc import Tvlwc
+    from dash_tvlwc import Tvlwc  # type: ignore[reportMissingImports]
 except Exception:
     def Tvlwc(*args, **kwargs):
         # Return a minimal placeholder component. The caller often places this
@@ -305,7 +305,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                     html.Label("Start Date", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '4px', 'display': 'block'}),
                     dcc.DatePickerSingle(
                         id='start-date',
-                        date=date.fromisoformat(START_DATE),
+                        date=START_DATE,
                         display_format='YYYY-MM-DD',
                         style={'width': '100%'}
                     ),
@@ -314,7 +314,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                     html.Label("End Date", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '4px', 'display': 'block'}),
                     dcc.DatePickerSingle(
                         id='end-date',
-                        date=date.today(),
+                        date=date.today().isoformat(),
                         display_format='YYYY-MM-DD',
                         className='date-picker-end',
                         style={'width': '100%'}
