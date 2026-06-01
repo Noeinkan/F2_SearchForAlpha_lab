@@ -1813,7 +1813,7 @@ def run_dashboard(dev_mode: bool = False) -> None:
     # avoid the second process auto-selecting the next free port.
     # For production/deploy, prefer explicit env-based binding.
     host = "127.0.0.1" if dev_mode else os.getenv("DASH_HOST", "127.0.0.1").strip()
-    port = START_PORT if dev_mode else _get_env_port(8060)
+    port = _get_env_port(START_PORT if dev_mode else 8060)
     should_open_browser = (not dev_mode) or (os.environ.get("WERKZEUG_RUN_MAIN") == "true")
     if should_open_browser:
         Timer(1, open_browser).start()

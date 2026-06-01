@@ -878,6 +878,25 @@ input[type="radio"] {
     border-bottom-color: var(--border-primary) !important;
 }
 
+/* Dash DataTable tooltips use a different DOM than Bootstrap tooltips.
+   Force readable contrast to avoid white-on-white in fundamentals explainability. */
+.dash-table-tooltip,
+.dash-tooltip {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+    border-radius: 2px !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35) !important;
+}
+
+.dash-table-tooltip *,
+.dash-tooltip * {
+    color: var(--text-primary) !important;
+}
+
 /* =============================================================================
    Alerts
    ========================================================================== */
