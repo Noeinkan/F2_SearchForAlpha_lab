@@ -29,10 +29,22 @@ def register_startup_callbacks(app) -> None:
             except Exception as e:
                 logger.error(f"Error fetching tickers: {e}")
                 return [{'label': 'SPY - SPDR S&P 500 ETF', 'value': 'SPY'}]
-        return [
-            {'label': f"{row['Symbol']} - {row['Security'][:30]}", 'value': row['Symbol']}
-            for _, row in dashboard_state.all_tickers_df.iterrows()
-        ]
+        options = []
+        for _, row in dashboard_state.all_tickers_df.iterrows():
+            symbol = str(row.get('Symbol', '')).strip().upper()
+            security_name = str(row.get('Security', '')).strip()
+            if not symbol:
+                continue
+
+            # Keep labels compact while allowing search over full company names.
+            compact_name = security_name if len(security_name) <= 30 else f"{security_name[:30]}..."
+            options.append({
+                'label': f"{symbol} - {compact_name}" if compact_name else symbol,
+                'value': symbol,
+                'search': f"{symbol} {security_name}".strip(),
+            })
+
+        return options
 
     @app.callback(
         [Output('presets-store', 'data'),

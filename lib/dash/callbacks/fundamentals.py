@@ -276,7 +276,7 @@ def register_fundamentals_callbacks(app) -> None:
             valuation_style += _highlight_metric_rules(layers['direct_valuation'], theme, tone='direct')
             valuation_style += _highlight_metric_rules(layers['indirect_valuation'], theme, tone='indirect')
             valuation_style += _highlight_metric_rules([canonical_metric], theme, tone='selected')
-            explain_children = _valuation_explain_content(canonical_metric, explain, theme)
+            explain_children = _valuation_explain_content(canonical_metric, explain, theme, val_rows)
         else:
             dependents = _REVERSE_DEPENDENCY_MAP.get(canonical_metric, [])
             if dependents:
@@ -569,7 +569,7 @@ def _valuation_explain_style(theme: dict, *, visible: bool) -> dict[str, Any]:
     }
 
 
-def _valuation_explain_content(metric: str, explain: dict[str, Any], theme: dict) -> list[html.Div]:
+def _valuation_explain_content(metric: str, explain: dict[str, Any], theme: dict, valuation_rows: list[dict[str, Any]] | None) -> list[Any]:
     layers = _dependency_layers(metric)
     return [
         html.Div(f"Calculation detail: {metric}", style={
