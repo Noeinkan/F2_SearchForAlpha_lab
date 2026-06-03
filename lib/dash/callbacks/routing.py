@@ -31,8 +31,8 @@ def register_routing_callbacks(app) -> None:
 
     @app.callback(
         [Output('terminal-shell', 'style'),
-         Output('fundamentals-overlay', 'style', allow_duplicate=True),
-         Output('fundamentals-overlay', 'className', allow_duplicate=True)],
+         Output('fundamentals-overlay', 'style'),
+         Output('fundamentals-overlay', 'className')],
         [Input('app-url', 'pathname'),
          Input('theme-store', 'data')],
         [State('fundamentals-overlay', 'style'),

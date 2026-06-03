@@ -348,7 +348,7 @@ def register_fundamentals_callbacks(app) -> None:
          Input('fundamentals-ticker-input', 'n_submit')],
         [State('ticker-dropdown', 'value'),
          State('fundamentals-ticker-input', 'value')],
-        prevent_initial_call=False,
+        prevent_initial_call='initial_duplicate',
     )
     def load_fundamentals(pathname, refresh_clicks, load_clicks, input_submit, ticker, overlay_ticker):
         ctx = callback_context
