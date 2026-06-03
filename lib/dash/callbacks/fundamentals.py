@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 
 from lib.dash.routes import is_fundamentals_route
 from lib.dash.callbacks.startup import _ensure_ticker_options_loaded
-from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, FONT_MONO, FONT_SIZES, get_theme
+from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, FONT_FAMILY, FONT_SIZES, get_theme
 from lib.dash.ticker_search import resolve_ticker_symbol
 from lib.fundamentals import fetch_fundamentals
 
@@ -25,104 +25,138 @@ _METRIC_ALIASES = {
 
 _VALUATION_EXPLAIN_MAP: dict[str, dict[str, Any]] = {
     "Analysts' GR": {
+        'what': 'The growth rate implied by analyst and market data (earnings, revenue, or quarterly earnings growth).',
+        'why_use': 'Forward-looking growth anchors the earnings projection when you do not want to rely only on past financials.',
         'formula': 'Analysts\' GR comes from earningsGrowth, revenueGrowth, or earningsQuarterlyGrowth when available.',
-        'explanation': 'The model prefers analyst-provided growth fields from market data to seed long-term estimates.',
+        'explanation': 'We take the first usable growth field from the data provider, in that priority order.',
         'sources': {'valuation': [], 'financial': [], 'big_five': []},
         'inputs': ['yfinance info: earningsGrowth/revenueGrowth/earningsQuarterlyGrowth'],
     },
     'Historical Equity GR': {
+        'what': 'The compound annual growth rate of shareholders\' equity over the last ten years.',
+        'why_use': 'Equity growth is a stable, historical signal used when analyst growth is missing or unreliable.',
         'formula': 'Historical Equity GR = 10Y CAGR of equity.',
-        'explanation': 'Equity CAGR is used as a stable fallback when analyst growth is unavailable.',
+        'explanation': 'Computed from the equity series in financial statements (Big Five / financials tables).',
         'sources': {'valuation': [], 'financial': ['Equity'], 'big_five': ['Equity-GR']},
         'inputs': [],
     },
     'Estimated EPS GR': {
-        'formula': 'Estimated EPS GR = first positive among Analysts\' GR, Historical Equity GR, and historical EPS CAGR.',
-        'explanation': 'A conservative selector chooses the first positive growth estimate from analyst and historical signals.',
+        'what': 'A conservative earnings growth rate chosen from analyst, equity, and historical EPS growth.',
+        'why_use': 'Rule #1-style valuation needs one prudent growth input; we cap optimism so projections stay realistic.',
+        'formula': 'Estimated EPS GR = min(positive Analysts\' GR, Historical Equity GR, historical EPS CAGR), capped at 50%.',
+        'explanation': 'We use the minimum of positive candidates, then cap at 50% to avoid extreme compound projections.',
         'sources': {'valuation': ["Analysts' GR", 'Historical Equity GR'], 'financial': ['EPS'], 'big_five': ['EPS-GR']},
         'inputs': [],
     },
     'Current EPS': {
+        'what': 'Earnings per share for the latest period—what the company earns per share today.',
+        'why_use': 'Every future EPS and price estimate starts from a current earnings baseline.',
         'formula': 'Current EPS = trailingEps from info when available, otherwise latest annual EPS.',
-        'explanation': 'Current EPS prefers market trailing EPS and falls back to statement-derived EPS.',
+        'explanation': 'Trailing EPS from market data is preferred; otherwise we use the latest annual EPS from statements.',
         'sources': {'valuation': [], 'financial': ['EPS'], 'big_five': []},
         'inputs': ['yfinance info: trailingEps'],
     },
     'Estimated EPS 10y': {
+        'what': 'Projected EPS ten years from now, assuming constant growth at Estimated EPS GR.',
+        'why_use': 'A terminal earnings figure is required to estimate a fair future share price.',
         'formula': 'Estimated EPS 10y = Current EPS * (1 + Estimated EPS GR)^10.',
-        'explanation': 'Future EPS is projected over ten years using compound growth.',
+        'explanation': 'Standard compound growth over ten years from current EPS and the selected growth rate.',
         'sources': {'valuation': ['Current EPS', 'Estimated EPS GR'], 'financial': [], 'big_five': []},
         'inputs': [],
     },
     'Rule #1st Price/Earn Ratio': {
+        'what': 'A P/E multiple derived from growth: growth rate × 200 (Phil Town Rule #1 heuristic).',
+        'why_use': 'Links how fast earnings can grow to a plausible ceiling on the price/earnings ratio.',
         'formula': 'Rule #1st Price/Earn Ratio = max(0, Estimated EPS GR * 200).',
-        'explanation': 'Rule #1 ties acceptable P/E to growth and clamps negative values to zero.',
+        'explanation': 'Negative growth yields zero; otherwise growth (as a decimal) is multiplied by 200.',
         'sources': {'valuation': ['Estimated EPS GR'], 'financial': [], 'big_five': []},
         'inputs': [],
     },
     'Forward Price/Earn Ratio': {
+        'what': 'The market\'s forward price-to-earnings ratio from live quote data.',
+        'why_use': 'Shows what investors are currently willing to pay for next-year earnings.',
         'formula': 'Forward Price/Earn Ratio = forwardPE from market info.',
-        'explanation': 'This is the market-implied forward P/E estimate from the data provider.',
+        'explanation': 'Taken directly from the data provider\'s forward P/E field when available.',
         'sources': {'valuation': [], 'financial': [], 'big_five': []},
         'inputs': ['yfinance info: forwardPE'],
     },
     'Historical PE': {
+        'what': 'The average P/E ratio over the last ten annual observations.',
+        'why_use': 'Long-run average valuation helps avoid using a single unusually high or low year.',
         'formula': 'Historical PE = mean of last 10 annual PE values.',
-        'explanation': 'A 10-year average P/E smooths one-off valuation spikes.',
+        'explanation': 'A simple mean of annual P/E from financials / Big Five history.',
         'sources': {'valuation': [], 'financial': ['PE Ratio'], 'big_five': ['PE Ratio']},
         'inputs': [],
     },
     'Rule #1 PE': {
+        'what': 'The most conservative (lowest) P/E among the Rule #1, forward, and historical estimates.',
+        'why_use': 'Using the minimum P/E keeps the intrinsic value estimate cautious.',
         'formula': 'Rule #1 PE = min(Rule #1st Price/Earn Ratio, Forward Price/Earn Ratio, Historical PE).',
-        'explanation': 'The model picks the most conservative P/E candidate.',
+        'explanation': 'Only positive P/E candidates are considered; the smallest value is selected.',
         'sources': {'valuation': ['Rule #1st Price/Earn Ratio', 'Forward Price/Earn Ratio', 'Historical PE'], 'financial': [], 'big_five': []},
         'inputs': [],
     },
     'PEG': {
+        'what': 'Price/earnings-to-growth: P/E divided by growth (expressed as a percentage).',
+        'why_use': 'A quick check that the chosen P/E is reasonable relative to expected earnings growth.',
         'formula': 'PEG = Rule #1 PE / (Estimated EPS GR * 100).',
-        'explanation': 'PEG relates valuation multiple to growth to sanity-check pricing versus expansion.',
+        'explanation': 'Values near 1.0 are often seen as “fair”; much higher suggests rich valuation vs growth.',
         'sources': {'valuation': ['Rule #1 PE', 'Estimated EPS GR'], 'financial': [], 'big_five': []},
         'inputs': [],
     },
     'MARR': {
+        'what': 'Minimum acceptable rate of return—your required annual return (default 15%).',
+        'why_use': 'Future fair value must be discounted back to today at the return you need to justify the investment.',
         'formula': 'MARR is a configured annual required return.',
-        'explanation': 'MARR discounts future value into present value at your required return.',
+        'explanation': 'Configured in the model (default 15%); shown as a percentage in the valuation table.',
         'sources': {'valuation': [], 'financial': [], 'big_five': []},
         'inputs': ['Default 15% unless overridden'],
     },
     'MOS': {
+        'what': 'Margin of safety—a discount factor (default 50%) applied below intrinsic value.',
+        'why_use': 'Buffett/Rule #1 practice: only buy with a buffer so mistakes or downturns hurt less.',
         'formula': 'MOS is the configured margin of safety multiplier.',
-        'explanation': 'MOS applies an extra safety buffer before considering an entry.',
+        'explanation': 'Configured as a percent but applied as a multiplier on price (e.g. 50% → multiply by 0.50).',
         'sources': {'valuation': [], 'financial': [], 'big_five': []},
         'inputs': ['Default 50% unless overridden'],
     },
     'Fut. Market Price (10 Y)': {
+        'what': 'An estimated share price in ten years if EPS and P/E reach the projected levels.',
+        'why_use': 'Connects long-term earnings power to a tangible future price target before discounting.',
         'formula': 'Fut. Market Price (10 Y) = Estimated EPS 10y * Rule #1 PE.',
-        'explanation': 'Projected price combines future EPS with conservative terminal P/E.',
+        'explanation': 'Future EPS × conservative P/E; no discounting yet.',
         'sources': {'valuation': ['Estimated EPS 10y', 'Rule #1 PE'], 'financial': [], 'big_five': []},
         'inputs': [],
     },
     'Sticker Price': {
+        'what': 'Present value of the ten-year future price—what the stock could be worth today at your MARR.',
+        'why_use': 'Turns a distant price target into a today “fair value” using your required return.',
         'formula': 'Sticker Price = Fut. Market Price (10 Y) / (1 + MARR)^10.',
-        'explanation': 'Future value is discounted back 10 years at the required return.',
+        'explanation': 'Discounts Fut. Market Price (10 Y) back ten years at MARR.',
         'sources': {'valuation': ['Fut. Market Price (10 Y)', 'MARR'], 'financial': [], 'big_five': []},
         'inputs': [],
     },
     'Year-end Close': {
+        'what': 'The latest annual closing price from price history (aligned with financial year-ends).',
+        'why_use': 'A consistent “current price” for comparing the market quote to your entry threshold.',
         'formula': 'Year-end Close uses the latest available annual close from price history.',
-        'explanation': 'Current comparison uses the annual close series used across fundamentals.',
+        'explanation': 'Same series as Stock Price (31/12) in financials—yearly close, not intraday.',
         'sources': {'valuation': [], 'financial': ['Stock Price (31/12)'], 'big_five': []},
         'inputs': ['yfinance history: yearly close'],
     },
     'Entry Price': {
+        'what': 'The maximum price you would pay today after applying margin of safety to sticker price.',
+        'why_use': 'Defines a concrete buy-below level: only attractive if the market trades under this price.',
         'formula': 'Entry Price = Sticker Price * MOS.',
-        'explanation': 'Entry price applies a safety discount to the discounted intrinsic estimate.',
+        'explanation': 'Sticker price multiplied by the MOS factor (e.g. 50% MOS → half of sticker).',
         'sources': {'valuation': ['Sticker Price', 'MOS'], 'financial': [], 'big_five': []},
         'inputs': [],
     },
     'Close/Entry price ratio': {
+        'what': 'How the current price compares to your entry price (above 1 = more expensive than entry).',
+        'why_use': 'Instant signal: below 1 suggests price is under your conservative entry; above 1 suggests it is not.',
         'formula': 'Close/Entry price ratio = Year-end Close / Entry Price.',
-        'explanation': 'A ratio above 1.0 means price is above the conservative entry threshold.',
+        'explanation': 'Year-end close divided by entry price from the same valuation run.',
         'sources': {'valuation': ['Year-end Close', 'Entry Price'], 'financial': [], 'big_five': []},
         'inputs': [],
     },
@@ -134,25 +168,19 @@ for _valuation_metric, _details in _VALUATION_EXPLAIN_MAP.items():
         for _source_metric in _table_sources:
             _REVERSE_DEPENDENCY_MAP.setdefault(_source_metric, []).append(_valuation_metric)
 
-_VALUATION_LATEX: dict[str, str] = {
-    "Analysts' GR": r"\text{Analysts' GR} \leftarrow \text{earningsGrowth, revenueGrowth, earningsQuarterlyGrowth}",
-    'Historical Equity GR': r"g_{\text{eq}} = \mathrm{CAGR}_{10Y}(\text{Equity})",
-    "Estimated EPS GR": r"g_{\text{EPS}} = \text{first positive}(\text{Analysts' GR},\; g_{\text{eq}},\; \mathrm{CAGR}_{10Y}(\text{EPS}))",
-    'Current EPS': r"\text{EPS}_0 = \text{trailingEps} \;\|\; \text{latest annual EPS}",
-    'Estimated EPS 10y': r"\text{EPS}_{10} = \text{EPS}_0 \cdot (1 + g_{\text{EPS}})^{10}",
-    'Rule #1st Price/Earn Ratio': r"\text{P/E}_{\text{calc}} = \max(0,\; g_{\text{EPS}} \times 200)",
-    'Forward Price/Earn Ratio': r"\text{P/E}_{\text{fwd}} = \text{forwardPE}",
-    'Historical PE': r"\text{P/E}_{\text{hist}} = \mathrm{mean}(\text{last 10 annual P/E})",
-    'Rule #1 PE': r"\text{P/E}_{\text{Rule1}} = \min(\text{P/E}_{\text{calc}},\; \text{P/E}_{\text{fwd}},\; \text{P/E}_{\text{hist}})",
-    'PEG': r"\text{PEG} = \dfrac{\text{P/E}_{\text{Rule1}}}{g_{\text{EPS}} \times 100}",
-    'MARR': r"r_{\text{MARR}} = \text{configured annual required return}",
-    'MOS': r"m_{\text{MOS}} = \text{configured margin-of-safety multiplier}",
-    'Fut. Market Price (10 Y)': r"P_{10} = \text{EPS}_{10} \times \text{P/E}_{\text{Rule1}}",
-    'Sticker Price': r"P_{\text{sticker}} = \dfrac{P_{10}}{(1 + r_{\text{MARR}})^{10}}",
-    'Year-end Close': r"P_{\text{close}} = \text{latest annual close}",
-    'Entry Price': r"P_{\text{entry}} = P_{\text{sticker}} \times m_{\text{MOS}}",
-    'Close/Entry price ratio': r"\text{Ratio} = \dfrac{P_{\text{close}}}{P_{\text{entry}}}",
-}
+# Matches row order in lib.fundamentals._build_valuation (growth/PE block | price block).
+_VALUATION_COL_A_SIZE = 10
+
+
+def _split_valuation_rows(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    return rows[:_VALUATION_COL_A_SIZE], rows[_VALUATION_COL_A_SIZE:]
+
+
+def _merge_valuation_rows(
+    rows_a: list[dict[str, Any]] | None,
+    rows_b: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    return list(rows_a or []) + list(rows_b or [])
 
 
 def _valuation_row_map(rows: list[dict[str, Any]] | None) -> dict[str, str]:
@@ -177,25 +205,135 @@ def _parse_display_number(raw: str) -> float | None:
     return value / 100.0 if is_pct else value
 
 
-def _latex_money(value: float | None) -> str:
+def _fmt_money(value: float | None) -> str:
     if value is None:
-        return r'\text{--}'
-    return rf'\${value:,.2f}'
+        return '--'
+    return f'${value:,.2f}'
 
 
-def _latex_decimal(value: float | None, places: int = 2) -> str:
+def _fmt_decimal(value: float | None, places: int = 2) -> str:
     if value is None:
-        return r'\text{--}'
+        return '--'
     return f'{value:.{places}f}'
 
 
-def _latex_pct(value: float | None, places: int = 2) -> str:
+def _fmt_pct(value: float | None, places: int = 2) -> str:
     if value is None:
-        return r'\text{--}'
-    return rf'{value * 100:.{places}f}\%'
+        return '--'
+    return f'{value * 100:.{places}f}%'
 
 
-def _build_substituted_latex(metric: str, row_map: dict[str, str]) -> str | None:
+def _f_op(text: str) -> html.Span:
+    return html.Span(text, className='sfa-f-op')
+
+
+def _f_text(text: str) -> html.Span:
+    return html.Span(text, className='sfa-f-text')
+
+
+def _f_var(base: str, sub: str | None = None) -> html.Span:
+    children: list[Any] = [base]
+    if sub:
+        children.append(html.Sub(sub, className='sfa-f-sub'))
+    return html.Span(children, className='sfa-f-var')
+
+
+def _f_val(display: str) -> html.Span:
+    return html.Span(display, className='num sfa-f-val')
+
+
+def _f_frac(numerator: Any, denominator: Any) -> html.Span:
+    return html.Span([
+        html.Span(numerator, className='sfa-f-frac-num'),
+        html.Span(denominator, className='sfa-f-frac-den'),
+    ], className='sfa-f-frac')
+
+
+def _f_equation(*parts: Any) -> html.Div:
+    return html.Div(list(parts), className='sfa-formula-equation')
+
+
+def _build_symbolic_equation(metric: str) -> html.Div | None:
+    """Readable symbolic equation using dashboard typography (no MathJax)."""
+    c = _canonical_metric(metric)
+    if c == "Analysts' GR":
+        return _f_equation(
+            _f_text("Analysts' GR"), _f_op(' ← '),
+            _f_text('earningsGrowth, revenueGrowth, earningsQuarterlyGrowth'),
+        )
+    if c == 'Historical Equity GR':
+        return _f_equation(_f_var('g', 'eq'), _f_op(' = '), _f_text('CAGR₁₀Y(Equity)'))
+    if c == 'Estimated EPS GR':
+        return _f_equation(
+            _f_var('g', 'EPS'), _f_op(' = min('),
+            _f_text("positive Analysts' GR"), _f_op(', '),
+            _f_var('g', 'eq'), _f_op(', '), _f_text('CAGR₁₀Y(EPS)'), _f_op(', 50%)'),
+        )
+    if c == 'Current EPS':
+        return _f_equation(
+            _f_var('EPS', '0'), _f_op(' = '),
+            _f_text('trailingEps'), _f_op(' | '), _f_text('latest annual EPS'),
+        )
+    if c == 'Estimated EPS 10y':
+        return _f_equation(
+            _f_var('EPS', '10'), _f_op(' = '),
+            _f_var('EPS', '0'), _f_op(' × (1 + '), _f_var('g', 'EPS'), _f_op(')¹⁰'),
+        )
+    if c == 'Rule #1st Price/Earn Ratio':
+        return _f_equation(
+            _f_var('P/E', 'calc'), _f_op(' = max(0, '),
+            _f_var('g', 'EPS'), _f_op(' × 200)'),
+        )
+    if c == 'Forward Price/Earn Ratio':
+        return _f_equation(_f_var('P/E', 'fwd'), _f_op(' = '), _f_text('forwardPE'))
+    if c == 'Historical PE':
+        return _f_equation(_f_var('P/E', 'hist'), _f_op(' = mean('), _f_text('last 10 annual P/E'), _f_op(')'))
+    if c == 'Rule #1 PE':
+        return _f_equation(
+            _f_var('P/E', 'Rule1'), _f_op(' = min('),
+            _f_var('P/E', 'calc'), _f_op(', '),
+            _f_var('P/E', 'fwd'), _f_op(', '),
+            _f_var('P/E', 'hist'), _f_op(')'),
+        )
+    if c == 'PEG':
+        return _f_equation(
+            _f_text('PEG'), _f_op(' = '),
+            _f_frac(_f_var('P/E', 'Rule1'), html.Span([
+                _f_var('g', 'EPS'), _f_op(' × 100'),
+            ])),
+        )
+    if c == 'MARR':
+        return _f_equation(_f_var('r', 'MARR'), _f_op(' = '), _f_text('configured annual required return'))
+    if c == 'MOS':
+        return _f_equation(_f_var('m', 'MOS'), _f_op(' = '), _f_text('configured margin-of-safety multiplier'))
+    if c == 'Fut. Market Price (10 Y)':
+        return _f_equation(
+            _f_var('P', '10'), _f_op(' = '),
+            _f_var('EPS', '10'), _f_op(' × '), _f_var('P/E', 'Rule1'),
+        )
+    if c == 'Sticker Price':
+        return _f_equation(
+            _f_var('P', 'sticker'), _f_op(' = '),
+            _f_frac(_f_var('P', '10'), html.Span([
+                _f_op('(1 + '), _f_var('r', 'MARR'), _f_op(')¹⁰'),
+            ])),
+        )
+    if c == 'Year-end Close':
+        return _f_equation(_f_var('P', 'close'), _f_op(' = '), _f_text('latest annual close'))
+    if c == 'Entry Price':
+        return _f_equation(
+            _f_var('P', 'entry'), _f_op(' = '),
+            _f_var('P', 'sticker'), _f_op(' × '), _f_var('m', 'MOS'),
+        )
+    if c == 'Close/Entry price ratio':
+        return _f_equation(
+            _f_text('Ratio'), _f_op(' = '),
+            _f_frac(_f_var('P', 'close'), _f_var('P', 'entry')),
+        )
+    return None
+
+
+def _build_substituted_equation(metric: str, row_map: dict[str, str]) -> html.Div | None:
     """Build a numeric substitution line for metrics with table inputs."""
     canonical = _canonical_metric(metric)
 
@@ -205,117 +343,182 @@ def _build_substituted_latex(metric: str, row_map: dict[str, str]) -> str | None
     def num(key: str) -> float | None:
         return _parse_display_number(raw(key))
 
-    def append_result(expression: str, result_key: str | None = None) -> str:
+    def result_display(result_key: str | None = None) -> str | None:
         result = num(result_key or canonical)
         if result is None:
-            return expression
+            return None
         if canonical in {'PEG', 'Close/Entry price ratio', 'Rule #1st Price/Earn Ratio', 'Forward Price/Earn Ratio', 'Historical PE', 'Rule #1 PE'}:
-            return rf'{expression} = {_latex_decimal(result, 1)}'
+            return _fmt_decimal(result, 1)
         if canonical in {"Analysts' GR", 'Historical Equity GR', 'Estimated EPS GR', 'MARR', 'MOS'}:
-            return rf'{expression} = {_latex_pct(result)}'
-        return rf'{expression} = {_latex_money(result)}'
+            return _fmt_pct(result)
+        return _fmt_money(result)
+
+    def with_result(*parts: Any, result_key: str | None = None) -> html.Div:
+        children: list[Any] = list(parts)
+        shown = result_display(result_key)
+        if shown is not None:
+            children.extend([_f_op(' = '), _f_val(shown)])
+        return _f_equation(*children)
 
     if canonical == 'Estimated EPS 10y':
         eps0, growth = num('Current EPS'), num('Estimated EPS GR')
         if eps0 is None or growth is None:
             return None
-        return append_result(
-            rf'\text{{EPS}}_{{10}} = {_latex_money(eps0)} \cdot (1 + {_latex_decimal(growth)})^{{10}}',
+        return with_result(
+            _f_var('EPS', '10'), _f_op(' = '),
+            _f_val(_fmt_money(eps0)), _f_op(' × (1 + '),
+            _f_val(_fmt_decimal(growth)), _f_op(')¹⁰'),
         )
 
     if canonical == 'Rule #1st Price/Earn Ratio':
         growth = num('Estimated EPS GR')
         if growth is None:
             return None
-        return append_result(
-            rf'\text{{P/E}}_{{\text{{calc}}}} = \max(0,\; {_latex_decimal(growth)} \times 200)',
+        return with_result(
+            _f_var('P/E', 'calc'), _f_op(' = max(0, '),
+            _f_val(_fmt_decimal(growth)), _f_op(' × 200)'),
         )
 
     if canonical == 'Rule #1 PE':
         calc, fwd, hist = num('Rule #1st Price/Earn Ratio'), num('Forward Price/Earn Ratio'), num('Historical PE')
-        candidates = [value for value in (calc, fwd, hist) if value is not None and value > 0]
-        if not candidates:
+        if not any(value is not None and value > 0 for value in (calc, fwd, hist)):
             return None
-        expr = (
-            rf'\text{{P/E}}_{{\text{{Rule1}}}} = \min('
-            rf'{_latex_decimal(calc, 1) if calc is not None else r"\text{--}" },\; '
-            rf'{_latex_decimal(fwd, 1) if fwd is not None else r"\text{--}" },\; '
-            rf'{_latex_decimal(hist, 1) if hist is not None else r"\text{--}" })'
+        return with_result(
+            _f_var('P/E', 'Rule1'), _f_op(' = min('),
+            _f_val(_fmt_decimal(calc, 1) if calc is not None else '--'),
+            _f_op(', '),
+            _f_val(_fmt_decimal(fwd, 1) if fwd is not None else '--'),
+            _f_op(', '),
+            _f_val(_fmt_decimal(hist, 1) if hist is not None else '--'),
+            _f_op(')'),
         )
-        return append_result(expr)
 
     if canonical == 'PEG':
         pe, growth = num('Rule #1 PE'), num('Estimated EPS GR')
         if pe is None or growth is None or growth <= 0:
             return None
-        return append_result(
-            rf'\text{{PEG}} = \dfrac{{{_latex_decimal(pe, 1)}}}{{{_latex_decimal(growth)} \times 100}}',
+        return with_result(
+            _f_text('PEG'), _f_op(' = '),
+            _f_frac(_f_val(_fmt_decimal(pe, 1)), html.Span([
+                _f_val(_fmt_decimal(growth)), _f_op(' × 100'),
+            ])),
         )
 
     if canonical == 'Fut. Market Price (10 Y)':
         eps10, pe = num('Estimated EPS 10y'), num('Rule #1 PE')
         if eps10 is None or pe is None:
             return None
-        return append_result(
-            rf'P_{{10}} = {_latex_money(eps10)} \times {_latex_decimal(pe, 1)}',
+        return with_result(
+            _f_var('P', '10'), _f_op(' = '),
+            _f_val(_fmt_money(eps10)), _f_op(' × '),
+            _f_val(_fmt_decimal(pe, 1)),
         )
 
     if canonical == 'Sticker Price':
         future_price, marr = num('Fut. Market Price (10 Y)'), num('MARR')
         if future_price is None or marr is None:
             return None
-        return append_result(
-            rf'P_{{\text{{sticker}}}} = \dfrac{{{_latex_money(future_price)}}}{{(1 + {_latex_decimal(marr)})^{{10}}}}',
+        return with_result(
+            _f_var('P', 'sticker'), _f_op(' = '),
+            _f_frac(_f_val(_fmt_money(future_price)), html.Span([
+                _f_op('(1 + '), _f_val(_fmt_decimal(marr)), _f_op(')¹⁰'),
+            ])),
         )
 
     if canonical == 'Entry Price':
         sticker, mos = num('Sticker Price'), num('MOS')
         if sticker is None or mos is None:
             return None
-        return append_result(
-            rf'P_{{\text{{entry}}}} = {_latex_money(sticker)} \times {_latex_decimal(mos)}',
+        return with_result(
+            _f_var('P', 'entry'), _f_op(' = '),
+            _f_val(_fmt_money(sticker)), _f_op(' × '),
+            _f_val(_fmt_decimal(mos)),
         )
 
     if canonical == 'Close/Entry price ratio':
         close, entry = num('Year-end Close'), num('Entry Price')
         if close is None or entry is None or entry == 0:
             return None
-        return append_result(
-            rf'\text{{Ratio}} = \dfrac{{{_latex_money(close)}}}{{{_latex_money(entry)}}}',
+        return with_result(
+            _f_text('Ratio'), _f_op(' = '),
+            _f_frac(_f_val(_fmt_money(close)), _f_val(_fmt_money(entry))),
         )
 
     if canonical == 'MARR':
         marr = num('MARR')
-        return rf'r_{{\text{{MARR}}}} = {_latex_pct(marr)}' if marr is not None else None
+        if marr is None:
+            return None
+        return _f_equation(_f_var('r', 'MARR'), _f_op(' = '), _f_val(_fmt_pct(marr)))
 
     if canonical == 'MOS':
         mos = num('MOS')
-        return rf'm_{{\text{{MOS}}}} = {_latex_pct(mos)} \; (\times {_latex_decimal(mos)})' if mos is not None else None
+        if mos is None:
+            return None
+        return _f_equation(
+            _f_var('m', 'MOS'), _f_op(' = '), _f_val(_fmt_pct(mos)),
+            _f_op(' (× '), _f_val(_fmt_decimal(mos)), _f_op(')'),
+        )
 
     return None
 
 
-def _formula_card(symbolic_latex: str, substituted_latex: str | None) -> html.Div:
-    blocks: list[Any] = [
-        html.Div(
-            className='sfa-formula-block sfa-formula-symbolic',
-            children=[
-                html.Div('Formula', className='sfa-formula-block-label'),
-                html.Div(className='sfa-formula-math', children=rf'\[{symbolic_latex}\]'),
-            ],
-        ),
-    ]
-    if substituted_latex:
+def _formula_card(symbolic: html.Div | None, substituted: html.Div | None) -> html.Div:
+    blocks: list[Any] = []
+    if symbolic is not None:
+        blocks.append(
+            html.Div(
+                className='sfa-formula-block sfa-formula-symbolic',
+                children=[
+                    html.Div('Formula', className='sfa-formula-block-label'),
+                    html.Div(symbolic, className='sfa-formula-math'),
+                ],
+            ),
+        )
+    if substituted is not None:
         blocks.append(
             html.Div(
                 className='sfa-formula-block sfa-formula-substituted',
                 children=[
                     html.Div('With current values', className='sfa-formula-block-label'),
-                    html.Div(className='sfa-formula-math', children=rf'\[{substituted_latex}\]'),
+                    html.Div(substituted, className='sfa-formula-math'),
                 ],
             ),
         )
     return html.Div(blocks, className='sfa-formula-card')
+
+
+def _explain_notes_column(
+    explain: dict[str, Any],
+    layers: dict[str, Any],
+) -> html.Div:
+    """Right column: definitions, rationale, calculation notes, sources."""
+    sections: list[Any] = [
+        html.Div('What it is', className='sfa-explain-heading'),
+        html.Div(explain.get('what') or explain.get('explanation', '--'), className='sfa-formula-what'),
+        html.Div('Why we use it', className='sfa-explain-heading'),
+        html.Div(explain.get('why_use') or '--', className='sfa-formula-why'),
+        html.Div('How we calculate it', className='sfa-explain-heading'),
+        html.Div(explain.get('explanation', '--'), className='sfa-formula-explanation'),
+    ]
+    source_text = _source_summary(explain)
+    if source_text and source_text != 'No upstream rows required.':
+        sections.extend([
+            html.Div('Data sources', className='sfa-explain-heading'),
+            html.Div(source_text, className='sfa-formula-meta'),
+        ])
+    layer_text = _layer_summary_text(layers)
+    if layer_text:
+        sections.extend([
+            html.Div('Dependencies', className='sfa-explain-heading'),
+            html.Div(layer_text, className='sfa-formula-meta'),
+        ])
+    inputs = explain.get('inputs', [])
+    if inputs:
+        sections.extend([
+            html.Div('Inputs', className='sfa-explain-heading'),
+            html.Div(', '.join(inputs), className='sfa-formula-meta'),
+        ])
+    return html.Div(sections, className='sfa-explain-col-notes')
 
 
 def register_fundamentals_callbacks(app) -> None:
@@ -395,43 +598,77 @@ def register_fundamentals_callbacks(app) -> None:
     @app.callback(
         [Output('fundamentals-financial-table', 'style_data_conditional'),
          Output('fundamentals-big-five-table', 'style_data_conditional'),
-         Output('fundamentals-valuation-table', 'style_data_conditional'),
+         Output('fundamentals-valuation-table-a', 'style_data_conditional'),
+         Output('fundamentals-valuation-table-b', 'style_data_conditional'),
          Output('fundamentals-valuation-explain', 'children'),
          Output('fundamentals-valuation-explain', 'style'),
          Output('fundamentals-financial-table', 'active_cell'),
          Output('fundamentals-big-five-table', 'active_cell'),
-         Output('fundamentals-valuation-table', 'active_cell')],
+         Output('fundamentals-valuation-table-a', 'active_cell'),
+         Output('fundamentals-valuation-table-b', 'active_cell')],
         [Input('fundamentals-financial-table', 'active_cell'),
          Input('fundamentals-big-five-table', 'active_cell'),
-         Input('fundamentals-valuation-table', 'active_cell'),
+         Input('fundamentals-valuation-table-a', 'active_cell'),
+         Input('fundamentals-valuation-table-b', 'active_cell'),
          Input('fundamentals-esc-signal', 'value'),
          Input('theme-store', 'data')],
         [State('fundamentals-financial-table', 'data'),
          State('fundamentals-big-five-table', 'data'),
          State('fundamentals-big-five-table', 'columns'),
-         State('fundamentals-valuation-table', 'data')],
+         State('fundamentals-valuation-table-a', 'data'),
+         State('fundamentals-valuation-table-b', 'data')],
     )
-    def update_fundamentals_explainability(fin_active, big_active, val_active, esc_signal, theme_name, fin_rows, big_rows, big_columns, val_rows):
+    def update_fundamentals_explainability(
+        fin_active,
+        big_active,
+        val_a_active,
+        val_b_active,
+        esc_signal,
+        theme_name,
+        fin_rows,
+        big_rows,
+        big_columns,
+        val_a_rows,
+        val_b_rows,
+    ):
         theme = get_theme(theme_name or DEFAULT_THEME)
         value_columns = _big_five_value_columns(big_columns)
         financial_style = _financial_conditionals(theme)
         big_five_style = _big_five_conditionals(theme, value_columns)
         valuation_style = _valuation_conditionals(theme)
+        val_rows = _merge_valuation_rows(val_a_rows, val_b_rows)
         explain_style = _valuation_explain_style(theme, visible=False)
         explain_children = []
-        clear_cells = no_update, no_update, no_update
+        clear_cells = no_update, no_update, no_update, no_update
 
         trigger = callback_context.triggered[0]['prop_id'].split('.')[0] if callback_context.triggered else ''
         if trigger == 'fundamentals-esc-signal' and esc_signal:
             return (
-                financial_style, big_five_style, valuation_style,
+                financial_style, big_five_style, valuation_style, valuation_style,
                 explain_children, explain_style,
-                None, None, None,
+                None, None, None, None,
             )
 
-        metric = _resolve_selected_metric(fin_active, big_active, val_active, fin_rows, big_rows, val_rows)
+        metric = _resolve_selected_metric(
+            fin_active,
+            big_active,
+            val_a_active,
+            val_b_active,
+            fin_rows,
+            big_rows,
+            val_a_rows,
+            val_b_rows,
+        )
         if not metric:
-            return financial_style, big_five_style, valuation_style, explain_children, explain_style, *clear_cells
+            return (
+                financial_style,
+                big_five_style,
+                valuation_style,
+                valuation_style,
+                explain_children,
+                explain_style,
+                *clear_cells,
+            )
 
         canonical_metric = _canonical_metric(metric)
         explain = _VALUATION_EXPLAIN_MAP.get(canonical_metric)
@@ -457,36 +694,23 @@ def register_fundamentals_callbacks(app) -> None:
                 explain_children = _valuation_generic_content(canonical_metric, theme)
 
         explain_style = _valuation_explain_style(theme, visible=True)
-        return financial_style, big_five_style, valuation_style, explain_children, explain_style, *clear_cells
-
-    app.clientside_callback(
-        """
-        function(children) {
-            const panel = document.getElementById('fundamentals-valuation-explain');
-            if (!panel || !children || (Array.isArray(children) && children.length === 0)) {
-                return window.dash_clientside.no_update;
-            }
-            const typeset = function() {
-                if (window.MathJax && window.MathJax.typesetPromise) {
-                    return window.MathJax.typesetPromise([panel]);
-                }
-                if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
-                    return window.MathJax.startup.promise.then(function() {
-                        return window.MathJax.typesetPromise([panel]);
-                    });
-                }
-                return Promise.resolve();
-            };
-            typeset().catch(function(err) {
-                console.warn('MathJax typeset failed', err);
-            });
-            return window.dash_clientside.no_update;
-        }
-        """,
-        Output('fundamentals-mathjax-sync', 'children'),
-        Input('fundamentals-valuation-explain', 'children'),
-    )
-
+        val_a_cell, val_b_cell = clear_cells[2], clear_cells[3]
+        if trigger == 'fundamentals-valuation-table-a':
+            val_b_cell = None
+        elif trigger == 'fundamentals-valuation-table-b':
+            val_a_cell = None
+        return (
+            financial_style,
+            big_five_style,
+            valuation_style,
+            valuation_style,
+            explain_children,
+            explain_style,
+            clear_cells[0],
+            clear_cells[1],
+            val_a_cell,
+            val_b_cell,
+        )
 
 def _render_payload(payload: dict[str, Any], theme: dict) -> html.Div:
     years = [str(year) for year in payload.get('years', [])]
@@ -499,15 +723,15 @@ def _render_payload(payload: dict[str, Any], theme: dict) -> html.Div:
                 _financial_table(payload.get('financials', []), years, theme),
             ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-main'),
             html.Div([
-                _panel_title('Valuation', theme),
+                _panel_title('Valuation', theme, size='sm'),
                 _valuation_assumptions(valuation_rows, theme),
-                _valuation_table(valuation_rows, theme),
+                _valuation_tables(valuation_rows, theme),
                 html.Div(
                     id='fundamentals-valuation-explain',
                     className='sfa-valuation-explain',
                     style=_valuation_explain_style(theme, visible=False),
                 ),
-            ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-side'),
+            ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-side sfa-fundamentals-valuation'),
         ], className='sfa-fundamentals-top'),
         html.Div([
             _panel_title('Big Five', theme),
@@ -537,8 +761,8 @@ def _summary_strip(payload: dict[str, Any], theme: dict) -> html.Div:
 
 def _summary_cell(label: str, value: Any, theme: dict) -> html.Div:
     return html.Div([
-        html.Div(label, style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'fontFamily': FONT_MONO}),
-        html.Div(str(value), className='num', style={'fontSize': FONT_SIZES['sm'], 'color': theme['text_primary'], 'fontFamily': FONT_MONO}),
+        html.Div(label, style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'fontFamily': FONT_FAMILY}),
+        html.Div(str(value), className='num', style={'fontSize': FONT_SIZES['sm'], 'color': theme['text_primary']}),
     ], style={
         'backgroundColor': theme['bg_tertiary'],
         'border': f'1px solid {theme["border_primary"]}',
@@ -547,10 +771,10 @@ def _summary_cell(label: str, value: Any, theme: dict) -> html.Div:
     })
 
 
-def _panel_title(title: str, theme: dict) -> html.Div:
+def _panel_title(title: str, theme: dict, *, size: str = 'xs') -> html.Div:
     return html.Div(title, style={
-        'fontFamily': FONT_MONO,
-        'fontSize': FONT_SIZES['xs'],
+        'fontFamily': FONT_FAMILY,
+        'fontSize': FONT_SIZES.get(size, FONT_SIZES['xs']),
         'fontWeight': 700,
         'color': theme['text_secondary'],
         'letterSpacing': '1.5px',
@@ -634,7 +858,7 @@ def _big_five_note(note: str, theme: dict) -> html.Div:
     if not note:
         return html.Div()
     return html.Div(note, style={
-        'fontFamily': FONT_MONO,
+        'fontFamily': FONT_FAMILY,
         'fontSize': FONT_SIZES['xs'],
         'fontWeight': 700,
         'color': theme['accent_red'],
@@ -643,25 +867,69 @@ def _big_five_note(note: str, theme: dict) -> html.Div:
     })
 
 
-def _valuation_table(rows: list[dict[str, Any]], theme: dict) -> dash_table.DataTable:
+def _valuation_tables(rows: list[dict[str, Any]], theme: dict) -> html.Div:
+    rows_a, rows_b = _split_valuation_rows(rows)
+    return html.Div([
+        _valuation_table(rows_a, theme, table_id='fundamentals-valuation-table-a'),
+        _valuation_table(rows_b, theme, table_id='fundamentals-valuation-table-b'),
+    ], className='sfa-valuation-grid')
+
+
+def _valuation_table(rows: list[dict[str, Any]], theme: dict, *, table_id: str) -> dash_table.DataTable:
     columns = [{'name': 'Metric', 'id': 'metric'}, {'name': 'Value', 'id': 'value'}]
     props: dict[str, Any] = {
-        'id': 'fundamentals-valuation-table',
+        'id': table_id,
         'columns': columns,
         'data': rows,
         'fill_width': True,
         'style_table': {'overflowX': 'auto', 'width': '100%', 'minWidth': '100%'},
-        'style_cell': _table_cell_style(theme),
+        'style_cell': _valuation_table_cell_style(theme),
         'style_cell_conditional': [
-            {'if': {'column_id': 'metric'}, 'textAlign': 'left', 'fontWeight': 700, 'minWidth': '170px', 'width': '62%'},
-            {'if': {'column_id': 'value'}, 'textAlign': 'right', 'width': '38%'},
+            {'if': {'column_id': 'metric'}, 'textAlign': 'left', 'fontWeight': 700, 'minWidth': '128px', 'width': '58%'},
+            {'if': {'column_id': 'value'}, 'textAlign': 'right', 'width': '42%', 'fontWeight': 600},
         ],
-        'style_header': _table_header_style(theme),
+        'style_header': _valuation_table_header_style(theme),
         'style_data_conditional': _valuation_conditionals(theme),
         'tooltip_data': _valuation_tooltips(rows),
         'tooltip_duration': None,
     }
     return dash_table.DataTable(**props)
+
+
+def _valuation_table_cell_style(theme: dict) -> dict[str, Any]:
+    return {
+        'textAlign': 'right',
+        'padding': '6px 9px',
+        'backgroundColor': theme['bg_tertiary'],
+        'color': theme['text_primary'],
+        'border': f'1px solid {theme["border_secondary"]}',
+        'fontSize': FONT_SIZES['base'],
+        'fontFamily': FONT_FAMILY,
+        'fontVariantNumeric': 'tabular-nums',
+        'whiteSpace': 'nowrap',
+        'lineHeight': '20px',
+        'height': '30px',
+        'minHeight': '30px',
+        'maxHeight': '30px',
+        'overflow': 'hidden',
+        'textOverflow': 'ellipsis',
+    }
+
+
+def _valuation_table_header_style(theme: dict) -> dict[str, Any]:
+    return {
+        'fontWeight': 700,
+        'backgroundColor': theme['bg_secondary'],
+        'color': theme['text_secondary'],
+        'textTransform': 'uppercase',
+        'fontSize': FONT_SIZES['sm'],
+        'fontFamily': FONT_FAMILY,
+        'border': f'1px solid {theme["border_primary"]}',
+        'height': '28px',
+        'minHeight': '28px',
+        'maxHeight': '28px',
+        'lineHeight': '20px',
+    }
 
 
 def _table_cell_style(theme: dict) -> dict[str, Any]:
@@ -672,7 +940,7 @@ def _table_cell_style(theme: dict) -> dict[str, Any]:
         'color': theme['text_primary'],
         'border': f'1px solid {theme["border_secondary"]}',
         'fontSize': '12px',
-        'fontFamily': FONT_MONO,
+        'fontFamily': FONT_FAMILY,
         'fontVariantNumeric': 'tabular-nums',
         'whiteSpace': 'nowrap',
         'lineHeight': '18px',
@@ -732,9 +1000,10 @@ def _valuation_assumptions(rows: list[dict[str, Any]], theme: dict) -> html.Div:
         f"Assumptions: MARR {marr} | MOS {mos}. Select a cell to view formula sources.",
         className='sfa-valuation-assumption',
         style={
-            'fontFamily': FONT_MONO,
-            'fontSize': FONT_SIZES['xs'],
+            'fontFamily': FONT_FAMILY,
+            'fontSize': FONT_SIZES['sm'],
             'color': theme['text_secondary'],
+            'lineHeight': '1.4',
             'marginBottom': '6px',
         },
     )
@@ -751,7 +1020,7 @@ def _valuation_tooltips(rows: list[dict[str, Any]]) -> list[dict[str, dict[str, 
                 'value': {'value': metric, 'type': 'text'},
             })
             continue
-        tooltip_text = f"{explain['formula']}\n{explain['explanation']}"
+        tooltip_text = f"{explain.get('what', explain['explanation'])}\n{explain.get('why_use', explain['explanation'])}"
         tooltip_rows.append({
             'metric': {'value': tooltip_text, 'type': 'text'},
             'value': {'value': tooltip_text, 'type': 'text'},
@@ -769,22 +1038,16 @@ def _valuation_explain_content(metric: str, explain: dict[str, Any], theme: dict
     layers = _dependency_layers(metric)
     canonical = _canonical_metric(metric)
     row_map = _valuation_row_map(valuation_rows)
-    symbolic_latex = _VALUATION_LATEX.get(canonical, explain.get('formula', '--'))
-    substituted_latex = _build_substituted_latex(canonical, row_map)
+    symbolic = _build_symbolic_equation(canonical)
+    substituted = _build_substituted_equation(canonical, row_map)
     return [
         html.Div(f"Calculation detail: {metric}", className='sfa-formula-title', style={
             'color': theme['accent_blue'],
         }),
-        _formula_card(symbolic_latex, substituted_latex),
-        html.Div(explain.get('explanation', '--'), className='sfa-formula-explanation', style={
-            'color': theme['text_secondary'],
-        }),
-        html.Div(_source_summary(explain), className='sfa-formula-meta', style={
-            'color': theme['text_secondary'],
-        }),
-        html.Div(_layer_summary_text(layers), className='sfa-formula-meta', style={
-            'color': theme['text_secondary'],
-        }),
+        html.Div([
+            html.Div(_formula_card(symbolic, substituted), className='sfa-explain-col-formulas'),
+            _explain_notes_column(explain, layers),
+        ], className='sfa-explain-grid'),
     ]
 
 
@@ -793,14 +1056,14 @@ def _valuation_source_content(metric: str, dependents: list[str], theme: dict) -
     more = '' if len(dependents) <= 5 else f" (+{len(dependents) - 5} more)"
     return [
         html.Div(f"Source metric: {metric}", style={
-            'fontFamily': FONT_MONO,
+            'fontFamily': FONT_FAMILY,
             'fontSize': FONT_SIZES['xs'],
             'fontWeight': 700,
             'color': theme['accent_blue'],
             'marginBottom': '5px',
         }),
         html.Div(f"This source contributes to: {joined}{more}.", style={
-            'fontFamily': FONT_MONO,
+            'fontFamily': FONT_FAMILY,
             'fontSize': FONT_SIZES['xs'],
             'color': theme['text_secondary'],
             'lineHeight': '1.35',
@@ -811,14 +1074,14 @@ def _valuation_source_content(metric: str, dependents: list[str], theme: dict) -
 def _valuation_generic_content(metric: str, theme: dict) -> list[html.Div]:
     return [
         html.Div(f"Selected metric: {metric}", style={
-            'fontFamily': FONT_MONO,
+            'fontFamily': FONT_FAMILY,
             'fontSize': FONT_SIZES['xs'],
             'fontWeight': 700,
             'color': theme['accent_blue'],
             'marginBottom': '5px',
         }),
         html.Div('No explicit calculation graph is configured for this metric yet.', style={
-            'fontFamily': FONT_MONO,
+            'fontFamily': FONT_FAMILY,
             'fontSize': FONT_SIZES['xs'],
             'color': theme['text_secondary'],
         }),
@@ -841,17 +1104,29 @@ def _source_summary(explain: dict[str, Any]) -> str:
     return ' | '.join(segments) if segments else 'No upstream rows required.'
 
 
-def _resolve_selected_metric(fin_active: dict[str, Any] | None, big_active: dict[str, Any] | None, val_active: dict[str, Any] | None, fin_rows: list[dict[str, Any]] | None, big_rows: list[dict[str, Any]] | None, val_rows: list[dict[str, Any]] | None) -> str | None:
+def _resolve_selected_metric(
+    fin_active: dict[str, Any] | None,
+    big_active: dict[str, Any] | None,
+    val_a_active: dict[str, Any] | None,
+    val_b_active: dict[str, Any] | None,
+    fin_rows: list[dict[str, Any]] | None,
+    big_rows: list[dict[str, Any]] | None,
+    val_a_rows: list[dict[str, Any]] | None,
+    val_b_rows: list[dict[str, Any]] | None,
+) -> str | None:
     ctx = callback_context
     trigger = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else ''
-    if trigger == 'fundamentals-valuation-table':
-        return _metric_from_active_cell(val_active, val_rows)
+    if trigger == 'fundamentals-valuation-table-a':
+        return _metric_from_active_cell(val_a_active, val_a_rows)
+    if trigger == 'fundamentals-valuation-table-b':
+        return _metric_from_active_cell(val_b_active, val_b_rows)
     if trigger == 'fundamentals-financial-table':
         return _metric_from_active_cell(fin_active, fin_rows)
     if trigger == 'fundamentals-big-five-table':
         return _metric_from_active_cell(big_active, big_rows)
     return (
-        _metric_from_active_cell(val_active, val_rows)
+        _metric_from_active_cell(val_a_active, val_a_rows)
+        or _metric_from_active_cell(val_b_active, val_b_rows)
         or _metric_from_active_cell(fin_active, fin_rows)
         or _metric_from_active_cell(big_active, big_rows)
     )
@@ -1036,7 +1311,7 @@ def _metric_figure(label: str, values: list[float | None], years: list[int], the
         paper_bgcolor=theme['bg_panel'],
         plot_bgcolor=theme['bg_primary'],
         margin={'l': 38, 'r': 8, 't': 4, 'b': 24},
-        font={'family': FONT_MONO, 'size': 10, 'color': theme['text_secondary']},
+        font={'family': FONT_FAMILY, 'size': 11, 'color': theme['text_secondary']},
         xaxis={'gridcolor': theme['chart_grid'], 'showline': True, 'linecolor': theme['border_primary']},
         yaxis={'gridcolor': theme['chart_grid'], 'showline': True, 'linecolor': theme['border_primary']},
         showlegend=False,
@@ -1084,7 +1359,7 @@ def _quality_notes(notes: list[str], theme: dict) -> html.Div:
         html.Span(' | '.join(notes or ['No notes'])),
     ], style={
         'marginTop': '0',
-        'fontFamily': FONT_MONO,
+        'fontFamily': FONT_FAMILY,
         'fontSize': FONT_SIZES['xs'],
         'color': theme['text_secondary'],
     })
@@ -1092,7 +1367,7 @@ def _quality_notes(notes: list[str], theme: dict) -> html.Div:
 
 def _empty_state(theme: dict, message: str) -> html.Div:
     return html.Div(message, style={
-        'fontFamily': FONT_MONO,
+        'fontFamily': FONT_FAMILY,
         'fontSize': FONT_SIZES['sm'],
         'color': theme['text_secondary'],
         'padding': '18px',

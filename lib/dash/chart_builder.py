@@ -15,7 +15,7 @@ from ta.trend import CCIIndicator, MACD, ADXIndicator
 from ta.volatility import AverageTrueRange
 from ta.volume import VolumeWeightedAveragePrice
 
-from lib.dash.dash_config import FONT_FAMILY, FONT_MONO
+from lib.dash.dash_config import FONT_FAMILY
 from lib.dash.overlay_registry import build_overlay_visibility, get_plotly_overlay_specs
 
 logger = logging.getLogger(__name__)
@@ -476,7 +476,7 @@ def _add_signal_traces(
                 mode='markers+text',
                 text=[cfg['label']] * len(accepted),
                 textposition=cfg['text_position'],
-                textfont=dict(color=theme['text_primary'], size=9, family=FONT_FAMILY),
+                textfont=dict(color=theme['text_primary'], size=11, family=FONT_FAMILY),
                 marker=dict(
                     symbol=cfg['symbol'],
                     size=14,
@@ -500,7 +500,7 @@ def _add_signal_traces(
                 mode='markers+text',
                 text=[cfg['label']] * len(rejected),
                 textposition=cfg['text_position'],
-                textfont=dict(color=muted_color, size=9, family=FONT_FAMILY),
+                textfont=dict(color=muted_color, size=11, family=FONT_FAMILY),
                 marker=dict(
                     symbol=cfg['symbol'],
                     size=7,
@@ -534,7 +534,7 @@ def _add_range_selector(fig: go.Figure, theme: dict) -> None:
                 ]),
                 bgcolor='rgba(0,0,0,0)',
                 activecolor=theme['accent_blue'],
-                font=dict(color=theme['text_secondary'], size=10, family=FONT_MONO),
+                font=dict(color=theme['text_secondary'], size=11, family=FONT_FAMILY),
                 bordercolor=theme['border_primary'],
                 borderwidth=1,
                 x=0,
@@ -571,7 +571,7 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             text=title_text,
             x=0.5,
             xanchor='center',
-            font=dict(size=14, color=theme['text_primary'], family=FONT_MONO)
+            font=dict(size=14, color=theme['text_primary'], family=FONT_FAMILY)
         ) if title_text else None,
         legend=dict(
             orientation="h",
@@ -580,12 +580,12 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             xanchor="right",
             x=1,
             bgcolor='rgba(0,0,0,0)',
-            font=dict(size=10, family=FONT_MONO)
+            font=dict(size=11, family=FONT_FAMILY)
         ) if show_legend else None,
         hoverlabel=dict(
             bgcolor=theme['bg_tertiary'],
             font_size=11,
-            font_family=FONT_MONO,
+            font_family=FONT_FAMILY,
             bordercolor=theme['border_primary']
         )
     )
@@ -601,7 +601,7 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             linecolor=theme['border_primary'],
             linewidth=1,
             zeroline=False,
-            tickfont=dict(color=theme['text_secondary'], size=10, family=FONT_MONO),
+            tickfont=dict(color=theme['text_secondary'], size=11, family=FONT_FAMILY),
             ticks='outside',
             ticklen=4,
             row=i, col=1
@@ -615,7 +615,7 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             linecolor=theme['border_primary'],
             linewidth=1,
             zeroline=False,
-            tickfont=dict(color=theme['text_secondary'], size=10, family=FONT_MONO),
+            tickfont=dict(color=theme['text_secondary'], size=11, family=FONT_FAMILY),
             ticks='outside',
             ticklen=4,
             side='right',
@@ -629,7 +629,7 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
     for annotation in fig.layout.annotations:
         annotation.update(
             text=str(annotation.text or '').upper(),
-            font=dict(size=10, color=theme['text_secondary'], family=FONT_MONO),
+            font=dict(size=11, color=theme['text_secondary'], family=FONT_FAMILY),
             x=0.01,
             xanchor='left'
         )
@@ -668,7 +668,7 @@ def create_empty_chart(theme: dict, message: str = "Load data to view chart") ->
         template='plotly_dark',
         plot_bgcolor=theme['bg_primary'],
         paper_bgcolor=theme['bg_primary'],
-        font=dict(color=theme['text_secondary'], family=FONT_MONO),
+        font=dict(color=theme['text_secondary'], family=FONT_FAMILY),
         xaxis=dict(showgrid=False, visible=False),
         yaxis=dict(showgrid=False, visible=False),
         annotations=[dict(
@@ -676,7 +676,7 @@ def create_empty_chart(theme: dict, message: str = "Load data to view chart") ->
             xref="paper", yref="paper",
             x=0.5, y=0.5,
             showarrow=False,
-            font=dict(size=14, color=theme['text_tertiary'], family=FONT_MONO)
+            font=dict(size=14, color=theme['text_tertiary'], family=FONT_FAMILY)
         )]
     )
     return fig

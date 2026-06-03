@@ -74,6 +74,8 @@ _CASHFLOW_CONCEPTS: list[tuple[str, list[str], bool]] = [
 DEFAULT_MARR = 0.15
 DEFAULT_MARGIN_OF_SAFETY = 0.50
 DEFAULT_FUNDAMENTAL_YEARS = 11
+# Rule #1: use the most conservative positive growth estimate; cap compounding rate.
+MAX_ESTIMATED_GROWTH = 0.50
 
 
 @dataclass(frozen=True)
@@ -574,7 +576,9 @@ def _build_valuation(
     historical_equity_growth = _cagr(equity, min(10, max(len(equity) - 1, 1)))
     historical_eps_growth = _cagr(eps, min(10, max(len(eps) - 1, 1)))
     analysts_growth = _growth_from_info(info)
-    estimated_growth = _first_positive(analysts_growth, historical_equity_growth, historical_eps_growth) or 0.0
+    estimated_growth = _estimated_growth_rate(
+        analysts_growth, historical_equity_growth, historical_eps_growth
+    )
     estimated_eps_10y = current_eps * ((1 + estimated_growth) ** 10) if _is_number(current_eps) else np.nan
     rule1_price_earn = max(0.0, estimated_growth * 200)
     forward_pe = _number(info.get("forwardPE"))
@@ -713,11 +717,23 @@ def _growth_from_info(info: dict[str, Any]) -> float:
     return np.nan
 
 
-def _first_positive(*values: float) -> float:
-    for value in values:
-        if _is_number(value) and value > 0:
-            return value
-    return np.nan
+def _minimum_positive(*values: float) -> float:
+    positives = [float(value) for value in values if _is_number(value) and value > 0]
+    return min(positives) if positives else np.nan
+
+
+def _estimated_growth_rate(
+    analysts_growth: float,
+    historical_equity_growth: float,
+    historical_eps_growth: float,
+) -> float:
+    """Rule #1 growth: minimum of positive analyst / equity / EPS estimates, capped."""
+    conservative = _minimum_positive(
+        analysts_growth, historical_equity_growth, historical_eps_growth
+    )
+    if not _is_number(conservative):
+        return 0.0
+    return min(float(conservative), MAX_ESTIMATED_GROWTH)
 
 
 def _latest(values: pd.Series) -> float:

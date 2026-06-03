@@ -148,17 +148,17 @@ CHART_BACKGROUND_COLOR = _theme['bg_secondary']
 # TYPOGRAPHY
 # =============================================================================
 
-FONT_FAMILY = '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif'
-FONT_MONO = '"JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace'
+FONT_FAMILY = '"Source Sans 3", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif'
+FONT_MONO = '"IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace'
 
 FONT_SIZES = {
-    'xs':   '11px',
-    'sm':   '12px',
-    'base': '13px',
-    'lg':   '15px',
-    'xl':   '18px',
-    '2xl':  '22px',
-    '3xl':  '28px',
+    'xs':   '12px',
+    'sm':   '13px',
+    'base': '14px',
+    'lg':   '16px',
+    'xl':   '19px',
+    '2xl':  '23px',
+    '3xl':  '29px',
 }
 
 FONT_WEIGHT_NUMERIC = '500'

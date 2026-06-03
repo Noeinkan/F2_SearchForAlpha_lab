@@ -16,7 +16,7 @@ from dash import html, dash_table, dcc
 
 from lib.dash.dash_config import (
     FONT_SIZES,
-    FONT_MONO,
+    FONT_FAMILY,
     DEFAULT_INDICATOR_SETTINGS,
     INDICATOR_SETTING_SCHEMA,
     PLOT_OPTIONS,
@@ -509,7 +509,7 @@ def _create_data_table(display_df: pd.DataFrame, theme: dict) -> dash_table.Data
             'color': theme['text_primary'],
             'border': f'1px solid {theme["border_secondary"]}',
             'fontSize': '11px',
-            'fontFamily': FONT_MONO,
+            'fontFamily': FONT_FAMILY,
         },
         style_header={
             'fontWeight': '600',
@@ -654,9 +654,9 @@ def _create_price_subtitle(df: pd.DataFrame, theme: dict) -> html.Span:
     change_sign = '+' if change >= 0 else ''
 
     return html.Span([
-        html.Span(f"${latest_close:.2f}", style={'fontFamily': FONT_MONO, 'color': theme['text_primary']}),
+        html.Span(f"${latest_close:.2f}", className='num', style={'color': theme['text_primary']}),
         html.Span(f" {change_sign}{change:.2f} ({change_sign}{change_pct:.2f}%)",
-                 style={'fontFamily': FONT_MONO, 'color': change_color, 'marginLeft': '8px'}),
+                 className='num', style={'color': change_color, 'marginLeft': '8px'}),
     ])
 
 
@@ -750,7 +750,7 @@ def _create_best_strategy_highlight(best_row: pd.Series, theme: dict) -> html.Di
                     'color': theme['accent_green'] if total_return > 0 else theme['accent_red'],
                     'fontWeight': '600',
                     'fontSize': FONT_SIZES['base'],
-                    'fontFamily': FONT_MONO
+                    'fontFamily': FONT_FAMILY
                 }),
                 html.Span(f" | Sharpe: {sharpe:.2f}", style={
                     'color': theme['text_secondary'],

@@ -72,6 +72,21 @@ class TestFundamentalsResult(unittest.TestCase):
         self.assertIn("Entry Price", [row["metric"] for row in payload["valuation"]])
         self.assertIn("ROIC", payload["chart_series"])
 
+    def test_estimated_eps_growth_uses_minimum_positive_rate(self):
+        result = build_fundamentals_result(
+            ticker="TEST",
+            info={"earningsGrowth": 0.82, "forwardPE": 25, "trailingEps": 10.0},
+            income=self.income,
+            balance=self.balance,
+            cashflow=self.cashflow,
+            yearly_prices=self.prices,
+        )
+        valuation = {row["metric"]: row["value"] for row in result.valuation}
+
+        self.assertEqual(valuation["Analysts' GR"], "82.00%")
+        self.assertEqual(valuation["Historical Equity GR"], "10.00%")
+        self.assertEqual(valuation["Estimated EPS GR"], "10.00%")
+
     def test_growth_summary_uses_cagr(self):
         result = build_fundamentals_result(
             ticker="TEST",

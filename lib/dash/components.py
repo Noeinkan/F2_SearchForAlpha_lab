@@ -9,7 +9,7 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 
 from lib.dash.dash_config import (
-    FONT_SIZES, FONT_MONO, FONT_WEIGHT_NUMERIC, BORDER_RADIUS, get_theme
+    FONT_SIZES, FONT_FAMILY, FONT_WEIGHT_NUMERIC, BORDER_RADIUS, get_theme
 )
 from lib.dash.styles import get_styles
 
@@ -99,14 +99,14 @@ def kpi_cell(
     }
     if mono:
         value_style.update({
-            'fontFamily': FONT_MONO,
+            'fontFamily': FONT_FAMILY,
             'fontVariantNumeric': 'tabular-nums',
             'fontWeight': FONT_WEIGHT_NUMERIC,
         })
 
     delta_style = {
         'color': delta_color or theme['text_secondary'],
-        'fontFamily': FONT_MONO,
+        'fontFamily': FONT_FAMILY,
         'fontVariantNumeric': 'tabular-nums',
     }
 
@@ -329,7 +329,7 @@ def build_progress_bar(
                 style={
                     'fontSize': FONT_SIZES['xs'],
                     'color': theme['text_secondary'],
-                    'fontFamily': FONT_MONO
+                    'fontFamily': FONT_FAMILY
                 }
             ),
         ], style={

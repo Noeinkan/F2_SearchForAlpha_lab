@@ -3,7 +3,7 @@
    Auto-loaded by Dash from lib/dash/assets/.
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap');
 
 :root {
     /* Palette — bloomberg theme */
@@ -33,9 +33,9 @@
     --table-row-alt:     rgba(20,20,20,0.5);
     --table-row-hover:   #1A1A1A;
 
-    /* Typography */
-    --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    /* Typography — sans for UI chrome, mono reserved for numeric data */
+    --font-sans: "Source Sans 3", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
 }
 
 /* =============================================================================
@@ -46,16 +46,18 @@ html, body {
     background: var(--bg-primary);
     color: var(--text-primary);
     font-family: var(--font-sans);
-    font-size: 12px;
+    font-size: 13px;
+    line-height: 1.45;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
-/* Tabular numerals for any monospace numeric */
+/* Tabular numerals for price / metric data (sans + tnum keeps columns aligned) */
 .num,
 .bbg-num,
 .numeric {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
     font-weight: 500;
@@ -69,7 +71,7 @@ html, body {
 
 .uppercase {
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 0.8px;
 }
 
 /* =============================================================================
@@ -117,7 +119,7 @@ html, body {
     background: transparent;
     border: none;
     color: var(--text-secondary);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
     font-weight: 500;
     text-transform: uppercase;
@@ -156,7 +158,7 @@ html, body {
     padding: 4px 10px !important;
     border-right: 1px solid var(--border-primary);
     color: var(--text-secondary) !important;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
     font-weight: 500;
     text-transform: uppercase;
@@ -199,7 +201,7 @@ html, body {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 0.8px;
     color: var(--text-secondary);
     cursor: pointer;
     user-select: none;
@@ -217,7 +219,7 @@ details.bbg-section > .bbg-section-header::-webkit-details-marker {
 details.bbg-section > .bbg-section-header::after {
     content: '+';
     color: var(--text-tertiary);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
     margin-left: auto;
 }
@@ -250,17 +252,17 @@ details.bbg-section[open] > .bbg-section-header::after {
     font-size: 10px;
     color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 0.8px;
 }
 .bbg-kpi-value {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-variant-numeric: tabular-nums;
     font-weight: 600;
     font-size: 18px;
     color: var(--text-primary);
 }
 .bbg-kpi-delta {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
 }
@@ -276,7 +278,7 @@ details.bbg-section[open] > .bbg-section-header::after {
     padding: 2px 8px;
     border: 1px solid var(--border-primary);
     background: var(--bg-secondary);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
     color: var(--text-secondary);
     text-transform: uppercase;
@@ -299,11 +301,11 @@ button.bbg-button {
     background: var(--accent);
     color: #000;
     border: none;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-weight: 700;
     font-size: 12px;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 0.8px;
     padding: 8px 14px;
     cursor: pointer;
     border-radius: 2px;
@@ -326,7 +328,7 @@ button.bbg-button-ghost {
     background: transparent;
     color: var(--text-secondary);
     border: 1px solid var(--border-primary);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
     padding: 4px 10px;
     text-transform: uppercase;
@@ -349,7 +351,7 @@ input.bbg-input,
     background: var(--bg-secondary) !important;
     border: 1px solid var(--border-primary) !important;
     color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 12px !important;
     padding: 5px 8px !important;
     border-radius: 2px !important;
@@ -370,9 +372,13 @@ input.bbg-input:focus,
 input.bbg-input::-webkit-outer-spin-button,
 input.bbg-input::-webkit-inner-spin-button {
     -webkit-appearance: none;
+    appearance: none;
     margin: 0;
 }
-input.bbg-input[type=number] { -moz-appearance: textfield; }
+input.bbg-input[type=number] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
 
 /* =============================================================================
    Header
@@ -388,14 +394,14 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
     border-bottom: 1px solid var(--border-primary);
 }
 .bbg-wordmark {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 14px;
     font-weight: 700;
     color: var(--accent);
     letter-spacing: 2px;
 }
 .bbg-wordmark-sub {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 10px;
     color: var(--text-tertiary);
     letter-spacing: 2px;
@@ -408,7 +414,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
     display: flex;
     align-items: center;
     gap: 14px;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 13px;
     flex: 1;
     justify-content: center;
@@ -439,7 +445,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
     padding: 0 12px;
     background: var(--bg-secondary);
     border-top: 1px solid var(--border-primary);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
     color: var(--text-secondary);
     letter-spacing: 0.5px;
@@ -471,7 +477,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
     padding: 4px 8px;
     height: 24px;
     border-bottom: 1px solid var(--border-secondary);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
     color: var(--text-primary);
     transition: background 80ms ease;
@@ -491,8 +497,8 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
     border: 1px solid var(--border-primary);
     background: transparent;
     color: var(--text-tertiary);
-    font-family: var(--font-mono);
-    font-size: 9px;
+    font-family: var(--font-sans);
+    font-size: 11px;
     font-weight: 700;
     cursor: pointer;
     margin-left: 4px;
@@ -548,10 +554,10 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
     background: transparent !important;
     border: none;
     color: var(--text-secondary) !important;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 0.8px;
     padding: 8px 14px !important;
     border-bottom: 2px solid transparent !important;
     cursor: pointer;
@@ -579,7 +585,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
     border: 1px solid var(--border-primary) !important;
     border-radius: 2px !important;
     color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 12px !important;
     min-height: 28px !important;
     height: 28px !important;
@@ -604,7 +610,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
 .dark-dropdown .Select-option {
     background: var(--bg-secondary) !important;
     color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 12px !important;
     padding: 6px 10px !important;
 }
@@ -627,7 +633,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
 .dark-dropdown .Select-placeholder,
 .dark-dropdown .Select-input > input {
     color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 12px !important;
 }
 .Select-arrow {
@@ -636,7 +642,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
 .VirtualizedSelectOption {
     background: var(--bg-secondary) !important;
     color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 12px !important;
 }
 .VirtualizedSelectFocusedOption,
@@ -655,7 +661,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
     border: 1px solid var(--border-primary) !important;
     border-radius: 2px !important;
     color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 12px !important;
     min-height: 28px !important;
     height: 28px !important;
@@ -674,7 +680,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
 }
 .dash-dropdown-value {
     color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 12px !important;
 }
 .dash-dropdown-placeholder {
@@ -698,7 +704,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
     color: var(--text-primary) !important;
     border: 1px solid var(--border-primary) !important;
     border-radius: 2px !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 12px !important;
     padding: 7px 10px 7px 28px !important;
 }
@@ -721,7 +727,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
     background: var(--bg-secondary) !important;
     color: var(--text-primary) !important;
     border-bottom: 1px solid var(--border-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 12px !important;
 }
 .dash-dropdown-option:last-child,
@@ -763,7 +769,7 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
 .DateInput_input {
     background: var(--bg-secondary) !important;
     color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 12px !important;
     padding: 5px 8px !important;
     height: 28px !important;
@@ -786,20 +792,20 @@ input.bbg-input[type=number] { -moz-appearance: textfield; }
 }
 .CalendarMonth_caption {
     color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-weight: 600 !important;
     text-transform: uppercase;
     letter-spacing: 1px;
 }
 .DayPicker_weekHeader {
     color: var(--text-secondary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
 }
 .CalendarDay {
     border: 1px solid var(--border-primary) !important;
     color: var(--text-primary) !important;
     background: var(--bg-secondary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 11px !important;
 }
 .CalendarDay__default:hover {
@@ -866,7 +872,7 @@ input[type="radio"] {
     background: var(--bg-tertiary) !important;
     border: 1px solid var(--border-primary) !important;
     color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 11px !important;
     padding: 6px 10px !important;
     border-radius: 2px !important;
@@ -885,7 +891,7 @@ input[type="radio"] {
     background: var(--bg-tertiary) !important;
     color: var(--text-primary) !important;
     border: 1px solid var(--border-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 11px !important;
     line-height: 1.35 !important;
     border-radius: 2px !important;
@@ -906,7 +912,7 @@ input[type="radio"] {
     border-radius: 2px;
     background: var(--bg-tertiary);
     color: var(--text-primary);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 12px;
     padding: 8px 10px;
 }
@@ -932,8 +938,8 @@ input[type="radio"] {
     bottom: 1px;
     left: 50%;
     transform: translateX(-50%);
-    font-family: var(--font-mono);
-    font-size: 9px;
+    font-family: var(--font-sans);
+    font-size: 11px;
     color: var(--text-tertiary);
     letter-spacing: 2px;
     pointer-events: none;
@@ -972,7 +978,7 @@ input[type="radio"] {
 
 .sfa-fundamentals-top {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(360px, 22vw);
+    grid-template-columns: minmax(0, 1fr) minmax(500px, 40vw);
     gap: 6px;
     align-items: start;
 }
@@ -1019,7 +1025,9 @@ input[type="radio"] {
 
 .sfa-valuation-grid {
     display: grid;
-    grid-template-columns: minmax(120px, 1fr) minmax(58px, 0.45fr) minmax(120px, 1fr) minmax(58px, 0.45fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px;
+    align-items: start;
 }
 
 .sfa-valuation-header {
@@ -1029,42 +1037,106 @@ input[type="radio"] {
 }
 
 .sfa-valuation-assumption {
-    font-family: var(--font-mono);
-    font-size: 11px;
+    font-family: var(--font-sans);
+    font-size: 12px;
     color: var(--text-secondary);
     margin-bottom: 6px;
+    line-height: 1.4;
 }
 
-/* Valuation explainability popup — MathJax formula cards */
+/* Valuation tables — larger type than financials/big-five for side-panel readability */
+.sfa-fundamentals-valuation .dash-spreadsheet td,
+.sfa-fundamentals-valuation .dash-spreadsheet th {
+    font-size: 13px !important;
+    line-height: 20px !important;
+}
+
+.sfa-fundamentals-valuation .dash-spreadsheet td .dash-cell-value,
+.sfa-fundamentals-valuation .dash-spreadsheet th .column-header-name {
+    font-size: 13px !important;
+    line-height: 20px !important;
+}
+
+.sfa-fundamentals-valuation .dash-spreadsheet-container .row {
+    min-height: 30px;
+    max-height: 30px;
+    height: 30px;
+}
+
+/* Valuation explainability panel — two-column layout */
 .sfa-valuation-explain {
     margin-top: 6px;
-    padding: 10px;
+    padding: 10px 12px;
     border: 1px solid var(--border-primary);
     border-left: 3px solid var(--info);
     background: var(--bg-tertiary);
     border-radius: 2px;
 }
 
-.sfa-formula-title {
-    font-family: var(--font-mono);
-    font-size: 11px;
+.sfa-explain-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(200px, 0.85fr);
+    gap: 12px 16px;
+    align-items: start;
+}
+
+.sfa-explain-col-formulas {
+    min-width: 0;
+}
+
+.sfa-explain-col-notes {
+    min-width: 0;
+    padding-left: 12px;
+    border-left: 1px solid var(--border-primary);
+}
+
+.sfa-explain-heading {
+    font-family: var(--font-sans);
+    font-size: 10px;
     font-weight: 700;
-    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--accent);
+    margin: 6px 0 3px;
+}
+
+.sfa-explain-col-notes > .sfa-explain-heading:first-child {
+    margin-top: 0;
+}
+
+.sfa-formula-what,
+.sfa-formula-why {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
+.sfa-formula-why {
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+}
+
+.sfa-formula-title {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
     margin-bottom: 8px;
+    color: var(--text-primary);
 }
 
 .sfa-formula-card {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin-bottom: 8px;
 }
 
 .sfa-formula-block {
     background: var(--bg-secondary);
     border: 1px solid var(--border-primary);
     border-radius: 2px;
-    padding: 8px 10px;
+    padding: 7px 9px;
 }
 
 .sfa-formula-block.sfa-formula-substituted {
@@ -1073,44 +1145,117 @@ input[type="radio"] {
 }
 
 .sfa-formula-block-label {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-tertiary);
-    margin-bottom: 6px;
+    letter-spacing: 0.6px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
 }
 
 .sfa-formula-math {
     overflow-x: auto;
-    padding: 2px 0;
+    padding: 4px 0;
+    --sfa-formula-size: 18px;   /* 14px base + 30% */
 }
 
-.sfa-formula-math mjx-container {
-    font-size: 115% !important;
+.sfa-formula-equation {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    font-family: var(--font-sans);
+    font-size: var(--sfa-formula-size);
+    line-height: 1.4;
+    color: var(--text-primary);
 }
 
-.sfa-formula-block.sfa-formula-symbolic .sfa-formula-math mjx-container {
-    color: var(--text-primary) !important;
+.sfa-f-var {
+    font-weight: 600;
+    font-style: italic;
+    color: var(--text-primary);
 }
 
-.sfa-formula-block.sfa-formula-substituted .sfa-formula-math mjx-container {
-    color: var(--text-primary) !important;
+.sfa-f-sub {
+    font-size: 0.72em;
+    font-style: normal;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-left: 1px;
+}
+
+.sfa-f-op {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.sfa-f-text {
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-style: normal;
+}
+
+.sfa-f-val {
+    font-size: var(--sfa-formula-size, 18px);
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.sfa-f-frac {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    margin: 0 2px;
+    min-width: 3.5em;
+}
+
+.sfa-f-frac-num {
+    padding: 0 6px 3px;
+    border-bottom: 1px solid var(--border-primary);
+    width: 100%;
+    text-align: center;
+}
+
+.sfa-f-frac-den {
+    padding: 3px 6px 0;
+    width: 100%;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.92em;
+}
+
+.sfa-formula-block.sfa-formula-substituted .sfa-f-val {
+    color: var(--info);
 }
 
 .sfa-formula-explanation {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
-    line-height: 1.4;
-    margin-bottom: 6px;
+    line-height: 1.45;
+    margin-bottom: 2px;
+    color: var(--text-secondary);
 }
 
 .sfa-formula-meta {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 10px;
-    line-height: 1.35;
-    margin-top: 4px;
+    line-height: 1.4;
+    margin-bottom: 2px;
+    color: var(--text-tertiary);
+}
+
+@media (max-width: 720px) {
+    .sfa-explain-grid {
+        grid-template-columns: 1fr;
+    }
+    .sfa-explain-col-notes {
+        padding-left: 0;
+        border-left: none;
+        padding-top: 8px;
+        border-top: 1px solid var(--border-primary);
+    }
 }
 
 .sfa-fundamentals-chart .js-plotly-plot,
@@ -1121,7 +1266,7 @@ input[type="radio"] {
 
 @media (min-width: 1800px) {
     .sfa-fundamentals-top {
-        grid-template-columns: minmax(0, 1fr) minmax(420px, 20vw);
+        grid-template-columns: minmax(0, 1fr) minmax(560px, 38vw);
     }
 
     .sfa-fundamentals-charts {
@@ -1146,10 +1291,10 @@ input[type="radio"] {
     }
 
     .sfa-valuation-grid {
-        grid-template-columns: minmax(120px, 1fr) minmax(58px, 0.45fr);
+        grid-template-columns: 1fr;
     }
 
-    .sfa-valuation-grid > :nth-child(n+3) {
+    .sfa-valuation-grid > :nth-child(2) {
         margin-top: 4px;
     }
 }
@@ -1201,7 +1346,7 @@ body.theme-light {
 .compact-accordion .accordion-button {
     background-color: var(--bg-secondary) !important;
     color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 11px !important;
     font-weight: 600 !important;
     text-transform: uppercase !important;
@@ -1240,7 +1385,7 @@ body.theme-light {
     justify-content: space-between;
     width: 100%;
     gap: 8px;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
 }
 
 .accordion-title-summary {
@@ -1304,7 +1449,7 @@ body.theme-light {
 
 .signal-logic-toggle label {
     color: var(--text-secondary) !important;
-    font-family: var(--font-mono) !important;
+    font-family: var(--font-sans) !important;
     font-size: 11px !important;
     border-radius: 2px;
     transition: background 80ms ease, color 80ms ease;
@@ -1328,11 +1473,11 @@ label,
 }
 
 .signals-filter-label {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 0.8px;
     color: var(--text-secondary);
     margin-top: 6px;
     margin-bottom: 3px;
@@ -1342,7 +1487,7 @@ label,
     display: flex;
     flex-wrap: wrap;
     gap: 4px 10px;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
 }
 
@@ -1364,7 +1509,7 @@ label,
     gap: 8px;
     padding: 4px 6px;
     border-bottom: 1px solid var(--border-primary);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
@@ -1397,7 +1542,7 @@ label,
 
 .signal-name {
     flex: 1;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 11px;
     color: var(--text-primary);
     overflow: hidden;
@@ -1443,7 +1588,7 @@ label,
 .signal-toggle label {
     color: var(--text-primary) !important;
     font-size: 11px;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     margin: 0;
     cursor: pointer;
 }

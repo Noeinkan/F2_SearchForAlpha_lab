@@ -30,7 +30,7 @@ except Exception:
 from lib.dash.dash_config import (
     DEFAULT_THEME, DEFAULT_TICKER, INITIAL_CAPITAL, START_DATE,
     START_PORT, MAX_PORT_TRIES,
-    FONT_SIZES, FONT_MONO, BORDER_RADIUS,
+    FONT_SIZES, FONT_FAMILY, BORDER_RADIUS,
     DEFAULT_SIGNAL_WINDOW,
     PLOT_OPTIONS, CHART_ELEMENT_OPTIONS, SIGNAL_OPTIONS,
     DEFAULT_INDICATOR_SETTINGS, INDICATOR_SETTING_SCHEMA,
@@ -134,14 +134,14 @@ def _create_header(styles: dict, theme: dict) -> html.Header:
             html.Span('CONNECTED', style={
                 'fontSize': FONT_SIZES['xs'],
                 'color': theme['text_secondary'],
-                'fontFamily': FONT_MONO,
+                'fontFamily': FONT_FAMILY,
                 'letterSpacing': '1px',
             }),
-            html.Span('│', style={'color': theme['border_primary'], 'fontFamily': FONT_MONO}),
+            html.Span('│', style={'color': theme['border_primary'], 'fontFamily': FONT_FAMILY}),
             html.Div(id='header-status', style={
                 'fontSize': FONT_SIZES['sm'],
                 'color': theme['text_secondary'],
-                'fontFamily': FONT_MONO,
+                'fontFamily': FONT_FAMILY,
             }, className='num'),
             # Theme toggle
             html.Button(
@@ -183,13 +183,13 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
         html.Div([
             html.Div([
                 html.Div("FUNDAMENTALS", style={
-                    'fontFamily': FONT_MONO,
+                    'fontFamily': FONT_FAMILY,
                     'fontSize': FONT_SIZES['xs'],
                     'letterSpacing': '1.6px',
                     'color': theme['text_secondary'],
                 }),
                 html.Div(id='fundamentals-title', children='Select a symbol', style={
-                    'fontFamily': FONT_MONO,
+                    'fontFamily': FONT_FAMILY,
                     'fontSize': FONT_SIZES['lg'],
                     'fontWeight': 700,
                     'color': theme['text_primary'],
@@ -200,14 +200,14 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
             ], style={'minWidth': 0, 'flex': '1 1 auto'}),
             html.Div([
                 html.Span(id='fundamentals-global-symbol', children=f'GLOBAL {DEFAULT_TICKER}', className='num muted', style={
-                    'fontFamily': FONT_MONO,
+                    'fontFamily': FONT_FAMILY,
                     'fontSize': FONT_SIZES['xs'],
                     'color': theme['text_secondary'],
                     'alignSelf': 'center',
                     'marginRight': '6px',
                 }),
                 html.Span(id='fundamentals-status', children='READY', className='num muted', style={
-                    'fontFamily': FONT_MONO,
+                    'fontFamily': FONT_FAMILY,
                     'fontSize': FONT_SIZES['xs'],
                     'color': theme['text_secondary'],
                     'alignSelf': 'center',
@@ -252,7 +252,7 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
         }),
         html.Div(id='fundamentals-content', children=[
             html.Div("Open fundamentals after selecting a stock.", style={
-                'fontFamily': FONT_MONO,
+                'fontFamily': FONT_FAMILY,
                 'fontSize': FONT_SIZES['sm'],
                 'color': theme['text_secondary'],
                 'padding': '18px',
@@ -262,7 +262,6 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
             'overflow': 'auto',
             'padding': '6px',
         }, className='sfa-fundamentals-content'),
-        html.Div(id='fundamentals-mathjax-sync', style={'display': 'none'}),
     ], id='fundamentals-overlay', style={
         'display': 'none',
         'position': 'fixed',
@@ -605,7 +604,7 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
                     'fontWeight': '600',
                     'color': theme['text_primary'],
                     'margin': 0,
-                    'fontFamily': FONT_MONO,
+                    'fontFamily': FONT_FAMILY,
                     'letterSpacing': '1.5px',
                     'textTransform': 'uppercase',
                 }),
@@ -613,7 +612,7 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
                     'fontSize': FONT_SIZES['xs'],
                     'color': theme['text_secondary'],
                     'marginLeft': '12px',
-                    'fontFamily': FONT_MONO,
+                    'fontFamily': FONT_FAMILY,
                 }),
             ], style={'display': 'flex', 'alignItems': 'baseline'}),
 
@@ -956,7 +955,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                 style={
                                     **styles['input'],
                                     'width': '100%',
-                                    'fontFamily': FONT_MONO,
+                                    'fontFamily': FONT_FAMILY,
                                     'padding': '10px 12px',
                                     'fontSize': FONT_SIZES['base'],
                                     'borderColor': theme['accent_orange'],
@@ -999,7 +998,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                 style={
                                     **styles['input'],
                                     'width': '100%',
-                                    'fontFamily': FONT_MONO,
+                                    'fontFamily': FONT_FAMILY,
                                     'padding': '10px 12px',
                                     'fontSize': FONT_SIZES['base'],
                                     'borderColor': theme['accent_red'],
@@ -1042,7 +1041,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                 style={
                                     **styles['input'],
                                     'width': '100%',
-                                    'fontFamily': FONT_MONO,
+                                    'fontFamily': FONT_FAMILY,
                                     'padding': '10px 12px',
                                     'fontSize': FONT_SIZES['base'],
                                     'borderColor': theme['accent_cyan'],
@@ -1113,7 +1112,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                     style={
                                         **styles['input'],
                                         'width': '100%',
-                                        'fontFamily': FONT_MONO,
+                                        'fontFamily': FONT_FAMILY,
                                         'padding': '10px 12px',
                                         'fontSize': FONT_SIZES['base'],
                                         'borderColor': theme['accent_purple'],
@@ -1168,7 +1167,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                 style={
                                     **styles['input'],
                                     'width': '100%',
-                                    'fontFamily': FONT_MONO,
+                                    'fontFamily': FONT_FAMILY,
                                     'padding': '10px 12px',
                                     'fontSize': FONT_SIZES['base'],
                                     'borderColor': theme['accent_green'],
@@ -1209,7 +1208,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                 style={
                                     **styles['input'],
                                     'width': '100%',
-                                    'fontFamily': FONT_MONO,
+                                    'fontFamily': FONT_FAMILY,
                                     'padding': '10px 12px',
                                     'fontSize': FONT_SIZES['base'],
                                     'borderColor': theme['accent_green'],
@@ -1251,7 +1250,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                 style={
                                     **styles['input'],
                                     'width': '100%',
-                                    'fontFamily': FONT_MONO,
+                                    'fontFamily': FONT_FAMILY,
                                     'padding': '10px 12px',
                                     'fontSize': FONT_SIZES['base'],
                                     'borderColor': theme['accent_blue'],
@@ -1297,7 +1296,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                     style={
                                         **styles['input'],
                                         'width': '100%',
-                                        'fontFamily': FONT_MONO,
+                                        'fontFamily': FONT_FAMILY,
                                         'padding': '10px 12px',
                                         'fontSize': FONT_SIZES['base'],
                                         'borderColor': theme['accent_purple'],
@@ -1321,7 +1320,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                     style={
                                         **styles['input'],
                                         'width': '100%',
-                                        'fontFamily': FONT_MONO,
+                                        'fontFamily': FONT_FAMILY,
                                         'padding': '10px 12px',
                                         'fontSize': FONT_SIZES['base'],
                                         'borderColor': theme['accent_purple'],
@@ -1494,7 +1493,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                     style={
                                         **styles['input'],
                                         'width': '100%',
-                                        'fontFamily': FONT_MONO,
+                                        'fontFamily': FONT_FAMILY,
                                         'padding': '10px 12px',
                                         'fontSize': FONT_SIZES['base'],
                                     }
@@ -1517,7 +1516,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                     style={
                                         **styles['input'],
                                         'width': '100%',
-                                        'fontFamily': FONT_MONO,
+                                        'fontFamily': FONT_FAMILY,
                                         'padding': '10px 12px',
                                         'fontSize': FONT_SIZES['base'],
                                     }
@@ -1540,7 +1539,7 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                     style={
                                         **styles['input'],
                                         'width': '100%',
-                                        'fontFamily': FONT_MONO,
+                                        'fontFamily': FONT_FAMILY,
                                         'padding': '10px 12px',
                                         'fontSize': FONT_SIZES['base'],
                                     }
@@ -1780,17 +1779,6 @@ def run_dashboard(dev_mode: bool = False) -> None:
             {{%favicon%}}
             {{%css%}}
             <style>{CUSTOM_CSS}</style>
-            <script>
-            window.MathJax = {{
-              tex: {{
-                inlineMath: [['\\\\(', '\\\\)']],
-                displayMath: [['\\\\[', '\\\\]']]
-              }},
-              options: {{ skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }},
-              startup: {{ typeset: false }}
-            }};
-            </script>
-            <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
         </head>
         <body>
             {{%app_entry%}}

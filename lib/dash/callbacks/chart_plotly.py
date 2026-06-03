@@ -12,7 +12,7 @@ from dash.exceptions import PreventUpdate
 
 from lib.dash.chart_builder import create_chart, create_empty_chart
 from lib.dash.components import ticker_pill
-from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, FONT_SIZES, FONT_MONO, get_theme
+from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, FONT_SIZES, FONT_FAMILY, get_theme
 from lib.dash.state import dashboard_state
 from lib.dash.callbacks.shared import (
     _collect_selected_plots,
