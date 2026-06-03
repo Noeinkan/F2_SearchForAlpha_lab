@@ -4,12 +4,14 @@
 #         .\deploy.ps1 -File lib/bayesian_optimization.py   # single file only
 #         .\deploy.ps1 -PushConfig    # also upload config/strategy_config.yaml (server live_params)
 #         .\deploy.ps1 -SkipFixPerms  # skip remote openclaw/sfa permission helper after sync
+#         .\deploy.ps1 -SkipRestartDashboard  # skip systemd restart (default: restart after sync)
 
 param(
     [switch]$DryRun,
     [string]$File,
     [switch]$PushConfig,
-    [switch]$SkipFixPerms
+    [switch]$SkipFixPerms,
+    [switch]$SkipRestartDashboard
 )
 
 $SERVER   = "root@77.42.70.26"
@@ -127,6 +129,17 @@ function Get-ScpRemoteDest([string]$RelPath) {
     $unix = ($RelPath -replace '\\', '/').TrimStart('/')
     return "${SERVER}:${REMOTE}/$unix"
 }
+function Invoke-RestartDashboard {
+    if ($DryRun -or $SkipRestartDashboard) { return }
+    Write-Step "Restarting remote dashboard (searchforalpha-dashboard.service)..."
+    $restartPs1 = Join-Path $PSScriptRoot "scripts\restart_sfa_dashboard.ps1"
+    if (-not (Test-Path $restartPs1)) {
+        Write-Err "Missing $restartPs1"
+        exit 1
+    }
+    & $restartPs1 -Server $SERVER -SshKey $SSH_KEY
+    if ($LASTEXITCODE -ne 0) { exit 1 }
+}
 
 # ── single-file shortcut ─────────────────────────────────────────────────────
 if ($File) {
@@ -137,6 +150,7 @@ if ($File) {
         $localPosix = Get-ScpLocalPosix $File
         Invoke-Scp ($SCP_BASE_ARGS + @($localPosix, $remoteSpec)) "scp failed for $local"
         Write-Ok "done"
+        Invoke-RestartDashboard
     } else {
         Write-Host "  [dry-run] scp $(Get-ScpLocalPosix $File) $remoteSpec"
     }
@@ -253,3 +267,5 @@ if (-not $DryRun -and -not $SkipFixPerms) {
     & $fixPs1 -Server $SERVER -Remote $REMOTE -SshKey $SSH_KEY
     if ($LASTEXITCODE -ne 0) { exit 1 }
 }
+
+Invoke-RestartDashboard
