@@ -10,7 +10,10 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
 
+from lib.dash.routes import is_fundamentals_route
+from lib.dash.callbacks.startup import _ensure_ticker_options_loaded
 from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, FONT_MONO, FONT_SIZES, get_theme
+from lib.dash.ticker_search import resolve_ticker_symbol
 from lib.fundamentals import fetch_fundamentals
 
 logger = logging.getLogger(__name__)
@@ -131,6 +134,189 @@ for _valuation_metric, _details in _VALUATION_EXPLAIN_MAP.items():
         for _source_metric in _table_sources:
             _REVERSE_DEPENDENCY_MAP.setdefault(_source_metric, []).append(_valuation_metric)
 
+_VALUATION_LATEX: dict[str, str] = {
+    "Analysts' GR": r"\text{Analysts' GR} \leftarrow \text{earningsGrowth, revenueGrowth, earningsQuarterlyGrowth}",
+    'Historical Equity GR': r"g_{\text{eq}} = \mathrm{CAGR}_{10Y}(\text{Equity})",
+    "Estimated EPS GR": r"g_{\text{EPS}} = \text{first positive}(\text{Analysts' GR},\; g_{\text{eq}},\; \mathrm{CAGR}_{10Y}(\text{EPS}))",
+    'Current EPS': r"\text{EPS}_0 = \text{trailingEps} \;\|\; \text{latest annual EPS}",
+    'Estimated EPS 10y': r"\text{EPS}_{10} = \text{EPS}_0 \cdot (1 + g_{\text{EPS}})^{10}",
+    'Rule #1st Price/Earn Ratio': r"\text{P/E}_{\text{calc}} = \max(0,\; g_{\text{EPS}} \times 200)",
+    'Forward Price/Earn Ratio': r"\text{P/E}_{\text{fwd}} = \text{forwardPE}",
+    'Historical PE': r"\text{P/E}_{\text{hist}} = \mathrm{mean}(\text{last 10 annual P/E})",
+    'Rule #1 PE': r"\text{P/E}_{\text{Rule1}} = \min(\text{P/E}_{\text{calc}},\; \text{P/E}_{\text{fwd}},\; \text{P/E}_{\text{hist}})",
+    'PEG': r"\text{PEG} = \dfrac{\text{P/E}_{\text{Rule1}}}{g_{\text{EPS}} \times 100}",
+    'MARR': r"r_{\text{MARR}} = \text{configured annual required return}",
+    'MOS': r"m_{\text{MOS}} = \text{configured margin-of-safety multiplier}",
+    'Fut. Market Price (10 Y)': r"P_{10} = \text{EPS}_{10} \times \text{P/E}_{\text{Rule1}}",
+    'Sticker Price': r"P_{\text{sticker}} = \dfrac{P_{10}}{(1 + r_{\text{MARR}})^{10}}",
+    'Year-end Close': r"P_{\text{close}} = \text{latest annual close}",
+    'Entry Price': r"P_{\text{entry}} = P_{\text{sticker}} \times m_{\text{MOS}}",
+    'Close/Entry price ratio': r"\text{Ratio} = \dfrac{P_{\text{close}}}{P_{\text{entry}}}",
+}
+
+
+def _valuation_row_map(rows: list[dict[str, Any]] | None) -> dict[str, str]:
+    if not rows:
+        return {}
+    return {
+        _canonical_metric(str(row.get('metric', ''))): str(row.get('value', '--'))
+        for row in rows
+    }
+
+
+def _parse_display_number(raw: str) -> float | None:
+    text = str(raw or '').strip()
+    if not text or text == '--':
+        return None
+    is_pct = text.endswith('%')
+    cleaned = text.replace('$', '').replace(',', '').replace('%', '').strip()
+    try:
+        value = float(cleaned)
+    except ValueError:
+        return None
+    return value / 100.0 if is_pct else value
+
+
+def _latex_money(value: float | None) -> str:
+    if value is None:
+        return r'\text{--}'
+    return rf'\${value:,.2f}'
+
+
+def _latex_decimal(value: float | None, places: int = 2) -> str:
+    if value is None:
+        return r'\text{--}'
+    return f'{value:.{places}f}'
+
+
+def _latex_pct(value: float | None, places: int = 2) -> str:
+    if value is None:
+        return r'\text{--}'
+    return rf'{value * 100:.{places}f}\%'
+
+
+def _build_substituted_latex(metric: str, row_map: dict[str, str]) -> str | None:
+    """Build a numeric substitution line for metrics with table inputs."""
+    canonical = _canonical_metric(metric)
+
+    def raw(key: str) -> str:
+        return row_map.get(_canonical_metric(key), '--')
+
+    def num(key: str) -> float | None:
+        return _parse_display_number(raw(key))
+
+    def append_result(expression: str, result_key: str | None = None) -> str:
+        result = num(result_key or canonical)
+        if result is None:
+            return expression
+        if canonical in {'PEG', 'Close/Entry price ratio', 'Rule #1st Price/Earn Ratio', 'Forward Price/Earn Ratio', 'Historical PE', 'Rule #1 PE'}:
+            return rf'{expression} = {_latex_decimal(result, 1)}'
+        if canonical in {"Analysts' GR", 'Historical Equity GR', 'Estimated EPS GR', 'MARR', 'MOS'}:
+            return rf'{expression} = {_latex_pct(result)}'
+        return rf'{expression} = {_latex_money(result)}'
+
+    if canonical == 'Estimated EPS 10y':
+        eps0, growth = num('Current EPS'), num('Estimated EPS GR')
+        if eps0 is None or growth is None:
+            return None
+        return append_result(
+            rf'\text{{EPS}}_{{10}} = {_latex_money(eps0)} \cdot (1 + {_latex_decimal(growth)})^{{10}}',
+        )
+
+    if canonical == 'Rule #1st Price/Earn Ratio':
+        growth = num('Estimated EPS GR')
+        if growth is None:
+            return None
+        return append_result(
+            rf'\text{{P/E}}_{{\text{{calc}}}} = \max(0,\; {_latex_decimal(growth)} \times 200)',
+        )
+
+    if canonical == 'Rule #1 PE':
+        calc, fwd, hist = num('Rule #1st Price/Earn Ratio'), num('Forward Price/Earn Ratio'), num('Historical PE')
+        candidates = [value for value in (calc, fwd, hist) if value is not None and value > 0]
+        if not candidates:
+            return None
+        expr = (
+            rf'\text{{P/E}}_{{\text{{Rule1}}}} = \min('
+            rf'{_latex_decimal(calc, 1) if calc is not None else r"\text{--}" },\; '
+            rf'{_latex_decimal(fwd, 1) if fwd is not None else r"\text{--}" },\; '
+            rf'{_latex_decimal(hist, 1) if hist is not None else r"\text{--}" })'
+        )
+        return append_result(expr)
+
+    if canonical == 'PEG':
+        pe, growth = num('Rule #1 PE'), num('Estimated EPS GR')
+        if pe is None or growth is None or growth <= 0:
+            return None
+        return append_result(
+            rf'\text{{PEG}} = \dfrac{{{_latex_decimal(pe, 1)}}}{{{_latex_decimal(growth)} \times 100}}',
+        )
+
+    if canonical == 'Fut. Market Price (10 Y)':
+        eps10, pe = num('Estimated EPS 10y'), num('Rule #1 PE')
+        if eps10 is None or pe is None:
+            return None
+        return append_result(
+            rf'P_{{10}} = {_latex_money(eps10)} \times {_latex_decimal(pe, 1)}',
+        )
+
+    if canonical == 'Sticker Price':
+        future_price, marr = num('Fut. Market Price (10 Y)'), num('MARR')
+        if future_price is None or marr is None:
+            return None
+        return append_result(
+            rf'P_{{\text{{sticker}}}} = \dfrac{{{_latex_money(future_price)}}}{{(1 + {_latex_decimal(marr)})^{{10}}}}',
+        )
+
+    if canonical == 'Entry Price':
+        sticker, mos = num('Sticker Price'), num('MOS')
+        if sticker is None or mos is None:
+            return None
+        return append_result(
+            rf'P_{{\text{{entry}}}} = {_latex_money(sticker)} \times {_latex_decimal(mos)}',
+        )
+
+    if canonical == 'Close/Entry price ratio':
+        close, entry = num('Year-end Close'), num('Entry Price')
+        if close is None or entry is None or entry == 0:
+            return None
+        return append_result(
+            rf'\text{{Ratio}} = \dfrac{{{_latex_money(close)}}}{{{_latex_money(entry)}}}',
+        )
+
+    if canonical == 'MARR':
+        marr = num('MARR')
+        return rf'r_{{\text{{MARR}}}} = {_latex_pct(marr)}' if marr is not None else None
+
+    if canonical == 'MOS':
+        mos = num('MOS')
+        return rf'm_{{\text{{MOS}}}} = {_latex_pct(mos)} \; (\times {_latex_decimal(mos)})' if mos is not None else None
+
+    return None
+
+
+def _formula_card(symbolic_latex: str, substituted_latex: str | None) -> html.Div:
+    blocks: list[Any] = [
+        html.Div(
+            className='sfa-formula-block sfa-formula-symbolic',
+            children=[
+                html.Div('Formula', className='sfa-formula-block-label'),
+                html.Div(className='sfa-formula-math', children=rf'\[{symbolic_latex}\]'),
+            ],
+        ),
+    ]
+    if substituted_latex:
+        blocks.append(
+            html.Div(
+                className='sfa-formula-block sfa-formula-substituted',
+                children=[
+                    html.Div('With current values', className='sfa-formula-block-label'),
+                    html.Div(className='sfa-formula-math', children=rf'\[{substituted_latex}\]'),
+                ],
+            ),
+        )
+    return html.Div(blocks, className='sfa-formula-card')
+
 
 def register_fundamentals_callbacks(app) -> None:
     @app.callback(
@@ -152,58 +338,33 @@ def register_fundamentals_callbacks(app) -> None:
         return str(ticker or DEFAULT_TICKER).upper()
 
     @app.callback(
-        Output('fundamentals-overlay-open-store', 'data'),
-        [Input('open-fundamentals-button', 'n_clicks'),
-         Input('close-fundamentals-button', 'n_clicks')],
-        prevent_initial_call=True,
-    )
-    def set_fundamentals_open_state(open_clicks, close_clicks):
-        ctx = callback_context
-        if not ctx.triggered:
-            raise PreventUpdate
-
-        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        return trigger_id != 'close-fundamentals-button'
-
-    @app.callback(
-        Output('fundamentals-overlay', 'style'),
-        [Input('fundamentals-overlay-open-store', 'data'),
-         Input('theme-store', 'data')],
-        State('fundamentals-overlay', 'style'),
-    )
-    def render_fundamentals_overlay(open_state, theme_name, current_style):
-        theme = get_theme(theme_name or DEFAULT_THEME)
-        style = dict(current_style or {})
-        style.update({
-            'backgroundColor': theme['bg_primary'],
-            'border': f'1px solid {theme["border_primary"]}',
-            'display': 'block' if open_state else 'none',
-        })
-        return style
-
-    @app.callback(
         [Output('fundamentals-store', 'data'),
          Output('fundamentals-title', 'children'),
          Output('fundamentals-status', 'children'),
          Output('ticker-dropdown', 'value', allow_duplicate=True)],
-        [Input('open-fundamentals-button', 'n_clicks'),
+        [Input('app-url', 'pathname'),
          Input('refresh-fundamentals-button', 'n_clicks'),
          Input('load-fundamentals-ticker-button', 'n_clicks'),
          Input('fundamentals-ticker-input', 'n_submit')],
         [State('ticker-dropdown', 'value'),
          State('fundamentals-ticker-input', 'value')],
-        prevent_initial_call=True,
+        prevent_initial_call=False,
     )
-    def load_fundamentals(open_clicks, refresh_clicks, load_clicks, input_submit, ticker, overlay_ticker):
+    def load_fundamentals(pathname, refresh_clicks, load_clicks, input_submit, ticker, overlay_ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
 
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        if trigger_id == 'open-fundamentals-button':
-            symbol = str(ticker or DEFAULT_TICKER).strip().upper()
+        if trigger_id == 'app-url':
+            if not is_fundamentals_route(pathname):
+                raise PreventUpdate
+            raw = str(overlay_ticker or ticker or DEFAULT_TICKER).strip()
         else:
-            symbol = str(overlay_ticker or ticker or DEFAULT_TICKER).strip().upper()
+            raw = str(overlay_ticker or ticker or DEFAULT_TICKER).strip()
+
+        options = _ensure_ticker_options_loaded()
+        symbol = resolve_ticker_symbol(raw, options)
 
         if not symbol:
             return None, 'Invalid ticker', 'ERROR: ticker is required', no_update
@@ -236,7 +397,10 @@ def register_fundamentals_callbacks(app) -> None:
          Output('fundamentals-big-five-table', 'style_data_conditional'),
          Output('fundamentals-valuation-table', 'style_data_conditional'),
          Output('fundamentals-valuation-explain', 'children'),
-         Output('fundamentals-valuation-explain', 'style')],
+         Output('fundamentals-valuation-explain', 'style'),
+         Output('fundamentals-financial-table', 'active_cell'),
+         Output('fundamentals-big-five-table', 'active_cell'),
+         Output('fundamentals-valuation-table', 'active_cell')],
         [Input('fundamentals-financial-table', 'active_cell'),
          Input('fundamentals-big-five-table', 'active_cell'),
          Input('fundamentals-valuation-table', 'active_cell'),
@@ -255,14 +419,19 @@ def register_fundamentals_callbacks(app) -> None:
         valuation_style = _valuation_conditionals(theme)
         explain_style = _valuation_explain_style(theme, visible=False)
         explain_children = []
+        clear_cells = no_update, no_update, no_update
 
         trigger = callback_context.triggered[0]['prop_id'].split('.')[0] if callback_context.triggered else ''
         if trigger == 'fundamentals-esc-signal' and esc_signal:
-            return financial_style, big_five_style, valuation_style, explain_children, explain_style
+            return (
+                financial_style, big_five_style, valuation_style,
+                explain_children, explain_style,
+                None, None, None,
+            )
 
         metric = _resolve_selected_metric(fin_active, big_active, val_active, fin_rows, big_rows, val_rows)
         if not metric:
-            return financial_style, big_five_style, valuation_style, explain_children, explain_style
+            return financial_style, big_five_style, valuation_style, explain_children, explain_style, *clear_cells
 
         canonical_metric = _canonical_metric(metric)
         explain = _VALUATION_EXPLAIN_MAP.get(canonical_metric)
@@ -288,7 +457,35 @@ def register_fundamentals_callbacks(app) -> None:
                 explain_children = _valuation_generic_content(canonical_metric, theme)
 
         explain_style = _valuation_explain_style(theme, visible=True)
-        return financial_style, big_five_style, valuation_style, explain_children, explain_style
+        return financial_style, big_five_style, valuation_style, explain_children, explain_style, *clear_cells
+
+    app.clientside_callback(
+        """
+        function(children) {
+            const panel = document.getElementById('fundamentals-valuation-explain');
+            if (!panel || !children || (Array.isArray(children) && children.length === 0)) {
+                return window.dash_clientside.no_update;
+            }
+            const typeset = function() {
+                if (window.MathJax && window.MathJax.typesetPromise) {
+                    return window.MathJax.typesetPromise([panel]);
+                }
+                if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
+                    return window.MathJax.startup.promise.then(function() {
+                        return window.MathJax.typesetPromise([panel]);
+                    });
+                }
+                return Promise.resolve();
+            };
+            typeset().catch(function(err) {
+                console.warn('MathJax typeset failed', err);
+            });
+            return window.dash_clientside.no_update;
+        }
+        """,
+        Output('fundamentals-mathjax-sync', 'children'),
+        Input('fundamentals-valuation-explain', 'children'),
+    )
 
 
 def _render_payload(payload: dict[str, Any], theme: dict) -> html.Div:
@@ -305,7 +502,11 @@ def _render_payload(payload: dict[str, Any], theme: dict) -> html.Div:
                 _panel_title('Valuation', theme),
                 _valuation_assumptions(valuation_rows, theme),
                 _valuation_table(valuation_rows, theme),
-                html.Div(id='fundamentals-valuation-explain', style=_valuation_explain_style(theme, visible=False)),
+                html.Div(
+                    id='fundamentals-valuation-explain',
+                    className='sfa-valuation-explain',
+                    style=_valuation_explain_style(theme, visible=False),
+                ),
             ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-side'),
         ], className='sfa-fundamentals-top'),
         html.Div([
@@ -561,49 +762,28 @@ def _valuation_tooltips(rows: list[dict[str, Any]]) -> list[dict[str, dict[str, 
 def _valuation_explain_style(theme: dict, *, visible: bool) -> dict[str, Any]:
     return {
         'display': 'block' if visible else 'none',
-        'marginTop': '6px',
-        'padding': '8px',
-        'border': f'1px solid {theme["border_primary"]}',
-        'borderLeft': f'3px solid {theme["accent_blue"]}',
-        'backgroundColor': theme['bg_tertiary'],
     }
 
 
 def _valuation_explain_content(metric: str, explain: dict[str, Any], theme: dict, valuation_rows: list[dict[str, Any]] | None) -> list[Any]:
     layers = _dependency_layers(metric)
+    canonical = _canonical_metric(metric)
+    row_map = _valuation_row_map(valuation_rows)
+    symbolic_latex = _VALUATION_LATEX.get(canonical, explain.get('formula', '--'))
+    substituted_latex = _build_substituted_latex(canonical, row_map)
     return [
-        html.Div(f"Calculation detail: {metric}", style={
-            'fontFamily': FONT_MONO,
-            'fontSize': FONT_SIZES['xs'],
-            'fontWeight': 700,
+        html.Div(f"Calculation detail: {metric}", className='sfa-formula-title', style={
             'color': theme['accent_blue'],
-            'marginBottom': '5px',
-            'letterSpacing': '0.6px',
         }),
-        html.Div(explain.get('formula', '--'), style={
-            'fontFamily': FONT_MONO,
-            'fontSize': FONT_SIZES['sm'],
-            'color': theme['text_primary'],
-            'marginBottom': '5px',
-        }),
-        html.Div(explain.get('explanation', '--'), style={
-            'fontFamily': FONT_MONO,
-            'fontSize': FONT_SIZES['xs'],
+        _formula_card(symbolic_latex, substituted_latex),
+        html.Div(explain.get('explanation', '--'), className='sfa-formula-explanation', style={
             'color': theme['text_secondary'],
-            'lineHeight': '1.35',
         }),
-        html.Div(_source_summary(explain), style={
-            'fontFamily': FONT_MONO,
-            'fontSize': FONT_SIZES['xs'],
+        html.Div(_source_summary(explain), className='sfa-formula-meta', style={
             'color': theme['text_secondary'],
-            'marginTop': '5px',
         }),
-        html.Div(_layer_summary_text(layers), style={
-            'fontFamily': FONT_MONO,
-            'fontSize': FONT_SIZES['xs'],
+        html.Div(_layer_summary_text(layers), className='sfa-formula-meta', style={
             'color': theme['text_secondary'],
-            'marginTop': '4px',
-            'lineHeight': '1.35',
         }),
     ]
 

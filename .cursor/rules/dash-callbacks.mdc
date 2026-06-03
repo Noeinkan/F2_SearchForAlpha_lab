@@ -1,0 +1,13 @@
+---
+description: Dash dashboard and callback patterns
+globs: lib/dash/**
+alwaysApply: false
+---
+
+# Dash Conventions
+
+- App init + layout: `lib/dash/integrated_dashboard.py` (~86 KB — read in chunks)
+- Charts: `lib/dash/chart_builder.py` (Plotly factory + overlay registry)
+- **One callback file per concern** in `lib/dash/callbacks/`; import each in `integrated_dashboard.py`
+- Use `@app.callback` with `prevent_initial_call=True` where appropriate
+- UI presets: `config/ui_presets.json`

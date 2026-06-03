@@ -223,6 +223,10 @@ PRESET_FILE_PATH = os.path.join('config', 'ui_presets.json')
 START_PORT = 8050
 MAX_PORT_TRIES = 100
 
+# Dashboard URL routes (browser refresh uses pathname as source of truth)
+ROUTE_TERMINAL = '/'
+ROUTE_FUNDAMENTALS = '/fundamentals'
+
 # =============================================================================
 # OPTIMIZATION
 # =============================================================================

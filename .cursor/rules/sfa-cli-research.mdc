@@ -1,0 +1,13 @@
+---
+description: sfa CLI contracts and JSON output discipline
+globs: lib/cli/**
+alwaysApply: false
+---
+
+# sfa CLI Conventions
+
+- Contract dataclasses: `lib/cli/contracts.py` — field names are stable
+- Changing a contract field requires updating `AGENTS.md`, contract tests in
+  `lib/tests/test_cli_contracts.py`, and any OpenClaw parsers
+- All commands support `--json`; tests should assert JSON shape, not prose
+- Research agent rules (OpenClaw): `docs/openclaw-research.md` — not for code edits

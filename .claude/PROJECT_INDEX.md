@@ -1,5 +1,25 @@
 # SearchForAlpha Lab — Project Index
 
+Navigation hub for agents. **Don't load this entire file every turn** — jump to the section you need.
+
+## Instruction tiers (token efficiency)
+
+| Layer | File | When loaded |
+|-------|------|-------------|
+| Always-on | `.cursor/rules/token-efficiency.mdc` | Every Cursor session — rtk + context discipline |
+| Always-on | `CLAUDE.md` | Every session — essentials only (~15 lines) |
+| On-demand | `.cursor/rules/sfa-python.mdc` | Editing `lib/**/*.py` |
+| On-demand | `.cursor/rules/dash-callbacks.mdc` | Editing `lib/dash/**` |
+| Research only | `AGENTS.md` + `docs/openclaw-research.md` | OpenClaw sfa CLI (not code edits) |
+| On-demand | `.cursor/rules/sfa-cli-research.mdc` | Editing `lib/cli/**` |
+| Shell hook | `.cursor/hooks.json` | Auto-prefixes `rtk` on Shell tool calls |
+
+Shell commands: prefix with `rtk` (see `.github/copilot-instructions.md`).
+
+Full rationale (IT): [docs/token-efficiency.md](../docs/token-efficiency.md)
+
+---
+
 ## Entry Points
 | File | Purpose |
 |------|---------|

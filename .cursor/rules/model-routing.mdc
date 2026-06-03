@@ -1,0 +1,17 @@
+---
+description: Model routing and verification gates
+alwaysApply: true
+---
+
+# Model Routing (Kimi-first)
+
+- Low/medium risk, local scope → Kimi K2.6
+- Kimi ≥2 iterations without progress, or ≥5 core files, or architectural refactor → Sonnet 4.6
+- High-risk / unclear root cause after Sonnet → Opus 4.6
+
+On model switch, hand off: goal, attempts, errors, files changed, constraints.
+
+## Quality gate
+- Verify before marking complete (tests/lint relevant to change)
+- Minimal diffs; preserve public APIs unless requested
+- Each iteration must reduce real failures, not rewrite broadly

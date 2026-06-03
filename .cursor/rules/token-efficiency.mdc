@@ -1,0 +1,35 @@
+---
+description: Token-efficient shell output and context discipline
+alwaysApply: true
+---
+
+# Token Efficiency
+
+## Shell — prefix with `rtk`
+
+`rtk` compresses command output (~60–90% token savings). Already installed; VS Code auto-approves it.
+
+| Instead of | Use |
+|------------|-----|
+| `git status` | `rtk git status` |
+| `git log` | `rtk git log -10` |
+| `git diff` | `rtk git diff` |
+| `python -m pytest lib/tests/ -v` | `rtk python -m pytest lib/tests/ -q` |
+| `python -m lib.cli.app list --json` | `rtk python -m lib.cli.app list --json` |
+
+Add output limits (`-q`, `--co`, `-10`, `--tb=short`) even with rtk. Use `rtk proxy <cmd>` only when full raw output is required.
+
+Meta: `rtk gain` (savings dashboard), `rtk discover` (missed opportunities).
+
+## Monitor savings
+
+Run `rtk gain` periodically (weekly or after heavy agent sessions). High-impact
+commands in this repo: `git diff`, `git log`, `pytest`, `sfa ... --json`.
+Use `rtk discover` to find commands still running without the prefix.
+
+## Context discipline
+
+- **Navigate via index** — use `.claude/PROJECT_INDEX.md` to locate modules; don't re-scan the tree.
+- **Read selectively** — large files (e.g. `lib/dash/integrated_dashboard.py`) with offset/limit; grep before full read.
+- **Cite, don't paste** — reference code as `startLine:endLine:path`; never dump whole files in replies.
+- **Scoped rules load on demand** — signals/dash/sfa-cli rules apply only when editing matching paths.

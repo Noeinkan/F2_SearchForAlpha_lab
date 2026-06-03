@@ -1,0 +1,31 @@
+---
+description: SearchForAlpha Python and signal conventions
+globs: lib/**/*.py
+alwaysApply: false
+---
+
+# Python Conventions
+
+## Commands
+- Dashboard: `python main.py`
+- Tests: `rtk python -m pytest lib/tests/ -q`
+- Syntax: `python -m py_compile <file.py>`
+
+## Signal naming
+Buy: `{INDICATOR}_{CONDITION}_Buy` · Sell: `{INDICATOR}_{CONDITION}_Sell`
+Aggregator in `lib/signals/indicators.py` collects columns matching these patterns.
+
+## New indicator checklist
+1. Create `lib/signals/signals_MYINDICATOR.py` inheriting `BaseStrategy`
+2. Implement `generate_signals(df)` → `_Buy` / `_Sell` columns
+3. Register in `lib/signals/indicators.py` (`add_indicators`, `generate_signals`)
+4. Add defaults to `config/strategy_config.yaml`
+
+## Strategy modes (`lib/strategy.py`)
+`trading` · `accumulation` · `rebalancing` · `swing_trading` · `position_trading` · `trend_following`
+
+## Config
+Read params via `lib/config_loader.py` — never hardcode indicator windows.
+
+## Tests
+Mock `fetch_data`; never hit Yahoo Finance network in tests.

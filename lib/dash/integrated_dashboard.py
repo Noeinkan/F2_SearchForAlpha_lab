@@ -60,7 +60,6 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         dcc.Store(id='active-preset-name', data=None),
         dcc.Store(id='preset-apply-store', data=None),
         dcc.Store(id='active-tab-store', data='backtest', storage_type='local'),
-        dcc.Store(id='fundamentals-overlay-open-store', data=False, storage_type='session'),
         dcc.Store(id='optimization-running', data=False),
         dcc.Store(id='optimization-state', data={
             'running': False,
@@ -86,23 +85,15 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         html.Div(id='keyboard-listener', style={'display': 'none'}),
         html.Div(id='theme-class-sync', style={'display': 'none'}),
 
-        # Header
-        _create_header(styles, theme),
-
-        # Main container
         html.Div([
-            # Left Sidebar - Controls
-            _create_sidebar(styles, theme),
-
-            # Main Chart Area
-            _create_chart_area(styles, theme),
-
-            # Right Panel - Backtest & Results
-            _create_right_panel(styles, theme),
-
-        ], style=styles['main_container']),
-
-        _create_status_bar(styles, theme),
+            _create_header(styles, theme),
+            html.Div([
+                _create_sidebar(styles, theme),
+                _create_chart_area(styles, theme),
+                _create_right_panel(styles, theme),
+            ], style=styles['main_container']),
+            _create_status_bar(styles, theme),
+        ], id='terminal-shell'),
 
         _create_fundamentals_overlay(styles, theme),
 
@@ -271,6 +262,7 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
             'overflow': 'auto',
             'padding': '6px',
         }, className='sfa-fundamentals-content'),
+        html.Div(id='fundamentals-mathjax-sync', style={'display': 'none'}),
     ], id='fundamentals-overlay', style={
         'display': 'none',
         'position': 'fixed',
@@ -1788,6 +1780,17 @@ def run_dashboard(dev_mode: bool = False) -> None:
             {{%favicon%}}
             {{%css%}}
             <style>{CUSTOM_CSS}</style>
+            <script>
+            window.MathJax = {{
+              tex: {{
+                inlineMath: [['\\\\(', '\\\\)']],
+                displayMath: [['\\\\[', '\\\\]']]
+              }},
+              options: {{ skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }},
+              startup: {{ typeset: false }}
+            }};
+            </script>
+            <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
         </head>
         <body>
             {{%app_entry%}}
@@ -1804,6 +1807,12 @@ def run_dashboard(dev_mode: bool = False) -> None:
 
     # Register all callbacks
     register_callbacks(app)
+
+    def _serve_dash_shell():
+        return app.index()
+
+    for idx, route in enumerate(('/fundamentals', '/fundamentals/')):
+        app.server.add_url_rule(route, endpoint=f'sfa_fundamentals_shell_{idx}', view_func=_serve_dash_shell)
 
     # Start server
     def open_browser():

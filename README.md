@@ -240,7 +240,7 @@ results = run_backtest(
 The `sfa` console script is the only surface an external agent or operator
 should touch. Every command supports `--json` for machine readable output.
 For full operating instructions for an external agent runtime see
-[AGENTS.md](AGENTS.md).
+[AGENTS.md](AGENTS.md) and [docs/openclaw-research.md](docs/openclaw-research.md).
 
 ```bash
 sfa list --json

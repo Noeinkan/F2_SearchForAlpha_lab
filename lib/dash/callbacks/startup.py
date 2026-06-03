@@ -11,40 +11,41 @@ from lib.data_processing import get_all_tickers
 from lib.dash.dash_config import PRESET_FILE_PATH
 from lib.dash.preset_storage import load_presets
 from lib.dash.state import dashboard_state
+from lib.dash.ticker_search import build_ticker_options, filter_ticker_options
 from lib.dash.callbacks.shared import _format_preset_options
 
 logger = logging.getLogger(__name__)
 
+_FALLBACK_TICKER_OPTIONS = [{"label": "SPY - SPDR S&P 500 ETF", "value": "SPY", "search": "spy spdr s&p 500 etf"}]
+
+
+def _ensure_ticker_options_loaded() -> list:
+    if dashboard_state.ticker_dropdown_options is not None:
+        return dashboard_state.ticker_dropdown_options
+
+    try:
+        dashboard_state.all_tickers_df = get_all_tickers()
+        dashboard_state.ticker_dropdown_options = build_ticker_options(
+            dashboard_state.all_tickers_df
+        )
+        return dashboard_state.ticker_dropdown_options
+    except Exception as e:
+        logger.error(f"Error fetching tickers: {e}")
+        return _FALLBACK_TICKER_OPTIONS
+
 
 def register_startup_callbacks(app) -> None:
     @app.callback(
-        Output('ticker-dropdown', 'options'),
-        [Input('startup-interval', 'n_intervals')]
+        Output("ticker-dropdown", "options"),
+        [
+            Input("startup-interval", "n_intervals"),
+            Input("ticker-dropdown", "search_value"),
+        ],
     )
-    def populate_tickers(_):
-        """Populate ticker dropdown on startup."""
-        if dashboard_state.all_tickers_df is None:
-            try:
-                dashboard_state.all_tickers_df = get_all_tickers()
-            except Exception as e:
-                logger.error(f"Error fetching tickers: {e}")
-                return [{'label': 'SPY - SPDR S&P 500 ETF', 'value': 'SPY'}]
-        options = []
-        for _, row in dashboard_state.all_tickers_df.iterrows():
-            symbol = str(row.get('Symbol', '')).strip().upper()
-            security_name = str(row.get('Security', '')).strip()
-            if not symbol:
-                continue
-
-            # Keep labels compact while allowing search over full company names.
-            compact_name = security_name if len(security_name) <= 30 else f"{security_name[:30]}..."
-            options.append({
-                'label': f"{symbol} - {compact_name}" if compact_name else symbol,
-                'value': symbol,
-                'search': f"{symbol} {security_name}".strip(),
-            })
-
-        return options
+    def populate_or_filter_tickers(_n_intervals, search_value):
+        """Load tickers on startup; filter by name/alias as the user types."""
+        all_options = _ensure_ticker_options_loaded()
+        return filter_ticker_options(all_options, search_value)
 
     @app.callback(
         [Output('presets-store', 'data'),

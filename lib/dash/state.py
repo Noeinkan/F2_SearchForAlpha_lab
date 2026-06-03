@@ -22,6 +22,7 @@ class DashboardState:
     def __init__(self, max_cache_size: int = MAX_CACHE_SIZE):
         self._df: Optional[pd.DataFrame] = None
         self._all_tickers_df: Optional[pd.DataFrame] = None
+        self._ticker_dropdown_options: Optional[List[Dict[str, Any]]] = None
         self._backtest_results: Optional[Dict] = None
         self._data_cache: OrderedDict[str, pd.DataFrame] = OrderedDict()
         self._current_theme: str = DEFAULT_THEME
@@ -59,6 +60,15 @@ class DashboardState:
     @all_tickers_df.setter
     def all_tickers_df(self, value: pd.DataFrame) -> None:
         self._all_tickers_df = value
+
+    @property
+    def ticker_dropdown_options(self) -> Optional[List[Dict[str, Any]]]:
+        """Full ticker dropdown options including search index."""
+        return self._ticker_dropdown_options
+
+    @ticker_dropdown_options.setter
+    def ticker_dropdown_options(self, value: List[Dict[str, Any]]) -> None:
+        self._ticker_dropdown_options = value
 
     @property
     def backtest_results(self) -> Optional[Dict]:
@@ -151,6 +161,7 @@ class DashboardState:
         """Reset all state to initial values."""
         self._df = None
         self._all_tickers_df = None
+        self._ticker_dropdown_options = None
         self._backtest_results = None
         self._data_cache.clear()
         self._current_theme = DEFAULT_THEME

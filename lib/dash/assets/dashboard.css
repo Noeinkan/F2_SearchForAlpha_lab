@@ -950,6 +950,11 @@ input[type="radio"] {
    Fundamentals workspace
    ========================================================================== */
 
+.sfa-fundamentals-overlay.sfa-fundamentals-route {
+    border: none !important;
+    box-shadow: none !important;
+}
+
 .sfa-fundamentals-content {
     scrollbar-gutter: stable;
 }
@@ -1021,6 +1026,91 @@ input[type="radio"] {
     position: sticky;
     top: 0;
     z-index: 1;
+}
+
+.sfa-valuation-assumption {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+/* Valuation explainability popup — MathJax formula cards */
+.sfa-valuation-explain {
+    margin-top: 6px;
+    padding: 10px;
+    border: 1px solid var(--border-primary);
+    border-left: 3px solid var(--info);
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+}
+
+.sfa-formula-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    margin-bottom: 8px;
+}
+
+.sfa-formula-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.sfa-formula-block {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    padding: 8px 10px;
+}
+
+.sfa-formula-block.sfa-formula-substituted {
+    border-color: color-mix(in srgb, var(--info) 35%, var(--border-primary));
+    background: color-mix(in srgb, var(--info) 6%, var(--bg-secondary));
+}
+
+.sfa-formula-block-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+}
+
+.sfa-formula-math {
+    overflow-x: auto;
+    padding: 2px 0;
+}
+
+.sfa-formula-math mjx-container {
+    font-size: 115% !important;
+}
+
+.sfa-formula-block.sfa-formula-symbolic .sfa-formula-math mjx-container {
+    color: var(--text-primary) !important;
+}
+
+.sfa-formula-block.sfa-formula-substituted .sfa-formula-math mjx-container {
+    color: var(--text-primary) !important;
+}
+
+.sfa-formula-explanation {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.4;
+    margin-bottom: 6px;
+}
+
+.sfa-formula-meta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.35;
+    margin-top: 4px;
 }
 
 .sfa-fundamentals-chart .js-plotly-plot,
