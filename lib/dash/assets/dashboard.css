@@ -961,6 +961,20 @@ input[type="radio"] {
     box-shadow: none !important;
 }
 
+.sfa-flow-overlay {
+    background: #0A0A0A;
+}
+
+.sfa-flow-overlay.sfa-flow-route {
+    inset: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.sfa-flow-iframe {
+    background: #0A0A0A;
+}
+
 .sfa-fundamentals-content {
     scrollbar-gutter: stable;
 }

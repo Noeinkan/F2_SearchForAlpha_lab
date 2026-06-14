@@ -6,13 +6,14 @@ Bloomberg Terminal-inspired design with single-page layout.
 import logging
 import os
 import socket
-from datetime import date
+from datetime import date, datetime
 from threading import Timer
 import webbrowser
 
 import dash
 from dash import dcc, html
 import dash_bootstrap_components as dbc
+from flask import Response, send_file
 
 # Optional TradingView lightweight chart wrapper. Not all environments will
 # have `dash_tvlwc` installed (it's an optional dependency). Provide a safe
@@ -44,6 +45,16 @@ from lib.dash.callbacks import register_callbacks
 from lib.signals.indicators import get_signal_categories
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_FLOW_REPORT = os.path.join(os.getcwd(), "flow_report.html")
+
+_FLOW_STUB_HTML = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Flow Scanner</title>
+<style>body{background:#0d1117;color:#c9d1d9;font-family:system-ui;padding:24px;}</style>
+</head><body><h1>No flow report yet</h1>
+<p>Click <strong>RESCAN NOW</strong> on the Flow Scanner page, or run:</p>
+<pre>python scripts/flow_scanner.py AAPL</pre>
+</body></html>"""
 
 
 def create_dashboard_layout(theme: dict) -> html.Div:
@@ -80,6 +91,8 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
         dcc.Interval(id='autoload-interval', interval=1000, max_intervals=1),
         dcc.Interval(id='optimization-interval', interval=500, disabled=True, n_intervals=0),
+        dcc.Store(id='flow-state-store', data={'last_scan_at': None, 'tickers': []}, storage_type='session'),
+        dcc.Interval(id='flow-rescan-interval', interval=2000, max_intervals=1, disabled=True),
 
         # Keyboard shortcut listener
         html.Div(id='keyboard-listener', style={'display': 'none'}),
@@ -96,6 +109,7 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         ], id='terminal-shell'),
 
         _create_fundamentals_overlay(styles, theme),
+        _create_flow_overlay(styles, theme),
 
         # Hidden elements
         html.Div(id='hidden-output', style={'display': 'none'}),
@@ -274,6 +288,97 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
     }, className='sfa-fundamentals-overlay')
 
 
+def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
+    """Create the options flow scanner workspace."""
+    return html.Div([
+        html.Div([
+            html.Div([
+                html.Div("FLOW SCANNER", style={
+                    'fontFamily': FONT_FAMILY,
+                    'fontSize': FONT_SIZES['xs'],
+                    'letterSpacing': '1.6px',
+                    'color': theme['text_secondary'],
+                }),
+                html.Div(
+                    id='flow-overlay-title',
+                    children='Unusual options activity',
+                    style={
+                        'fontFamily': FONT_FAMILY,
+                        'fontSize': FONT_SIZES['lg'],
+                        'fontWeight': 700,
+                        'color': theme['text_primary'],
+                    },
+                ),
+            ], style={'minWidth': 0, 'flex': '1 1 auto'}),
+            html.Div([
+                html.Span(id='flow-status', children='Ready', className='num muted', style={
+                    'fontFamily': FONT_FAMILY,
+                    'fontSize': FONT_SIZES['xs'],
+                    'color': theme['text_secondary'],
+                    'alignSelf': 'center',
+                    'marginRight': '8px',
+                }),
+                html.Button("RESCAN NOW", id='flow-rescan-button', n_clicks=0, style={
+                    **styles['button_primary'],
+                    'padding': '6px 12px',
+                }),
+                html.A(
+                    "OPEN IN NEW TAB",
+                    href='/flow_report.html',
+                    target='_blank',
+                    style={
+                        **styles['button_outline'],
+                        'padding': '6px 12px',
+                        'textDecoration': 'none',
+                        'display': 'inline-block',
+                        'marginLeft': '8px',
+                    },
+                ),
+                html.Button("CLOSE", id='close-flow-button', n_clicks=0, style={
+                    **styles['button_outline'],
+                    'color': theme['accent_red'],
+                    'borderColor': theme['accent_red'],
+                    'marginLeft': '8px',
+                }),
+            ], style={
+                'display': 'flex',
+                'alignItems': 'center',
+                'gap': '8px',
+                'flex': '0 0 auto',
+            }),
+        ], style={
+            'height': '36px',
+            'padding': '0 8px',
+            'display': 'flex',
+            'alignItems': 'center',
+            'justifyContent': 'space-between',
+            'gap': '8px',
+            'backgroundColor': theme['bg_secondary'],
+            'borderBottom': f'1px solid {theme["border_primary"]}',
+        }),
+        html.Iframe(
+            id='flow-iframe',
+            src='',
+            className='sfa-flow-iframe',
+            style={
+                'width': '100%',
+                'height': 'calc(100vh - 36px)',
+                'border': 'none',
+                'backgroundColor': theme['bg_primary'],
+            },
+        ),
+    ], id='flow-overlay', style={
+        'display': 'none',
+        'position': 'fixed',
+        'inset': '42px 6px 24px 6px',
+        'zIndex': 20,
+        'backgroundColor': theme['bg_primary'],
+        'border': f'1px solid {theme["border_primary"]}',
+        'boxShadow': '0 18px 60px rgba(0, 0, 0, 0.45)',
+        'overflow': 'hidden',
+    }, className='sfa-flow-overlay')
+
+
 def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
     """Create the left sidebar with controls."""
     help_icon_style = styles['help_icon']
@@ -338,6 +443,24 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                 n_clicks=0,
             ),
             dbc.Tooltip("Open 10-year fundamentals and Rule #1 valuation for the selected symbol", target='open-fundamentals-button', placement='right'),
+            html.Button(
+                "OPEN FLOW",
+                id='open-flow-button',
+                style={
+                    **styles['button_outline'],
+                    'width': '100%',
+                    'marginTop': '8px',
+                    'padding': '7px 10px',
+                    'borderColor': theme['accent_purple'],
+                    'color': theme['accent_purple'],
+                },
+                n_clicks=0,
+            ),
+            dbc.Tooltip(
+                "Cheddar-Flow-style unusual options activity scanner",
+                target='open-flow-button',
+                placement='right',
+            ),
         ])
 
     presets_section = html.Div([
@@ -1796,11 +1919,20 @@ def run_dashboard(dev_mode: bool = False) -> None:
     # Register all callbacks
     register_callbacks(app)
 
+    @app.server.route("/flow_report.html")
+    def serve_flow_report():
+        if os.path.exists(DEFAULT_FLOW_REPORT):
+            resp = send_file(DEFAULT_FLOW_REPORT, mimetype="text/html")
+            resp.headers["Cache-Control"] = "no-store"
+            return resp
+        return Response(_FLOW_STUB_HTML, mimetype="text/html")
+
     def _serve_dash_shell():
         return app.index()
 
-    for idx, route in enumerate(('/fundamentals', '/fundamentals/')):
-        app.server.add_url_rule(route, endpoint=f'sfa_fundamentals_shell_{idx}', view_func=_serve_dash_shell)
+    for idx, route in enumerate(("/fundamentals", "/fundamentals/", "/flow", "/flow/")):
+        endpoint = f"sfa_shell_{idx}"
+        app.server.add_url_rule(route, endpoint=endpoint, view_func=_serve_dash_shell)
 
     # Start server
     def open_browser():

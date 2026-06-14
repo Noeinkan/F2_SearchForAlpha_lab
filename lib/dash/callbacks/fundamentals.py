@@ -546,6 +546,7 @@ def register_fundamentals_callbacks(app) -> None:
          Output('fundamentals-status', 'children'),
          Output('ticker-dropdown', 'value', allow_duplicate=True)],
         [Input('app-url', 'pathname'),
+         Input('app-url', 'search'),
          Input('refresh-fundamentals-button', 'n_clicks'),
          Input('load-fundamentals-ticker-button', 'n_clicks'),
          Input('fundamentals-ticker-input', 'n_submit')],
@@ -553,16 +554,23 @@ def register_fundamentals_callbacks(app) -> None:
          State('fundamentals-ticker-input', 'value')],
         prevent_initial_call='initial_duplicate',
     )
-    def load_fundamentals(pathname, refresh_clicks, load_clicks, input_submit, ticker, overlay_ticker):
+    def load_fundamentals(pathname, search, refresh_clicks, load_clicks, input_submit, ticker, overlay_ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
 
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        url_ticker = None
+        if search:
+            for part in search.lstrip('?').split('&'):
+                if part.startswith('ticker='):
+                    url_ticker = part.split('=', 1)[1].strip().upper()
+                    break
+
         if trigger_id == 'app-url':
             if not is_fundamentals_route(pathname):
                 raise PreventUpdate
-            raw = str(overlay_ticker or ticker or DEFAULT_TICKER).strip()
+            raw = str(url_ticker or overlay_ticker or ticker or DEFAULT_TICKER).strip()
         else:
             raw = str(overlay_ticker or ticker or DEFAULT_TICKER).strip()
 
@@ -581,7 +589,11 @@ def register_fundamentals_callbacks(app) -> None:
         title = f"{payload['company_name']} ({payload['ticker']})"
         # Promote overlay ticker edits to global symbol only when user explicitly
         # loads/submits a ticker from fundamentals.
-        update_global_ticker = symbol if trigger_id in {'load-fundamentals-ticker-button', 'fundamentals-ticker-input'} else no_update
+        update_global_ticker = symbol if trigger_id in {
+            'load-fundamentals-ticker-button',
+            'fundamentals-ticker-input',
+            'app-url',
+        } else no_update
         return payload, title, f"LOADED {payload['as_of']}", update_global_ticker
 
     @app.callback(

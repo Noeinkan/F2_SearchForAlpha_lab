@@ -226,6 +226,7 @@ MAX_PORT_TRIES = 100
 # Dashboard URL routes (browser refresh uses pathname as source of truth)
 ROUTE_TERMINAL = '/'
 ROUTE_FUNDAMENTALS = '/fundamentals'
+ROUTE_FLOW = '/flow'
 
 # =============================================================================
 # OPTIMIZATION

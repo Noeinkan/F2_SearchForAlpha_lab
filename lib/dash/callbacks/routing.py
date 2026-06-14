@@ -7,7 +7,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.dash.dash_config import DEFAULT_THEME, ROUTE_FUNDAMENTALS, ROUTE_TERMINAL, get_theme
-from lib.dash.routes import is_fundamentals_route
+from lib.dash.routes import is_fundamentals_route, is_flow_route
 
 
 def register_routing_callbacks(app) -> None:
@@ -42,8 +42,9 @@ def register_routing_callbacks(app) -> None:
     def apply_route_layout(pathname, theme_name, overlay_style, overlay_class):
         theme = get_theme(theme_name or DEFAULT_THEME)
         on_fundamentals = is_fundamentals_route(pathname)
+        on_alt_page = on_fundamentals or is_flow_route(pathname)
 
-        terminal_style = {'display': 'none'} if on_fundamentals else {}
+        terminal_style = {'display': 'none'} if on_alt_page else {}
 
         style = dict(overlay_style or {})
         style.update({

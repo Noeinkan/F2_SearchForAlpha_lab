@@ -6,6 +6,7 @@ Encapsulates dashboard state to avoid global mutable variables.
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 from collections import OrderedDict
+from datetime import datetime
 import pandas as pd
 
 from lib.dash.dash_config import DEFAULT_THEME, get_theme
@@ -28,6 +29,8 @@ class DashboardState:
         self._current_theme: str = DEFAULT_THEME
         self._max_cache_size = max_cache_size
         self._optimization_state: Dict[str, Any] = self._create_empty_optimization_state()
+        self.flow_last_scan_at: datetime | None = None
+        self.flow_last_scan_path: str | None = None
 
     @staticmethod
     def _create_empty_optimization_state() -> Dict[str, Any]:

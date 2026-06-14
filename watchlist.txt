@@ -1,0 +1,11 @@
+# Default flow scanner watchlist (one ticker per line)
+SPY
+QQQ
+AAPL
+NVDA
+TSLA
+AMD
+MSFT
+META
+AMZN
+GOOGL

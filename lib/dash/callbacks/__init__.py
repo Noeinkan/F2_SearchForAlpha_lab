@@ -12,6 +12,7 @@ from .chart_tv import register_tv_callbacks
 from .backtest import register_backtest_callbacks
 from .optimization import register_optimization_callbacks
 from .fundamentals import register_fundamentals_callbacks
+from .flow import register_flow_callbacks
 from .routing import register_routing_callbacks
 from .misc_ui import register_misc_callbacks
 
@@ -29,4 +30,5 @@ def register_callbacks(app) -> None:
     register_optimization_callbacks(app)
     register_routing_callbacks(app)
     register_fundamentals_callbacks(app)
+    register_flow_callbacks(app)
     register_misc_callbacks(app)
