@@ -34,7 +34,7 @@ from lib.dash.dash_config import (
     START_PORT, MAX_PORT_TRIES,
     FONT_SIZES, FONT_FAMILY, BORDER_RADIUS,
     DEFAULT_SIGNAL_WINDOW,
-    PLOT_OPTIONS, CHART_ELEMENT_OPTIONS, SIGNAL_OPTIONS,
+    PLOT_OPTIONS, PLOT_INDICATOR_OPTIONS, CHART_ELEMENT_OPTIONS, SIGNAL_OPTIONS,
     DEFAULT_INDICATOR_SETTINGS, INDICATOR_SETTING_SCHEMA,
     get_theme
 )
@@ -602,7 +602,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                             style=styles['indicator_settings_panel']
                         ) if (value in INDICATOR_SETTING_SCHEMA and value not in {opt[1] for opt in CHART_ELEMENT_OPTIONS}) else None
                     ])
-                    for label, value in PLOT_OPTIONS
+                    for label, value in PLOT_INDICATOR_OPTIONS
                 ],
                 style={'display': 'flex', 'flexDirection': 'column', 'gap': '4px'}
             ),

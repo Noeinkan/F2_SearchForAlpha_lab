@@ -39,6 +39,25 @@ def _coerce_period(value: float | int, default: int) -> int:
         return default
 
 
+def _hex_with_alpha(color: str, alpha_hex: str = "10") -> str:
+    """Convert a 6-char hex color + alpha hex suffix to an rgba() string.
+
+    Plotly's ``fillcolor`` validator rejects 8-char ``#RRGGBBAA`` hex values,
+    so we expand to ``rgba(R, G, B, A)`` where alpha is alpha_hex / 0xFF.
+    """
+    if not isinstance(color, str) or not color.startswith("#"):
+        return color
+    hex_body = color.lstrip("#")
+    if len(hex_body) != 6:
+        return color
+    try:
+        alpha = int(alpha_hex, 16) / 255.0
+    except ValueError:
+        return color
+    r, g, b = int(hex_body[0:2], 16), int(hex_body[2:4], 16), int(hex_body[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {alpha:.3f})"
+
+
 def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
     """
     Create a multi-panel financial chart with professional styling.
@@ -319,7 +338,7 @@ def _add_atr(fig: go.Figure, df: pd.DataFrame, row: int, col: int, config: Dict,
         name=f"ATR ({period})",
         line=dict(color=theme['accent_cyan'], width=1.5),
         fill='tozeroy',
-        fillcolor=f'{theme["accent_cyan"]}10',
+        fillcolor=_hex_with_alpha(theme['accent_cyan'], '10'),
         hovertemplate='%{x|%Y-%m-%d}<br>ATR: %{y:.2f}<extra></extra>'
     ), row=row, col=col)
     fig.add_trace(go.Scatter(

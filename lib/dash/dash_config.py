@@ -385,6 +385,18 @@ PLOT_OPTIONS = [('Candlestick', 'candlestick')] + [
     for definition in INDICATOR_DEFINITIONS
 ]
 
+# Bollinger Bands, SMA and EMA are overlay-only indicators (drawn on the
+# candlestick subplot) — they are not standalone subplots and toggling them
+# in the "Indicators" panel was a no-op. Surface them only in the "Overlays"
+# panel where their behaviour is actually implemented.
+OVERLAY_ONLY_INDICATOR_KEYS = frozenset({'bollinger', 'sma', 'ema'})
+
+PLOT_INDICATOR_OPTIONS = [
+    (label, value)
+    for label, value in PLOT_OPTIONS
+    if value not in OVERLAY_ONLY_INDICATOR_KEYS
+]
+
 CHART_ELEMENT_OPTIONS = [
     (definition['label'], definition['value'])
     for definition in CHART_ELEMENT_DEFINITIONS

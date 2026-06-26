@@ -12,6 +12,14 @@ function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host " ok  $msg" -ForegroundColor Green }
 function Write-Err($msg)  { Write-Host " ERR $msg" -ForegroundColor Red }
 
+# ExecStartPre fails fast (no crash-loop) if a top-level Dash import is broken.
+# This converts "auto-restart every 5s forever" into a single loud failure that
+# surfaces in `systemctl status` / `journalctl` so the next deploy's missing
+# module is obvious instead of being hidden behind 30 silent restarts.
+# The imports here mirror what main.py does, plus the modules that have caused
+# past silent crash-loops (dash_mantine_components, scripts.flow_runner).
+$importGuardCmd = "$Remote/.venv/bin/python -c `"import dash, dash_bootstrap_components, dash_mantine_components; from scripts.flow_runner import run_flow_scan; from lib.dash.integrated_dashboard import run_dashboard`""
+
 $unit = @"
 [Unit]
 Description=SearchForAlpha Dashboard
@@ -23,6 +31,7 @@ WorkingDirectory=$Remote
 Environment=DASH_DEV=0
 Environment=DASH_HOST=$BindHost
 Environment=DASH_PORT=$Port
+ExecStartPre=$importGuardCmd
 ExecStart=$Remote/.venv/bin/python $Remote/main.py
 Restart=always
 RestartSec=5

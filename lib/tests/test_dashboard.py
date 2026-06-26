@@ -17,7 +17,15 @@ from lib.dash.helpers import (
     format_df_for_display, extract_signals,
     generate_signal_combinations, evaluate_signal_combination
 )
-from lib.dash.dash_config import DEFAULT_THEME, get_theme, THEMES
+from lib.dash.dash_config import (
+    DEFAULT_THEME,
+    OVERLAY_ONLY_INDICATOR_KEYS,
+    PLOT_INDICATOR_OPTIONS,
+    PLOT_OPTIONS,
+    CHART_ELEMENT_OPTIONS,
+    get_theme,
+    THEMES,
+)
 
 
 # =============================================================================
@@ -402,3 +410,34 @@ class TestThemes:
             theme = get_theme(theme_name)
             for key in required_keys:
                 assert key in theme, f"Theme '{theme_name}' missing key '{key}'"
+
+
+class TestPlotIndicatorOptions:
+    """Plot-toggle list must exclude overlay-only indicators."""
+
+    def test_overlay_only_keys_are_isolated(self):
+        """OVERLAY_ONLY_INDICATOR_KEYS is the single source of truth."""
+        assert OVERLAY_ONLY_INDICATOR_KEYS == frozenset({'bollinger', 'sma', 'ema'})
+
+    def test_plot_indicator_options_excludes_overlay_only(self):
+        """Indicators panel must not contain overlay-only keys."""
+        keys = {value for _, value in PLOT_INDICATOR_OPTIONS}
+        assert keys.isdisjoint(OVERLAY_ONLY_INDICATOR_KEYS), (
+            f"Plot indicators should not include overlay-only keys: "
+            f"{keys & OVERLAY_ONLY_INDICATOR_KEYS}"
+        )
+
+    def test_overlay_only_keys_appear_in_chart_elements(self):
+        """Overlay toggles must remain reachable via the overlays panel."""
+        overlay_values = {value for _, value in CHART_ELEMENT_OPTIONS}
+        assert OVERLAY_ONLY_INDICATOR_KEYS.issubset(overlay_values), (
+            f"Overlay-only keys must be present in CHART_ELEMENT_OPTIONS: "
+            f"{OVERLAY_ONLY_INDICATOR_KEYS - overlay_values}"
+        )
+
+    def test_plot_options_superset_of_plot_indicator_options(self):
+        """PLOT_OPTIONS (legacy/back-compat) still contains everything."""
+        legacy_keys = {value for _, value in PLOT_OPTIONS}
+        plot_keys = {value for _, value in PLOT_INDICATOR_OPTIONS}
+        assert plot_keys.issubset(legacy_keys)
+        assert legacy_keys - plot_keys == OVERLAY_ONLY_INDICATOR_KEYS

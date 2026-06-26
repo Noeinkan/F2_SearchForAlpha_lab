@@ -19,7 +19,8 @@ from lib.dash.dash_config import (
     FONT_FAMILY,
     DEFAULT_INDICATOR_SETTINGS,
     INDICATOR_SETTING_SCHEMA,
-    PLOT_OPTIONS,
+    OVERLAY_ONLY_INDICATOR_KEYS,
+    PLOT_INDICATOR_OPTIONS,
 )
 from lib.dash.preset_storage import normalize_preset
 from lib.signals.indicators import add_indicators, generate_signals
@@ -538,7 +539,7 @@ def _extract_selected_plots(plot_values: List[List[str]]) -> List[str]:
     """Convert pattern-matched plot toggle values into selected indicator list."""
     selected = []
     plot_values = plot_values or []
-    for idx, (_, value) in enumerate(PLOT_OPTIONS):
+    for idx, (_, value) in enumerate(PLOT_INDICATOR_OPTIONS):
         values = plot_values[idx] if idx < len(plot_values) else []
         if values:
             selected.append(value)
@@ -547,8 +548,13 @@ def _extract_selected_plots(plot_values: List[List[str]]) -> List[str]:
 
 def _build_plot_toggle_values(selected: List[str]) -> List[List[str]]:
     """Build pattern output values for plot toggles from selected list."""
-    selected_set = set(selected or [])
-    return [[value] if value in selected_set else [] for _, value in PLOT_OPTIONS]
+    selected_set = {
+        v for v in (selected or []) if v not in OVERLAY_ONLY_INDICATOR_KEYS
+    }
+    return [
+        [value] if value in selected_set else []
+        for _, value in PLOT_INDICATOR_OPTIONS
+    ]
 
 
 def _build_preset_payload(

@@ -1,17 +1,20 @@
 # deploy.ps1 — push local changes to the Hetzner production server
 # Usage:  .\deploy.ps1
-#         .\deploy.ps1 -DryRun        # show what would be transferred, no write
+#         .\deploy.ps1 -DryRun             # show what would be transferred, no write
 #         .\deploy.ps1 -File lib/bayesian_optimization.py   # single file only
-#         .\deploy.ps1 -PushConfig    # also upload config/strategy_config.yaml (server live_params)
-#         .\deploy.ps1 -SkipFixPerms  # skip remote openclaw/sfa permission helper after sync
+#         .\deploy.ps1 -PushConfig         # also upload config/strategy_config.yaml (server live_params)
+#         .\deploy.ps1 -SkipFixPerms       # skip remote openclaw/sfa permission helper after sync
 #         .\deploy.ps1 -SkipRestartDashboard  # skip systemd restart (default: restart after sync)
+#         .\deploy.ps1 -SkipPipInstall     # skip remote `pip install -r requirements.txt` after sync
+#                                          # (run by default to keep the server venv in sync with local requirements.txt)
 
 param(
     [switch]$DryRun,
     [string]$File,
     [switch]$PushConfig,
     [switch]$SkipFixPerms,
-    [switch]$SkipRestartDashboard
+    [switch]$SkipRestartDashboard,
+    [switch]$SkipPipInstall
 )
 
 $SERVER   = "root@77.42.70.26"
@@ -29,8 +32,13 @@ $SCP_BASE_ARGS = @(
 # ControlMaster/ControlPath socket reuse is unreliable here and breaks rsync.
 $SSH_OPTS = "-i `"$SSH_KEY`" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
 
-# Directories to sync (relative to project root)
-$SYNC_DIRS = @("lib", "config")
+# Directories to sync (relative to project root).
+# - lib/    : code
+# - config/ : per-file (see $CONFIG_FILES_ALWAYS); strategy_config.yaml is opt-in
+# - scripts/: Python helpers (flow_runner, flow_scanner, ...). Deploy helpers
+#             (*.ps1, fix_openclaw_server_perms.sh) are excluded below so the
+#             server-only perms helper is never overwritten.
+$SYNC_DIRS = @("lib", "config", "scripts")
 
 # Config files uploaded on every deploy (strategy_config.yaml is opt-in via -PushConfig
 # so server-side promotions / openclaw edits are not overwritten).
@@ -47,7 +55,14 @@ $EXCLUDES = @(
     "results/",
     "export/",
     "state/",
-    "strategy_config.yaml"
+    "strategy_config.yaml",
+    # Server-only deploy helpers — must never be clobbered by a Windows-side
+    # `scripts/` sync. The perms .ps1 uploads fix_openclaw_server_perms.sh
+    # explicitly on demand.
+    "fix_openclaw_server_perms.sh",
+    "*.ps1",
+    "flow_report.html",
+    "flow_state.json"
 )
 
 function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
@@ -210,11 +225,17 @@ if ($hasRsync) {
         } else {
             Write-Host "  [dry-run] skip config/strategy_config.yaml (use -PushConfig to upload)"
         }
+        if (-not $SkipPipInstall) {
+            Write-Host "  [dry-run] ssh $SERVER pip install -r $REMOTE/requirements.txt"
+        } else {
+            Write-Host "  [dry-run] skip pip install (SkipPipInstall set)"
+        }
     }
 } else {
-    Write-Step 'rsync not found - falling back to scp (lib/ recursive; config/ per-file)'
+    Write-Step 'rsync not found - falling back to scp (lib/, scripts/ recursive; config/ per-file)'
     if ($DryRun) {
         Write-Host "  [dry-run] scp -r lib/ → $SERVER`:$REMOTE/"
+        Write-Host "  [dry-run] scp -r scripts/ → $SERVER`:$REMOTE/   (deploy helpers *.ps1, fix_openclaw_server_perms.sh excluded by name)"
         foreach ($cfg in $CONFIG_FILES_ALWAYS) {
             $p = Join-Path "config" $cfg
             if (Test-Path $p) { Write-Host "  [dry-run] scp $p → $SERVER`:$REMOTE/config/" }
@@ -224,13 +245,21 @@ if ($hasRsync) {
         } else {
             Write-Host "  [dry-run] skip config/strategy_config.yaml (use -PushConfig to upload)"
         }
+        if (-not $SkipPipInstall) {
+            Write-Host "  [dry-run] ssh $SERVER pip install -r $REMOTE/requirements.txt"
+        } else {
+            Write-Host "  [dry-run] skip pip install (SkipPipInstall set)"
+        }
         exit 0
     }
-    Write-Step "  lib/"
-    $libLocal = Get-ScpLocalPosix "lib"
-    $libDest  = Get-ScpRemoteDest ""
-    Invoke-Scp ($SCP_BASE_ARGS + @("-r", $libLocal, $libDest)) "scp failed for lib/"
-    Write-Ok "lib uploaded"
+    foreach ($dir in @("lib", "scripts")) {
+        if (-not (Test-Path $dir)) { continue }
+        Write-Step "  $dir/"
+        $dirLocal = Get-ScpLocalPosix $dir
+        $dirDest  = Get-ScpRemoteDest ""
+        Invoke-Scp ($SCP_BASE_ARGS + @("-r", $dirLocal, $dirDest)) "scp failed for $dir/"
+        Write-Ok "$dir uploaded"
+    }
     Write-Step "  config/ (partial - strategy_config.yaml skipped unless -PushConfig)"
     foreach ($cfg in $CONFIG_FILES_ALWAYS) {
         $localPath = Join-Path "config" $cfg
@@ -249,6 +278,42 @@ if ($PushConfig -and -not $DryRun) {
     $scYamlDest  = Get-ScpRemoteDest "config/strategy_config.yaml"
     Invoke-Scp ($SCP_BASE_ARGS + @($scYamlLocal, $scYamlDest)) "scp failed for config/strategy_config.yaml"
     Write-Ok "strategy_config.yaml uploaded"
+}
+
+# ── pip install requirements.txt on the server ────────────────────────────────
+# requirements.txt is NOT in $SYNC_DIRS to keep it independent of --delete, so we
+# upload it explicitly. This step guarantees the server venv matches local deps
+# after every deploy; the same deploy crash we just recovered from happened
+# because a new dep (dash-mantine-components) shipped in code but never got
+# pip-installed server-side.
+if (-not $DryRun -and -not $SkipPipInstall) {
+    if (Test-Path "requirements.txt") {
+        Write-Step "Uploading requirements.txt → $SERVER`:$REMOTE/requirements.txt"
+        $reqLocal = Get-ScpLocalPosix "requirements.txt"
+        $reqDest  = Get-ScpRemoteDest "requirements.txt"
+        Invoke-Scp ($SCP_BASE_ARGS + @($reqLocal, $reqDest)) "scp failed for requirements.txt"
+        Write-Ok "requirements.txt uploaded"
+
+        Write-Step "Installing requirements on $SERVER (python -m ensurepip + pip install -r)"
+        # ensurepip covers the case where the venv was created --without-pip.
+        # `python -m pip` is used because the venv may not have a `pip` binary.
+        $pipCmd = @"
+set -e
+cd $REMOTE
+.venv/bin/python -m ensurepip --upgrade >/dev/null 2>&1 || true
+.venv/bin/python -m pip install -r requirements.txt 2>&1 | tail -20
+"@
+        $pipOut = ssh -i $SSH_KEY -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30 $SERVER $pipCmd 2>&1
+        $pipExit = $LASTEXITCODE
+        if ($pipOut) { Write-Host $pipOut }
+        if ($pipExit -ne 0) {
+            Write-Err "pip install failed on $SERVER (deploy will continue but service may crashloop on missing modules)"
+        } else {
+            Write-Ok "pip install complete"
+        }
+    } else {
+        Write-Err "requirements.txt not found at repo root; skipping pip install"
+    }
 }
 
 $deployNote = if (-not $PushConfig) {
