@@ -126,6 +126,13 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
             if plot in plot_functions:
                 plot_functions[plot](fig, df, row, 1, config, theme)
 
+        # Reassign every trace to the price subplot's xaxis (xaxis='x')
+        # so `x unified` hover merges traces from every subplot into a
+        # single tooltip column. The subplot y-axes are unchanged so the
+        # indicators still draw on their own rows; the subplots'
+        # `matches='x'` keeps their visible ranges synchronised.
+        fig.update_traces(xaxis='x')
+
         # Force a uniform hover-label style on every trace. In `x unified`
         # mode Plotly otherwise inherits a per-row text color from each
         # trace's own line color, which makes dim overlays (e.g. SMA LONG)

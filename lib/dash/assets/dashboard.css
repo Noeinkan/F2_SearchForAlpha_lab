@@ -1701,3 +1701,94 @@ label,
 }
 .fade-in  { animation: fadeIn  0.18s ease-out; }
 .slide-in { animation: slideIn 0.18s ease-out; }
+
+/* =============================================================================
+   Trade-setup stepper inputs (right panel)
+   The numeric inputs (min-holding-period, trailing-stop-pct, take-profit-pct,
+   position-size-pct, position-scaling-pct, signal-cooldown-bars, amount-per-buy,
+   kelly-win-rate, kelly-win-loss-ratio) live inside coloured option cards.
+   Make the value large/tabular so the digit dominates over the chrome.
+
+   Note: the inputs do NOT carry the .bbg-input class — styling is fully inline
+   via the `style=` prop — so we target them by their `id` attribute directly.
+   `!important` is required to beat the inline padding/font-size on `style=`.
+   ========================================================================== */
+
+#min-holding-period,
+#trailing-stop-pct,
+#take-profit-pct,
+#position-size-pct,
+#position-scaling-pct,
+#signal-cooldown-bars,
+#amount-per-buy,
+#kelly-win-rate,
+#kelly-win-loss-ratio {
+    font-family: var(--font-mono) !important;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    font-weight: 600 !important;
+    font-size: 18px !important;
+    color: var(--text-primary) !important;
+    text-align: center !important;
+    height: 38px !important;
+    padding: 4px 32px !important;           /* leave room for native spinners */
+    letter-spacing: 0.5px;
+}
+
+/* Re-enable the WebKit native spinner buttons. The earlier global rule hides
+   them with `-webkit-appearance: none`; an ID selector + !important overrides
+   that for these specific inputs so users get a discoverable +/- control. */
+#min-holding-period::-webkit-inner-spin-button,
+#min-holding-period::-webkit-outer-spin-button,
+#trailing-stop-pct::-webkit-inner-spin-button,
+#trailing-stop-pct::-webkit-outer-spin-button,
+#take-profit-pct::-webkit-inner-spin-button,
+#take-profit-pct::-webkit-outer-spin-button,
+#position-size-pct::-webkit-inner-spin-button,
+#position-size-pct::-webkit-outer-spin-button,
+#position-scaling-pct::-webkit-inner-spin-button,
+#position-scaling-pct::-webkit-outer-spin-button,
+#signal-cooldown-bars::-webkit-inner-spin-button,
+#signal-cooldown-bars::-webkit-outer-spin-button,
+#amount-per-buy::-webkit-inner-spin-button,
+#amount-per-buy::-webkit-outer-spin-button,
+#kelly-win-rate::-webkit-inner-spin-button,
+#kelly-win-rate::-webkit-outer-spin-button,
+#kelly-win-loss-ratio::-webkit-inner-spin-button,
+#kelly-win-loss-ratio::-webkit-outer-spin-button {
+    -webkit-appearance: inner-spin-button !important;
+    appearance: auto !important;
+    opacity: 1 !important;
+    width: 22px !important;
+    height: 100% !important;
+    background: transparent !important;
+    cursor: pointer;
+    margin: 0 !important;
+}
+
+/* Firefox shows the spinner as a faint text-style control — make it visible
+   against the dark card backgrounds. */
+#min-holding-period,
+#trailing-stop-pct,
+#take-profit-pct,
+#position-size-pct,
+#position-scaling-pct,
+#signal-cooldown-bars,
+#amount-per-buy,
+#kelly-win-rate,
+#kelly-win-loss-ratio {
+    -moz-appearance: auto !important;
+}
+
+/* On focus, lift the value to the accent colour so the active input stands out. */
+#min-holding-period:focus,
+#trailing-stop-pct:focus,
+#take-profit-pct:focus,
+#position-size-pct:focus,
+#position-scaling-pct:focus,
+#signal-cooldown-bars:focus,
+#amount-per-buy:focus,
+#kelly-win-rate:focus,
+#kelly-win-loss-ratio:focus {
+    color: var(--accent) !important;
+}
