@@ -986,8 +986,71 @@ input[type="radio"] {
 }
 
 .sfa-fundamentals-summary {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr));
     gap: 6px;
+}
+
+.sfa-fundamentals-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 7px 9px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    min-width: 0;
+}
+
+.sfa-fundamentals-hero-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+}
+
+.sfa-fundamentals-hero-value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.1;
+}
+
+.sfa-fundamentals-hero-change {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
+.sfa-fundamentals-hero-change.up   { color: var(--up); }
+.sfa-fundamentals-hero-change.down { color: var(--down); }
+.sfa-fundamentals-hero-change.flat { color: var(--text-secondary); }
+
+.sfa-fundamentals-hero-state {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+}
+
+.sfa-fundamentals-last-col {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+    font-weight: 700 !important;
+    font-family: var(--font-mono) !important;
+    font-variant-numeric: tabular-nums;
+    border-left: 2px solid var(--accent) !important;
+}
+
+.sfa-fundamentals-last-empty {
+    color: var(--text-tertiary) !important;
+    background: transparent !important;
+    border-left: 1px dashed var(--border-primary) !important;
+    font-weight: 400 !important;
 }
 
 .sfa-fundamentals-top {

@@ -12,7 +12,14 @@ import plotly.graph_objects as go
 
 from lib.dash.routes import is_fundamentals_route
 from lib.dash.callbacks.startup import _ensure_ticker_options_loaded
-from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, FONT_FAMILY, FONT_SIZES, get_theme
+from lib.dash.dash_config import (
+    DEFAULT_THEME,
+    DEFAULT_TICKER,
+    FONT_FAMILY,
+    FONT_SIZES,
+    FUNDAMENTALS_FALLBACK_TICKER,
+    get_theme,
+)
 from lib.dash.ticker_search import resolve_ticker_symbol
 from lib.fundamentals import fetch_fundamentals
 
@@ -551,10 +558,20 @@ def register_fundamentals_callbacks(app) -> None:
          Input('load-fundamentals-ticker-button', 'n_clicks'),
          Input('fundamentals-ticker-input', 'n_submit')],
         [State('ticker-dropdown', 'value'),
-         State('fundamentals-ticker-input', 'value')],
+         State('fundamentals-ticker-input', 'value'),
+         State('user-ticker-store', 'data')],
         prevent_initial_call='initial_duplicate',
     )
-    def load_fundamentals(pathname, search, refresh_clicks, load_clicks, input_submit, ticker, overlay_ticker):
+    def load_fundamentals(
+        pathname,
+        search,
+        refresh_clicks,
+        load_clicks,
+        input_submit,
+        ticker,
+        overlay_ticker,
+        user_ticker,
+    ):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
@@ -567,10 +584,16 @@ def register_fundamentals_callbacks(app) -> None:
                     url_ticker = part.split('=', 1)[1].strip().upper()
                     break
 
+        # user_ticker is only populated by the startup callback when the
+        # user actually changes the dropdown (prevent_initial_call=True).
+        # It stays None on a fresh direct visit, which is exactly the
+        # signal we use to swap the SPY page-default for a real company.
         if trigger_id == 'app-url':
             if not is_fundamentals_route(pathname):
                 raise PreventUpdate
-            raw = str(url_ticker or overlay_ticker or ticker or DEFAULT_TICKER).strip()
+            cold_load = not (url_ticker or overlay_ticker or user_ticker or ticker)
+            fallback = FUNDAMENTALS_FALLBACK_TICKER if cold_load else DEFAULT_TICKER
+            raw = str(url_ticker or overlay_ticker or user_ticker or ticker or fallback).strip()
         else:
             raw = str(overlay_ticker or ticker or DEFAULT_TICKER).strip()
 
@@ -732,7 +755,12 @@ def _render_payload(payload: dict[str, Any], theme: dict) -> html.Div:
         html.Div([
             html.Div([
                 _panel_title('Financials', theme),
-                _financial_table(payload.get('financials', []), years, theme),
+                _financial_table(
+                    payload.get('financials', []),
+                    years,
+                    theme,
+                    last_price=payload.get('last_price'),
+                ),
             ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-main'),
             html.Div([
                 _panel_title('Valuation', theme, size='sm'),
@@ -762,6 +790,7 @@ def _summary_strip(payload: dict[str, Any], theme: dict) -> html.Div:
     years = payload.get('years') or []
     last_year = years[-1] if years else '--'
     return html.Div([
+        _price_hero_cell(payload, theme),
         _summary_cell('Ticker', payload.get('ticker', '--'), theme),
         _summary_cell('Currency', payload.get('currency', '--'), theme),
         _summary_cell('Last FY', last_year, theme),
@@ -781,6 +810,63 @@ def _summary_cell(label: str, value: Any, theme: dict) -> html.Div:
         'padding': '5px 7px',
         'minWidth': 0,
     })
+
+
+def _price_hero_cell(payload: dict[str, Any], theme: dict) -> html.Div:
+    """Hero cell showing the live last price and daily change.
+
+    Falls back to '--' rather than fabricating a value when yfinance does
+    not expose the live quote, so the user can immediately tell that the
+    data provider did not return it (rather than masking the gap with 0).
+    """
+    last_price = payload.get('last_price')
+    change = payload.get('last_change')
+    change_pct = payload.get('last_change_pct')
+    market_state = str(payload.get('market_state') or '').strip().upper()
+    currency = payload.get('price_currency') or payload.get('currency') or 'USD'
+
+    price_text = _fmt_money(last_price)
+    change_text, change_class = _format_change(change, change_pct)
+    state_text = _market_state_label(market_state)
+
+    return html.Div([
+        html.Div('LAST PRICE', className='sfa-fundamentals-hero-label'),
+        html.Div(price_text, className='num sfa-fundamentals-hero-value'),
+        html.Div([
+            html.Span(change_text, className=f'sfa-fundamentals-hero-change {change_class}'),
+            html.Span(f' {currency}', className='sfa-fundamentals-hero-state'),
+        ]),
+        html.Div(state_text, className='sfa-fundamentals-hero-state'),
+    ], className='sfa-fundamentals-hero')
+
+
+def _format_change(change: float | None, change_pct: float | None) -> tuple[str, str]:
+    if change is None and change_pct is None:
+        return '--', 'flat'
+    sign = ''
+    cls = 'flat'
+    if isinstance(change, (int, float)) and change > 0:
+        sign = '+'
+        cls = 'up'
+    elif isinstance(change, (int, float)) and change < 0:
+        cls = 'down'
+    change_part = f'{sign}{change:,.2f}' if isinstance(change, (int, float)) else '--'
+    pct_part = (
+        f' ({sign}{(change_pct * 100):.2f}%)'
+        if isinstance(change_pct, (int, float))
+        else ''
+    )
+    return f'{change_part}{pct_part}', cls
+
+
+def _market_state_label(state: str) -> str:
+    return {
+        'REGULAR': 'Market · Regular session',
+        'PRE': 'Pre-market',
+        'POST': 'After-hours',
+        'CLOSED': 'Market closed',
+        'PREPRE': 'Pre-pre-market',
+    }.get(state, '' if not state else f'Market · {state.title()}')
 
 
 def _panel_title(title: str, theme: dict, *, size: str = 'xs') -> html.Div:
@@ -804,24 +890,51 @@ def _panel_style(theme: dict) -> dict[str, Any]:
     }
 
 
-def _financial_table(rows: list[dict[str, Any]], years: list[str], theme: dict) -> dash_table.DataTable:
+def _financial_table(
+    rows: list[dict[str, Any]],
+    years: list[str],
+    theme: dict,
+    *,
+    last_price: float | None = None,
+) -> dash_table.DataTable:
     columns = [{'name': 'Metric', 'id': 'metric'}, {'name': 'Unit', 'id': 'unit'}] + [{'name': year, 'id': year} for year in years]
+    enriched_rows = _decorate_financial_rows_with_last(rows, last_price)
+    columns.append({'name': 'Last', 'id': 'Last'})
     props: dict[str, Any] = {
         'id': 'fundamentals-financial-table',
         'columns': columns,
-        'data': rows,
+        'data': enriched_rows,
         'fill_width': True,
         'style_table': {'overflowX': 'auto', 'width': '100%', 'minWidth': '100%'},
         'style_cell': _table_cell_style(theme),
         'style_cell_conditional': [
             {'if': {'column_id': 'metric'}, 'textAlign': 'left', 'fontWeight': 700, 'minWidth': '165px', 'width': '18%'},
             {'if': {'column_id': 'unit'}, 'textAlign': 'center', 'width': '52px', 'maxWidth': '58px'},
+            {'if': {'column_id': 'Last'}, 'textAlign': 'right', 'width': '78px', 'maxWidth': '90px', 'fontFamily': 'IBM Plex Mono, monospace', 'fontVariantNumeric': 'tabular-nums'},
         ],
         'style_header': _table_header_style(theme),
         'style_data_conditional': _financial_conditionals(theme),
         'fixed_columns': {'headers': True, 'data': 1},
     }
     return dash_table.DataTable(**props)
+
+
+def _decorate_financial_rows_with_last(
+    rows: list[dict[str, Any]],
+    last_price: float | None,
+) -> list[dict[str, Any]]:
+    """Inject a 'Last' column. Only the Stock Price (31/12) row shows the live
+    value; the rest stay at '--' so the column semantics are unambiguous."""
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        new_row = dict(row)
+        metric = str(new_row.get('metric', '')).strip()
+        if metric == 'Stock Price (31/12)' and last_price is not None:
+            new_row['Last'] = f'${float(last_price):,.2f}'
+        else:
+            new_row['Last'] = '--'
+        enriched.append(new_row)
+    return enriched
 
 
 def _big_five_table(rows: list[dict[str, Any]], years: list[str], theme: dict) -> dash_table.DataTable:
@@ -1270,6 +1383,9 @@ def _financial_conditionals(theme: dict) -> list[dict[str, Any]]:
         {'if': {'filter_query': '{metric} = "Debt Ratio"'}, 'backgroundColor': f'{theme["accent_cyan"]}28'},
         {'if': {'filter_query': '{metric} = "PE Ratio"'}, 'backgroundColor': f'{theme["accent_orange"]}24'},
         {'if': {'filter_query': '{metric} = "Avg. Invested Capital"'}, 'backgroundColor': f'{theme["accent_orange"]}22'},
+        {'if': {'filter_query': '{metric} = "Stock Price (31/12)"'}, 'backgroundColor': f'{theme["accent_orange"]}24', 'fontWeight': 700},
+        {'if': {'column_id': 'Last', 'filter_query': '{Last} != "--"'}, 'backgroundColor': f'{theme["accent_orange"]}30', 'color': theme['accent_orange'], 'fontWeight': 700},
+        {'if': {'column_id': 'Last', 'filter_query': '{Last} = "--"'}, 'color': theme['text_tertiary']},
         {'if': {'state': 'active'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
         {'if': {'state': 'selected'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
     ]

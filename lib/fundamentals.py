@@ -150,6 +150,10 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
     history = _safe_history(ticker_obj, first_year)
     yearly_prices = _yearly_close_prices(history)
 
+    # Live quote snapshot read once from info so both the payload header and
+    # the Stock Price row agree on the same source of truth.
+    live_snapshot = _live_price_snapshot(info)
+
     result = build_fundamentals_result(
         ticker=symbol,
         info=info,
@@ -158,9 +162,45 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
         cashflow=cashflow,
         yearly_prices=yearly_prices,
         years=years,
+        live_price=live_snapshot["last_price"],
     ).to_dict()
     result["quality_notes"] = [f"Data source: {data_source}"] + result["quality_notes"]
+    # Live quote snapshot (currentPrice / regularMarketPrice) is exposed by yfinance
+    # `info`; we attach it here (not on the dataclass) because it is not derived
+    # from annual statements and must not influence the pure calculation layer.
+    result.update(_live_price_snapshot(info, currency=result.get("currency")))
     return result
+
+
+def _live_price_snapshot(info: dict[str, Any], *, currency: str | None = None) -> dict[str, Any]:
+    """Extract last-price fields from a yfinance info dict.
+
+    Returns None when unavailable so the UI can render a placeholder instead
+    of fabricating a value.
+    """
+    last_price = _number(info.get("currentPrice"))
+    if not _is_number(last_price):
+        last_price = _number(info.get("regularMarketPrice"))
+    previous_close = _number(info.get("previousClose"))
+    if not _is_number(previous_close):
+        previous_close = _number(info.get("regularMarketPreviousClose"))
+    change = _number(info.get("regularMarketChange"))
+    change_pct = _number(info.get("regularMarketChangePercent"))
+    if not _is_number(change) and _is_number(last_price) and _is_number(previous_close):
+        change = last_price - previous_close
+    if not _is_number(change_pct) and _is_number(change) and _is_number(previous_close) and previous_close:
+        change_pct = change / previous_close
+    raw_state = info.get("marketState")
+    market_state = str(raw_state).strip().upper() if raw_state else None
+    price_currency = info.get("currency") or info.get("financialCurrency") or currency or "USD"
+    return {
+        "last_price": _json_number(last_price),
+        "previous_close": _json_number(previous_close),
+        "last_change": _json_number(change),
+        "last_change_pct": _json_number(change_pct),
+        "market_state": market_state or None,
+        "price_currency": str(price_currency),
+    }
 
 
 def build_fundamentals_result(
@@ -174,6 +214,7 @@ def build_fundamentals_result(
     years: int = DEFAULT_FUNDAMENTAL_YEARS,
     marr: float = DEFAULT_MARR,
     margin_of_safety: float = DEFAULT_MARGIN_OF_SAFETY,
+    live_price: float | None = None,
 ) -> FundamentalResult:
     """Build the fundamentals payload from normalized statement inputs."""
     info = info or {}
@@ -191,13 +232,16 @@ def build_fundamentals_result(
     big_five = _build_big_five(financial_map, all_years)
     valuation = _build_valuation(info, financial_map, all_years, marr, margin_of_safety)
     notes = _quality_notes(financial_map, all_years)
+    financials = _attach_live_price(
+        _rows_from_map(financial_map, all_years), live_price
+    )
 
     return FundamentalResult(
         ticker=ticker,
         company_name=str(info.get("longName") or info.get("shortName") or ticker),
         currency=str(info.get("financialCurrency") or info.get("currency") or "USD"),
         years=all_years,
-        financials=_rows_from_map(financial_map, all_years),
+        financials=financials,
         big_five=big_five,
         big_five_note="NOTE: Big Five should be >= 10% per year over the last 10 years.",
         valuation=valuation,
@@ -532,9 +576,12 @@ def _growth_metric(label: str, values: pd.Series) -> dict[str, Any]:
 
 
 def _rows_from_map(financial_map: dict[str, dict[str, Any]], years: list[int]) -> list[dict[str, Any]]:
+    # Stock price sits at the top so the live quote column below it lands
+    # directly under the latest annual price and is easy to compare visually.
     row_keys = [
+        "stock_price",
         "sales", "equity", "eps", "fcf", "nopat", "net_income", "avg_invested_capital",
-        "current_debt", "long_debt", "total_debt", "stock_price", "debt_ratio", "pe_ratio",
+        "current_debt", "long_debt", "total_debt", "debt_ratio", "pe_ratio",
     ]
     return [_display_row(financial_map[key], years) for key in row_keys]
 
@@ -613,13 +660,31 @@ def _build_valuation(
     return [{"metric": metric, "value": value} for metric, value in rows]
 
 
-def _display_row(metric: dict[str, Any], years: list[int]) -> dict[str, Any]:
+def _display_row(metric: dict[str, Any], years: list[int], *, live_value: float | None = None) -> dict[str, Any]:
     values = metric["values"]
     row = {"metric": metric["label"], "unit": metric["unit"], "kind": metric["kind"]}
     for year in years:
         value = values.get(year, np.nan)
         row[str(year)] = _format_pct(value) if metric["percent"] else _format_metric_value(value, metric["unit"])
+    if live_value is not None:
+        row["live_value"] = live_value
     return row
+
+
+def _attach_live_price(financials: list[dict[str, Any]], live_price: float | None) -> list[dict[str, Any]]:
+    """Stamp the live price onto the Stock Price (31/12) row so the UI can
+    surface it without re-walking the payload."""
+    if live_price is None:
+        return financials
+    enriched: list[dict[str, Any]] = []
+    for row in financials:
+        if row.get("metric") == "Stock Price (31/12)":
+            new_row = dict(row)
+            new_row["live_value"] = float(live_price)
+            enriched.append(new_row)
+        else:
+            enriched.append(row)
+    return enriched
 
 
 def _summary_averages(values: pd.Series, *, percent: bool) -> dict[str, str]:

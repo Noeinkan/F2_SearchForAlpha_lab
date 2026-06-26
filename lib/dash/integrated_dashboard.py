@@ -13,6 +13,7 @@ import webbrowser
 import dash
 from dash import dcc, html
 import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
 from flask import Response, send_file
 
 # Optional TradingView lightweight chart wrapper. Not all environments will
@@ -61,7 +62,7 @@ def create_dashboard_layout(theme: dict) -> html.Div:
     """Create the main dashboard layout."""
     styles = get_styles(theme)
 
-    return html.Div([
+    content = html.Div([
         dcc.Location(id='app-url', refresh=False),
         # Hidden stores
         dcc.Store(id='theme-store', data=DEFAULT_THEME, storage_type='local'),
@@ -86,6 +87,11 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         dcc.Store(id='active-indicator-store', data=None),
         dcc.Store(id='export-img-store', data=None),
         dcc.Store(id='fundamentals-store', data=None, storage_type='session'),
+        # Tracks tickers the user has explicitly selected. Stays None until
+        # the user changes the dropdown, so the fundamentals callback can
+        # distinguish a cold direct load (no selection yet) from a
+        # genuine user choice.
+        dcc.Store(id='user-ticker-store', data=None, storage_type='session'),
         dcc.Input(id='fundamentals-esc-signal', type='text', value='', style={'display': 'none'}),
         dcc.Download(id='download-csv'),
         dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
@@ -127,6 +133,26 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         ),
 
     ], style=styles['app'], id='app-container')
+
+    # Wrap with MantineProvider so dmc.Select renders with our Bloomberg-amber theme.
+    # dmc.MantineProvider must wrap the entire layout tree for Mantine context to be
+    # available to all dmc.* components (in particular dmc.Select used for ticker search).
+    return dmc.MantineProvider(
+        content,
+        theme={
+            "primaryColor": "orange",
+            "fontFamily": 'Source Sans 3, system-ui, sans-serif',
+            "defaultRadius": "xs",
+            "colors": {
+                # Override orange scale with Bloomberg amber (#FFA726) accents.
+                "orange": [
+                    "#FFF3E0", "#FFE0B2", "#FFCC80", "#FFB74D", "#FFA726",
+                    "#FB8C00", "#F57C00", "#EF6C00", "#E65100", "#B87420",
+                ],
+            },
+        },
+        forceColorScheme="dark",
+    )
 
 
 def _create_header(styles: dict, theme: dict) -> html.Header:
@@ -386,14 +412,18 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
     market_section = html.Div([
         html.Div([
                 html.Label("Symbol", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '4px', 'display': 'block'}),
-                dcc.Dropdown(
+                dmc.Select(
                     id='ticker-dropdown',
                     value=DEFAULT_TICKER,
-                    placeholder="Type to search...",
-                    style={'fontSize': FONT_SIZES['sm']},
-                    className='dark-dropdown',
+                    placeholder="Type to search ticker or company...",
                     searchable=True,
-                    search_value='',
+                    clearable=True,
+                    nothingFoundMessage="No matches",
+                    limit=20,
+                    comboboxProps={"withinPortal": True, "shadow": "md"},
+                    size="xs",
+                    data=[{"value": DEFAULT_TICKER, "label": DEFAULT_TICKER}],
+                    style={'fontSize': FONT_SIZES['sm']},
                 ),
             ], style={'marginBottom': '12px'}),
 

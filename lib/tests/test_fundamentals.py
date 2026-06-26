@@ -9,6 +9,7 @@ import pandas as pd
 from lib.fundamentals import (
     _build_sec_statement,
     _fetch_sec_fundamentals,
+    _live_price_snapshot,
     _sec_annual_series,
     build_fundamentals_result,
 )
@@ -339,6 +340,103 @@ class TestFetchSecFundamentals(unittest.TestCase):
         payload = result.to_dict()
         self.assertIn(2020, payload["years"])
         self.assertEqual(payload["company_name"], "Acme Corp")
+
+
+class TestLivePriceSnapshot(unittest.TestCase):
+    """Tests for the yfinance live-price extractor and payload attachment."""
+
+    def test_prefers_current_price_over_regular_market_price(self):
+        snap = _live_price_snapshot({
+            "currentPrice": 100.0,
+            "regularMarketPrice": 99.5,
+            "previousClose": 98.0,
+            "regularMarketChange": 2.0,
+            "regularMarketChangePercent": 0.0204,
+            "marketState": "REGULAR",
+            "currency": "USD",
+        })
+        self.assertEqual(snap["last_price"], 100.0)
+        self.assertEqual(snap["previous_close"], 98.0)
+        self.assertEqual(snap["last_change"], 2.0)
+        self.assertAlmostEqual(snap["last_change_pct"], 0.0204, places=6)
+        self.assertEqual(snap["market_state"], "REGULAR")
+        self.assertEqual(snap["price_currency"], "USD")
+
+    def test_falls_back_to_regular_market_price(self):
+        snap = _live_price_snapshot({"regularMarketPrice": 50.25, "previousClose": 49.0})
+        self.assertEqual(snap["last_price"], 50.25)
+        self.assertEqual(snap["previous_close"], 49.0)
+        # Change is derived when regularMarketChange is absent.
+        self.assertAlmostEqual(snap["last_change"], 1.25, places=6)
+        self.assertAlmostEqual(snap["last_change_pct"], 1.25 / 49.0, places=6)
+
+    def test_returns_none_for_missing_values(self):
+        snap = _live_price_snapshot({})
+        self.assertIsNone(snap["last_price"])
+        self.assertIsNone(snap["previous_close"])
+        self.assertIsNone(snap["last_change"])
+        self.assertIsNone(snap["last_change_pct"])
+        self.assertIsNone(snap["market_state"])
+        self.assertEqual(snap["price_currency"], "USD")  # default fallback
+
+    def test_currency_fallback_uses_arg(self):
+        snap = _live_price_snapshot({}, currency="EUR")
+        self.assertEqual(snap["price_currency"], "EUR")
+
+    def test_market_state_uppercased(self):
+        snap = _live_price_snapshot({"marketState": "pre"})
+        self.assertEqual(snap["market_state"], "PRE")
+
+
+class TestFinancialsLiveAttachment(unittest.TestCase):
+    """Stock Price (31/12) row receives the live price; it sits at the top."""
+
+    def _build(self, info=None, live_price=None):
+        years = pd.to_datetime([f"{year}-12-31" for year in range(2013, 2024)])
+        income = pd.DataFrame(
+            [[1_000_000_000 * (1.12 ** i) for i in range(11)]],
+            index=["Total Revenue"],
+            columns=years,
+        )
+        balance = pd.DataFrame(
+            [[500_000_000 * (1.10 ** i) for i in range(11)]],
+            index=["Stockholders Equity"],
+            columns=years,
+        )
+        cashflow = pd.DataFrame(
+            [[130_000_000 * (1.11 ** i) for i in range(11)]],
+            index=["Operating Cash Flow"],
+            columns=years,
+        )
+        prices = pd.Series({year: 20 * (1.18 ** i) for i, year in enumerate(range(2013, 2024))})
+        return build_fundamentals_result(
+            ticker="TEST",
+            info=info or {},
+            income=income,
+            balance=balance,
+            cashflow=cashflow,
+            yearly_prices=prices,
+            live_price=live_price,
+        ).to_dict()
+
+    def test_stock_price_row_is_first(self):
+        payload = self._build(info={"currentPrice": 42.0}, live_price=42.0)
+        self.assertEqual(payload["financials"][0]["metric"], "Stock Price (31/12)")
+
+    def test_live_value_attached_to_stock_price_row(self):
+        payload = self._build(info={"currentPrice": 42.5}, live_price=42.5)
+        stock_row = payload["financials"][0]
+        self.assertIn("live_value", stock_row)
+        self.assertEqual(stock_row["live_value"], 42.5)
+
+    def test_live_value_absent_when_no_quote(self):
+        payload = self._build(info={}, live_price=None)
+        stock_row = payload["financials"][0]
+        self.assertNotIn("live_value", stock_row)
+
+    def test_total_row_count_unchanged(self):
+        payload = self._build(info={"currentPrice": 1.0}, live_price=1.0)
+        self.assertEqual(len(payload["financials"]), 13)
 
 
 if __name__ == "__main__":

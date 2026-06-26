@@ -206,6 +206,13 @@ INDICATOR_HEIGHT = '120px'
 # =============================================================================
 
 DEFAULT_TICKER = 'SPY'
+# Used as the cold-load default on the /fundamentals route when the user has
+# not explicitly selected a ticker. The main page still defaults to
+# DEFAULT_TICKER (SPY). Keeping this separate avoids forcing a TSLA chart
+# onto the terminal view while still landing the user on a real company
+# (with full fundamentals) when they open the fundamentals workspace
+# directly in a fresh tab/session.
+FUNDAMENTALS_FALLBACK_TICKER = 'TSLA'
 INITIAL_CAPITAL = 10000
 START_DATE = '2018-01-01'
 DEFAULT_SIGNAL_WINDOW = 4
