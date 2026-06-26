@@ -8,10 +8,12 @@ import pandas as pd
 
 from lib.fundamentals import (
     _build_sec_statement,
+    _clean_statement,
     _fetch_sec_fundamentals,
     _live_price_snapshot,
     _sec_annual_series,
     build_fundamentals_result,
+    fetch_fundamentals,
 )
 
 
@@ -65,6 +67,7 @@ class TestFundamentalsResult(unittest.TestCase):
 
         self.assertEqual(payload["ticker"], "TEST")
         self.assertEqual(payload["company_name"], "Test Corp")
+        self.assertEqual(payload["period"], "annual")
         self.assertEqual(payload["years"][0], 2013)
         self.assertEqual(payload["years"][-1], 2023)
         self.assertEqual(len(payload["financials"]), 13)
@@ -128,7 +131,7 @@ class TestFundamentalsResult(unittest.TestCase):
 
         fcf_row = next(row for row in result.financials if row["metric"] == "FCF")
 
-        self.assertEqual(fcf_row["2013"], "$105")
+        self.assertEqual(fcf_row[2013], "$105")
 
     def test_statement_years_take_priority_over_newer_price_years(self):
         prices = pd.concat([self.prices, pd.Series({2024: 100.0})])
@@ -143,6 +146,99 @@ class TestFundamentalsResult(unittest.TestCase):
         )
 
         self.assertEqual(result.years[-1], 2023)
+
+
+class TestQuarterlyFundamentals(unittest.TestCase):
+    def setUp(self):
+        million = 1_000_000
+        quarters = pd.to_datetime([
+            "2022-03-31", "2022-06-30", "2022-09-30", "2022-12-31",
+            "2023-03-31", "2023-06-30", "2023-09-30", "2023-12-31",
+            "2024-03-31", "2024-06-30",
+        ])
+        self.income = pd.DataFrame(
+            [
+                [100 * million * (1.03 ** idx) for idx in range(10)],
+                [120 * million * (1.02 ** idx) for idx in range(10)],
+                [150 * million * (1.02 ** idx) for idx in range(10)],
+                [30 * million for _ in range(10)],
+                [2 * (1.05 ** idx) for idx in range(10)],
+            ],
+            index=["Total Revenue", "Operating Income", "Pretax Income", "Tax Provision", "Diluted EPS"],
+            columns=quarters,
+        )
+        self.balance = pd.DataFrame(
+            [
+                [500 * million * (1.02 ** idx) for idx in range(10)],
+                [20 * million for _ in range(10)],
+                [50 * million for _ in range(10)],
+                [10 * million for _ in range(10)],
+                [70 * million for _ in range(10)],
+            ],
+            index=["Stockholders Equity", "Current Debt", "Long Term Debt", "Cash And Cash Equivalents", "Total Debt"],
+            columns=quarters,
+        )
+        self.cashflow = pd.DataFrame(
+            [
+                [130 * million * (1.02 ** idx) for idx in range(10)],
+                [-25 * million for _ in range(10)],
+            ],
+            index=["Operating Cash Flow", "Capital Expenditure"],
+            columns=quarters,
+        )
+        self.prices = pd.Series(
+            {(2022, 1): 20.0, (2022, 2): 21.0, (2022, 3): 22.0, (2022, 4): 23.0,
+             (2023, 1): 24.0, (2023, 2): 25.0, (2023, 3): 26.0, (2023, 4): 27.0,
+             (2024, 1): 28.0, (2024, 2): 29.0},
+        )
+
+    def test_clean_statement_keeps_quarter_columns(self):
+        cleaned = _clean_statement(self.income, period="quarterly")
+        self.assertEqual(cleaned.columns.tolist()[0], (2022, 1))
+        self.assertEqual(cleaned.columns.tolist()[-1], (2024, 2))
+
+    def test_quarterly_builds_financials_and_charts_only(self):
+        result = build_fundamentals_result(
+            ticker="TEST",
+            info={"longName": "Test Corp", "financialCurrency": "USD"},
+            income=self.income,
+            balance=self.balance,
+            cashflow=self.cashflow,
+            period_prices=self.prices,
+            periods=10,
+            period="quarterly",
+        )
+        payload = result.to_dict()
+
+        self.assertEqual(payload["period"], "quarterly")
+        self.assertEqual(payload["years"][-1], "2024-Q2")
+        self.assertEqual(payload["valuation"], [])
+        self.assertEqual(payload["big_five"], [])
+        self.assertEqual(len(payload["financials"]), 13)
+        self.assertIn("Sales", payload["chart_series"])
+        sales_row = next(row for row in payload["financials"] if row["metric"] == "Sales (Rev)")
+        self.assertIn("2024-Q2", sales_row)
+
+    def test_fetch_fundamentals_exposes_annual_and_quarterly_blocks(self):
+        annual_income = pd.DataFrame([[1.0]], index=["Total Revenue"], columns=[2023])
+        annual_balance = pd.DataFrame([[1.0]], index=["Stockholders Equity"], columns=[2023])
+        annual_cashflow = pd.DataFrame([[1.0]], index=["Operating Cash Flow"], columns=[2023])
+        quarterly_income = pd.DataFrame([[1.0]], index=["Total Revenue"], columns=pd.to_datetime(["2024-03-31"]))
+        quarterly_balance = pd.DataFrame([[1.0]], index=["Stockholders Equity"], columns=pd.to_datetime(["2024-03-31"]))
+        quarterly_cashflow = pd.DataFrame([[1.0]], index=["Operating Cash Flow"], columns=pd.to_datetime(["2024-03-31"]))
+
+        ticker_obj = MagicMock()
+        with patch("lib.fundamentals._fetch_sec_fundamentals", return_value=(annual_income, annual_balance, annual_cashflow, {})), \
+             patch("lib.fundamentals.yf.Ticker", return_value=ticker_obj), \
+             patch("lib.fundamentals._safe_info", return_value={"longName": "Test Corp"}), \
+             patch("lib.fundamentals._safe_history", return_value=pd.DataFrame()), \
+             patch("lib.fundamentals._fetch_yfinance_quarterly", return_value=(quarterly_income, quarterly_balance, quarterly_cashflow)):
+            payload = fetch_fundamentals("TEST")
+
+        self.assertIn("annual", payload)
+        self.assertIn("quarterly", payload)
+        self.assertEqual(payload["financials"], payload["annual"]["financials"])
+        self.assertEqual(payload["quarterly"]["period"], "quarterly")
 
 
 # ---------------------------------------------------------------------------

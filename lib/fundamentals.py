@@ -5,6 +5,8 @@ Fetch strategy:
   1. SEC EDGAR XBRL (free, no API key, long annual history) — primary for U.S. stocks.
   2. yfinance — fallback for non-U.S. / tickers not found in EDGAR, and supplemental
      source for analyst estimates (forwardPE, earningsGrowth) not available in filings.
+  3. yfinance quarterly statements — quarterly financials + charts only (no SEC
+     quarterly XBRL in this release). Valuation and Big Five remain annual.
 
 The calculation layer (build_fundamentals_result) stays pure so it can be tested
 with fixed fixtures independent of any remote source.
@@ -17,7 +19,10 @@ from datetime import datetime
 import json
 import logging
 import math
-from typing import Any
+from typing import Any, Literal
+
+PeriodKey = int | tuple[int, int]
+PeriodMode = Literal["annual", "quarterly"]
 import urllib.error
 import urllib.request
 
@@ -74,6 +79,7 @@ _CASHFLOW_CONCEPTS: list[tuple[str, list[str], bool]] = [
 DEFAULT_MARR = 0.15
 DEFAULT_MARGIN_OF_SAFETY = 0.50
 DEFAULT_FUNDAMENTAL_YEARS = 11
+DEFAULT_FUNDAMENTAL_QUARTERS = 40
 # Rule #1: use the most conservative positive growth estimate; cap compounding rate.
 MAX_ESTIMATED_GROWTH = 0.50
 
@@ -83,7 +89,8 @@ class FundamentalResult:
     ticker: str
     company_name: str
     currency: str
-    years: list[int]
+    years: list[int] | list[str]
+    period: PeriodMode
     financials: list[dict[str, Any]]
     big_five: list[dict[str, Any]]
     big_five_note: str
@@ -98,6 +105,7 @@ class FundamentalResult:
             "company_name": self.company_name,
             "currency": self.currency,
             "years": self.years,
+            "period": self.period,
             "financials": self.financials,
             "big_five": self.big_five,
             "big_five_note": self.big_five_note,
@@ -109,13 +117,14 @@ class FundamentalResult:
 
 
 def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> dict[str, Any]:
-    """Fetch annual fundamentals and return dashboard-ready data.
+    """Fetch annual and quarterly fundamentals and return dashboard-ready data.
 
     Primary source: SEC EDGAR XBRL (free, long annual history for U.S. stocks).
     Fallback: yfinance statements (used when the ticker is not found in EDGAR).
     yfinance is always queried for supplemental analyst estimates (forwardPE,
     earningsGrowth, trailingEps) which are not available in SEC filings.
-    Price history for year-end closes is always sourced from yfinance.
+    Quarterly financials are sourced from yfinance only.
+    Price history for period-end closes is always sourced from yfinance.
     """
     symbol = (ticker or "").strip().upper()
     if not symbol:
@@ -146,30 +155,77 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
         info = yf_info
         data_source = "yfinance (fallback)"
 
+    q_income, q_balance, q_cashflow = _fetch_yfinance_quarterly(ticker_obj)
+
     first_year = _first_statement_year(income, balance, cashflow)
     history = _safe_history(ticker_obj, first_year)
     yearly_prices = _yearly_close_prices(history)
+    quarterly_prices = _quarterly_close_prices(history)
 
     # Live quote snapshot read once from info so both the payload header and
     # the Stock Price row agree on the same source of truth.
     live_snapshot = _live_price_snapshot(info)
 
-    result = build_fundamentals_result(
+    annual_result = build_fundamentals_result(
         ticker=symbol,
         info=info,
         income=income,
         balance=balance,
         cashflow=cashflow,
-        yearly_prices=yearly_prices,
-        years=years,
+        period_prices=yearly_prices,
+        periods=years,
+        period="annual",
         live_price=live_snapshot["last_price"],
     ).to_dict()
-    result["quality_notes"] = [f"Data source: {data_source}"] + result["quality_notes"]
-    # Live quote snapshot (currentPrice / regularMarketPrice) is exposed by yfinance
-    # `info`; we attach it here (not on the dataclass) because it is not derived
-    # from annual statements and must not influence the pure calculation layer.
-    result.update(_live_price_snapshot(info, currency=result.get("currency")))
-    return result
+
+    try:
+        quarterly_result = build_fundamentals_result(
+            ticker=symbol,
+            info=info,
+            income=q_income,
+            balance=q_balance,
+            cashflow=q_cashflow,
+            period_prices=quarterly_prices,
+            periods=DEFAULT_FUNDAMENTAL_QUARTERS,
+            period="quarterly",
+            live_price=live_snapshot["last_price"],
+        ).to_dict()
+    except ValueError as exc:
+        logger.warning("Quarterly fundamentals unavailable for %s: %s", symbol, exc)
+        quarterly_result = {
+            "ticker": symbol,
+            "company_name": annual_result["company_name"],
+            "currency": annual_result["currency"],
+            "years": [],
+            "period": "quarterly",
+            "financials": [],
+            "big_five": [],
+            "big_five_note": "",
+            "valuation": [],
+            "chart_series": {},
+            "quality_notes": [str(exc)],
+            "as_of": annual_result["as_of"],
+        }
+
+    payload: dict[str, Any] = {
+        "ticker": annual_result["ticker"],
+        "company_name": annual_result["company_name"],
+        "currency": annual_result["currency"],
+        "as_of": annual_result["as_of"],
+        "annual": annual_result,
+        "quarterly": quarterly_result,
+        # Back-compat aliases for callers still reading top-level annual keys.
+        "years": annual_result["years"],
+        "period": "annual",
+        "financials": annual_result["financials"],
+        "big_five": annual_result["big_five"],
+        "big_five_note": annual_result["big_five_note"],
+        "valuation": annual_result["valuation"],
+        "chart_series": annual_result["chart_series"],
+        "quality_notes": [f"Data source: {data_source}"] + annual_result["quality_notes"],
+    }
+    payload.update(_live_price_snapshot(info, currency=payload.get("currency")))
+    return payload
 
 
 def _live_price_snapshot(info: dict[str, Any], *, currency: str | None = None) -> dict[str, Any]:
@@ -210,42 +266,58 @@ def build_fundamentals_result(
     income: pd.DataFrame | None,
     balance: pd.DataFrame | None,
     cashflow: pd.DataFrame | None,
+    period_prices: pd.Series | None = None,
     yearly_prices: pd.Series | None = None,
+    periods: int | None = None,
     years: int = DEFAULT_FUNDAMENTAL_YEARS,
+    period: PeriodMode = "annual",
     marr: float = DEFAULT_MARR,
     margin_of_safety: float = DEFAULT_MARGIN_OF_SAFETY,
     live_price: float | None = None,
 ) -> FundamentalResult:
     """Build the fundamentals payload from normalized statement inputs."""
+    if period_prices is None:
+        period_prices = yearly_prices
+    window = periods if periods is not None else years
+
     info = info or {}
-    income = _clean_statement(income)
-    balance = _clean_statement(balance)
-    cashflow = _clean_statement(cashflow)
-    yearly_prices = _clean_yearly_prices(yearly_prices)
+    income = _clean_statement(income, period=period)
+    balance = _clean_statement(balance, period=period)
+    cashflow = _clean_statement(cashflow, period=period)
+    period_prices = _clean_period_prices(period_prices, period=period)
 
-    statement_years = _collect_years(income, balance, cashflow)
-    all_years = (statement_years or _collect_years(yearly_prices))[-years:]
-    if not all_years:
-        raise ValueError(f"No annual fundamentals available for {ticker}")
+    statement_periods = _collect_periods(income, balance, cashflow, period=period)
+    all_periods = (statement_periods or _collect_periods(period_prices, period=period))[-window:]
+    if not all_periods:
+        label = "quarterly" if period == "quarterly" else "annual"
+        raise ValueError(f"No {label} fundamentals available for {ticker}")
 
-    financial_map = _build_financial_map(income, balance, cashflow, yearly_prices, all_years)
-    big_five = _build_big_five(financial_map, all_years)
-    valuation = _build_valuation(info, financial_map, all_years, marr, margin_of_safety)
-    notes = _quality_notes(financial_map, all_years)
+    period_labels = [_period_column_key(value) for value in all_periods]
+    financial_map = _build_financial_map(income, balance, cashflow, period_prices, all_periods)
+    if period == "quarterly":
+        big_five: list[dict[str, Any]] = []
+        big_five_note = ""
+        valuation: list[dict[str, Any]] = []
+    else:
+        big_five = _build_big_five(financial_map, all_periods)
+        valuation = _build_valuation(info, financial_map, all_periods, marr, margin_of_safety)
+        big_five_note = "NOTE: Big Five should be >= 10% per year over the last 10 years."
+    notes = _quality_notes(financial_map, all_periods, period=period)
     financials = _attach_live_price(
-        _rows_from_map(financial_map, all_years), live_price
+        _rows_from_map(financial_map, all_periods), live_price
     )
 
     return FundamentalResult(
         ticker=ticker,
         company_name=str(info.get("longName") or info.get("shortName") or ticker),
         currency=str(info.get("financialCurrency") or info.get("currency") or "USD"),
-        years=all_years,
+        years=period_labels,
+        period=period,
         financials=financials,
         big_five=big_five,
-        big_five_note="NOTE: Big Five should be >= 10% per year over the last 10 years.",
+        big_five_note=big_five_note,
         valuation=valuation,
-        chart_series=_chart_series(financial_map, all_years),
+        chart_series=_chart_series(financial_map, all_periods),
         quality_notes=notes,
         as_of=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
@@ -388,6 +460,35 @@ def _fetch_sec_fundamentals(
     return income, balance, cashflow, sec_info
 
 
+def _fetch_yfinance_quarterly(ticker_obj: Any) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Fetch quarterly statements from yfinance (no SEC quarterly XBRL in this release)."""
+    income = _safe_statement(
+        ticker_obj,
+        ("quarterly_income_stmt", "quarterly_financials", "quarterly_incomestmt"),
+    )
+    balance = _safe_statement(
+        ticker_obj,
+        ("quarterly_balance_sheet", "quarterly_balancesheet"),
+    )
+    cashflow = _safe_statement(
+        ticker_obj,
+        ("quarterly_cashflow", "quarterly_cash_flow"),
+    )
+    return income, balance, cashflow
+
+
+def _period_column_key(period: PeriodKey) -> int | str:
+    if isinstance(period, tuple):
+        return f"{period[0]}-Q{period[1]}"
+    return int(period)
+
+
+def _period_sort_key(period: PeriodKey) -> tuple[int, int]:
+    if isinstance(period, tuple):
+        return int(period[0]), int(period[1])
+    return int(period), 0
+
+
 # ---------------------------------------------------------------------------
 # yfinance fetch helpers
 # ---------------------------------------------------------------------------
@@ -425,12 +526,12 @@ def _safe_history(ticker_obj: Any, first_year: int | None) -> pd.DataFrame:
 def _first_statement_year(*statements: pd.DataFrame) -> int | None:
     years = []
     for statement in statements:
-        cleaned = _clean_statement(statement)
+        cleaned = _clean_statement(statement, period="annual")
         years.extend(cleaned.columns.tolist())
     return min(years) if years else None
 
 
-def _clean_statement(statement: pd.DataFrame | None) -> pd.DataFrame:
+def _clean_statement(statement: pd.DataFrame | None, *, period: PeriodMode = "annual") -> pd.DataFrame:
     if statement is None or statement.empty:
         return pd.DataFrame()
 
@@ -438,25 +539,40 @@ def _clean_statement(statement: pd.DataFrame | None) -> pd.DataFrame:
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
-    converted_columns = {}
+    converted_columns: dict[Any, PeriodKey] = {}
     for column in df.columns:
+        if isinstance(column, tuple) and len(column) == 2:
+            converted_columns[column] = (int(column[0]), int(column[1]))
+            continue
         if isinstance(column, (int, np.integer)):
+            if period == "quarterly":
+                continue
             converted_columns[column] = int(column)
-        else:
+            continue
+        try:
+            timestamp = pd.Timestamp(column)
+            if period == "quarterly":
+                converted_columns[column] = (timestamp.year, timestamp.quarter)
+            else:
+                converted_columns[column] = timestamp.year
+        except Exception:
             try:
-                converted_columns[column] = pd.Timestamp(column).year
-            except Exception:
-                try:
-                    converted_columns[column] = int(column)
-                except Exception:
+                if period == "quarterly":
                     continue
+                converted_columns[column] = int(column)
+            except Exception:
+                continue
 
     df = df.rename(columns=converted_columns)
-    df = df[[column for column in df.columns if isinstance(column, int)]]
+    if period == "quarterly":
+        df = df[[column for column in df.columns if isinstance(column, tuple)]]
+    else:
+        df = df[[column for column in df.columns if isinstance(column, (int, np.integer))]]
     if df.empty:
         return pd.DataFrame()
     df = df.T.groupby(level=0).first().T
-    return df.reindex(sorted(df.columns), axis=1)
+    ordered = sorted(df.columns, key=_period_sort_key)
+    return df.reindex(ordered, axis=1)
 
 
 def _yearly_close_prices(history: pd.DataFrame) -> pd.Series:
@@ -471,47 +587,93 @@ def _yearly_close_prices(history: pd.DataFrame) -> pd.Series:
     return yearly.astype(float)
 
 
-def _clean_yearly_prices(yearly_prices: pd.Series | None) -> pd.Series:
-    if yearly_prices is None or yearly_prices.empty:
+def _quarterly_close_prices(history: pd.DataFrame) -> pd.Series:
+    if history is None or history.empty or "Close" not in history:
         return pd.Series(dtype="float64")
-    prices = yearly_prices.copy().dropna()
-    prices.index = [int(pd.Timestamp(index).year) if not isinstance(index, (int, np.integer)) else int(index) for index in prices.index]
-    return prices.groupby(level=0).last().sort_index().astype(float)
+    prices = history["Close"].dropna().copy()
+    if prices.empty:
+        return pd.Series(dtype="float64")
+    prices.index = pd.to_datetime(prices.index)
+    quarterly = prices.groupby([prices.index.year, prices.index.quarter]).last()
+    quarterly.index = pd.Index(
+        [(int(year), int(quarter)) for year, quarter in quarterly.index],
+        dtype="object",
+    )
+    return quarterly.astype(float)
+
+
+def _clean_period_prices(period_prices: pd.Series | None, *, period: PeriodMode = "annual") -> pd.Series:
+    if period_prices is None or period_prices.empty:
+        return pd.Series(dtype="float64")
+    prices = period_prices.copy().dropna()
+    if period == "quarterly":
+        normalized: list[PeriodKey] = []
+        for index in prices.index:
+            if isinstance(index, tuple) and len(index) == 2:
+                normalized.append((int(index[0]), int(index[1])))
+            else:
+                timestamp = pd.Timestamp(index)
+                normalized.append((timestamp.year, timestamp.quarter))
+        prices.index = pd.Index(normalized, dtype="object")
+    else:
+        prices.index = [
+            int(pd.Timestamp(index).year) if not isinstance(index, (int, np.integer)) else int(index)
+            for index in prices.index
+        ]
+    prices = prices.groupby(level=0).last()
+    ordered = sorted(prices.index, key=_period_sort_key)
+    return prices.reindex(ordered).astype(float)
+
+
+def _clean_yearly_prices(yearly_prices: pd.Series | None) -> pd.Series:
+    return _clean_period_prices(yearly_prices, period="annual")
+
+
+def _collect_periods(*sources: Any, period: PeriodMode = "annual") -> list[PeriodKey]:
+    collected: set[PeriodKey] = set()
+    for source in sources:
+        if isinstance(source, pd.DataFrame) and not source.empty:
+            for column in source.columns:
+                if period == "quarterly" and isinstance(column, tuple):
+                    collected.add((int(column[0]), int(column[1])))
+                elif period == "annual" and isinstance(column, (int, np.integer)):
+                    collected.add(int(column))
+        elif isinstance(source, pd.Series) and not source.empty:
+            for index in source.index:
+                if period == "quarterly" and isinstance(index, tuple):
+                    collected.add((int(index[0]), int(index[1])))
+                elif period == "annual" and isinstance(index, (int, np.integer)):
+                    collected.add(int(index))
+    return sorted(collected, key=_period_sort_key)
 
 
 def _collect_years(*sources: Any) -> list[int]:
-    collected: set[int] = set()
-    for source in sources:
-        if isinstance(source, pd.DataFrame) and not source.empty:
-            collected.update(int(year) for year in source.columns)
-        elif isinstance(source, pd.Series) and not source.empty:
-            collected.update(int(year) for year in source.index)
-    return sorted(collected)
+    return [int(value) for value in _collect_periods(*sources, period="annual")]
 
 
 def _build_financial_map(
     income: pd.DataFrame,
     balance: pd.DataFrame,
     cashflow: pd.DataFrame,
-    yearly_prices: pd.Series,
-    years: list[int],
+    period_prices: pd.Series,
+    periods: list[PeriodKey],
 ) -> dict[str, dict[str, Any]]:
-    revenue = _series_from_statement(income, ("Total Revenue", "Operating Revenue"), years)
-    equity = _series_from_statement(balance, ("Stockholders Equity", "Total Equity Gross Minority Interest", "Common Stock Equity"), years)
-    eps = _series_from_statement(income, ("Diluted EPS", "Basic EPS"), years)
-    operating_income = _series_from_statement(income, ("Operating Income", "EBIT"), years)
-    pretax_income = _series_from_statement(income, ("Pretax Income", "Income Before Tax"), years)
-    tax_provision = _series_from_statement(income, ("Tax Provision", "Income Tax Expense"), years)
-    net_income = _series_from_statement(income, ("Net Income", "Net Income Common Stockholders"), years)
-    current_debt = _series_from_statement(balance, ("Current Debt", "Current Debt And Capital Lease Obligation", "Short Long Term Debt"), years)
-    long_debt = _series_from_statement(balance, ("Long Term Debt", "Long Term Debt And Capital Lease Obligation"), years)
-    total_debt = _series_from_statement(balance, ("Total Debt",), years)
+    revenue = _series_from_statement(income, ("Total Revenue", "Operating Revenue"), periods)
+    equity = _series_from_statement(balance, ("Stockholders Equity", "Total Equity Gross Minority Interest", "Common Stock Equity"), periods)
+    eps = _series_from_statement(income, ("Diluted EPS", "Basic EPS"), periods)
+    operating_income = _series_from_statement(income, ("Operating Income", "EBIT"), periods)
+    pretax_income = _series_from_statement(income, ("Pretax Income", "Income Before Tax"), periods)
+    tax_provision = _series_from_statement(income, ("Tax Provision", "Income Tax Expense"), periods)
+    net_income = _series_from_statement(income, ("Net Income", "Net Income Common Stockholders"), periods)
+    current_debt = _series_from_statement(balance, ("Current Debt", "Current Debt And Capital Lease Obligation", "Short Long Term Debt"), periods)
+    long_debt = _series_from_statement(balance, ("Long Term Debt", "Long Term Debt And Capital Lease Obligation"), periods)
+    total_debt = _series_from_statement(balance, ("Total Debt",), periods)
     if total_debt.isna().all():
         total_debt = current_debt.fillna(0) + long_debt.fillna(0)
-    cash = _series_from_statement(balance, ("Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments"), years).fillna(0)
-    operating_cashflow = _series_from_statement(cashflow, ("Operating Cash Flow", "Total Cash From Operating Activities"), years)
-    capex = _series_from_statement(cashflow, ("Capital Expenditure", "Capital Expenditures"), years)
-    free_cash_flow = _series_from_statement(cashflow, ("Free Cash Flow",), years)
+    cash = _series_from_statement(balance, ("Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments"), periods).fillna(0)
+    operating_cashflow = _series_from_statement(cashflow, ("Operating Cash Flow", "Total Cash From Operating Activities"), periods)
+    capex = _series_from_statement(cashflow, ("Capital Expenditure", "Capital Expenditures"), periods)
+    free_cash_flow = _series_from_statement(cashflow, ("Free Cash Flow",), periods)
     if free_cash_flow.isna().all():
         free_cash_flow = operating_cashflow + capex.fillna(0)
 
@@ -523,7 +685,7 @@ def _build_financial_map(
     avg_invested_capital = avg_invested_capital.fillna(invested_capital)
     roic = nopat / avg_invested_capital
     debt_ratio = long_debt / free_cash_flow.replace(0, np.nan)
-    stock_price = pd.Series({year: yearly_prices.get(year, np.nan) for year in years}, dtype="float64")
+    stock_price = pd.Series({period: period_prices.get(period, np.nan) for period in periods}, dtype="float64")
     pe_ratio = stock_price / eps.replace(0, np.nan)
 
     return {
@@ -548,8 +710,8 @@ def _build_financial_map(
     }
 
 
-def _series_from_statement(statement: pd.DataFrame, field_names: tuple[str, ...], years: list[int]) -> pd.Series:
-    series = pd.Series(index=years, dtype="float64")
+def _series_from_statement(statement: pd.DataFrame, field_names: tuple[str, ...], periods: list[PeriodKey]) -> pd.Series:
+    series = pd.Series(index=periods, dtype="float64")
     if statement.empty:
         return series
     normalized = {_normalize_label(index): index for index in statement.index}
@@ -557,7 +719,7 @@ def _series_from_statement(statement: pd.DataFrame, field_names: tuple[str, ...]
         original = normalized.get(_normalize_label(field_name))
         if original is not None:
             values = pd.to_numeric(statement.loc[original], errors="coerce")
-            return values.reindex(years).astype(float)
+            return values.reindex(periods).astype(float)
     return series
 
 
@@ -575,7 +737,7 @@ def _growth_metric(label: str, values: pd.Series) -> dict[str, Any]:
     return {"label": label, "unit": "%", "values": growth, "percent": True, "kind": "growth", "source_values": values}
 
 
-def _rows_from_map(financial_map: dict[str, dict[str, Any]], years: list[int]) -> list[dict[str, Any]]:
+def _rows_from_map(financial_map: dict[str, dict[str, Any]], periods: list[PeriodKey]) -> list[dict[str, Any]]:
     # Stock price sits at the top so the live quote column below it lands
     # directly under the latest annual price and is easy to compare visually.
     row_keys = [
@@ -583,14 +745,14 @@ def _rows_from_map(financial_map: dict[str, dict[str, Any]], years: list[int]) -
         "sales", "equity", "eps", "fcf", "nopat", "net_income", "avg_invested_capital",
         "current_debt", "long_debt", "total_debt", "debt_ratio", "pe_ratio",
     ]
-    return [_display_row(financial_map[key], years) for key in row_keys]
+    return [_display_row(financial_map[key], periods) for key in row_keys]
 
 
-def _build_big_five(financial_map: dict[str, dict[str, Any]], years: list[int]) -> list[dict[str, Any]]:
+def _build_big_five(financial_map: dict[str, dict[str, Any]], periods: list[PeriodKey]) -> list[dict[str, Any]]:
     rows = []
     for key in ("roic", "equity_gr", "eps_gr", "sales_gr", "fcf_gr", "debt_ratio", "pe_ratio"):
         metric = financial_map[key]
-        row = _display_row(metric, years)
+        row = _display_row(metric, periods)
         source = metric.get("source_values", metric["values"])
         if key == "roic":
             summary = _summary_average_values(metric["values"])
@@ -611,7 +773,7 @@ def _build_big_five(financial_map: dict[str, dict[str, Any]], years: list[int]) 
 def _build_valuation(
     info: dict[str, Any],
     financial_map: dict[str, dict[str, Any]],
-    years: list[int],
+    periods: list[PeriodKey],
     marr: float,
     margin_of_safety: float,
 ) -> list[dict[str, Any]]:
@@ -660,12 +822,12 @@ def _build_valuation(
     return [{"metric": metric, "value": value} for metric, value in rows]
 
 
-def _display_row(metric: dict[str, Any], years: list[int], *, live_value: float | None = None) -> dict[str, Any]:
+def _display_row(metric: dict[str, Any], periods: list[PeriodKey], *, live_value: float | None = None) -> dict[str, Any]:
     values = metric["values"]
     row = {"metric": metric["label"], "unit": metric["unit"], "kind": metric["kind"]}
-    for year in years:
-        value = values.get(year, np.nan)
-        row[str(year)] = _format_pct(value) if metric["percent"] else _format_metric_value(value, metric["unit"])
+    for period in periods:
+        value = values.get(period, np.nan)
+        row[_period_column_key(period)] = _format_pct(value) if metric["percent"] else _format_metric_value(value, metric["unit"])
     if live_value is not None:
         row["live_value"] = live_value
     return row
@@ -747,7 +909,7 @@ def _cagr(values: pd.Series, periods: int) -> float:
     return (end / start) ** (1 / periods) - 1
 
 
-def _chart_series(financial_map: dict[str, dict[str, Any]], years: list[int]) -> dict[str, list[float | None]]:
+def _chart_series(financial_map: dict[str, dict[str, Any]], periods: list[PeriodKey]) -> dict[str, list[float | None]]:
     chart_keys = {
         "ROIC": "roic",
         "Equity": "equity",
@@ -757,21 +919,27 @@ def _chart_series(financial_map: dict[str, dict[str, Any]], years: list[int]) ->
         "Debt": "long_debt",
     }
     return {
-        label: [_json_number(financial_map[key]["values"].get(year, np.nan)) for year in years]
+        label: [_json_number(financial_map[key]["values"].get(period, np.nan)) for period in periods]
         for label, key in chart_keys.items()
     }
 
 
-def _quality_notes(financial_map: dict[str, dict[str, Any]], years: list[int]) -> list[str]:
+def _quality_notes(
+    financial_map: dict[str, dict[str, Any]],
+    periods: list[PeriodKey],
+    *,
+    period: PeriodMode = "annual",
+) -> list[str]:
     notes = []
     required = ("sales", "equity", "eps", "fcf", "net_income")
     for key in required:
-        missing = sum(pd.isna(financial_map[key]["values"].get(year, np.nan)) for year in years)
+        missing = sum(pd.isna(financial_map[key]["values"].get(value, np.nan)) for value in periods)
         if missing:
-            notes.append(f"{financial_map[key]['label']}: {missing} missing annual values")
+            label = "quarterly" if period == "quarterly" else "annual"
+            notes.append(f"{financial_map[key]['label']}: {missing} missing {label} values")
     if financial_map["stock_price"]["values"].isna().all():
-        notes.append("Year-end stock prices unavailable; PE and valuation may be incomplete")
-    return notes or ["All core annual fields available"]
+        notes.append("Period-end stock prices unavailable; PE and valuation may be incomplete")
+    return notes or [f"All core {'quarterly' if period == 'quarterly' else 'annual'} fields available"]
 
 
 def _growth_from_info(info: dict[str, Any]) -> float:

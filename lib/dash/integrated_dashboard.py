@@ -36,6 +36,7 @@ from lib.dash.dash_config import (
     DEFAULT_SIGNAL_WINDOW,
     PLOT_OPTIONS, PLOT_INDICATOR_OPTIONS, CHART_ELEMENT_OPTIONS, SIGNAL_OPTIONS,
     DEFAULT_INDICATOR_SETTINGS, INDICATOR_SETTING_SCHEMA,
+    FUNDAMENTALS_PERIOD_OPTIONS, DEFAULT_FUNDAMENTALS_PERIOD,
     get_theme
 )
 from lib.dash.state import dashboard_state  # noqa: F401 - used by callbacks
@@ -87,6 +88,7 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         dcc.Store(id='active-indicator-store', data=None),
         dcc.Store(id='export-img-store', data=None),
         dcc.Store(id='fundamentals-store', data=None, storage_type='session'),
+        dcc.Store(id='fundamentals-period-store', data=DEFAULT_FUNDAMENTALS_PERIOD, storage_type='session'),
         # Tracks tickers the user has explicitly selected. Stays None until
         # the user changes the dropdown, so the fundamentals callback can
         # distinguish a cold direct load (no selection yet) from a
@@ -268,6 +270,17 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
                 ),
                 html.Button("LOAD", id='load-fundamentals-ticker-button', n_clicks=0, style=styles['button_outline']),
                 html.Button("REFRESH", id='refresh-fundamentals-button', n_clicks=0, style=styles['button_outline']),
+                dcc.RadioItems(
+                    id='fundamentals-period-toggle',
+                    options=FUNDAMENTALS_PERIOD_OPTIONS,
+                    value=DEFAULT_FUNDAMENTALS_PERIOD,
+                    inline=True,
+                    className='bbg-radio-seg',
+                    inputClassName='bbg-radio-seg-input',
+                    labelClassName='bbg-radio-seg-label',
+                    persistence=True,
+                    persistence_type='session',
+                ),
                 html.Button("CLOSE", id='close-fundamentals-button', n_clicks=0, style={
                     **styles['button_outline'],
                     'color': theme['accent_red'],

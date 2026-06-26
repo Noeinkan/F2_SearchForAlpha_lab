@@ -1581,10 +1581,12 @@ label,
 }
 
 .signals-unified-header {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
     align-items: center;
-    gap: 8px;
-    padding: 4px 6px;
+    justify-items: center;
+    gap: 12px;
+    padding: 6px 8px;
     border-bottom: 1px solid var(--border-primary);
     font-family: var(--font-sans);
     font-size: 10px;
@@ -1592,6 +1594,15 @@ label,
     text-transform: uppercase;
     letter-spacing: 1px;
     margin-bottom: 2px;
+    text-align: center;
+}
+
+.signals-unified-header__col {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    width: 100%;
 }
 
 .signals-unified-list {
@@ -1603,14 +1614,16 @@ label,
 }
 
 .signal-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
     align-items: center;
-    justify-content: space-between;
-    padding: 3px 6px;
+    justify-items: center;
+    padding: 3px 8px;
     border-bottom: 1px solid var(--border-secondary);
     transition: background 80ms ease;
-    gap: 6px;
+    gap: 12px;
     min-height: 26px;
+    text-align: center;
 }
 
 .signal-row:hover {
@@ -1618,7 +1631,6 @@ label,
 }
 
 .signal-name {
-    flex: 1;
     font-family: var(--font-sans);
     font-size: 11px;
     color: var(--text-primary);
@@ -1626,6 +1638,9 @@ label,
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+    text-align: center;
+    width: 100%;
+    justify-self: stretch;
 }
 
 /* Buy/sell toggle checkboxes inside signal rows */
@@ -1633,6 +1648,8 @@ label,
     flex: 0 0 auto;
     display: flex;
     align-items: center;
+    justify-content: center;
+    justify-self: center;
 }
 
 .signal-toggle .form-check {

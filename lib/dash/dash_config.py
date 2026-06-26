@@ -213,6 +213,11 @@ DEFAULT_TICKER = 'SPY'
 # (with full fundamentals) when they open the fundamentals workspace
 # directly in a fresh tab/session.
 FUNDAMENTALS_FALLBACK_TICKER = 'TSLA'
+FUNDAMENTALS_PERIOD_OPTIONS = [
+    {'label': 'Annual', 'value': 'annual'},
+    {'label': 'Quarterly', 'value': 'quarterly'},
+]
+DEFAULT_FUNDAMENTALS_PERIOD = 'annual'
 INITIAL_CAPITAL = 10000
 START_DATE = '2018-01-01'
 DEFAULT_SIGNAL_WINDOW = 4

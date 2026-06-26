@@ -36,17 +36,17 @@ def register_signal_callbacks(app) -> None:
         """Render unified BUY/SELL signal rows."""
         theme = get_theme()
         header = html.Div([
-            html.Span("BUY", style={
+            html.Span("BUY SIGNAL", className='signals-unified-header__col signals-unified-header__col--buy', style={
                 'fontSize': FONT_SIZES['xs'],
                 'fontWeight': '600',
                 'color': theme['accent_green']
             }),
-            html.Span("SIGNAL", style={
+            html.Span("SIGNAL", className='signals-unified-header__col signals-unified-header__col--name', style={
                 'fontSize': FONT_SIZES['xs'],
                 'fontWeight': '600',
                 'color': theme['text_secondary']
             }),
-            html.Span("SELL", style={
+            html.Span("SELL SIGNAL", className='signals-unified-header__col signals-unified-header__col--sell', style={
                 'fontSize': FONT_SIZES['xs'],
                 'fontWeight': '600',
                 'color': theme['accent_red']
@@ -81,13 +81,13 @@ def register_signal_callbacks(app) -> None:
                 id={'type': 'signal-toggle', 'side': 'buy', 'value': buy_signal or ''},
                 options=[{'label': '', 'value': buy_signal or ''}],
                 value=[buy_signal] if buy_signal in selected_buy else [],
-                className='signal-toggle buy-toggle'
+                className='signal-toggle buy-toggle signal-toggle--buy'
             )
             sell_toggle = dcc.Checklist(
                 id={'type': 'signal-toggle', 'side': 'sell', 'value': sell_signal or ''},
                 options=[{'label': '', 'value': sell_signal or ''}],
                 value=[sell_signal] if sell_signal in selected_sell else [],
-                className='signal-toggle sell-toggle'
+                className='signal-toggle sell-toggle signal-toggle--sell'
             )
 
             rows.append(

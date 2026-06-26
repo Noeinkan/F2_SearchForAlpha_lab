@@ -15,6 +15,7 @@ from lib.dash.callbacks.startup import _ensure_ticker_options_loaded
 from lib.dash.dash_config import (
     DEFAULT_THEME,
     DEFAULT_TICKER,
+    DEFAULT_FUNDAMENTALS_PERIOD,
     FONT_FAMILY,
     FONT_SIZES,
     FUNDAMENTALS_FALLBACK_TICKER,
@@ -530,6 +531,13 @@ def _explain_notes_column(
 
 def register_fundamentals_callbacks(app) -> None:
     @app.callback(
+        Output('fundamentals-period-store', 'data'),
+        Input('fundamentals-period-toggle', 'value'),
+    )
+    def sync_fundamentals_period(period):
+        return period or DEFAULT_FUNDAMENTALS_PERIOD
+
+    @app.callback(
         Output('fundamentals-global-symbol', 'children'),
         Input('ticker-dropdown', 'value'),
     )
@@ -622,13 +630,14 @@ def register_fundamentals_callbacks(app) -> None:
     @app.callback(
         Output('fundamentals-content', 'children'),
         [Input('fundamentals-store', 'data'),
+         Input('fundamentals-period-store', 'data'),
          Input('theme-store', 'data')],
     )
-    def render_fundamentals(payload, theme_name):
+    def render_fundamentals(payload, period, theme_name):
         theme = get_theme(theme_name or DEFAULT_THEME)
         if not payload:
             return _empty_state(theme, "Open fundamentals after selecting a stock.")
-        return _render_payload(payload, theme)
+        return _render_payload(payload, period or DEFAULT_FUNDAMENTALS_PERIOD, theme)
 
     @app.callback(
         [Output('fundamentals-financial-table', 'style_data_conditional'),
@@ -747,21 +756,56 @@ def register_fundamentals_callbacks(app) -> None:
             val_b_cell,
         )
 
-def _render_payload(payload: dict[str, Any], theme: dict) -> html.Div:
-    years = [str(year) for year in payload.get('years', [])]
-    valuation_rows = payload.get('valuation', [])
+def _resolve_payload_blocks(payload: dict[str, Any], period: str) -> tuple[dict[str, Any], dict[str, Any], str]:
+    annual = payload.get('annual') if isinstance(payload.get('annual'), dict) else payload
+    quarterly = payload.get('quarterly') if isinstance(payload.get('quarterly'), dict) else {}
+    active_period = period if period in {'annual', 'quarterly'} else DEFAULT_FUNDAMENTALS_PERIOD
+    active = annual if active_period == 'annual' else quarterly
+    return annual or {}, active or {}, active_period
+
+
+def _period_column_labels(years: list[Any]) -> list[str]:
+    return [str(year) for year in years]
+
+
+def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.Div:
+    annual, active, active_period = _resolve_payload_blocks(payload, period)
+    if not annual:
+        return _empty_state(theme, "No fundamentals data available.")
+
+    period_labels = _period_column_labels(active.get('years', []))
+    valuation_rows = annual.get('valuation', [])
+    chart_years = active.get('years', [])
+    chart_labels = _period_column_labels(chart_years)
+
+    if active_period == 'quarterly' and not active.get('financials'):
+        quarterly_notice = html.Div(
+            'Quarterly financials are unavailable for this symbol.',
+            style={
+                'fontFamily': FONT_FAMILY,
+                'fontSize': FONT_SIZES['xs'],
+                'color': theme['accent_orange'],
+                'marginBottom': '6px',
+            },
+        )
+    else:
+        quarterly_notice = None
+
+    financials_panel = html.Div([
+        _panel_title('Financials', theme),
+        quarterly_notice,
+        _financial_table(
+            active.get('financials', []),
+            period_labels,
+            theme,
+            last_price=payload.get('last_price'),
+        ),
+    ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-main')
+
     return html.Div([
-        _summary_strip(payload, theme),
+        _summary_strip(payload, active, active_period, theme),
         html.Div([
-            html.Div([
-                _panel_title('Financials', theme),
-                _financial_table(
-                    payload.get('financials', []),
-                    years,
-                    theme,
-                    last_price=payload.get('last_price'),
-                ),
-            ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-main'),
+            financials_panel,
             html.Div([
                 _panel_title('Valuation', theme, size='sm'),
                 _valuation_assumptions(valuation_rows, theme),
@@ -775,25 +819,35 @@ def _render_payload(payload: dict[str, Any], theme: dict) -> html.Div:
         ], className='sfa-fundamentals-top'),
         html.Div([
             _panel_title('Big Five', theme),
-            _big_five_note(payload.get('big_five_note', ''), theme),
-            _big_five_table(payload.get('big_five', []), years, theme),
+            _big_five_note(annual.get('big_five_note', ''), theme),
+            _big_five_table(
+                annual.get('big_five', []),
+                _period_column_labels(annual.get('years', [])),
+                theme,
+            ),
         ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-big-five'),
         html.Div([
-            _chart_card(label, values, payload.get('years', []), theme)
-            for label, values in payload.get('chart_series', {}).items()
+            _chart_card(label, values, chart_labels, theme)
+            for label, values in active.get('chart_series', {}).items()
         ], className='sfa-fundamentals-charts'),
         _quality_notes(payload.get('quality_notes', []), theme),
     ], style={'width': '100%', 'minWidth': 0}, className='sfa-fundamentals-root')
 
 
-def _summary_strip(payload: dict[str, Any], theme: dict) -> html.Div:
-    years = payload.get('years') or []
-    last_year = years[-1] if years else '--'
+def _summary_strip(
+    payload: dict[str, Any],
+    active: dict[str, Any],
+    period: str,
+    theme: dict,
+) -> html.Div:
+    periods = active.get('years') or []
+    last_period = periods[-1] if periods else '--'
+    last_label = 'Last FY' if period == 'annual' else 'Last period'
     return html.Div([
         _price_hero_cell(payload, theme),
         _summary_cell('Ticker', payload.get('ticker', '--'), theme),
         _summary_cell('Currency', payload.get('currency', '--'), theme),
-        _summary_cell('Last FY', last_year, theme),
+        _summary_cell(last_label, last_period, theme),
         _summary_cell('Updated', payload.get('as_of', '--'), theme),
     ], style={
         'display': 'grid',
@@ -1413,14 +1467,14 @@ def _big_five_conditionals(theme: dict, value_columns: list[str]) -> list[dict[s
     return conditionals
 
 
-def _chart_card(label: str, values: list[float | None], years: list[int], theme: dict) -> html.Div:
+def _chart_card(label: str, values: list[float | None], years: list[Any], theme: dict) -> html.Div:
     return html.Div([
         _panel_title(label, theme),
         dcc.Graph(figure=_metric_figure(label, values, years, theme), config={'displayModeBar': False}, style={'height': 'clamp(145px, 19vh, 190px)'}),
     ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-chart')
 
 
-def _metric_figure(label: str, values: list[float | None], years: list[int], theme: dict) -> go.Figure:
+def _metric_figure(label: str, values: list[float | None], years: list[Any], theme: dict) -> go.Figure:
     fig = go.Figure()
     y_values = [value * 100 if label == 'ROIC' and value is not None else value for value in values]
     fig.add_trace(go.Scatter(
@@ -1447,16 +1501,16 @@ def _metric_figure(label: str, values: list[float | None], years: list[int], the
     return fig
 
 
-def _add_trendline(fig: go.Figure, years: list[int], values: list[float | None], theme: dict) -> None:
-    pairs = [(year, value) for year, value in zip(years, values) if value is not None]
+def _add_trendline(fig: go.Figure, years: list[Any], values: list[float | None], theme: dict) -> None:
+    pairs = [(index, value) for index, value in enumerate(values) if value is not None]
     if len(pairs) < 2:
         return
     x_values = [pair[0] for pair in pairs]
     y_values = [pair[1] for pair in pairs]
     slope, intercept = _linear_fit(x_values, y_values)
     fig.add_trace(go.Scatter(
-        x=x_values,
-        y=[slope * year + intercept for year in x_values],
+        x=[years[index] for index in x_values],
+        y=[slope * index + intercept for index in x_values],
         mode='lines',
         line={'color': theme['text_secondary'], 'width': 1.5, 'dash': 'dot'},
         hoverinfo='skip',

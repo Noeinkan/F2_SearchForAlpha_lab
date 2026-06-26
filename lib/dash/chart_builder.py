@@ -126,6 +126,20 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
             if plot in plot_functions:
                 plot_functions[plot](fig, df, row, 1, config, theme)
 
+        # Force a uniform hover-label style on every trace. In `x unified`
+        # mode Plotly otherwise inherits a per-row text color from each
+        # trace's own line color, which makes dim overlays (e.g. SMA LONG)
+        # render their value text in a color nearly identical to the
+        # tooltip background and effectively invisible. Hard-code white so
+        # the value column is always readable regardless of theme.
+        fig.update_traces(
+            hoverlabel=dict(
+                bgcolor=theme['bg_tertiary'],
+                font=dict(size=12, family=FONT_FAMILY, color='#FFFFFF'),
+                bordercolor=theme['border_primary'],
+            )
+        )
+
         _add_range_selector(fig, theme)
         _update_layout(fig, plot_count, config.get('show_legend', False), config, theme)
         _add_crosshair(fig, plot_count, theme)
@@ -578,7 +592,12 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
     calculated_height = max(500, base_height + (plot_count - 1) * indicator_height)
 
     fig.update_layout(
-        template='plotly_dark',
+        # Skip the plotly_dark template. It was leaking dim font defaults
+        # into the per-trace `<b>` rendering of the unified hover tooltip
+        # and making the date row hard to read. Every needed layout
+        # property (plot_bgcolor, paper_bgcolor, font, hoverlabel) is set
+        # explicitly below.
+        template='none',
         autosize=True,
         height=calculated_height,
         showlegend=show_legend,
@@ -586,6 +605,17 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
         paper_bgcolor=theme['bg_primary'],
         margin=dict(l=60, r=20, t=76 if title_text else 56, b=36),
         font=dict(family=FONT_FAMILY, color=theme['text_primary'], size=12),
+        # Override the plotly_dark template's own hoverlabel defaults so
+        # the unified tooltip text is consistently bright. The template
+        # only sets {'align': 'left'} but its other defaults (notably
+        # font.color) were leaking through the per-trace `<b>` rendering
+        # in `x unified` mode and producing a dim date row.
+        hoverlabel=dict(
+            bgcolor=theme['bg_tertiary'],
+            font=dict(size=12, family=FONT_FAMILY, color='#FFFFFF'),
+            bordercolor=theme['border_primary'],
+            align='left',
+        ),
         title=dict(
             text=title_text,
             x=0.5,
@@ -601,12 +631,6 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             bgcolor='rgba(0,0,0,0)',
             font=dict(size=11, family=FONT_FAMILY)
         ) if show_legend else None,
-        hoverlabel=dict(
-            bgcolor=theme['bg_tertiary'],
-            font_size=11,
-            font_family=FONT_FAMILY,
-            bordercolor=theme['border_primary']
-        )
     )
 
     for i in range(1, plot_count + 1):
@@ -658,11 +682,18 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
 
 
 def _add_crosshair(fig: go.Figure, plot_count: int, theme: dict) -> None:
-    """Add crosshair functionality with spikes on all subplots."""
+    """Add crosshair and unified hover across all subplots.
+
+    With ``hovermode="x unified"`` Plotly consolidates every trace's tooltip
+    into a single vertical column for the hovered x-value, so the user sees
+    the date, OHLC, and every active indicator reading at that bar at a
+    glance. ``hoverdistance``/``spikedistance`` are ignored under
+    ``x unified`` (Plotly snaps to the nearest x) and are intentionally
+    omitted. The tooltip styling itself is set in ``_update_layout`` via
+    ``hoverlabel`` and applies to the unified column as well.
+    """
     fig.update_layout(
-        hovermode="closest",
-        hoverdistance=24,
-        spikedistance=24,
+        hovermode="x unified",
     )
     for i in range(1, plot_count + 1):
         fig.update_xaxes(

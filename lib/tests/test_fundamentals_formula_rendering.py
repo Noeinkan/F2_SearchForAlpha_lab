@@ -94,3 +94,38 @@ def test_all_valuation_metrics_have_symbolic_equation():
         if _build_symbolic_equation(metric) is None
     ]
     assert not missing, f'Missing symbolic equation for: {missing}'
+
+
+def test_render_payload_quarterly_keeps_annual_valuation_and_big_five():
+    from lib.dash.callbacks.fundamentals import _render_payload
+    from lib.dash.dash_config import DEFAULT_THEME, get_theme
+
+    payload = {
+        'ticker': 'TEST',
+        'currency': 'USD',
+        'as_of': '2026-01-01 00:00:00',
+        'last_price': 100.0,
+        'quality_notes': ['All core annual fields available'],
+        'annual': {
+            'years': [2023, 2024],
+            'valuation': [{'metric': 'Entry Price', 'value': '$40.00'}],
+            'big_five': [{'metric': 'Equity-GR', 'unit': '%', '2023': '10.00%', '2024': '10.00%'}],
+            'big_five_note': 'NOTE: Big Five should be >= 10% per year over the last 10 years.',
+        },
+        'quarterly': {
+            'years': ['2024-Q1', '2024-Q2'],
+            'financials': [{
+                'metric': 'Sales (Rev)',
+                'unit': '$mil',
+                '2024-Q1': '$100',
+                '2024-Q2': '$110',
+            }],
+            'chart_series': {'Sales': [100.0, 110.0]},
+        },
+    }
+    rendered = _render_payload(payload, 'quarterly', get_theme(DEFAULT_THEME))
+    text = str(rendered)
+    assert 'Valuation' in text
+    assert 'Big Five' in text
+    assert 'Financials' in text
+    assert '2024-Q2' in text
