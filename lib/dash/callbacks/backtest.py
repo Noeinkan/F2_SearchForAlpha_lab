@@ -196,7 +196,8 @@ def register_backtest_callbacks(app) -> None:
                         delta=f"NO COSTS {baseline_metrics['total_return']:+.2f}%",
                         delta_color=theme['accent_blue'],
                         theme=theme,
-                        info_text=metric_help["Total Return"]
+                        info_text=metric_help["Total Return"],
+                        is_positive=total_return >= 0,
                     ),
                     kpi_cell(
                         "Sharpe",
@@ -205,6 +206,7 @@ def register_backtest_callbacks(app) -> None:
                         delta_color=sharpe_color,
                         theme=theme,
                         info_text=metric_help["Sharpe Ratio"],
+                        is_positive=backtest_results['sharpe_ratio'] >= 1,
                     ),
                     kpi_cell(
                         "Max DD",
@@ -213,6 +215,12 @@ def register_backtest_callbacks(app) -> None:
                         delta_color=drawdown_color,
                         theme=theme,
                         info_text=metric_help["Max Drawdown"],
+                        # Max DD is "controlled" = positive outcome, not
+                        # the raw sign of the number. A -10% drawdown
+                        # is *better* than -25%, so we anchor the
+                        # color/glyph to the threshold check, not the
+                        # number sign.
+                        is_positive=backtest_results['max_drawdown'] >= -20,
                     ),
                     kpi_cell(
                         "Trade Count",
@@ -229,6 +237,7 @@ def register_backtest_callbacks(app) -> None:
                         delta_color=win_rate_color,
                         theme=theme,
                         info_text=metric_help["Win Rate"],
+                        is_positive=backtest_results['win_rate'] >= 50,
                     ),
                     kpi_cell(
                         "Profit Factor",
@@ -237,6 +246,7 @@ def register_backtest_callbacks(app) -> None:
                         delta_color=profit_factor_color,
                         theme=theme,
                         info_text=metric_help["Profit Factor"],
+                        is_positive=backtest_results.get('profit_factor', 0.0) >= 1,
                     ),
                 ], style={
                     'marginTop': '12px',

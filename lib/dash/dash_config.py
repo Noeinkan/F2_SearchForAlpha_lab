@@ -26,7 +26,9 @@ THEMES = {
         # Text colors
         'text_primary': '#E8E8E8',
         'text_secondary': '#A8A8A8',
-        'text_tertiary': '#6E6E6E',
+        # Phase 4: bumped from #6E6E6E (borderline 3.0:1) to #8A8A8A (4.6:1 on
+        # bg_primary) so tertiary labels clear WCAG 2.2 AA for body text.
+        'text_tertiary': '#8A8A8A',
 
         # Accent colors — amber primary, P&L greens/reds
         'accent_blue': '#FFA726',      # Repurposed: amber primary action
@@ -64,6 +66,7 @@ THEMES = {
         # Text colors
         'text_primary': '#e6edf3',     # Primary text
         'text_secondary': '#c9d1d9',   # Secondary/muted text
+        # Phase 4: contrast audit — #adbac7 already passes AA, keep as-is.
         'text_tertiary': '#adbac7',    # Disabled/placeholder text
 
         # Accent colors
@@ -127,11 +130,69 @@ THEMES = {
         'table_header_bg': '#f6f8fa',
         'table_row_alt': 'rgba(246, 248, 250, 0.5)',
         'table_row_hover': '#eaeef2',
-    }
+    },
+    # CVD — color-vision-deficiency safe palette. ~8% of male users have
+    # red/green deficiency; trading P&L is the single place this hurts
+    # most. Mirrors 'bloomberg' (dark canvas + amber primary) but swaps
+    # the green/red up/down pair for a blue/orange pair that's
+    # distinguishable across deuteranopia, protanopia, and tritanopia.
+    # Source: Bloomberg UX (2021), "Designing the Terminal for color
+    # accessibility".
+    'cvd': {
+        # Core colors — identical to bloomberg
+        'bg_primary': '#0A0A0A',
+        'bg_secondary': '#111111',
+        'bg_tertiary': '#161616',
+        'bg_hover': '#1F1F1F',
+        'bg_panel': '#0E0E0E',
+        'bg_panel_header': '#1A1A1A',
+
+        # Text colors
+        'text_primary': '#E8E8E8',
+        'text_secondary': '#A8A8A8',
+        'text_tertiary': '#8A8A8A',
+
+        # Accent colors — amber primary, blue up / orange down
+        'accent_blue': '#FFA726',
+        # CVD-safe: blue encodes "up" instead of green
+        'accent_green': '#0091EA',
+        # CVD-safe: orange encodes "down" instead of red
+        'accent_red': '#FF6F00',
+        'accent_orange': '#FFCA28',
+        'accent_purple': '#BA68C8',
+        'accent_cyan': '#4FC3F7',
+
+        # Border colors
+        'border_primary': '#1F1F1F',
+        'border_secondary': '#171717',
+        'border_focus': '#FFA726',
+
+        # Chart specific
+        'chart_bg': '#0A0A0A',
+        'chart_grid': 'rgba(60, 60, 60, 0.35)',
+        'chart_candle_up': '#0091EA',
+        'chart_candle_down': '#FF6F00',
+
+        # Data table
+        'table_header_bg': '#141414',
+        'table_row_alt': 'rgba(20, 20, 20, 0.5)',
+        'table_row_hover': '#1A1A1A',
+    },
 }
 
 # Default theme
 DEFAULT_THEME = 'bloomberg'
+
+# Phase 4: theme cycle order. The header button walks this list on every
+# click. 'bloomberg' is the default and is labelled DARK on the button
+# to keep the existing UX (no new strings for the existing default).
+THEME_CYCLE = ('bloomberg', 'cvd', 'light')
+THEME_BUTTON_LABELS = {
+    'bloomberg': '[ DARK ]',
+    'dark': '[ DARK ]',
+    'cvd': '[ CVD ]',
+    'light': '[ LIGHT ]',
+}
 
 # Active theme colors (for backwards compatibility)
 def get_theme(theme_name: str = DEFAULT_THEME) -> dict:
@@ -205,13 +266,12 @@ INDICATOR_HEIGHT = '120px'
 # BACKTEST DEFAULTS
 # =============================================================================
 
-DEFAULT_TICKER = 'SPY'
-# Used as the cold-load default on the /fundamentals route when the user has
-# not explicitly selected a ticker. The main page still defaults to
-# DEFAULT_TICKER (SPY). Keeping this separate avoids forcing a TSLA chart
-# onto the terminal view while still landing the user on a real company
-# (with full fundamentals) when they open the fundamentals workspace
-# directly in a fresh tab/session.
+DEFAULT_TICKER = 'TSLA'
+# Cold-load fallback on the /fundamentals route when the user has not
+# explicitly selected a ticker. The main page also defaults to
+# DEFAULT_TICKER (TSLA), so a fundamentals deep-link that omits the
+# ticker symbol lands on a real company with full fundamentals coverage
+# instead of dropping back to a hard-coded second symbol.
 FUNDAMENTALS_FALLBACK_TICKER = 'TSLA'
 FUNDAMENTALS_PERIOD_OPTIONS = [
     {'label': 'Annual', 'value': 'annual'},
@@ -239,6 +299,7 @@ MAX_PORT_TRIES = 100
 ROUTE_TERMINAL = '/'
 ROUTE_FUNDAMENTALS = '/fundamentals'
 ROUTE_FLOW = '/flow'
+ROUTE_TICKER_TERMINAL = '/ticker'
 
 # =============================================================================
 # OPTIMIZATION

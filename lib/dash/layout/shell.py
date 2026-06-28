@@ -1,0 +1,212 @@
+"""
+Top-level layout composer. Walks the page once and emits every store,
+interval, hidden preload div, plus the four visible regions.
+
+Keeping this in a single builder avoids the dual-walk bug where two
+callbacks could observe different sets of `dcc.Store` ids if the stores
+were defined in different files.
+"""
+
+from dash import dcc, html
+from dash.exceptions import PreventUpdate
+import dash_mantine_components as dmc
+
+from lib.dash.dash_config import (
+    DEFAULT_THEME, DEFAULT_FUNDAMENTALS_PERIOD,
+    DEFAULT_INDICATOR_SETTINGS,
+)
+from lib.dash.styles import get_styles
+
+from .header import _create_header, _create_status_bar
+from .overlays import _create_fundamentals_overlay, _create_flow_overlay
+from .sidebar import _create_sidebar
+from .chart_area import _create_chart_area
+from .right_panel import _create_right_panel
+from .command_palette import _create_command_palette
+
+# Optional TradingView lightweight chart wrapper. Not all environments will
+# have `dash_tvlwc` installed (it's an optional dependency). Provide a safe
+# fallback so the app can run without the package. Phase 6 removes this and
+# the related preload div + chart_library toggle.
+try:
+    from dash_tvlwc import Tvlwc  # type: ignore[reportMissingImports]
+except Exception:
+    def Tvlwc(*args, **kwargs):
+        # Return a minimal placeholder component. The caller often places this
+        # inside a hidden element (preload) or expects an html.Component
+        # returned from callbacks, so return a Div that makes failure visible
+        # but does not crash the app.
+        return html.Div("TradingView component not installed (dash_tvlwc).", style={'display': 'none'})
+
+
+def create_dashboard_layout(theme: dict) -> html.Div:
+    """Create the main dashboard layout."""
+    styles = get_styles(theme)
+
+    content = html.Div([
+        dcc.Location(id='app-url', refresh=False),
+        # Hidden stores
+        dcc.Store(id='theme-store', data=DEFAULT_THEME, storage_type='local'),
+        dcc.Store(id='data-loaded-store', data=False),
+        dcc.Store(id='layout-store', data={}),
+        dcc.Store(id='presets-store', data={'presets': {}}),
+        dcc.Store(id='active-preset-name', data=None),
+        dcc.Store(id='preset-apply-store', data=None),
+        dcc.Store(id='active-tab-store', data='backtest', storage_type='local'),
+        dcc.Store(id='optimization-running', data=False),
+        dcc.Store(id='optimization-state', data={
+            'running': False,
+            'current_index': 0,
+            'total_combinations': 0,
+            'completed': False,
+            'sort_by': 'Total_Return_%',
+            'sort_ascending': False
+        }),
+        dcc.Store(id='optimization-results-store', data=[]),
+        dcc.Store(id='signals-unified-store', data=[]),
+        dcc.Store(id='indicator-settings-store', data=DEFAULT_INDICATOR_SETTINGS),
+        dcc.Store(id='active-indicator-store', data=None),
+        dcc.Store(id='export-img-store', data=None),
+        dcc.Store(id='fundamentals-store', data=None, storage_type='session'),
+        dcc.Store(id='fundamentals-period-store', data=DEFAULT_FUNDAMENTALS_PERIOD, storage_type='session'),
+        # Tracks tickers the user has explicitly selected. Stays None until
+        # the user changes the dropdown, so the fundamentals callback can
+        # distinguish a cold direct load (no selection yet) from a
+        # genuine user choice.
+        dcc.Store(id='user-ticker-store', data=None, storage_type='session'),
+        dcc.Store(id='route-ticker-store', data=None, storage_type='session'),
+        dcc.Input(id='fundamentals-esc-signal', type='text', value='', style={'display': 'none'}),
+        dcc.Download(id='download-csv'),
+        dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
+        dcc.Interval(id='autoload-interval', interval=1000, max_intervals=1),
+        dcc.Interval(id='optimization-interval', interval=500, disabled=True, n_intervals=0),
+        dcc.Store(id='flow-state-store', data={'last_scan_at': None, 'tickers': []}, storage_type='session'),
+        dcc.Interval(id='flow-rescan-interval', interval=2000, max_intervals=1, disabled=True),
+
+        # Phase 2 — collapsible sidebars + splitter
+        dcc.Store(id='sidebar-collapsed', data=False, storage_type='session'),
+        dcc.Store(id='right-panel-collapsed', data=False, storage_type='session'),
+        dcc.Store(id='right-panel-width', data=None, storage_type='session'),
+        dcc.Input(id='right-panel-width-input', type='number', value='', style={'display': 'none'}),
+        html.Div(id='layout-class-sync', style={'display': 'none'}),
+        html.Div(id='right-panel-width-sync', style={'display': 'none'}),
+        html.Div(id='splitter-bind-trigger', style={'display': 'none'}),
+
+        # Keyboard shortcut listener
+        html.Div(id='keyboard-listener', style={'display': 'none'}),
+        html.Div(id='theme-class-sync', style={'display': 'none'}),
+
+        # Phase 5 — command palette. The modal lives at the bottom of the
+        # shell so it stacks above every overlay. `is_open` is driven by
+        # the `command-palette-open` store. The visible rows are computed
+        # by the clientside filter from `command-palette-visible` and the
+        # full command seed in `command-palette-commands`.
+        # Memory (not session) storage so the palette always starts CLOSED
+        # on a fresh page load — a stale `True` in sessionStorage used to
+        # make the palette pop open on every reload.
+        dcc.Store(id='command-palette-open', data=False),
+        dcc.Store(id='command-palette-commands', data=[]),
+        dcc.Store(id='command-palette-visible', data=[]),
+        dcc.Store(id='command-palette-dispatch', data=None),
+        dcc.Store(id='command-palette-bridge', data=None),
+        dcc.Store(id='sfa-palette-esc-trigger', data=None),
+        html.Div(id='command-palette-search-sync', style={'display': 'none'}),
+
+        html.Div([
+            _create_header(styles, theme),
+            html.Div([
+                _create_sidebar(styles, theme),
+                _create_chart_area(styles, theme),
+                # Phase 4: tabIndex + role make the splitter keyboard-resizable
+                # (left/right arrow keys) in addition to the existing mousedown
+                # drag. The clientside bind in callbacks/layout.py adds the
+                # keydown listener on the element.
+                html.Div(
+                    id='right-panel-splitter',
+                    className='sfa-splitter',
+                    n_clicks=0,
+                    tabIndex=0,
+                    role='separator',
+                    **{'aria-label': 'Resize right panel', 'aria-orientation': 'vertical'},
+                ),
+                _create_right_panel(styles, theme),
+            ], style=styles['main_container']),
+            _create_status_bar(styles, theme),
+        ], id='terminal-shell'),
+
+        _create_fundamentals_overlay(styles, theme),
+        _create_flow_overlay(styles, theme),
+
+        # Phase 5 — command palette modal (must be the LAST child so it
+        # stacks above every overlay).
+        _create_command_palette(styles, theme),
+
+        # Hidden elements
+        html.Div(id='hidden-output', style={'display': 'none'}),
+        html.Div(
+            Tvlwc(
+                id='tv-preload',
+                seriesData=[[]],
+                seriesTypes=['candlestick'],
+                seriesOptions=[{}],
+                seriesMarkers=[[]],
+                width=1,
+                height=1
+            ),
+            style={'display': 'none'}
+        ),
+
+    ], style=styles['app'], id='app-container')
+
+    # Wrap with MantineProvider so dmc.Select renders with our Bloomberg-amber theme.
+    # dmc.MantineProvider must wrap the entire layout tree for Mantine context to be
+    # available to all dmc.* components (in particular dmc.Select used for ticker search).
+    return dmc.MantineProvider(
+        content,
+        theme={
+            "primaryColor": "orange",
+            "fontFamily": 'Source Sans 3, system-ui, sans-serif',
+            "defaultRadius": "xs",
+            "colors": {
+                # Override orange scale with Bloomberg amber (#FFA726) accents.
+                "orange": [
+                    "#FFF3E0", "#FFE0B2", "#FFCC80", "#FFB74D", "#FFA726",
+                    "#FB8C00", "#F57C00", "#EF6C00", "#E65100", "#B87420",
+                ],
+            },
+        },
+        forceColorScheme="dark",
+    )
+
+
+def wire_command_palette_is_open(app):
+    """Bind the `is_open` prop on the modal to the open/close store.
+
+    Called from `integrated_dashboard.py` after `app.layout` is set so the
+    callback is registered exactly once. Kept out of the layout builder
+    so the layout function remains pure (no callback side-effects).
+    """
+    from dash.dependencies import Input, Output
+
+    @app.callback(
+        Output('command-palette', 'is_open'),
+        [Input('command-palette-open', 'data')],
+        prevent_initial_call=False,
+    )
+    def _sync_palette_is_open(open_state):
+        return bool(open_state)
+
+    @app.callback(
+        Output('command-palette-query', 'value', allow_duplicate=True),
+        Input('command-palette-open', 'data'),
+        prevent_initial_call=True,
+    )
+    def _clear_palette_query_on_close(open_state):
+        """Reset the search box when the palette closes.
+
+        Ensures the next open starts with the full list, not a stale
+        query from the previous session.
+        """
+        if open_state:
+            raise PreventUpdate
+        return ''

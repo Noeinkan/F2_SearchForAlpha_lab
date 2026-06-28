@@ -76,6 +76,7 @@ def get_styles(theme: dict) -> dict:
             'display': 'flex',
             'height': f'calc(100vh - {HEADER_HEIGHT} - 24px)',
             'overflow': 'hidden',
+            'minWidth': 0,
         },
         'sidebar': {
             'width': SIDEBAR_WIDTH,
@@ -192,7 +193,9 @@ def get_styles(theme: dict) -> dict:
             'fontFamily': FONT_FAMILY,
         },
         'chart_container': {
-            'flex': 1,
+            'flex': '1 1 0',
+            'minWidth': 0,
+            'width': '100%',
             'display': 'flex',
             'flexDirection': 'column',
             'overflow': 'hidden',
@@ -212,9 +215,11 @@ def get_styles(theme: dict) -> dict:
             'flexWrap': 'wrap',
         },
         'chart_area': {
-            'flex': 1,
+            'flex': '1 1 0',
+            'minWidth': 0,
             'padding': '0',
             'overflow': 'hidden',
+            'position': 'relative',
         },
         'signal_count_bar': {
             'position': 'absolute',

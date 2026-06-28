@@ -4,14 +4,13 @@ Startup callbacks for the dashboard.
 
 import logging
 
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.data_processing import get_all_tickers
-from lib.dash.dash_config import PRESET_FILE_PATH
+from lib.dash.dash_config import DEFAULT_TICKER, PRESET_FILE_PATH
+from lib.dash.routes import is_ticker_terminal_route
 from lib.dash.preset_storage import load_presets
-from lib.dash.state import dashboard_state
-from lib.dash.ticker_search import build_ticker_options
+from lib.dash.ticker_search import dmc_ticker_select_data, ensure_ticker_options_loaded
 from lib.dash.callbacks.shared import _format_preset_options
 
 logger = logging.getLogger(__name__)
@@ -23,46 +22,32 @@ _TICKER_DROPDOWN = 'ticker-dropdown'
 
 
 def _ensure_ticker_options_loaded() -> list:
-    """Load (and cache) the full ticker options list for free-text resolution.
-
-    Returns a list of {value, label, search} dicts. Used by fundamentals
-    callbacks to map user-typed queries to a known symbol.
-    """
-    if dashboard_state.ticker_dropdown_options is not None:
-        return dashboard_state.ticker_dropdown_options
-
-    try:
-        dashboard_state.all_tickers_df = get_all_tickers()
-        dashboard_state.ticker_dropdown_options = build_ticker_options(
-            dashboard_state.all_tickers_df
-        )
-        return dashboard_state.ticker_dropdown_options
-    except Exception as e:
-        logger.error(f"Error fetching tickers: {e}")
-        return [{"value": "SPY", "label": "SPY - SPDR S&P 500 ETF", "search": "spy spdr s&p 500 etf"}]
-
-
-def _ticker_data_for_dmc() -> list:
-    """Build the data list for dmc.Select from the loaded tickers index.
-
-    dmc.Select accepts a flat list of {"value", "label"} dicts. The label
-    already includes the company name (e.g. "ABT - Abbott Laboratories"),
-    so client-side filtering matches by both symbol and company name.
-    """
-    options = _ensure_ticker_options_loaded()
-    return [{"value": opt["value"], "label": opt["label"]} for opt in options]
+    """Back-compat alias used by fundamentals callbacks."""
+    return ensure_ticker_options_loaded()
 
 
 def register_startup_callbacks(app) -> None:
     @app.callback(
-        Output("ticker-dropdown", "data"),
+        [Output("ticker-dropdown", "data"),
+         Output("ticker-dropdown", "value", allow_duplicate=True)],
         Input("startup-interval", "n_intervals"),
+        State("ticker-dropdown", "value"),
+        # Dash 4.x: allow_duplicate=True requires an explicit
+        # prevent_initial_call sentinel so the framework can acknowledge
+        # that two callbacks may write the same Output on the first tick.
+        # 'initial_duplicate' matches the sibling callback below.
+        prevent_initial_call='initial_duplicate',
     )
-    def populate_tickers(_n_intervals):
-        """Populate the dmc.Select once on startup; filtering is client-side."""
+    def populate_tickers(_n_intervals, current_value):
+        """Populate the dmc.Select once on startup; restore value after data refresh."""
         if _n_intervals is None:
             raise PreventUpdate
-        return _ticker_data_for_dmc()
+        data = dmc_ticker_select_data()
+        known = {str(row.get("value", "")).upper() for row in data}
+        value = str(current_value or DEFAULT_TICKER).strip().upper()
+        if value not in known:
+            value = DEFAULT_TICKER if DEFAULT_TICKER in known else data[0]["value"]
+        return data, value
 
     @app.callback(
         [Output('presets-store', 'data'),
@@ -91,8 +76,29 @@ def register_startup_callbacks(app) -> None:
         prevent_initial_call=True keeps the initial page-default value out
         of the store so cold /fundamentals loads can detect "no user
         selection yet" and fall back to a real company (TSLA) instead of
-        the page default (SPY).
+        the page default (TSLA).
         """
         if not ticker:
             raise PreventUpdate
         return str(ticker).strip().upper()
+
+    @app.callback(
+        Output(_TICKER_DROPDOWN, 'value', allow_duplicate=True),
+        Input('route-ticker-store', 'data'),
+        [State(_USER_TICKER_STORE, 'data'),
+         State('app-url', 'pathname')],
+        # Dash 4.x: combining allow_duplicate=True with a non-True
+        # prevent_initial_call requires the explicit 'initial_duplicate'
+        # sentinel to acknowledge that ordering across duplicate callbacks
+        # is not guaranteed.
+        prevent_initial_call='initial_duplicate',
+    )
+    def apply_route_ticker_to_dropdown(path_ticker, user_ticker, pathname):
+        """Sync terminal dropdown from /ticker/<sym> deep-links."""
+        if not path_ticker:
+            raise PreventUpdate
+        if user_ticker:
+            raise PreventUpdate
+        if not is_ticker_terminal_route(pathname):
+            raise PreventUpdate
+        return str(path_ticker).strip().upper()

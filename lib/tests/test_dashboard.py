@@ -23,6 +23,8 @@ from lib.dash.dash_config import (
     PLOT_INDICATOR_OPTIONS,
     PLOT_OPTIONS,
     CHART_ELEMENT_OPTIONS,
+    THEME_BUTTON_LABELS,
+    THEME_CYCLE,
     get_theme,
     THEMES,
 )
@@ -85,6 +87,12 @@ def dark_theme():
 def light_theme():
     """Get light theme configuration."""
     return get_theme('light')
+
+
+@pytest.fixture
+def cvd_theme():
+    """Get CVD (color-vision-deficiency safe) theme."""
+    return get_theme('cvd')
 
 
 # =============================================================================
@@ -300,11 +308,24 @@ class TestComponents:
         """Test metric card with positive indicator."""
         card = build_metric_card("Return", "+15%", is_positive=True, theme=dark_theme)
         assert card is not None
+        # Phase 4: arrow glyph injected so the direction is not color-only.
+        value_node = card.children[1]
+        assert '\u25b2' in str(value_node.children)  # ▲
 
     def test_build_metric_card_negative(self, dark_theme):
         """Test metric card with negative indicator."""
         card = build_metric_card("Drawdown", "-5%", is_positive=False, theme=dark_theme)
         assert card is not None
+        # Phase 4: arrow glyph injected so the direction is not color-only.
+        value_node = card.children[1]
+        assert '\u25bc' in str(value_node.children)  # ▼
+
+    def test_build_metric_card_neutral_no_arrow(self, dark_theme):
+        """Neutral cards (is_positive=None) must not get an arrow — would be noise."""
+        card = build_metric_card("Volume", "1,234", theme=dark_theme)
+        value_node = card.children[1]
+        assert '\u25b2' not in str(value_node.children)
+        assert '\u25bc' not in str(value_node.children)
 
     def test_build_status_badge(self, dark_theme):
         """Test status badge creation."""
@@ -336,6 +357,125 @@ class TestComponents:
         """Test indeterminate progress bar."""
         progress = build_progress_bar(0, "Processing...", indeterminate=True, theme=dark_theme)
         assert progress is not None
+
+
+# =============================================================================
+# PHASE 4 — THEME CYCLE / CVD / ACCESSIBILITY TESTS
+# =============================================================================
+
+class TestCvdTheme:
+    """Phase 4 — color-vision-deficiency safe theme.
+
+    The CVD theme mirrors the bloomberg theme except the up/down pair
+    is blue/orange (instead of green/red). Tests guard the structural
+    invariant: only ``accent_green`` and ``accent_red`` (plus the
+    chart candle colours) should differ between bloomberg and cvd;
+    everything else (text, borders, accent_blue) must be identical.
+    """
+
+    def test_cvd_theme_registered(self):
+        assert 'cvd' in THEMES
+
+    def test_cvd_up_is_blue_not_green(self):
+        cvd = get_theme('cvd')
+        bloomberg = get_theme('bloomberg')
+        # CVD up = #0091EA (blue); bloomberg up = #26C281 (green).
+        assert cvd['accent_green'] == '#0091EA'
+        assert bloomberg['accent_green'] != cvd['accent_green']
+
+    def test_cvd_down_is_orange_not_red(self):
+        cvd = get_theme('cvd')
+        bloomberg = get_theme('bloomberg')
+        # CVD down = #FF6F00 (orange); bloomberg down = #EF5350 (red).
+        assert cvd['accent_red'] == '#FF6F00'
+        assert bloomberg['accent_red'] != cvd['accent_red']
+
+    def test_cvd_candle_palette_matches(self, cvd_theme):
+        """Candle up/down must mirror the accent_green/accent_red swap."""
+        assert cvd_theme['chart_candle_up'] == cvd_theme['accent_green']
+        assert cvd_theme['chart_candle_down'] == cvd_theme['accent_red']
+
+    def test_cvd_preserves_bloomberg_chrome(self, cvd_theme, dark_theme):
+        """The amber primary, text, and border palette must NOT change."""
+        bloomberg = get_theme('bloomberg')
+        for key in ('bg_primary', 'bg_secondary', 'bg_tertiary', 'bg_panel',
+                    'bg_panel_header', 'text_primary', 'text_secondary',
+                    'text_tertiary', 'accent_blue', 'accent_orange',
+                    'accent_purple', 'accent_cyan', 'border_primary',
+                    'border_secondary', 'border_focus', 'chart_bg'):
+            assert cvd_theme[key] == bloomberg[key], f"{key} must match bloomberg"
+
+
+class TestThemeCycle:
+    """Phase 4 — the theme toggle now cycles DARK → CVD → LIGHT → DARK."""
+
+    def test_cycle_includes_cvd(self):
+        assert 'cvd' in THEME_CYCLE
+
+    def test_cycle_starts_at_default(self):
+        assert THEME_CYCLE[0] == DEFAULT_THEME
+
+    def test_cycle_includes_light(self):
+        assert 'light' in THEME_CYCLE
+
+    def test_button_label_for_every_cycle_member(self):
+        for theme_name in THEME_CYCLE:
+            assert theme_name in THEME_BUTTON_LABELS
+            label = THEME_BUTTON_LABELS[theme_name]
+            # Phase 4 contract: each label is bracketed uppercase so it
+            # visually matches the existing button chrome.
+            assert label.startswith('[') and label.endswith(']')
+            assert label == label.upper()
+
+    def test_cycle_advances_through_cvd(self):
+        """Walking the cycle from default must hit CVD and then LIGHT."""
+        idx = THEME_CYCLE.index(DEFAULT_THEME)
+        next_theme = THEME_CYCLE[(idx + 1) % len(THEME_CYCLE)]
+        assert next_theme == 'cvd'
+        next_next = THEME_CYCLE[(idx + 2) % len(THEME_CYCLE)]
+        assert next_next == 'light'
+        # And wrapping back to default.
+        wrapped = THEME_CYCLE[(idx + 3) % len(THEME_CYCLE)]
+        assert wrapped == DEFAULT_THEME
+
+
+class TestAccessibility:
+    """Phase 4 — redundant signs/arrows on P&L, focusable splitter."""
+
+    def test_metric_card_injects_sign_aware_value(self, dark_theme):
+        """Positive + signed value drops the redundant sign before adding arrow."""
+        card = build_metric_card("Return", "+15%", is_positive=True, theme=dark_theme)
+        rendered = str(card.children[1].children)
+        # We stripped the '+' then prepended the arrow, so the visible
+        # text is "▲ 15%" — never "▲ +15%".
+        assert '▲ 15%' in rendered
+
+    def test_metric_card_injects_down_arrow_signed(self, dark_theme):
+        card = build_metric_card("Drawdown", "-5%", is_positive=False, theme=dark_theme)
+        rendered = str(card.children[1].children)
+        assert '▼ 5%' in rendered
+
+    def test_metric_card_handles_unsigned_value(self, dark_theme):
+        """If the caller passes '15%' (no sign), the arrow is still added."""
+        card = build_metric_card("Return", "15%", is_positive=True, theme=dark_theme)
+        rendered = str(card.children[1].children)
+        assert '▲ 15%' in rendered
+
+    def test_kpi_cell_optional_positive_flag(self, dark_theme):
+        """kpi_cell accepts is_positive without breaking existing callers."""
+        from lib.dash.components import kpi_cell
+        cell_pos = kpi_cell("Return", "+12.50%", is_positive=True, theme=dark_theme)
+        cell_neg = kpi_cell("DD", "-5.00%", is_positive=False, theme=dark_theme)
+        cell_neu = kpi_cell("Trades", "1,234", theme=dark_theme)
+        assert cell_pos is not None
+        assert cell_neg is not None
+        assert cell_neu is not None
+        # The value div is the second child.
+        assert '\u25b2' in str(cell_pos.children[1].children)
+        assert '\u25bc' in str(cell_neg.children[1].children)
+        # Neutral: no arrow.
+        assert '\u25b2' not in str(cell_neu.children[1].children)
+        assert '\u25bc' not in str(cell_neu.children[1].children)
 
 
 # =============================================================================

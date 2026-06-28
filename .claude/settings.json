@@ -13,7 +13,8 @@
       "Bash(ssh -o StrictHostKeyChecking=no root@77.42.70.26 \"git clone https://github.com/Noeinkan/F2_SearchForAlpha_lab.git /opt/searchforalpha 2>&1 || echo 'clone failed'\")",
       "Bash(ssh -o StrictHostKeyChecking=no root@77.42.70.26 \"mkdir -p /opt/searchforalpha\")",
       "Bash(rsync -av --progress --exclude .venv --exclude __pycache__ --exclude '*.pyc' --exclude .pytest_cache --exclude results/ --exclude export/ --exclude '*.pbix' /c/Users/andre/Downloads/F2_SearchForAlpha_lab/ root@77.42.70.26:/opt/searchforalpha/)",
-      "Bash(scp -r /c/Users/andre/Downloads/F2_SearchForAlpha_lab/lib /c/Users/andre/Downloads/F2_SearchForAlpha_lab/config /c/Users/andre/Downloads/F2_SearchForAlpha_lab/main.py /c/Users/andre/Downloads/F2_SearchForAlpha_lab/pyproject.toml /c/Users/andre/Downloads/F2_SearchForAlpha_lab/requirements.txt /c/Users/andre/Downloads/F2_SearchForAlpha_lab/AGENTS.md /c/Users/andre/Downloads/F2_SearchForAlpha_lab/.env /c/Users/andre/Downloads/F2_SearchForAlpha_lab/sfa.cmd root@77.42.70.26:/opt/searchforalpha/)"
+      "Bash(scp -r /c/Users/andre/Downloads/F2_SearchForAlpha_lab/lib /c/Users/andre/Downloads/F2_SearchForAlpha_lab/config /c/Users/andre/Downloads/F2_SearchForAlpha_lab/main.py /c/Users/andre/Downloads/F2_SearchForAlpha_lab/pyproject.toml /c/Users/andre/Downloads/F2_SearchForAlpha_lab/requirements.txt /c/Users/andre/Downloads/F2_SearchForAlpha_lab/AGENTS.md /c/Users/andre/Downloads/F2_SearchForAlpha_lab/.env /c/Users/andre/Downloads/F2_SearchForAlpha_lab/sfa.cmd root@77.42.70.26:/opt/searchforalpha/)",
+      "Bash(python -c \"import dash; print\\(dash.__version__\\)\")"
     ]
   }
 }

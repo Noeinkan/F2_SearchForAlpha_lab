@@ -684,6 +684,13 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             xanchor='left'
         )
 
+    # make_subplots(shared_xaxes=True) makes the bottom axis the reference and
+    # points the primary x-axis at it (e.g. xaxis.matches='x5'). We instead
+    # want the primary 'x' to be the reference (all traces are reassigned to
+    # xaxis='x' for unified hover), so clear row 1's matches and point every
+    # other row at 'x'. Leaving xaxis.matches set creates an x->xN->x cycle
+    # that plotly breaks by corrupting the primary range, blanking the chart.
+    fig.update_xaxes(matches=None, row=1, col=1)
     for i in range(2, plot_count + 1):
         fig.update_xaxes(matches='x', row=i, col=1)
 

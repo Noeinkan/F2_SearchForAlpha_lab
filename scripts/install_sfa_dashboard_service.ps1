@@ -2,7 +2,7 @@ param(
     [string]$Server = "root@77.42.70.26",
     [string]$Remote = "/opt/searchforalpha",
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_ed25519",
-    [int]$Port = 8060,
+    [int]$Port = 8765,
     [string]$BindHost = "0.0.0.0"
 )
 

@@ -615,12 +615,14 @@ def _clean_period_prices(period_prices: pd.Series | None, *, period: PeriodMode 
                 timestamp = pd.Timestamp(index)
                 normalized.append((timestamp.year, timestamp.quarter))
         prices.index = pd.Index(normalized, dtype="object")
+        if prices.index.duplicated().any():
+            prices = prices.groupby(prices.index).last()
     else:
         prices.index = [
             int(pd.Timestamp(index).year) if not isinstance(index, (int, np.integer)) else int(index)
             for index in prices.index
         ]
-    prices = prices.groupby(level=0).last()
+        prices = prices.groupby(level=0).last()
     ordered = sorted(prices.index, key=_period_sort_key)
     return prices.reindex(ordered).astype(float)
 

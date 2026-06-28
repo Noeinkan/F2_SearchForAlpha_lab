@@ -1,0 +1,198 @@
+"""
+Phase 2 layout callbacks — collapsible sidebars + right-panel splitter.
+
+Server side only flips session-store booleans. Clientside callbacks mirror
+those flags onto the DOM and wire up the splitter drag so CSS in
+`dashboard.css` does all the visual work without a server roundtrip.
+"""
+
+from dash import callback_context, no_update
+from dash.dependencies import Input, Output, State
+from dash.exceptions import PreventUpdate
+
+
+def register_layout_callbacks(app) -> None:
+    @app.callback(
+        Output('sidebar-collapsed', 'data'),
+        Input('sidebar-toggle-btn', 'n_clicks'),
+        State('sidebar-collapsed', 'data'),
+        prevent_initial_call=True,
+    )
+    def toggle_sidebar(n_clicks, current):
+        if not n_clicks:
+            raise PreventUpdate
+        return not bool(current)
+
+    @app.callback(
+        Output('right-panel-collapsed', 'data'),
+        Input('right-panel-toggle-btn', 'n_clicks'),
+        State('right-panel-collapsed', 'data'),
+        prevent_initial_call=True,
+    )
+    def toggle_right_panel(n_clicks, current):
+        if not n_clicks:
+            raise PreventUpdate
+        return not bool(current)
+
+    # Mirror the collapsed flags onto the DOM. On viewports <1180px the right
+    # panel is a slide-out drawer (`sfa-open` controls translateX).
+    app.clientside_callback(
+        """
+        function(sidebarCollapsed, rightCollapsed) {
+            const sidebar = document.querySelector('aside.sfa-sidebar');
+            const right = document.querySelector('aside.sfa-right-panel');
+            if (sidebar) {
+                sidebar.classList.toggle('sfa-collapsed', !!sidebarCollapsed);
+            }
+            if (right) {
+                right.classList.toggle('sfa-collapsed', !!rightCollapsed);
+                right.classList.toggle('sfa-open', !rightCollapsed);
+            }
+            return window.dash_clientside.no_update;
+        }
+        """,
+        Output('layout-class-sync', 'children'),
+        [Input('sidebar-collapsed', 'data'),
+         Input('right-panel-collapsed', 'data')],
+    )
+
+    # Splitter drag — written into a hidden dcc.Input by the clientside handler,
+    # then read by the server callback that mirrors it into the session store.
+    @app.callback(
+        Output('right-panel-width', 'data'),
+        Input('right-panel-width-input', 'value'),
+        prevent_initial_call=True,
+    )
+    def persist_right_panel_width(value):
+        if not value:
+            raise PreventUpdate
+        try:
+            width = int(value)
+        except (TypeError, ValueError):
+            raise PreventUpdate
+        if width < 240 or width > 560:
+            raise PreventUpdate
+        return width
+
+    # Re-apply the persisted width on initial load (and whenever the splitter
+    # commits a new value). Skip when collapsed — width:0 already wins there.
+    app.clientside_callback(
+        """
+        function(width) {
+            if (!width) { return window.dash_clientside.no_update; }
+            const right = document.querySelector('aside.sfa-right-panel');
+            if (!right || right.classList.contains('sfa-collapsed')) {
+                return window.dash_clientside.no_update;
+            }
+            right.style.width = width + 'px';
+            right.style.minWidth = width + 'px';
+            if (window.Plotly) {
+                const graph = document.getElementById('financial-chart');
+                if (graph) {
+                    setTimeout(function() { window.Plotly.Plots.resize(graph); }, 0);
+                }
+            }
+            return window.dash_clientside.no_update;
+        }
+        """,
+        Output('right-panel-width-sync', 'children'),
+        Input('right-panel-width', 'data'),
+    )
+
+    # One-shot bind of the splitter drag listeners. Idempotent via a flag on
+    # the splitter element. Clientside uses mousedown on the handle and
+    # mousemove/mouseup on document.
+    app.clientside_callback(
+        """
+        function(n_intervals) {
+            const splitter = document.getElementById('right-panel-splitter');
+            const right = document.querySelector('aside.sfa-right-panel');
+            if (!splitter || !right || splitter._sfaBound) {
+                return window.dash_clientside.no_update;
+            }
+            splitter._sfaBound = true;
+            let dragging = false;
+            let startX = 0;
+            let startWidth = 0;
+
+            // Phase 4: keyboard resize — the splitter now has tabIndex=0 and
+            // role="separator" so users navigating by keyboard can resize
+            // the right panel with Left/Right arrow keys (8px step; Shift
+            // multiplies by 4 for a 32px step). The persistent-width
+            // commit happens on keyup so we don't hammer the server.
+            splitter.addEventListener('keydown', function(e) {
+                if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') { return; }
+                e.preventDefault();
+                const current = parseInt(right.style.width, 10)
+                    || right.getBoundingClientRect().width;
+                const step = e.shiftKey ? 32 : 8;
+                const dx = e.key === 'ArrowLeft' ? step : -step;  // wider on Left
+                const next = Math.min(560, Math.max(240, current + dx));
+                right.style.width = next + 'px';
+                right.style.minWidth = next + 'px';
+                if (window.Plotly) {
+                    const graph = document.getElementById('financial-chart');
+                    if (graph) { window.Plotly.Plots.resize(graph); }
+                }
+            });
+            splitter.addEventListener('keyup', function() {
+                const finalWidth = parseInt(right.style.width, 10) || 0;
+                if (!finalWidth) { return; }
+                const input = document.getElementById('right-panel-width-input');
+                if (input) {
+                    const native = Object.getOwnPropertyDescriptor(
+                        window.HTMLInputElement.prototype, 'value'
+                    );
+                    if (native && native.set) { native.set.call(input, String(finalWidth)); }
+                    else { input.value = String(finalWidth); }
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+
+            splitter.addEventListener('mousedown', function(e) {
+                dragging = true;
+                startX = e.clientX;
+                startWidth = right.getBoundingClientRect().width;
+                splitter.classList.add('dragging');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                e.preventDefault();
+            });
+            document.addEventListener('mousemove', function(e) {
+                if (!dragging) { return; }
+                const dx = startX - e.clientX;  // dragging left => wider
+                const next = Math.min(560, Math.max(240, startWidth + dx));
+                right.style.width = next + 'px';
+                right.style.minWidth = next + 'px';
+                if (window.Plotly) {
+                    const graph = document.getElementById('financial-chart');
+                    if (graph) { window.Plotly.Plots.resize(graph); }
+                }
+            });
+            document.addEventListener('mouseup', function() {
+                if (!dragging) { return; }
+                dragging = false;
+                splitter.classList.remove('dragging');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                const finalWidth = parseInt(right.style.width, 10) || 0;
+                if (finalWidth) {
+                    const input = document.getElementById('right-panel-width-input');
+                    if (input) {
+                        const native = Object.getOwnPropertyDescriptor(
+                            window.HTMLInputElement.prototype, 'value'
+                        );
+                        if (native && native.set) { native.set.call(input, String(finalWidth)); }
+                        else { input.value = String(finalWidth); }
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                }
+            });
+            return window.dash_clientside.no_update;
+        }
+        """,
+        Output('splitter-bind-trigger', 'children'),
+        Input('startup-interval', 'n_intervals'),
+    )
+
+    _ = callback_context

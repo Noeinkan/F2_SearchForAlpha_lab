@@ -6,25 +6,64 @@ from dash import callback_context, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.dash.dash_config import DEFAULT_THEME, ROUTE_FUNDAMENTALS, ROUTE_TERMINAL, get_theme
-from lib.dash.routes import is_fundamentals_route, is_flow_route
+from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_TERMINAL, get_theme
+from lib.dash.routes import (
+    build_fundamentals_path,
+    extract_path_ticker,
+    is_fundamentals_route,
+    is_flow_route,
+)
 
 
 def register_routing_callbacks(app) -> None:
+    # Flask serves the same Dash shell for /fundamentals/TSLA etc. The server
+    # renders app-url.pathname as "/" before hydration; sync from the browser
+    # URL on mount so deep-links open the correct workspace immediately.
+    app.clientside_callback(
+        """
+        function(_id) {
+            var boot = window.__SFA_BOOT_URL__;
+            if (boot && boot.pathname) {
+                return [boot.pathname, boot.search || ''];
+            }
+            return [window.location.pathname, window.location.search || ''];
+        }
+        """,
+        [Output('app-url', 'pathname', allow_duplicate=True),
+         Output('app-url', 'search', allow_duplicate=True)],
+        Input('app-url', 'id'),
+        # Dash 4.x: allow_duplicate=True paired with the default
+        # prevent_initial_call=False is rejected. This callback must fire on
+        # mount so deep-links land on the right workspace, so we use the
+        # explicit 'initial_duplicate' sentinel.
+        prevent_initial_call='initial_duplicate',
+    )
+
     @app.callback(
-        Output('app-url', 'pathname'),
+        Output('route-ticker-store', 'data'),
+        Input('app-url', 'pathname'),
+        prevent_initial_call=False,
+    )
+    def sync_route_ticker(pathname):
+        return extract_path_ticker(pathname)
+
+    @app.callback(
+        Output('app-url', 'pathname', allow_duplicate=True),
         [Input('open-fundamentals-button', 'n_clicks'),
          Input('close-fundamentals-button', 'n_clicks')],
+        [State('ticker-dropdown', 'value'),
+         State('fundamentals-ticker-input', 'value')],
         prevent_initial_call=True,
     )
-    def navigate_between_routes(open_clicks, close_clicks):
+    def navigate_between_routes(open_clicks, close_clicks, ticker, fundamentals_ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
 
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         if trigger_id == 'open-fundamentals-button':
-            return ROUTE_FUNDAMENTALS
+            symbol = str(fundamentals_ticker or ticker or DEFAULT_TICKER).strip().upper()
+            return build_fundamentals_path(symbol)
         if trigger_id == 'close-fundamentals-button':
             return ROUTE_TERMINAL
         raise PreventUpdate

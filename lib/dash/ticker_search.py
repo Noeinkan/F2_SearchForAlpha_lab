@@ -8,9 +8,14 @@ via a search_value callback.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+
+from lib.dash.dash_config import DEFAULT_TICKER
+
+logger = logging.getLogger(__name__)
 
 # Common nicknames / former names that do not appear in official index listings.
 SYMBOL_SEARCH_ALIASES: Dict[str, str] = {
@@ -113,3 +118,50 @@ def resolve_ticker_symbol(
         return str(prefix_matches[0]["value"]).upper()
 
     return upper
+
+
+def ensure_ticker_options_loaded() -> List[Dict[str, Any]]:
+    """Load (and cache) the full ticker options list for dropdowns and resolution."""
+    from lib.data_processing import get_all_tickers
+    from lib.dash.state import dashboard_state
+
+    if dashboard_state.ticker_dropdown_options is not None:
+        return dashboard_state.ticker_dropdown_options
+
+    try:
+        dashboard_state.all_tickers_df = get_all_tickers()
+        dashboard_state.ticker_dropdown_options = build_ticker_options(
+            dashboard_state.all_tickers_df
+        )
+        return dashboard_state.ticker_dropdown_options
+    except Exception as exc:
+        logger.error("Error fetching tickers: %s", exc)
+        fallback = [{
+            "value": DEFAULT_TICKER,
+            "label": f"{DEFAULT_TICKER} - SPDR S&P 500 ETF",
+            "search": "spy spdr s&p 500 etf",
+        }]
+        dashboard_state.ticker_dropdown_options = fallback
+        return fallback
+
+
+def dmc_ticker_select_data() -> List[Dict[str, str]]:
+    """Build the `data` prop for dmc.Select.
+
+    Mantine filters client-side on the visible label only, so we append alias
+    tokens (e.g. "tesla" for TSLA) to improve nickname search.
+    """
+    options = ensure_ticker_options_loaded()
+    rows: List[Dict[str, str]] = []
+    for opt in options:
+        label = str(opt.get("label", opt.get("value", "")))
+        search = str(opt.get("search", "")).strip()
+        if search:
+            extras = " ".join(
+                token for token in search.split()
+                if token and token not in label.lower()
+            )
+            if extras:
+                label = f"{label} · {extras}"
+        rows.append({"value": str(opt["value"]), "label": label})
+    return rows

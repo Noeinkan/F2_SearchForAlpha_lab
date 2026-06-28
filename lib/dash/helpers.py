@@ -65,6 +65,15 @@ def fetch_data_with_cache(ticker: str, start_date: str, end_date: str) -> pd.Dat
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
+    # yfinance can append a placeholder row for the current/incomplete
+    # period with NaN OHLCV (seen on non-trading days). Such a row blanks
+    # the live price header ($nan) and feeds a NaN candle into the chart,
+    # so drop any rows that have no usable Close.
+    if 'Close' in df.columns:
+        df = df[df['Close'].notna()]
+    if df.empty:
+        raise ValueError(f"No data available for {ticker}")
+
     dashboard_state.set_cached_data(cache_key, df)
     return df
 

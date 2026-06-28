@@ -79,7 +79,7 @@ def register_data_loading_callbacks(app) -> None:
          State('indicator-settings-store', 'data')]
     )
     def load_data(n_clicks, n_intervals, ticker, start_date, end_date, indicator_settings):
-        """Load market data. Auto-loads SPY on startup."""
+        """Load market data. Auto-loads the default ticker (TSLA) on startup."""
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
@@ -181,3 +181,40 @@ def register_data_loading_callbacks(app) -> None:
                 html.Span(str(e)[:40].upper(), style={'color': theme['accent_red']}),
                 None,
             )
+
+    # Loading affordance. The `load_data` server callback above can take a
+    # few seconds (yfinance fetch), during which the chart title would still
+    # read "Select a symbol to begin" — making a fresh page load look dead.
+    # This clientside callback fires the instant a load is triggered (the
+    # one-shot autoload tick on startup, or a manual Load Data click) and
+    # flips the title to "Loading <ticker>…" immediately. The server callback
+    # then overwrites the title with the ticker (or "No data"/"Error") when
+    # the fetch resolves. Uses allow_duplicate since `load_data` is the base
+    # writer of chart-title.children.
+    app.clientside_callback(
+        """
+        function(nIntervals, nClicks) {
+            // Only react to a real trigger, not the initial render.
+            if (!nIntervals && !nClicks) {
+                return window.dash_clientside.no_update;
+            }
+            var ticker = 'TSLA';
+            var sel = document.getElementById('ticker-dropdown');
+            if (sel) {
+                var input = sel.querySelector('input');
+                if (input && input.value) {
+                    // dmc.Select may show "TSLA - Tesla, Inc." — grab the
+                    // leading ticker symbol only.
+                    var m = String(input.value).trim().toUpperCase()
+                        .match(/^[A-Z]{1,6}(\\.[A-Z])?/);
+                    if (m) { ticker = m[0]; }
+                }
+            }
+            return 'Loading ' + ticker + '\\u2026';
+        }
+        """,
+        Output('chart-title', 'children', allow_duplicate=True),
+        [Input('autoload-interval', 'n_intervals'),
+         Input('load-data-button', 'n_clicks')],
+        prevent_initial_call=True,
+    )

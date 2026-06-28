@@ -88,8 +88,16 @@ def kpi_cell(
     mono: bool = True,
     theme: dict = None,
     info_text: str | None = None,
+    is_positive: bool | None = None,
 ) -> html.Div:
-    """Build a terminal-style KPI cell."""
+    """Build a terminal-style KPI cell.
+
+    Phase 4: never rely on color alone for P&L. Pass ``is_positive`` to
+    enable both the green/red color and a redundant ▲/▼ glyph plus a
+    sign on the value. The delta row is always text-based (e.g.
+    "ROBUST" / "WEAK", "ABOVE 50%" / "BELOW 50%") so it already carries
+    the state by itself; this addition protects the value column.
+    """
     if theme is None:
         theme = get_theme()
 
@@ -104,6 +112,25 @@ def kpi_cell(
             'fontWeight': FONT_WEIGHT_NUMERIC,
         })
 
+    if is_positive is True:
+        value_style['color'] = theme['accent_green']
+        # Strip a single leading sign so we don't render "+" twice when
+        # the caller already added one (e.g. f"{total_return:+.2f}%").
+        raw = str(value).lstrip()
+        if raw[:1] in ('+', '-'):
+            value_str = f"\u25b2 {raw[1:].lstrip()}"
+        else:
+            value_str = f"\u25b2 {raw}"
+    elif is_positive is False:
+        value_style['color'] = theme['accent_red']
+        raw = str(value).lstrip()
+        if raw[:1] in ('+', '-'):
+            value_str = f"\u25bc {raw[1:].lstrip()}"
+        else:
+            value_str = f"\u25bc {raw}"
+    else:
+        value_str = value
+
     delta_style = {
         'color': delta_color or theme['text_secondary'],
         'fontFamily': FONT_FAMILY,
@@ -113,7 +140,7 @@ def kpi_cell(
     return html.Div(
         [
             html.Div(label, className='bbg-kpi-label'),
-            html.Div(value, className='bbg-kpi-value', style=value_style),
+            html.Div(value_str, className='bbg-kpi-value', style=value_style),
             html.Div(delta or ' ', className='bbg-kpi-delta', style=delta_style),
         ],
         className='bbg-kpi',
@@ -183,6 +210,12 @@ def build_metric_card(
     """
     Build a metric display card with optional animation.
 
+    Phase 4: never rely on color alone. When ``is_positive`` is set we
+    prepend an arrow (▲ for positive, ▼ for negative) so the P&L
+    direction is also conveyed by shape, not just hue. This is critical
+    for users with red/green color-vision deficiency and survives
+    black-and-white printouts.
+
     Args:
         label: Metric label text
         value: Metric value text
@@ -202,15 +235,33 @@ def build_metric_card(
     if is_positive is not None:
         if is_positive:
             value_style.update(styles['metric_positive'])
+            # Phase 4: redundant sign — never rely on color alone for P&L.
+            # The existing value text is already prefixed with a sign
+            # (e.g. "+15%"); we add an up-arrow so the direction is
+            # communicated by glyph + sign + color.
+            arrow_prefix = '\u25b2'  # ▲
         else:
             value_style.update(styles['metric_negative'])
+            arrow_prefix = '\u25bc'  # ▼
+        # Prepend the arrow. Strip a leading sign on the value so we
+        # don't render "+" or "-" twice when the caller already added it.
+        # This is best-effort: callers that pass "+15%" get "▲ 15%" and
+        # callers that pass "15%" get "▲ 15%".
+        raw_value = str(value).lstrip()
+        if raw_value[:1] in ('+', '-'):
+            value_str = f"{arrow_prefix} {raw_value[1:].lstrip()}"
+        else:
+            value_str = f"{arrow_prefix} {raw_value}"
+        value_node = html.Div(value_str, style=value_style, **{'aria-label': label})
+    else:
+        value_node = html.Div(value, style=value_style)
 
     card_style = styles['metric_card'].copy()
 
     return html.Div(
         [
             html.Div(label, style=styles['metric_label']),
-            html.Div(value, style=value_style),
+            value_node,
         ],
         style=card_style,
         className='metric-card-animated' if animated else '',

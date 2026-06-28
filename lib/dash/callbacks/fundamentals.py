@@ -10,7 +10,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
 
-from lib.dash.routes import is_fundamentals_route
+from lib.dash.routes import extract_path_ticker, is_fundamentals_route, ticker_from_search
 from lib.dash.callbacks.startup import _ensure_ticker_options_loaded
 from lib.dash.dash_config import (
     DEFAULT_THEME,
@@ -559,7 +559,8 @@ def register_fundamentals_callbacks(app) -> None:
         [Output('fundamentals-store', 'data'),
          Output('fundamentals-title', 'children'),
          Output('fundamentals-status', 'children'),
-         Output('ticker-dropdown', 'value', allow_duplicate=True)],
+         Output('ticker-dropdown', 'value', allow_duplicate=True),
+         Output('fundamentals-ticker-input', 'value', allow_duplicate=True)],
         [Input('app-url', 'pathname'),
          Input('app-url', 'search'),
          Input('refresh-fundamentals-button', 'n_clicks'),
@@ -567,7 +568,8 @@ def register_fundamentals_callbacks(app) -> None:
          Input('fundamentals-ticker-input', 'n_submit')],
         [State('ticker-dropdown', 'value'),
          State('fundamentals-ticker-input', 'value'),
-         State('user-ticker-store', 'data')],
+         State('user-ticker-store', 'data'),
+         State('route-ticker-store', 'data')],
         prevent_initial_call='initial_duplicate',
     )
     def load_fundamentals(
@@ -579,29 +581,29 @@ def register_fundamentals_callbacks(app) -> None:
         ticker,
         overlay_ticker,
         user_ticker,
+        path_ticker,
     ):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
 
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        url_ticker = None
-        if search:
-            for part in search.lstrip('?').split('&'):
-                if part.startswith('ticker='):
-                    url_ticker = part.split('=', 1)[1].strip().upper()
-                    break
+        url_ticker = ticker_from_search(search)
+        path_from_url = extract_path_ticker(pathname)
 
         # user_ticker is only populated by the startup callback when the
         # user actually changes the dropdown (prevent_initial_call=True).
         # It stays None on a fresh direct visit, which is exactly the
-        # signal we use to swap the SPY page-default for a real company.
+        # signal we use to swap the TSLA page-default for a real company.
         if trigger_id == 'app-url':
             if not is_fundamentals_route(pathname):
                 raise PreventUpdate
-            cold_load = not (url_ticker or overlay_ticker or user_ticker or ticker)
+            effective_path_ticker = path_from_url or path_ticker
+            cold_load = not (effective_path_ticker or url_ticker or overlay_ticker or user_ticker or ticker)
             fallback = FUNDAMENTALS_FALLBACK_TICKER if cold_load else DEFAULT_TICKER
-            raw = str(url_ticker or overlay_ticker or user_ticker or ticker or fallback).strip()
+            raw = str(
+                effective_path_ticker or url_ticker or overlay_ticker or user_ticker or ticker or fallback
+            ).strip()
         else:
             raw = str(overlay_ticker or ticker or DEFAULT_TICKER).strip()
 
@@ -609,13 +611,13 @@ def register_fundamentals_callbacks(app) -> None:
         symbol = resolve_ticker_symbol(raw, options)
 
         if not symbol:
-            return None, 'Invalid ticker', 'ERROR: ticker is required', no_update
+            return None, 'Invalid ticker', 'ERROR: ticker is required', no_update, no_update
 
         try:
             payload = fetch_fundamentals(symbol)
         except Exception as exc:
             logger.exception("Error loading fundamentals for %s", symbol)
-            return None, f'{symbol} fundamentals', f'ERROR: {exc}', no_update
+            return None, f'{symbol} fundamentals', f'ERROR: {exc}', no_update, no_update
 
         title = f"{payload['company_name']} ({payload['ticker']})"
         # Promote overlay ticker edits to global symbol only when user explicitly
@@ -625,7 +627,7 @@ def register_fundamentals_callbacks(app) -> None:
             'fundamentals-ticker-input',
             'app-url',
         } else no_update
-        return payload, title, f"LOADED {payload['as_of']}", update_global_ticker
+        return payload, title, f"LOADED {payload['as_of']}", update_global_ticker, symbol
 
     @app.callback(
         Output('fundamentals-content', 'children'),

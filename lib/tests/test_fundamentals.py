@@ -8,9 +8,11 @@ import pandas as pd
 
 from lib.fundamentals import (
     _build_sec_statement,
+    _clean_period_prices,
     _clean_statement,
     _fetch_sec_fundamentals,
     _live_price_snapshot,
+    _quarterly_close_prices,
     _sec_annual_series,
     build_fundamentals_result,
     fetch_fundamentals,
@@ -197,7 +199,15 @@ class TestQuarterlyFundamentals(unittest.TestCase):
         self.assertEqual(cleaned.columns.tolist()[0], (2022, 1))
         self.assertEqual(cleaned.columns.tolist()[-1], (2024, 2))
 
-    def test_quarterly_builds_financials_and_charts_only(self):
+    def test_clean_period_prices_preserves_quarter_keys(self):
+        idx = pd.date_range("2024-07-01", "2026-03-20", freq="B")
+        history = pd.DataFrame({"Close": [200.0 + i for i in range(len(idx))]}, index=idx)
+        cleaned = _clean_period_prices(_quarterly_close_prices(history), period="quarterly")
+        self.assertIn((2025, 1), cleaned.index)
+        self.assertIn((2025, 4), cleaned.index)
+        self.assertTrue(all(isinstance(period, tuple) for period in cleaned.index))
+
+    def test_quarterly_stock_price_row_populated(self):
         result = build_fundamentals_result(
             ticker="TEST",
             info={"longName": "Test Corp", "financialCurrency": "USD"},
@@ -218,6 +228,8 @@ class TestQuarterlyFundamentals(unittest.TestCase):
         self.assertIn("Sales", payload["chart_series"])
         sales_row = next(row for row in payload["financials"] if row["metric"] == "Sales (Rev)")
         self.assertIn("2024-Q2", sales_row)
+        stock_row = next(row for row in payload["financials"] if row["metric"] == "Stock Price (31/12)")
+        self.assertNotEqual(stock_row["2024-Q2"], "--")
 
     def test_fetch_fundamentals_exposes_annual_and_quarterly_blocks(self):
         annual_income = pd.DataFrame([[1.0]], index=["Total Revenue"], columns=[2023])

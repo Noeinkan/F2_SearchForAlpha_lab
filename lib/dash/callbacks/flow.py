@@ -9,8 +9,8 @@ from dash import callback_context, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.dash.dash_config import DEFAULT_THEME, ROUTE_FLOW, ROUTE_TERMINAL, get_theme
-from lib.dash.routes import is_flow_route, is_fundamentals_route
+from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_TERMINAL, get_theme
+from lib.dash.routes import build_flow_path, extract_path_ticker, is_flow_route, is_fundamentals_route, ticker_from_search
 from lib.dash.state import dashboard_state
 from scripts.flow_runner import run_flow_scan
 
@@ -28,15 +28,17 @@ def register_flow_callbacks(app) -> None:
     @app.callback(
         Output("app-url", "pathname", allow_duplicate=True),
         [Input("open-flow-button", "n_clicks"), Input("close-flow-button", "n_clicks")],
+        State("ticker-dropdown", "value"),
         prevent_initial_call=True,
     )
-    def navigate_to_flow(open_clicks, close_clicks):
+    def navigate_to_flow(open_clicks, close_clicks, ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
         trigger = ctx.triggered[0]["prop_id"].split(".")[0]
         if trigger == "open-flow-button":
-            return ROUTE_FLOW
+            symbol = str(ticker or DEFAULT_TICKER).strip().upper()
+            return build_flow_path(symbol)
         if trigger == "close-flow-button":
             return ROUTE_TERMINAL
         raise PreventUpdate
@@ -108,7 +110,7 @@ def register_flow_callbacks(app) -> None:
                 return src, "Last report loaded", no_update, False
             return "", "No report yet. Click RESCAN NOW.", no_update, False
 
-        ticker = str(selected_ticker or "SPY").strip().upper()
+        ticker = str(extract_path_ticker(pathname) or selected_ticker or DEFAULT_TICKER).strip().upper()
         tickers = [ticker]
         rc, tail = run_flow_scan(tickers, _FLOW_REPORT, quiet=True)
         if rc != 0:
@@ -129,20 +131,19 @@ def register_flow_callbacks(app) -> None:
             Output("ticker-dropdown", "value", allow_duplicate=True),
             Output("fundamentals-ticker-input", "value", allow_duplicate=True),
         ],
-        [Input("app-url", "search")],
-        [State("app-url", "pathname")],
+        [Input("app-url", "search"), Input("app-url", "pathname")],
+        [State("ticker-dropdown", "data")],
         prevent_initial_call=True,
     )
-    def apply_ticker_from_flow_link(search, pathname):
-        """Pre-select ticker when arriving at /fundamentals?ticker=SYM from flow report."""
-        if not is_fundamentals_route(pathname) or not search:
+    def apply_ticker_from_flow_link(search, pathname, ticker_data):
+        """Pre-select ticker from path (/fundamentals/TSLA) or ?ticker= query."""
+        if not (is_fundamentals_route(pathname) or is_flow_route(pathname)):
             raise PreventUpdate
-        params = {}
-        for part in search.lstrip("?").split("&"):
-            if "=" in part:
-                k, v = part.split("=", 1)
-                params[k] = v
-        ticker = params.get("ticker", "").strip().upper()
+        ticker = ticker_from_search(search) or extract_path_ticker(pathname)
         if not ticker:
+            raise PreventUpdate
+        known = {str(row.get("value", "")).upper() for row in (ticker_data or [])}
+        if known and ticker not in known and len(known) <= 1:
+            # Dropdown options not loaded yet — load_fundamentals handles fundamentals.
             raise PreventUpdate
         return ticker, ticker
