@@ -163,6 +163,7 @@ def _wait_for_server_ready(host: str, port: int, timeout: float = 15.0) -> bool:
 def _schedule_browser_open(host: str, port: int, path: str = "/") -> None:
     """Open the browser once the server accepts HTTP connections."""
     target = f"http://{host}:{port}{path}"
+    print(f"Dashboard URL: {target}", flush=True)
 
     def _open_when_ready() -> None:
         if _wait_for_server_ready(host, port):
@@ -198,10 +199,17 @@ def run_dashboard(dev_mode: bool = False) -> None:
     logger.info("Bootstrapping default market session (%s)...", "TSLA")
     bootstrap = try_bootstrap_default_session()
 
+    # eager_loading=True embeds plotly.min.js as a <script> tag in the
+    # initial HTML so dcc.Graph can render on first paint. With the Dash
+    # default (eager_loading=False) plotly is marked dynamic and loaded
+    # on-demand via window._dashPlotlyJSURL; if that lazy load loses the
+    # race against dcc.Graph's async chunk (or the suite endpoint 500s),
+    # the chart container stays a dark void with no canvas drawn.
     app = dash.Dash(
         __name__,
         external_stylesheets=[dbc.themes.BOOTSTRAP],
         suppress_callback_exceptions=True,
+        eager_loading=True,
         meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}]
     )
 

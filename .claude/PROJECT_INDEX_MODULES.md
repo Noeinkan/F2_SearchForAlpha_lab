@@ -94,13 +94,15 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 ### Dashboard (Dash/Plotly)
 | File | Purpose |
 |------|---------|
-| [lib/dash/integrated_dashboard.py](../lib/dash/integrated_dashboard.py) | App init, server boot, `register_callbacks(app)` |
+| [lib/dash/integrated_dashboard.py](../lib/dash/integrated_dashboard.py) | App init, server boot, `register_callbacks(app)`, `_schedule_browser_open` (lands on `/ticker/<DEFAULT_TICKER>`), `/flow_report.html` route |
 | [lib/dash/bootstrap.py](../lib/dash/bootstrap.py) | `try_bootstrap_default_session()` — preload default ticker on startup |
 | [lib/dash/chart_builder.py](../lib/dash/chart_builder.py) | Plotly figure factory + overlay registry |
 | [lib/dash/tv_chart_builder.py](../lib/dash/tv_chart_builder.py) | TradingView lightweight chart builder |
 | [lib/dash/dash_config.py](../lib/dash/dash_config.py) | Theme, defaults, indicator settings |
 | [lib/dash/state.py](../lib/dash/state.py) | `dashboard_state` — in-memory session cache |
 | [lib/dash/routes.py](../lib/dash/routes.py) | URL route parsing — terminal, fundamentals, flow, ticker_terminal |
+| [lib/dash/flow_glossary.py](../lib/dash/flow_glossary.py) | Shared term/flag definitions, `score_breakdown()`, `interpretive_banner()` for Flow Scanner |
+| [lib/dash/flow_view.py](../lib/dash/flow_view.py) | Pure render — `render_flow_reports()`, `render_ticker_card()`, native Dash DataTable |
 | [lib/dash/ticker_search.py](../lib/dash/ticker_search.py) | Ticker autocomplete options |
 
 **Layout** (`lib/dash/layout/` — one file per UI region):
@@ -126,7 +128,7 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | `backtest.py` | Run backtest from UI |
 | `optimization.py` | In-dashboard optimisation |
 | `fundamentals.py` | Fundamentals overlay |
-| `flow.py` | Flow Scanner overlay |
+| `flow.py` | Flow Scanner overlay — rescan subprocess, JSON load, native `#flow-content` render |
 | `routing.py` | URL-based page routing |
 | `presets.py` | UI preset save/load |
 | `layout.py` | Panel collapse, theme |
@@ -156,19 +158,20 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | File | Purpose |
 |------|---------|
 | [scripts/run_dashboard_latest.ps1](../scripts/run_dashboard_latest.ps1) | Windows dashboard launcher (port cleanup) |
-| [scripts/flow_scanner.py](../scripts/flow_scanner.py) | Flow Scanner report generator |
+| [scripts/flow_scanner.py](../scripts/flow_scanner.py) | Flow Scanner — yfinance options scan, `write_html_report()`, `write_json_report()` |
+| [scripts/flow_runner.py](../scripts/flow_runner.py) | Subprocess wrapper — `run_flow_scan()` writes HTML + JSON for Dash |
 | [scripts/generate_ticker_universe.py](../scripts/generate_ticker_universe.py) | Rebuild `config/tickers_universe.csv` |
 
 ---
 
-## Tests (25 files)
+## Tests (26 files)
 | Area | Files |
 |------|-------|
 | Strategy & signals | `test_strategy`, `test_indicators`, `test_signal_combination`, `test_param_propagation`, `test_determinism` |
 | Backtest & optimisation | `test_bayesian_optimizer`, `test_bayes_holdout`, `test_walkforward`, `test_promotion_gate` |
 | CLI contracts | `test_cli_contracts` |
 | Live runner | `test_runner_safety`, `test_guards`, `test_broker_mock` |
-| Dashboard | `test_dashboard`, `test_bootstrap`, `test_dash_routing`, `test_dash_no_writeback`, `test_dash_enriched_cache`, `test_command_palette`, `test_ticker_search` |
+| Dashboard | `test_dashboard`, `test_dashboard_startup`, `test_bootstrap`, `test_data_loading`, `test_dash_routing`, `test_dash_no_writeback`, `test_dash_enriched_cache`, `test_command_palette`, `test_ticker_search` |
 | Fundamentals | `test_fundamentals`, `test_fundamentals_explainability`, `test_fundamentals_formula_rendering` |
 | Data | `test_data_processing` |
 

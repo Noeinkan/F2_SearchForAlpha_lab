@@ -290,6 +290,46 @@ class TestChartBuilder:
         # Background colors should differ
         assert dark_fig.layout.plot_bgcolor != light_fig.layout.plot_bgcolor
 
+    def test_chart_traces_use_native_subplot_axes(self, sample_df, dark_theme):
+        """Regression: traces stay on native subplot axes (no global xaxis='x' hack)."""
+        config = {
+            'selected_plots': ['candlestick', 'volume', 'rsi'],
+            'show_candlesticks': True,
+            'show_bollinger': False,
+            'show_sma': False,
+            'show_ema': False,
+            'show_buy_sell_signals': False,
+            'show_legend': False,
+            'selected_signals': [],
+            'title': '',
+            'indicator_settings': {},
+        }
+        fig = create_chart(sample_df, config, dark_theme)
+        traces = fig.to_plotly_json()['data']
+        assert traces[0].get('xaxis', 'x') == 'x'
+        volume = next(t for t in traces if t.get('name') == 'Volume')
+        assert volume.get('xaxis') == 'x2'
+        rsi = next(t for t in traces if str(t.get('name', '')).startswith('RSI'))
+        assert rsi.get('xaxis') == 'x3'
+
+    def test_chart_autosize_no_fixed_height(self, sample_df, dark_theme):
+        """Figure height is driven by the container, not a calculated layout height."""
+        config = {
+            'selected_plots': ['candlestick', 'volume', 'rsi', 'macd', 'cci'],
+            'show_candlesticks': True,
+            'show_bollinger': False,
+            'show_sma': False,
+            'show_ema': False,
+            'show_buy_sell_signals': False,
+            'show_legend': False,
+            'selected_signals': [],
+            'title': '',
+            'indicator_settings': {},
+        }
+        fig = create_chart(sample_df, config, dark_theme)
+        assert fig.layout.autosize is True
+        assert fig.layout.height is None
+
 
 # =============================================================================
 # COMPONENT TESTS

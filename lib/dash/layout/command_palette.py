@@ -131,7 +131,6 @@ def _create_command_palette(styles: dict, theme: dict) -> dbc.Modal:
             type='text',
             placeholder='Type a command or search…',
             value='',
-            autoFocus=True,
             className='bbg-input sfa-palette-input',
             n_submit=0,
             # Note: `dcc.Input` (Dash 4.x) does not accept arbitrary HTML

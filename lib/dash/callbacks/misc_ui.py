@@ -197,9 +197,15 @@ def register_misc_callbacks(app) -> None:
                 if (!modal) {
                     return false;
                 }
-                // dbc.Modal renders with class 'modal-open' on body and
-                // 'show' on the modal itself when visible.
+                // dbc.Modal renders with class 'show' on the modal when visible.
                 return modal.classList.contains('show');
+            }
+
+            function openPalette() {
+                var btn = document.getElementById('palette-open-btn');
+                if (btn) {
+                    btn.click();
+                }
             }
 
             document.addEventListener('keydown', function(e) {
@@ -210,33 +216,14 @@ def register_misc_callbacks(app) -> None:
                 if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
                     e.preventDefault();
                     var wasOpen = isPaletteOpen();
-                    // Toggle via the open store by simulating a click on
-                    // the help button (which the server wires to flip
-                    // the store). Clicking twice would only count as one
-                    // on Dash, so instead we dispatch a synthetic event
-                    // by writing the store through the same bridge:
-                    // toggling n_clicks on help-shortcuts-btn.
-                    var btn = document.getElementById('help-shortcuts-btn');
-                    if (btn) {
-                        // Dash increments n_clicks per click; we need a
-                        // forced increment to toggle, so we bypass and
-                        // write the open store directly via a synthetic
-                        // input event on a hidden bridge.
-                        var bridge = document.getElementById('command-palette-open-sync');
-                        if (bridge) {
-                            // The store is server-controlled; the cleanest
-                            // path is to fire a click on the help button
-                            // (which has a callback that opens the modal).
-                            // For close, fire on the esc-trigger div.
-                            if (wasOpen) {
-                                // dispatch Esc inside the palette by
-                                // clicking the modal close button.
-                                var closeBtn = modal.querySelector('.btn-close');
-                                if (closeBtn) closeBtn.click();
-                            } else {
-                                btn.click();
-                            }
+                    var modal = document.getElementById('command-palette');
+                    if (wasOpen) {
+                        var closeBtn = modal && modal.querySelector('.btn-close');
+                        if (closeBtn) {
+                            closeBtn.click();
                         }
+                    } else {
+                        openPalette();
                     }
                     return;
                 }
@@ -504,11 +491,8 @@ def register_misc_callbacks(app) -> None:
 
     app.clientside_callback(
         """
-        function(n_clicks, chartLibrary) {
+        function(n_clicks) {
             if (!n_clicks) {
-                return window.dash_clientside.no_update;
-            }
-            if (chartLibrary && chartLibrary !== 'plotly') {
                 return window.dash_clientside.no_update;
             }
             const graph = document.getElementById('financial-chart');
@@ -531,6 +515,5 @@ def register_misc_callbacks(app) -> None:
         """,
         Output('export-img-store', 'data'),
         Input('export-img-btn', 'n_clicks'),
-        State('chart-library-toggle', 'value')
     )
 

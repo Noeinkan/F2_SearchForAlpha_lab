@@ -435,8 +435,72 @@ button.bbg-status-btn {
     align-items: center;
 }
 button.bbg-status-btn .sfa-status-kbd {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 1px 4px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    line-height: 1;
+    color: var(--text-secondary);
+    letter-spacing: 0.4px;
+}
+
+/* =============================================================================
+   Header chrome — status labels, divider, clock, icon buttons
+   ========================================================================== */
+
+.bbg-header-status-label {
     font-family: var(--font-sans);
-    opacity: 0.8;
+    font-size: 11px;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.bbg-header-divider {
+    color: var(--border-primary);
+    font-family: var(--font-sans);
+    user-select: none;
+}
+
+.bbg-header-clock {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    min-width: 56px;
+}
+
+/* Compact, square-ish icon button used by the theme toggle and the
+   keyboard-shortcut launcher. Sized so the two controls don't crowd
+   the right edge of the header. */
+button.bbg-icon-button {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-primary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    min-width: 28px;
+    height: 26px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: color 80ms ease, border-color 80ms ease, background 80ms ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+button.bbg-icon-button:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+button.bbg-icon-button:active {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 /* =============================================================================
@@ -1075,34 +1139,24 @@ input[type="radio"] {
 .custom-alert.info    { border-left-color: var(--accent); color: var(--accent); }
 
 /* =============================================================================
-   Resizable chart container
+   Terminal main chart frame
    ========================================================================== */
 
-.resizable-chart {
-    resize: vertical;
-    overflow: auto;
-    min-height: 400px;
-    max-height: calc(100vh - 120px);
+#chart-frame {
+    width: 100%;
+    height: 720px;
     position: relative;
+    min-width: 0;
 }
-.resizable-chart::after {
-    content: 'DRAG';
-    position: absolute;
-    bottom: 1px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-family: var(--font-sans);
-    font-size: 11px;
-    color: var(--text-tertiary);
-    letter-spacing: 2px;
-    pointer-events: none;
-    background: var(--accent);
-    color: #000;
-    padding: 0 6px;
-    line-height: 9px;
-}
-.resizable-chart::-webkit-resizer {
-    background: var(--accent);
+
+#chart-frame .dash-graph,
+#financial-chart,
+#chart-frame .js-plotly-plot,
+#chart-frame .plot-container,
+#chart-frame .svg-container {
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
 }
 
 /* =============================================================================
@@ -1492,49 +1546,6 @@ input[type="radio"] {
 .sfa-fundamentals-chart .plot-container,
 .sfa-fundamentals-chart .svg-container {
     width: 100% !important;
-}
-
-/* =============================================================================
-   Terminal main chart — force Plotly internals to honor the parent's width.
-
-   The flex chain (`main_container` → `chart_container` → `chart_area` →
-   `resizable-chart` → `plotly-chart-container` → `dcc.Loading` →
-   `.dash-graph` → `.js-plotly-plot` → `.plot-container` → `.svg-container`)
-   already has `minWidth: 0` at every level so it should size correctly.
-   In practice, Plotly.js picks a fixed `width: 700px` when its outer wrapper
-   has the default `min-width: auto` AND the parent flex item has `flex-shrink`
-   constrained. The same `.sfa-fundamentals-chart` block above works for the
-   fundamentals view; mirror it here for the terminal chart and pin
-   `min-width: 0` on every Plotly-internal div so it can't reserve width.
-
-   See `docs/ui-architecture.md` Phase 1 for the full reasoning.
-   ========================================================================== */
-#plotly-chart-container,
-#plotly-chart-container .dash-graph,
-#financial-chart,
-#plotly-chart-container .js-plotly-plot,
-#plotly-chart-container .plot-container,
-#plotly-chart-container .svg-container,
-#plotly-chart-container .main-svg {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-}
-
-/* `dcc.Loading` wraps the graph in a positioned container that defaults to
-   `display: block` with no explicit width. Force it to stretch inside the
-   flex column so the graph never ends up with a 0-width ancestor.
-
-   `id="loading-chart"` may be applied to either the outer wrapper or the
-   inner spinner depending on dash-core-components version, so we also force
-   every direct child of `#plotly-chart-container` to stretch. The Loading
-   wrapper, the spinner overlay, AND the Graph wrapper all share `width:
-   100%` this way. */
-#plotly-chart-container > * {
-    width: 100% !important;
-    height: 100% !important;
-    min-width: 0 !important;
-    min-height: 480px !important;
 }
 
 @media (min-width: 1800px) {
@@ -2122,6 +2133,18 @@ aside.sfa-right-panel .sfa-panel-toggle-wrap {
    The palette is `position: fixed` and `top: 12vh` so it floats above
    the header tape but never feels like an interstitial screen.
    ========================================================================== */
+
+/* Stay hidden until Bootstrap adds `.show` — prevents a flash on first
+   paint when Dash hydrates before the open-store callback runs. */
+#command-palette.modal:not(.show) {
+    display: none !important;
+    pointer-events: none;
+}
+
+body:not(.modal-open) .sfa-palette-backdrop,
+body:not(.modal-open) .modal-backdrop {
+    display: none !important;
+}
 
 .sfa-palette-modal .modal-dialog {
     /* Override Bootstrap's vertical centering so the palette sits a

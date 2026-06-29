@@ -17,14 +17,18 @@ def run_flow_scan(
     quiet: bool = True,
     expirations: int = 3,
     timeout: int = 180,
+    json_path: str | Path | None = None,
 ) -> tuple[int, str]:
     """Run flow_scanner.py; return (returncode, tail_of_combined_output)."""
+    json_out = json_path or Path(output_path).with_suffix(".json")
     cmd = [
         sys.executable,
         str(SCANNER),
         *tickers,
         "--output",
         str(output_path),
+        "--json-out",
+        str(json_out),
         "--expirations",
         str(expirations),
     ]

@@ -16,6 +16,25 @@ from lib.dash.integrated_dashboard import (
     _wait_for_server_ready,
     run_dashboard,
 )
+from lib.dash.dash_config import DEFAULT_THEME, get_theme
+from lib.dash.layout import create_dashboard_layout
+
+
+def _layout_component_ids(component) -> set[str]:
+    """Collect Dash component ids from a layout tree."""
+    ids: set[str] = set()
+    if component is None:
+        return ids
+    if hasattr(component, "id") and component.id:
+        ids.add(str(component.id))
+    children = getattr(component, "children", None)
+    if children is None:
+        return ids
+    if not isinstance(children, (list, tuple)):
+        children = [children]
+    for child in children:
+        ids.update(_layout_component_ids(child))
+    return ids
 
 
 class _OkHandler(BaseHTTPRequestHandler):
@@ -133,3 +152,13 @@ def test_run_dashboard_defers_ticker_index(
 
     mock_ensure_tickers.assert_not_called()
     _mock_bootstrap.assert_called_once()
+
+
+def test_flow_overlay_uses_native_content_not_iframe():
+    theme = get_theme(DEFAULT_THEME)
+    layout = create_dashboard_layout(theme)
+    ids = _layout_component_ids(layout)
+    assert "flow-content" in ids
+    assert "flow-data-store" in ids
+    assert "flow-glossary" in ids
+    assert "flow-iframe" not in ids

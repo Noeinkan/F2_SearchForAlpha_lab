@@ -115,7 +115,10 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
     ], id='fundamentals-overlay', style={
         'display': 'none',
         'position': 'fixed',
-        'inset': '42px 6px 24px 6px',
+        # Header is 44px tall — start the overlay flush below it so the
+        # logo/tape never peeks through and creates the visual "two-headers"
+        # overlap. Status bar is 24px so reserve 24px at the bottom.
+        'inset': '44px 6px 24px 6px',
         'zIndex': 20,
         'backgroundColor': theme['bg_primary'],
         'border': f'1px solid {theme["border_primary"]}',
@@ -153,6 +156,10 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                     'color': theme['text_secondary'],
                     'alignSelf': 'center',
                     'marginRight': '8px',
+                }),
+                html.Button("GLOSSARY", id='flow-glossary-button', n_clicks=0, style={
+                    **styles['button_outline'],
+                    'padding': '6px 12px',
                 }),
                 html.Button("RESCAN NOW", id='flow-rescan-button', n_clicks=0, style={
                     **styles['button_primary'],
@@ -192,21 +199,35 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
             'backgroundColor': theme['bg_secondary'],
             'borderBottom': f'1px solid {theme["border_primary"]}',
         }),
-        html.Iframe(
-            id='flow-iframe',
-            src='',
-            className='sfa-flow-iframe',
-            style={
-                'width': '100%',
-                'height': 'calc(100vh - 36px)',
-                'border': 'none',
-                'backgroundColor': theme['bg_primary'],
-            },
+        html.Div(id='flow-glossary', style={'display': 'none'}, children=[]),
+        dcc.Loading(
+            id='flow-loading',
+            type='circle',
+            color=theme['accent_blue'],
+            children=html.Div(
+                id='flow-content',
+                children=html.Div(
+                    "No report yet. Click RESCAN NOW.",
+                    style={
+                        'fontFamily': FONT_FAMILY,
+                        'fontSize': FONT_SIZES['sm'],
+                        'color': theme['text_secondary'],
+                        'padding': '24px',
+                        'textAlign': 'center',
+                    },
+                ),
+                style={
+                    'height': 'calc(100% - 36px)',
+                    'overflow': 'auto',
+                    'backgroundColor': theme['bg_primary'],
+                },
+            ),
         ),
     ], id='flow-overlay', style={
         'display': 'none',
         'position': 'fixed',
-        'inset': '42px 6px 24px 6px',
+        # Matches fundamentals-overlay — clear of the 44px header / 24px footer.
+        'inset': '44px 6px 24px 6px',
         'zIndex': 20,
         'backgroundColor': theme['bg_primary'],
         'border': f'1px solid {theme["border_primary"]}',

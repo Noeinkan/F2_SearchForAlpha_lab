@@ -26,7 +26,7 @@ Full rationale (IT): [docs/token-efficiency.md](../docs/token-efficiency.md)
 |------|---------|
 | [main.py](../main.py) | Launch Dash app at http://127.0.0.1:8050 (`DASH_DEV=1` default, auto-reload) |
 | `python -m lib.cli.app` | **sfa CLI** — backtest, optimise, walkforward, paper trade |
-| `rtk python -m pytest lib/tests/ -q` | Run test suite (25 test files) |
+| `rtk python -m pytest lib/tests/ -q` | Run test suite (26 test files) |
 
 ---
 

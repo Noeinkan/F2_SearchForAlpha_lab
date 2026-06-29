@@ -15,6 +15,10 @@ Python algorithmic trading research: Yahoo Finance OHLCV → indicator signals �
 - Indicator params: always from `config/strategy_config.yaml` via `lib/config_loader.py`
 - Dash callbacks: one file per concern in `lib/dash/callbacks/`; register via `register_*_callbacks(app)` in `callbacks/__init__.py`
 - Dash dev: `DASH_DEV=1` default; bump `UI_STORAGE_VERSION` in `dash_config.py` when persisted store shape changes
+- Dash reload: `DASH_RELOAD=1` opt-in (off by default — Werkzeug reloader is unreliable on Windows; debug error pages still honour `DASH_DEV`)
+- Browser landing: `run_dashboard()` opens `http://127.0.0.1:<port>/ticker/<DEFAULT_TICKER>` via `_default_browser_path()` (bootstrap-driven)
+- Theme: CVD-safe palette is the default; override via `config/strategy_config.yaml` theme key
+- Flow Scanner: served at `/flow/<ticker>` and `/flow_report.html` (stub when `flow_report.html` absent); regenerate via `scripts/flow_scanner.py <ticker>`
 - Outputs: `results/` (parquet), `export/` (Excel)
 
 Educational/research use only. Not financial advice.

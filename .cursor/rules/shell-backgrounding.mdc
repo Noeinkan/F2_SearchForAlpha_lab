@@ -1,0 +1,50 @@
+---
+description: Pick block_until_ms per command class; background long/non-terminating commands
+alwaysApply: true
+---
+
+# Shell Backgrounding
+
+`block_until_ms` is a per-call tunable, not a fixed 30s. Pick a value based on
+the command class. Default foreground; background is the exception.
+
+## Policy by command class
+
+| Command | `block_until_ms` | Why |
+|---|---|---|
+| `git status`, `git log`, `git diff`, `rg`, `sfa list --json` | default (30000) | finishes in seconds |
+| `sfa backtest`, `sfa trials` | 120000 | usually 30–90s; wait for result |
+| `sfa optimise --trials N` | `0` | minutes–hours; background immediately |
+| `sfa walkforward` | `0` | long; background |
+| `sfa sweep-single` | `0` | long; background |
+| `sfa run --mode paper` | `0` | non-terminating; background |
+| `python main.py` (Dash dev server) | `0` | non-terminating; background |
+| `python -m pytest lib/tests/` (full) | `0` | noisy, long; background |
+| `python -m pytest lib/tests/test_X.py` (single) | 120000 | usually <2min; wait |
+| `uv sync`, `pip install` | 120000 | occasional slowness; wait |
+
+## Rules
+
+- **Never background commands <10s** — polling overhead exceeds the wall-clock
+  benefit. Foreground is faster for `rg`, `git status`, `sfa list`.
+- **Never use shell `&`** to background. Always set `block_until_ms: 0` so the
+  harness tracks the process for cleanup and re-attach.
+- **Never run `sleep` / `Start-Sleep` to "wait"** for a command. Either raise
+  `block_until_ms` or poll the backgrounded shell with `AwaitShell`.
+- **Background only self-contained work.** Backgrounded commands can't pause to
+  ask clarifying questions. If a task needs interactive approval mid-run, keep
+  it foreground.
+- **Smoke-check after backgrounding.** When you spawn with `block_until_ms: 0`,
+  do one status check by reading the output file to confirm it didn't fail to
+  start. One check, not a poll loop.
+- **Don't poll reflexively.** For fire-and-forget commands (tests, builds), let
+  the completion notification fire. Only `AwaitShell` when the next step is
+  blocked on the result.
+
+## Anti-patterns
+
+- Letting the 30s default expire on a known 10-minute `sfa optimise` — burns 30s
+  for nothing. Set `block_until_ms: 0` up front.
+- Backgrounding `rg foo` to "speed it up" — polling costs more than the command.
+- `Start-Sleep 60` after kicking off a paper runner — use `AwaitShell` or just
+  end the turn and rely on the completion notification.

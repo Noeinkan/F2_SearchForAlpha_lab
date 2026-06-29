@@ -126,12 +126,19 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
             if plot in plot_functions:
                 plot_functions[plot](fig, df, row, 1, config, theme)
 
-        # Reassign every trace to the price subplot's xaxis (xaxis='x')
-        # so `x unified` hover merges traces from every subplot into a
-        # single tooltip column. The subplot y-axes are unchanged so the
-        # indicators still draw on their own rows; the subplots'
-        # `matches='x'` keeps their visible ranges synchronised.
-        fig.update_traces(xaxis='x')
+        # NOTE: a previous version reassigned every trace to xaxis='x'
+        # (`fig.update_traces(xaxis='x')`) and then rewrote the subplot
+        # x-axes' `matches` chain so the price subplot's x became the
+        # reference. That left every trace on (xaxis='x', yaxis='yN')
+        # while yN remained anchored to xN — a cross-axis configuration
+        # that Plotly 6.x refuses to draw: the SVG canvas is created with
+        # the right size and the traces are serialised into it, but no
+        # geometry is painted, so the chart area stays the background
+        # colour (black on the dark theme). `hovermode='x unified'` below
+        # already merges every subplot's tooltip into one column when the
+        # x-axes are shared via make_subplots(shared_xaxes=True), so the
+        # reassignment is unnecessary as well as broken. Keep the traces
+        # on their native subplot axes.
 
         # Force a uniform hover-label style on every trace. In `x unified`
         # mode Plotly otherwise inherits a per-row text color from each
@@ -147,7 +154,7 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
             )
         )
 
-        _add_range_selector(fig, theme)
+        _add_range_selector(fig, plot_count, theme)
         _update_layout(fig, plot_count, config.get('show_legend', False), config, theme)
         _add_crosshair(fig, plot_count, theme)
 
@@ -559,32 +566,44 @@ def _add_signal_traces(
     _add_combined_markers('sell', sell_signal_columns or [])
 
 
-def _add_range_selector(fig: go.Figure, theme: dict) -> None:
-    """Add time range selector buttons."""
-    fig.update_layout(
-        xaxis=dict(
-            rangeselector=dict(
-                buttons=list([
-                    dict(count=1, label="1M", step="month", stepmode="backward"),
-                    dict(count=3, label="3M", step="month", stepmode="backward"),
-                    dict(count=6, label="6M", step="month", stepmode="backward"),
-                    dict(count=1, label="YTD", step="year", stepmode="todate"),
-                    dict(count=1, label="1Y", step="year", stepmode="backward"),
-                    dict(step="all", label="ALL")
-                ]),
-                bgcolor='rgba(0,0,0,0)',
-                activecolor=theme['accent_blue'],
-                font=dict(color=theme['text_secondary'], size=11, family=FONT_FAMILY),
-                bordercolor=theme['border_primary'],
-                borderwidth=1,
-                x=0,
-                y=1.08,
-                xanchor='left',
-                yanchor='bottom'
-            ),
-            rangeslider=dict(visible=False),
-            type="date"
-        )
+def _add_range_selector(fig: go.Figure, plot_count: int, theme: dict) -> None:
+    """Add time range selector buttons to the canonical (bottom) shared x-axis.
+
+    With ``make_subplots(shared_xaxes=True)`` every row's xaxis is created
+    with ``matches='x{plot_count}'`` — the bottom row's axis is the
+    canonical driver and every upper axis is a follower. Plotly's range
+    buttons only update the axis they are physically attached to; if they
+    sit on a follower axis the ``matches`` constraint immediately reverts
+    the new range to mirror the driver, so the chart appears not to move
+    (the selector still highlights the clicked button, which masks the
+    bug). Attach the selector to ``xaxis{plot_count}`` so clicks actually
+    pan/zoom the visible window. ``rangeselector.x``/``y`` are in
+    normalized paper coordinates, so the buttons stay visually at the top
+    of the figure regardless of which subplot owns them.
+    """
+    fig.update_xaxes(
+        rangeselector=dict(
+            buttons=list([
+                dict(count=1, label="1M", step="month", stepmode="backward"),
+                dict(count=3, label="3M", step="month", stepmode="backward"),
+                dict(count=6, label="6M", step="month", stepmode="backward"),
+                dict(count=1, label="YTD", step="year", stepmode="todate"),
+                dict(count=1, label="1Y", step="year", stepmode="backward"),
+                dict(step="all", label="ALL")
+            ]),
+            bgcolor='rgba(0,0,0,0)',
+            activecolor=theme['accent_blue'],
+            font=dict(color=theme['text_secondary'], size=11, family=FONT_FAMILY),
+            bordercolor=theme['border_primary'],
+            borderwidth=1,
+            x=0,
+            y=1.08,
+            xanchor='left',
+            yanchor='bottom'
+        ),
+        rangeslider_visible=False,
+        type="date",
+        row=plot_count, col=1
     )
 
 
@@ -592,37 +611,21 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
     """Update figure layout with professional styling."""
     title_text = config.get('title', '')
 
-    # Calculate dynamic height based on number of plots
-    # Base height for main chart (candlestick) + additional height per indicator
-    base_height = 400  # Main chart minimum height
-    indicator_height = 120  # Height per indicator panel
-    calculated_height = max(500, base_height + (plot_count - 1) * indicator_height)
-
     fig.update_layout(
-        # Skip the plotly_dark template. It was leaking dim font defaults
-        # into the per-trace `<b>` rendering of the unified hover tooltip
-        # and making the date row hard to read. Every needed layout
-        # property (plot_bgcolor, paper_bgcolor, font, hoverlabel) is set
-        # explicitly below.
-        template='none',
+        template='plotly_dark',
         autosize=True,
-        height=calculated_height,
         showlegend=show_legend,
         plot_bgcolor=theme['bg_primary'],
         paper_bgcolor=theme['bg_primary'],
         margin=dict(l=60, r=20, t=76 if title_text else 56, b=36),
         font=dict(family=FONT_FAMILY, color=theme['text_primary'], size=12),
-        # Override the plotly_dark template's own hoverlabel defaults so
-        # the unified tooltip text is consistently bright. The template
-        # only sets {'align': 'left'} but its other defaults (notably
-        # font.color) were leaking through the per-trace `<b>` rendering
-        # in `x unified` mode and producing a dim date row.
         hoverlabel=dict(
             bgcolor=theme['bg_tertiary'],
             font=dict(size=12, family=FONT_FAMILY, color='#FFFFFF'),
             bordercolor=theme['border_primary'],
             align='left',
         ),
+        hovermode='x unified',
         title=dict(
             text=title_text,
             x=0.5,
@@ -684,31 +687,17 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
             xanchor='left'
         )
 
-    # make_subplots(shared_xaxes=True) makes the bottom axis the reference and
-    # points the primary x-axis at it (e.g. xaxis.matches='x5'). We instead
-    # want the primary 'x' to be the reference (all traces are reassigned to
-    # xaxis='x' for unified hover), so clear row 1's matches and point every
-    # other row at 'x'. Leaving xaxis.matches set creates an x->xN->x cycle
-    # that plotly breaks by corrupting the primary range, blanking the chart.
-    fig.update_xaxes(matches=None, row=1, col=1)
-    for i in range(2, plot_count + 1):
-        fig.update_xaxes(matches='x', row=i, col=1)
+    # make_subplots(shared_xaxes=True) already wires the subplot x-axes
+    # together correctly (every row's xaxis.matches points at the bottom
+    # row's x-axis, which is the canonical Plotly sharing layout). The
+    # previous trace-reassignment + matches-rewrite here fought that
+    # structure and produced a cross-axis configuration (traces on
+    # xaxis='x' with yN anchored to xN) that Plotly 6.x draws as a blank
+    # canvas. Leave the shared-axes layout untouched.
 
 
 def _add_crosshair(fig: go.Figure, plot_count: int, theme: dict) -> None:
-    """Add crosshair and unified hover across all subplots.
-
-    With ``hovermode="x unified"`` Plotly consolidates every trace's tooltip
-    into a single vertical column for the hovered x-value, so the user sees
-    the date, OHLC, and every active indicator reading at that bar at a
-    glance. ``hoverdistance``/``spikedistance`` are ignored under
-    ``x unified`` (Plotly snaps to the nearest x) and are intentionally
-    omitted. The tooltip styling itself is set in ``_update_layout`` via
-    ``hoverlabel`` and applies to the unified column as well.
-    """
-    fig.update_layout(
-        hovermode="x unified",
-    )
+    """Add crosshair spikes across all subplot x-axes."""
     for i in range(1, plot_count + 1):
         fig.update_xaxes(
             showspikes=True,

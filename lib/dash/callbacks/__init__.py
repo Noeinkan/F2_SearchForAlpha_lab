@@ -8,7 +8,6 @@ from .data_loading import register_data_loading_callbacks
 from .strategy_ui import register_strategy_callbacks
 from .signals import register_signal_callbacks
 from .chart_plotly import register_plotly_callbacks
-from .chart_tv import register_tv_callbacks
 from .backtest import register_backtest_callbacks
 from .optimization import register_optimization_callbacks
 from .fundamentals import register_fundamentals_callbacks
@@ -27,7 +26,6 @@ def register_callbacks(app) -> None:
     register_strategy_callbacks(app)
     register_signal_callbacks(app)
     register_plotly_callbacks(app)
-    register_tv_callbacks(app)
     register_backtest_callbacks(app)
     register_optimization_callbacks(app)
     register_routing_callbacks(app)

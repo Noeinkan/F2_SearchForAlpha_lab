@@ -7,14 +7,11 @@ import logging
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.dash.dash_config import DEFAULT_TICKER, PRESET_FILE_PATH, get_theme
+from lib.dash.dash_config import DEFAULT_TICKER, PRESET_FILE_PATH
 from lib.dash.routes import is_flow_route, is_fundamentals_route, is_ticker_terminal_route
 from lib.dash.preset_storage import load_presets
 from lib.dash.ticker_search import dmc_ticker_select_data, ensure_ticker_options_loaded
 from lib.dash.callbacks.shared import _format_preset_options
-from lib.dash.bootstrap import build_default_chart_config
-from lib.dash.chart_builder import create_chart
-from lib.dash.state import dashboard_state
 
 logger = logging.getLogger(__name__)
 
@@ -73,19 +70,6 @@ def register_startup_callbacks(app) -> None:
         presets = data.get("presets", {})
         options = _format_preset_options(presets)
         return data, options, None
-
-    @app.callback(
-        Output('financial-chart', 'figure', allow_duplicate=True),
-        Input('startup-interval', 'n_intervals'),
-        prevent_initial_call='initial_duplicate',
-    )
-    def seed_chart_from_bootstrap(_n_intervals):
-        """Paint the chart on first tick when server bootstrap already loaded data."""
-        if _n_intervals is None or dashboard_state.df is None:
-            raise PreventUpdate
-        theme = get_theme()
-        config = build_default_chart_config()
-        return create_chart(dashboard_state.df, config, theme)
 
     @app.callback(
         Output(_USER_TICKER_STORE, 'data'),

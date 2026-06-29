@@ -26,6 +26,16 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
+from lib.dash.flow_glossary import (
+    DISCLAIMER,
+    FLAG_DEFINITIONS,
+    TERM_DEFINITIONS,
+    fmt_premium,
+    fmt_strike,
+    interpretive_banner,
+    score_breakdown,
+)
+
 logger = logging.getLogger(__name__)
 
 ET = ZoneInfo("America/New_York")
@@ -485,21 +495,123 @@ def _html_flag_badges(flags: list[UnusualFlag], contract: Contract | None) -> st
         cls = {"unusual": "badge-u", "high_unusual": "badge-hu", "block_premium": "badge-b"}.get(f.kind)
         if cls:
             label = {"unusual": "U", "high_unusual": "HU", "block_premium": "B"}[f.kind]
-            parts.append(f'<span class="badge {cls}">{label}</span>')
+            tip = escape(f.message)
+            parts.append(f'<span class="badge {cls}" title="{tip}">{label}</span>')
     for f in flags:
         if f.kind == "repeat_call" and contract is None:
-            parts.append('<span class="badge badge-rc">RC</span>')
+            tip = escape(f.message)
+            parts.append(f'<span class="badge badge-rc" title="{tip}">RC</span>')
     return " ".join(parts)
+
+
+def _contract_sort_key(report: TickerReport, contract: Contract) -> tuple:
+    cflags = _contract_flags(report, contract)
+    hu = sum(1 for f in cflags if f.kind == "high_unusual")
+    bp = sum(1 for f in cflags if f.kind == "block_premium")
+    u = sum(1 for f in cflags if f.kind == "unusual")
+    return (hu, bp, u, contract.volume)
+
+
+def _html_th(label: str, term_key: str) -> str:
+    tip = escape(TERM_DEFINITIONS.get(term_key, label))
+    return f'<th title="{tip}">{escape(label)}</th>'
+
+
+def _html_glossary_block() -> str:
+    terms = "".join(
+        f"<dt>{escape(k.title())}</dt><dd>{escape(v)}</dd>"
+        for k, v in TERM_DEFINITIONS.items()
+    )
+    flags = "".join(
+        f'<dt><span class="badge badge-{fd["label"].lower()}">{escape(fd["label"])}</span> '
+        f'{escape(fd["short"])}</dt><dd>{escape(fd["long"])}</dd>'
+        for fd in FLAG_DEFINITIONS.values()
+    )
+    return (
+        f'<details class="glossary"><summary>What do these terms mean?</summary>'
+        f"<dl class='glossary-terms'>{terms}</dl>"
+        f"<h3>Activity flags</h3><dl class='glossary-flags'>{flags}</dl></details>"
+    )
+
+
+def _html_strike_cell(report: TickerReport, contract: Contract, today: date) -> str:
+    strike = fmt_strike(contract.strike)
+    otm = contract.is_otm(report.spot)
+    chip_cls = "chip-otm" if otm else "chip-itm"
+    chip_label = "OTM" if otm else "ITM"
+    chip_tip = escape(TERM_DEFINITIONS["otm" if otm else "itm"])
+    chip = f' <span class="chip {chip_cls}" title="{chip_tip}">{chip_label}</span>'
+    return f"{strike}{chip}"
+
+
+def _html_expiry_cell(contract: Contract, today: date) -> str:
+    expiry = contract.expiry.isoformat()
+    if contract.is_weekly(today):
+        tip = escape(TERM_DEFINITIONS["weekly"])
+        return f'{expiry} <span class="chip chip-weekly" title="{tip}">weekly</span>'
+    return expiry
+
+
+def _html_type_cell(cp: str) -> str:
+    color = "#3fb950" if cp == "C" else "#f85149"
+    tip = escape(TERM_DEFINITIONS["type"])
+    return f'<span style="color:{color};font-weight:600" title="{tip}">{cp}</span>'
+
+
+def _report_to_dict(report: TickerReport, today: date | None = None) -> dict:
+    today = today or date.today()
+    flagged = [c for c in report.contracts if _contract_flags(report, c)]
+    flagged.sort(key=lambda c: _contract_sort_key(report, c), reverse=True)
+    flagged_contracts = []
+    for c in flagged:
+        cflags = _contract_flags(report, c)
+        flagged_contracts.append({
+            "strike": c.strike,
+            "cp": c.cp,
+            "last": c.last,
+            "bid": c.bid,
+            "ask": c.ask,
+            "volume": c.volume,
+            "open_interest": c.open_interest,
+            "iv": c.iv,
+            "premium": c.premium,
+            "expiry": c.expiry.isoformat(),
+            "is_weekly": c.is_weekly(today),
+            "is_otm": c.is_otm(report.spot),
+            "flags": [{"kind": f.kind, "message": f.message} for f in cflags],
+        })
+
+    return {
+        "ticker": report.ticker,
+        "spot": report.spot,
+        "prev_close": report.prev_close,
+        "day_low": report.day_low,
+        "day_high": report.day_high,
+        "wk52_low": report.wk52_low,
+        "wk52_high": report.wk52_high,
+        "pc_vol_ratio": report.pc_vol_ratio,
+        "pc_oi_ratio": report.pc_oi_ratio,
+        "call_pct": report.call_pct,
+        "put_pct": report.put_pct,
+        "unusual_score": report.unusual_score,
+        "error": report.error,
+        "top_call_strikes": report.top_call_strikes,
+        "top_put_strikes": report.top_put_strikes,
+        "flags": [{"kind": f.kind, "message": f.message} for f in report.flags],
+        "contracts": flagged_contracts,
+    }
 
 
 def write_html_report(reports: list[TickerReport], output_path: str) -> None:
     ts = datetime.now().isoformat(timespec="seconds")
+    today = date.today()
     total_unusual = sum(1 for r in reports for f in r.flags if f.kind == "unusual")
     total_premium = sum(
         f.contract.premium for r in reports for f in r.flags
         if f.kind == "block_premium" and f.contract
     )
     repeat_tickers = [r.ticker for r in reports if any(f.kind == "repeat_call" for f in r.flags)]
+    glossary = _html_glossary_block()
 
     cards = []
     for report in sorted(reports, key=lambda r: r.unusual_score, reverse=True):
@@ -512,25 +624,45 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
 
         repeat = any(f.kind == "repeat_call" for f in report.flags)
         rc_badge = '<span class="badge badge-rc">REPEAT CALLS</span>' if repeat else ""
+        report_dict = _report_to_dict(report, today)
+        score_tip = escape(score_breakdown(report_dict))
+        interp = interpretive_banner(report_dict)
+        interp_html = f'<p class="interp">{escape(interp)}</p>' if interp else ""
 
         rows = []
         flagged = [c for c in report.contracts if _contract_flags(report, c)]
-        flagged.sort(key=lambda c: c.volume, reverse=True)
+        flagged.sort(key=lambda c: _contract_sort_key(report, c), reverse=True)
         for c in flagged[:50]:
             badges = _html_flag_badges(_contract_flags(report, c), c)
             rows.append(
                 "<tr>"
-                f"<td>{c.strike:.2f}</td><td>{c.cp}</td>"
+                f"<td>{_html_strike_cell(report, c, today)}</td>"
+                f"<td>{_html_type_cell(c.cp)}</td>"
                 f"<td>{c.last:.2f}</td><td>{c.bid:.2f}</td><td>{c.ask:.2f}</td>"
-                f"<td>{c.volume}</td><td>{c.open_interest}</td>"
-                f"<td>{c.iv * 100:.1f}%</td><td>${c.premium:,.0f}</td>"
+                f"<td>{c.volume:,}</td><td>{c.open_interest:,}</td>"
+                f"<td>{c.iv * 100:.1f}%</td><td>{fmt_premium(c.premium)}</td>"
+                f"<td>{_html_expiry_cell(c, today)}</td>"
                 f"<td>{badges}</td></tr>"
             )
 
-        table_body = "\n".join(rows) if rows else '<tr><td colspan="10">No flagged contracts</td></tr>'
+        table_body = "\n".join(rows) if rows else '<tr><td colspan="11">No flagged contracts</td></tr>'
 
         top_calls = ", ".join(f"${s:.0f} ({v:,})" for s, v in report.top_call_strikes[:5]) or "—"
         top_puts = ", ".join(f"${s:.0f} ({v:,})" for s, v in report.top_put_strikes[:5]) or "—"
+
+        th_row = "".join([
+            _html_th("Strike", "strike"),
+            _html_th("Type", "type"),
+            _html_th("Last", "last"),
+            _html_th("Bid", "bid"),
+            _html_th("Ask", "ask"),
+            _html_th("Vol", "vol"),
+            _html_th("OI", "oi"),
+            _html_th("IV", "iv"),
+            _html_th("Premium", "premium"),
+            _html_th("Expiry", "expiry"),
+            _html_th("Flags", "score"),
+        ])
 
         cards.append(
             f"""<div class="card" data-ticker="{escape(report.ticker)}">
@@ -539,11 +671,11 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
     <a class="flow-link" href="/fundamentals?ticker={escape(report.ticker)}">Open Fundamentals</a>
   </div>
   <div class="kpis">
-    <span>Prev ${report.prev_close:,.2f}</span>
-    <span>Day {report.day_low:,.2f}–{report.day_high:,.2f}</span>
-    <span>52w {report.wk52_low:,.2f}–{report.wk52_high:,.2f}</span>
-    <span>P/C vol {report.pc_vol_ratio:.2f}</span>
-    <span>Score {report.unusual_score}</span>
+    <span title="Previous session close">Prev ${report.prev_close:,.2f}</span>
+    <span title="Today's trading range">Day {report.day_low:,.2f}–{report.day_high:,.2f}</span>
+    <span title="52-week high and low">52-week {report.wk52_low:,.2f}–{report.wk52_high:,.2f}</span>
+    <span title="{escape(TERM_DEFINITIONS['pc_vol'])}">Put/Call vol {report.pc_vol_ratio:.2f}</span>
+    <span title="{score_tip}">Score {report.unusual_score}</span>
   </div>
   <div class="sentiment">
     <span>Calls {report.call_pct:.1f}%</span>
@@ -551,13 +683,13 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
     <span>Puts {report.put_pct:.1f}%</span>
   </div>
   <p class="top-strikes">Top calls: {escape(top_calls)} | Top puts: {escape(top_puts)}</p>
+  {interp_html}
+  <div class="table-wrap">
   <table class="sortable">
-    <thead><tr>
-      <th>Strike</th><th>Type</th><th>Last</th><th>Bid</th><th>Ask</th>
-      <th>Vol</th><th>OI</th><th>IV</th><th>Premium</th><th>Flags</th>
-    </tr></thead>
+    <thead><tr>{th_row}</tr></thead>
     <tbody>{table_body}</tbody>
   </table>
+  </div>
 </div>"""
         )
 
@@ -569,8 +701,14 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
 <style>
 body {{ background:#0d1117; color:#c9d1d9; font-family:Segoe UI,system-ui,sans-serif; margin:0; padding:16px; }}
 h1 {{ font-size:1.4rem; margin:0 0 12px; }}
-.summary {{ display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px; }}
+.summary {{ display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px; }}
 .summary span {{ background:#161b22; padding:8px 14px; border-radius:6px; border:1px solid #30363d; }}
+.glossary {{ background:#161b22; border:1px solid #30363d; border-radius:8px; padding:10px 14px; margin-bottom:20px; }}
+.glossary summary {{ cursor:pointer; font-weight:600; color:#e6edf3; }}
+.glossary dl {{ margin:8px 0 0; font-size:0.85rem; }}
+.glossary dt {{ color:#e6edf3; margin-top:6px; }}
+.glossary dd {{ margin:2px 0 0 1rem; color:#8b949e; }}
+.glossary h3 {{ font-size:0.9rem; margin:12px 0 4px; color:#c9d1d9; }}
 .card {{ background:#161b22; border:1px solid #30363d; border-radius:8px; padding:14px; margin-bottom:16px; }}
 .card-header {{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }}
 .card h2 {{ margin:0; color:#e6edf3; font-size:1.1rem; }}
@@ -581,17 +719,25 @@ h1 {{ font-size:1.4rem; margin:0 0 12px; }}
 .bar {{ flex:1; height:10px; background:#21262d; border-radius:4px; overflow:hidden; max-width:300px; }}
 .bar-call {{ height:100%; background:#3fb950; }}
 .top-strikes {{ font-size:0.8rem; color:#8b949e; }}
-table {{ width:100%; border-collapse:collapse; font-size:0.82rem; margin-top:8px; }}
-th, td {{ padding:6px 8px; text-align:right; border-bottom:1px solid #21262d; }}
-th {{ cursor:pointer; color:#8b949e; user-select:none; }}
+.interp {{ font-size:0.85rem; color:#58a6ff; margin:8px 0; line-height:1.4; }}
+.table-wrap {{ overflow-x:auto; margin-top:8px; }}
+table {{ width:100%; border-collapse:collapse; font-size:0.82rem; }}
+th, td {{ padding:6px 8px; text-align:right; border-bottom:1px solid #21262d; white-space:nowrap; }}
+th {{ cursor:pointer; color:#8b949e; user-select:none; position:sticky; top:0; background:#161b22; z-index:1; }}
 th:hover {{ color:#c9d1d9; }}
+th .sort-glyph {{ margin-left:4px; font-size:0.7rem; }}
 td:nth-child(2) {{ text-align:center; }}
+.chip {{ display:inline-block; padding:0 4px; border-radius:3px; font-size:0.65rem; font-weight:600; margin-left:4px; vertical-align:middle; }}
+.chip-otm {{ background:#58a6ff22; color:#58a6ff; }}
+.chip-itm {{ background:#3fb95022; color:#3fb950; }}
+.chip-weekly {{ background:#f0c67422; color:#f0c674; }}
 .badge {{ display:inline-block; padding:1px 6px; border-radius:4px; font-size:0.75rem; font-weight:600; margin-right:4px; }}
 .badge-u {{ background:#a371f733; color:#a371f7; }}
 .badge-hu {{ background:#58a6ff33; color:#58a6ff; }}
 .badge-b {{ background:#f0883e33; color:#f0883e; }}
 .badge-rc {{ background:#f0c67433; color:#f0c674; }}
 .err {{ color:#f85149; }}
+footer {{ margin-top:24px; font-size:0.75rem; color:#8b949e; text-align:center; }}
 </style>
 </head>
 <body>
@@ -599,10 +745,12 @@ td:nth-child(2) {{ text-align:center; }}
 <div class="summary">
   <span>Tickers: {len(reports)}</span>
   <span>Unusual contracts: {total_unusual}</span>
-  <span>Block premium flagged: ${total_premium:,.0f}</span>
+  <span>Block premium flagged: {fmt_premium(total_premium)}</span>
   <span>Repeat-call tickers: {", ".join(repeat_tickers) or "—"}</span>
 </div>
+{glossary}
 {"".join(cards)}
+<footer>{escape(DISCLAIMER)}</footer>
 <script>
 document.querySelectorAll('.flow-link').forEach(link => {{
   link.addEventListener('click', function(e) {{
@@ -618,11 +766,19 @@ document.querySelectorAll('table.sortable').forEach(table => {{
       const tbody = table.querySelector('tbody');
       const rows = Array.from(tbody.querySelectorAll('tr'));
       const asc = th.dataset.sort !== 'asc';
-      table.querySelectorAll('th').forEach(h => delete h.dataset.sort);
+      table.querySelectorAll('th').forEach(h => {{
+        delete h.dataset.sort;
+        const g = h.querySelector('.sort-glyph');
+        if (g) g.remove();
+      }});
       th.dataset.sort = asc ? 'asc' : 'desc';
+      const glyph = document.createElement('span');
+      glyph.className = 'sort-glyph';
+      glyph.textContent = asc ? '▲' : '▼';
+      th.appendChild(glyph);
       rows.sort((a, b) => {{
-        let av = a.children[idx].textContent.replace(/[$,%]/g, '');
-        let bv = b.children[idx].textContent.replace(/[$,%]/g, '');
+        let av = a.children[idx].textContent.replace(/[$,%KM]/g, '');
+        let bv = b.children[idx].textContent.replace(/[$,%KM]/g, '');
         let an = parseFloat(av), bn = parseFloat(bv);
         if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
         return asc ? av.localeCompare(bv) : bv.localeCompare(av);
@@ -648,21 +804,27 @@ document.querySelectorAll('table.sortable').forEach(table => {{
         raise
 
 
-def reports_to_json(reports: list[TickerReport]) -> str:
-    payload = []
-    for r in reports:
-        payload.append({
-            "ticker": r.ticker,
-            "spot": r.spot,
-            "pc_vol_ratio": r.pc_vol_ratio,
-            "pc_oi_ratio": r.pc_oi_ratio,
-            "call_pct": r.call_pct,
-            "put_pct": r.put_pct,
-            "unusual_score": r.unusual_score,
-            "error": r.error,
-            "flags": [{"kind": f.kind, "message": f.message} for f in r.flags],
-        })
+def reports_to_json(reports: list[TickerReport], *, today: date | None = None) -> str:
+    today = today or date.today()
+    payload = {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "reports": [_report_to_dict(r, today) for r in reports],
+    }
     return json.dumps(payload, indent=2)
+
+
+def write_json_report(reports: list[TickerReport], output_path: str) -> None:
+    directory = os.path.dirname(os.path.abspath(output_path)) or "."
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(suffix=".json", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(reports_to_json(reports))
+        os.replace(tmp, output_path)
+    except Exception:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -798,6 +960,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--interval", type=int, default=60, help="Watch poll interval seconds (default 60)")
     p.add_argument("--expirations", type=int, default=3, help="Option expirations per ticker (default 3)")
     p.add_argument("--output", default="flow_report.html", help="HTML report path")
+    p.add_argument("--json-out", default=None, metavar="PATH", help="JSON report path for Dash dashboard")
     p.add_argument("--min-premium", type=float, default=1_000_000, help="Block premium threshold")
     p.add_argument("--min-size", type=int, default=5000, help="High-unusual size threshold")
     p.add_argument("--no-html", action="store_true", help="Skip HTML report")
@@ -868,6 +1031,11 @@ def main(argv: list[str] | None = None) -> int:
         write_html_report(reports, args.output)
         if not args.quiet:
             console.print(f"[dim]HTML report: {args.output}[/dim]")
+
+    if args.json_out:
+        write_json_report(reports, args.json_out)
+        if not args.quiet:
+            console.print(f"[dim]JSON report: {args.json_out}[/dim]")
 
     if args.json:
         print(reports_to_json(reports))

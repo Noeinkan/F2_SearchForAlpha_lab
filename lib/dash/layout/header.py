@@ -1,12 +1,19 @@
 """
 Top-of-window chrome: the Bloomberg-style header tape and the dense
 bottom status bar. Both are tiny enough to share a file.
+
+Tooltips on header chrome use the native `title` attribute rather than
+`dbc.Tooltip`. Popper-based tooltips occasionally render their text
+inline (top-left of viewport) before they have computed a target
+position — on small overlays like the fundamentals/flow header this
+shows up as ghost text bleeding over the chart toolbar. Native title
+tooltips have none of those positioning issues and keep the header DOM
+small.
 """
 
-from dash import dcc, html
-import dash_bootstrap_components as dbc
+from dash import html
 
-from lib.dash.dash_config import DEFAULT_TICKER, FONT_SIZES, FONT_FAMILY
+from lib.dash.dash_config import DEFAULT_TICKER
 from lib.dash.bootstrap import BootstrapSnapshot
 
 
@@ -38,44 +45,26 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
 
         html.Div([
             html.Span(className='dot dot-up'),
-            html.Span('CONNECTED', style={
-                'fontSize': FONT_SIZES['xs'],
-                'color': theme['text_secondary'],
-                'fontFamily': FONT_FAMILY,
-                'letterSpacing': '1px',
-            }),
-            html.Span('│', style={'color': theme['border_primary'], 'fontFamily': FONT_FAMILY}),
-            html.Div(id='header-status', style={
-                'fontSize': FONT_SIZES['sm'],
-                'color': theme['text_secondary'],
-                'fontFamily': FONT_FAMILY,
-            }, className='num'),
+            html.Span('CONNECTED', className='bbg-header-status-label'),
+            html.Span('│', className='bbg-header-divider'),
+            html.Div(id='header-status', className='num bbg-header-clock'),
             # Theme toggle — Phase 4: cycle DARK → CVD → LIGHT.
             html.Button(
                 id='theme-toggle',
-                children=[html.Span('[ DARK ]', id='theme-label')],
-                style=styles['button_outline'],
-                className='bbg-button-ghost',
+                children=[html.Span('DARK', id='theme-label')],
+                className='bbg-icon-button',
                 n_clicks=0,
+                title='Cycle theme: Dark → CVD-safe → Light',
                 **{'aria-label': 'Cycle theme (Dark, CVD-safe, Light)'},
             ),
-            dbc.Tooltip(
-                "Cycle theme: Dark → CVD-safe → Light",
-                target='theme-toggle', placement='bottom',
-            ),
-            # Phase 5 — keyboard-shortcut catalog button. Same chrome as
-            # the theme toggle so the header rhythm stays consistent.
+            # Phase 5 — keyboard-shortcut catalog button.
             html.Button(
                 id='help-shortcuts-btn',
-                children=[html.Span('[ ? ]', id='help-shortcuts-label')],
-                style=styles['button_outline'],
-                className='bbg-button-ghost',
+                children=[html.Span('?', id='help-shortcuts-label')],
+                className='bbg-icon-button',
                 n_clicks=0,
-                **{'aria-label': 'Show keyboard shortcuts (Ctrl+/)'},
-            ),
-            dbc.Tooltip(
-                "Show keyboard shortcuts (Ctrl+K)",
-                target='help-shortcuts-btn', placement='bottom',
+                title='Show keyboard shortcuts (Ctrl+K)',
+                **{'aria-label': 'Show keyboard shortcuts (Ctrl+K)'},
             ),
         ], style=styles['header_controls']),
     ], style=styles['header'], className='bbg-header')
@@ -107,23 +96,20 @@ def _create_status_bar(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
             ),
         ], style={**styles['status_segment'], 'flex': 1, 'minWidth': 0}, className='bbg-status-segment flex-grow'),
         # Command palette launcher. The palette no longer auto-opens, so this
-        # button (plus Ctrl+K and the header `[ ? ]` button) is how it is
-        # reached. Wired to `command-palette-open` in callbacks/command_palette.py.
+        # button (plus Ctrl+K and the header `?` button) is how it is reached.
+        # Wired to `command-palette-open` in callbacks/command_palette.py.
         html.Div([
             html.Button(
                 id='palette-open-btn',
                 children=[
-                    html.Span('⌘', className='sfa-status-kbd'),
+                    html.Span('Ctrl+K', className='sfa-status-kbd'),
                     html.Span('COMMANDS', style={'marginLeft': '6px'}),
                 ],
                 style=styles['button_outline'],
                 className='bbg-button-ghost bbg-status-btn',
                 n_clicks=0,
+                title='Open command palette (Ctrl+K)',
                 **{'aria-label': 'Open command palette (Ctrl+K)'},
-            ),
-            dbc.Tooltip(
-                "Open command palette (Ctrl+K)",
-                target='palette-open-btn', placement='top',
             ),
         ], style=styles['status_segment'], className='bbg-status-segment'),
         html.Div([

@@ -85,6 +85,7 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Interval(id='autoload-interval', interval=1000, max_intervals=1),
         dcc.Interval(id='optimization-interval', interval=500, disabled=True, n_intervals=0),
         dcc.Store(id='flow-state-store', data={'last_scan_at': None, 'tickers': []}, storage_type='session'),
+        dcc.Store(id='flow-data-store', data=None, storage_type='session'),
         dcc.Interval(id='flow-rescan-interval', interval=2000, max_intervals=1, disabled=True),
 
         # Phase 2 — collapsible sidebars + splitter
@@ -117,6 +118,8 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Store(id='sfa-palette-esc-trigger', data=None),
         html.Div(id='command-palette-search-sync', style={'display': 'none'}),
         html.Div(id='command-palette-after-sync', style={'display': 'none'}),
+        html.Div(id='command-palette-focus-sync', style={'display': 'none'}),
+        html.Div(id='command-palette-guard-sync', style={'display': 'none'}),
 
         html.Div([
             _create_header(styles, theme, bootstrap=bootstrap),
@@ -197,7 +200,7 @@ def wire_command_palette_is_open(app):
     @app.callback(
         Output('command-palette', 'is_open'),
         [Input('command-palette-open', 'data')],
-        prevent_initial_call=False,
+        prevent_initial_call=True,
     )
     def _sync_palette_is_open(open_state):
         return bool(open_state)
@@ -216,3 +219,45 @@ def wire_command_palette_is_open(app):
         if open_state:
             raise PreventUpdate
         return ''
+
+    app.clientside_callback(
+        """
+        function(openState) {
+            if (!openState) {
+                return window.dash_clientside.no_update;
+            }
+            setTimeout(function() {
+                var input = document.getElementById('command-palette-query');
+                if (input) {
+                    input.focus();
+                }
+            }, 50);
+            return '';
+        }
+        """,
+        Output('command-palette-focus-sync', 'children'),
+        Input('command-palette-open', 'data'),
+        prevent_initial_call=True,
+    )
+
+    app.clientside_callback(
+        """
+        function(_n) {
+            var modal = document.getElementById('command-palette');
+            if (modal) {
+                modal.classList.remove('show');
+                modal.style.display = 'none';
+                modal.setAttribute('aria-hidden', 'true');
+            }
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
+            document.querySelectorAll('.modal-backdrop').forEach(function(el) {
+                el.remove();
+            });
+            return '';
+        }
+        """,
+        Output('command-palette-guard-sync', 'children'),
+        Input('startup-interval', 'n_intervals'),
+    )

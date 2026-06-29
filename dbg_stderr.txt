@@ -1,0 +1,2 @@
+[*********************100%***********************]  1 of 1 completed
+ * Tip: There are .env files present. Install python-dotenv to use them.

@@ -22,6 +22,27 @@ from lib.dash.state import dashboard_state
 logger = logging.getLogger(__name__)
 
 
+def _resolve_preset_end_date(saved_value) -> str:
+    """
+    Roll a stale preset end_date forward to today.
+
+    Presets snapshot the picker's literal date at save time. Without this,
+    loading a preset months later clamps yfinance to the save-day boundary
+    and the chart appears to "freeze" in the past. Treat any missing value,
+    the explicit "today" sentinel, or a date strictly before today as a
+    rolling anchor. Future-dated values are preserved verbatim so a user
+    can still freeze a preset to a chosen window by setting end_date ahead
+    of today.
+    """
+    today_iso = date.today().isoformat()
+    if not saved_value or saved_value == "today":
+        return today_iso
+    try:
+        return today_iso if date.fromisoformat(str(saved_value)[:10]) < date.today() else saved_value
+    except ValueError:
+        return today_iso
+
+
 def register_data_loading_callbacks(app) -> None:
     @app.callback(
         [Output('ticker-dropdown', 'value'),
@@ -39,7 +60,7 @@ def register_data_loading_callbacks(app) -> None:
         return (
             market.get("ticker"),
             market.get("start_date"),
-            market.get("end_date"),
+            _resolve_preset_end_date(market.get("end_date")),
             market.get("initial_capital"),
         )
 
@@ -150,22 +171,3 @@ def register_data_loading_callbacks(app) -> None:
                 None,
                 create_empty_chart(theme, str(e)[:60]),
             )
-
-    app.clientside_callback(
-        """
-        function(nIntervals, nClicks, tickerValue) {
-            if (!nIntervals && !nClicks && !tickerValue) {
-                return window.dash_clientside.no_update;
-            }
-            var ticker = tickerValue
-                ? String(tickerValue).trim().toUpperCase()
-                : 'TSLA';
-            return 'Loading ' + ticker + '\\u2026';
-        }
-        """,
-        Output('chart-title', 'children', allow_duplicate=True),
-        [Input('autoload-interval', 'n_intervals'),
-         Input('load-data-button', 'n_clicks'),
-         Input('ticker-dropdown', 'value')],
-        prevent_initial_call=True,
-    )

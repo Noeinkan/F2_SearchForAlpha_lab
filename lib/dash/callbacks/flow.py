@@ -1,7 +1,8 @@
-"""Flow Scanner page callbacks (route + iframe + rescan)."""
+"""Flow Scanner page callbacks (route + native Dash render + rescan)."""
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime
 
@@ -10,18 +11,32 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_TERMINAL, get_theme
+from lib.dash.flow_view import render_flow_placeholder, render_flow_reports, render_glossary_panel
 from lib.dash.routes import build_flow_path, extract_path_ticker, is_flow_route, is_fundamentals_route, ticker_from_search
 from lib.dash.state import dashboard_state
 from scripts.flow_runner import run_flow_scan
 
 _FLOW_REPORT = os.path.join(os.getcwd(), "flow_report.html")
+_FLOW_JSON = os.path.join(os.getcwd(), "flow_report.json")
 
 
-def _iframe_src() -> str:
-    if os.path.exists(_FLOW_REPORT):
-        ts = int(os.path.getmtime(_FLOW_REPORT))
-        return f"/flow_report.html?v={ts}"
-    return ""
+def _load_flow_json() -> dict | None:
+    if not os.path.exists(_FLOW_JSON):
+        return None
+    try:
+        with open(_FLOW_JSON, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _render_from_payload(payload: dict | None, theme: dict, *, show_glossary: bool = False):
+    if not payload:
+        return render_flow_placeholder(theme)
+    reports = payload.get("reports")
+    if not reports:
+        return render_flow_placeholder(theme, "Report file is empty. Click RESCAN NOW.")
+    return render_flow_reports(payload, theme, show_glossary=show_glossary)
 
 
 def register_flow_callbacks(app) -> None:
@@ -82,33 +97,58 @@ def register_flow_callbacks(app) -> None:
 
     @app.callback(
         [
-            Output("flow-iframe", "src"),
+            Output("flow-content", "children"),
             Output("flow-status", "children"),
-            Output("flow-state-store", "data"),
+            Output("flow-data-store", "data"),
             Output("flow-rescan-button", "disabled"),
         ],
         [Input("flow-rescan-button", "n_clicks"), Input("app-url", "pathname")],
-        [State("ticker-dropdown", "value"), State("flow-state-store", "data")],
+        [
+            State("ticker-dropdown", "value"),
+            State("flow-state-store", "data"),
+            State("theme-store", "data"),
+        ],
         prevent_initial_call=False,
     )
-    def rescan_or_show_iframe(rescan_clicks, pathname, selected_ticker, flow_state):
+    def rescan_or_render_flow(rescan_clicks, pathname, selected_ticker, flow_state, theme_name):
         ctx = callback_context
         triggered = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else ""
+        theme = get_theme(theme_name or DEFAULT_THEME)
 
         if not is_flow_route(pathname):
-            return "", no_update, no_update, False
+            return no_update, no_update, no_update, False
 
         if triggered != "flow-rescan-button":
-            src = _iframe_src()
-            if src:
-                return src, "Last report loaded", no_update, False
-            return "", "No report yet. Click RESCAN NOW.", no_update, False
+            payload = _load_flow_json()
+            if payload:
+                return (
+                    _render_from_payload(payload, theme),
+                    "Last report loaded",
+                    payload,
+                    False,
+                )
+            return (
+                render_flow_placeholder(theme),
+                "No report yet. Click RESCAN NOW.",
+                no_update,
+                False,
+            )
 
         if not rescan_clicks:
-            src = _iframe_src()
-            if src:
-                return src, "Last report loaded", no_update, False
-            return "", "No report yet. Click RESCAN NOW.", no_update, False
+            payload = _load_flow_json()
+            if payload:
+                return (
+                    _render_from_payload(payload, theme),
+                    "Last report loaded",
+                    payload,
+                    False,
+                )
+            return (
+                render_flow_placeholder(theme),
+                "No report yet. Click RESCAN NOW.",
+                no_update,
+                False,
+            )
 
         ticker = str(extract_path_ticker(pathname) or selected_ticker or DEFAULT_TICKER).strip().upper()
         tickers = [ticker]
@@ -118,13 +158,60 @@ def register_flow_callbacks(app) -> None:
 
         dashboard_state.flow_last_scan_at = datetime.now()
         dashboard_state.flow_last_scan_path = _FLOW_REPORT
-        ts = int(os.path.getmtime(_FLOW_REPORT))
+        payload = _load_flow_json()
+        if not payload:
+            return (
+                no_update,
+                f"Rescanned {ticker} but JSON report missing",
+                no_update,
+                False,
+            )
+
         return (
-            f"/flow_report.html?v={ts}",
+            _render_from_payload(payload, theme),
             f"Rescanned {ticker} at {datetime.now().strftime('%H:%M:%S')}",
-            {"last_scan_at": ts, "tickers": tickers},
+            payload,
             False,
         )
+
+    @app.callback(
+        Output("flow-glossary", "children"),
+        Output("flow-glossary", "style"),
+        Input("flow-glossary-button", "n_clicks"),
+        State("flow-glossary", "style"),
+        State("theme-store", "data"),
+        prevent_initial_call=True,
+    )
+    def toggle_flow_glossary(n_clicks, current_style, theme_name):
+        if not n_clicks:
+            raise PreventUpdate
+        theme = get_theme(theme_name or DEFAULT_THEME)
+        style = dict(current_style or {})
+        visible = style.get("display") == "block"
+        if visible:
+            return [], {"display": "none"}
+        return (
+            render_glossary_panel(theme),
+            {
+                "display": "block",
+                "padding": "8px",
+                "borderBottom": f'1px solid {theme["border_primary"]}',
+                "maxHeight": "40%",
+                "overflowY": "auto",
+            },
+        )
+
+    @app.callback(
+        Output("flow-content", "children", allow_duplicate=True),
+        Input("theme-store", "data"),
+        State("flow-data-store", "data"),
+        prevent_initial_call=True,
+    )
+    def rerender_flow_on_theme(theme_name, flow_data):
+        if not flow_data:
+            raise PreventUpdate
+        theme = get_theme(theme_name or DEFAULT_THEME)
+        return _render_from_payload(flow_data, theme)
 
     @app.callback(
         [
@@ -144,6 +231,5 @@ def register_flow_callbacks(app) -> None:
             raise PreventUpdate
         known = {str(row.get("value", "")).upper() for row in (ticker_data or [])}
         if known and ticker not in known and len(known) <= 1:
-            # Dropdown options not loaded yet — load_fundamentals handles fundamentals.
             raise PreventUpdate
         return ticker, ticker
