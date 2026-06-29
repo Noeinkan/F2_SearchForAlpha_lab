@@ -30,6 +30,8 @@ from flask import Response, request, send_file
 
 from lib.dash.dash_config import (
     DEFAULT_THEME,
+    DEFAULT_TICKER,
+    ROUTE_TICKER_TERMINAL,
     START_PORT, MAX_PORT_TRIES,
     get_theme,
 )
@@ -158,13 +160,23 @@ def _wait_for_server_ready(host: str, port: int, timeout: float = 15.0) -> bool:
     return False
 
 
-def _schedule_browser_open(host: str, port: int) -> None:
+def _schedule_browser_open(host: str, port: int, path: str = "/") -> None:
     """Open the browser once the server accepts HTTP connections."""
+    target = f"http://{host}:{port}{path}"
+
     def _open_when_ready() -> None:
         if _wait_for_server_ready(host, port):
-            webbrowser.open_new(f"http://{host}:{port}/")
+            webbrowser.open_new(target)
 
     threading.Thread(target=_open_when_ready, daemon=True).start()
+
+
+def _default_browser_path() -> str:
+    """Default landing URL includes the bootstrap ticker as a suffix."""
+    symbol = str(DEFAULT_TICKER or "").strip().upper()
+    if not symbol:
+        return "/"
+    return f"{ROUTE_TICKER_TERMINAL}/{symbol}"
 
 
 def _configure_dev_server(app: dash.Dash, dev_mode: bool) -> list[str] | None:
@@ -231,7 +243,7 @@ def run_dashboard(dev_mode: bool = False) -> None:
             return resp
         return Response(_FLOW_STUB_HTML, mimetype="text/html")
 
-    def _serve_dash_shell():
+    def _serve_dash_shell(**_route_kwargs):
         html = app.index()
         path = request.path or '/'
         query = request.query_string.decode('utf-8')
@@ -260,7 +272,7 @@ def run_dashboard(dev_mode: bool = False) -> None:
     host = "127.0.0.1" if dev_mode else os.getenv("DASH_HOST", "127.0.0.1").strip()
     port = _get_env_port(START_PORT)
     _kill_stale_port_listener(port)
-    _schedule_browser_open(host, port)
+    _schedule_browser_open(host, port, _default_browser_path())
     extra_files = _configure_dev_server(app, dev_mode)
     # Reloader is opt-in via DASH_RELOAD=1. Werkzeug's reloader on Windows
     # spawns a child process that can silently exit the parent; defaulting
@@ -313,7 +325,7 @@ def plot_financial_chart_dash(df, ticker: str, backtest_results: dict) -> None:
     """Legacy function for backwards compatibility."""
     app = create_dash_app(df, ticker, backtest_results)
     port = find_available_port()
-    _schedule_browser_open("127.0.0.1", port)
+    _schedule_browser_open("127.0.0.1", port, _default_browser_path())
     app.run(debug=False, use_reloader=False, port=port)
 
 
