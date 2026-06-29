@@ -8,15 +8,26 @@ from dash import dcc, html
 
 from lib.dash.dash_config import FONT_SIZES, FONT_FAMILY
 from lib.dash.components import ticker_pill
+from lib.dash.chart_builder import create_empty_chart
+from lib.dash.bootstrap import BootstrapSnapshot
+
+# Shared by layout and toggle_chart_visibility — must match on first paint
+# (before any callback runs) so the Plotly graph has a sized container.
+_CHART_PANEL_BASE = {
+    'position': 'absolute',
+    'inset': 0,
+    'height': '100%',
+    'width': '100%',
+}
 
 
-def _create_chart_area(styles: dict, theme: dict) -> html.Main:
+def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Main:
     """Create the main chart area."""
     return html.Main([
         # Chart Toolbar
         html.Div([
             html.Div([
-                html.H2(id='chart-title', children="Select a symbol to begin", style={
+                html.H2(id='chart-title', children=bootstrap.chart_title if bootstrap else "Select a symbol to begin", style={
                     'fontSize': FONT_SIZES['sm'],
                     'fontWeight': '600',
                     'color': theme['text_primary'],
@@ -25,12 +36,16 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
                     'letterSpacing': '1.5px',
                     'textTransform': 'uppercase',
                 }),
-                html.Span(id='chart-subtitle', style={
-                    'fontSize': FONT_SIZES['xs'],
-                    'color': theme['text_secondary'],
-                    'marginLeft': '12px',
-                    'fontFamily': FONT_FAMILY,
-                }),
+                html.Span(
+                    id='chart-subtitle',
+                    children=bootstrap.chart_subtitle if bootstrap else None,
+                    style={
+                        'fontSize': FONT_SIZES['xs'],
+                        'color': theme['text_secondary'],
+                        'marginLeft': '12px',
+                        'fontFamily': FONT_FAMILY,
+                    },
+                ),
             ], style={'display': 'flex', 'alignItems': 'baseline'}),
 
             html.Div([
@@ -54,40 +69,32 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
             html.Div(
                 id='plotly-chart-container',
                 children=[
-                    dcc.Loading(
-                        id='loading-chart',
-                        type='circle',
-                        color=theme['accent_blue'],
-                        # dcc.Loading >= 1.9.1 ignores the `style` prop on its
-                        # outer wrapper and applies it to the spinner instead,
-                        # so the chart's `height: 100%` chain collapses to
-                        # auto-sized content. `parent_style` is the documented
-                        # way to size the Loading wrapper itself.
-                        parent_style={
-                            'width': '100%',
+                    dcc.Graph(
+                        id='financial-chart',
+                        figure=(
+                            bootstrap.chart_figure
+                            if bootstrap
+                            else create_empty_chart(theme, "Loading TSLA\u2026")
+                        ),
+                        style={
                             'height': '100%',
+                            'width': '100%',
                             'minWidth': 0,
-                            'minHeight': 0,
+                            'minHeight': '480px',
                         },
-                        children=[
-                            dcc.Graph(
-                                id='financial-chart',
-                                style={'height': '100%', 'width': '100%', 'minWidth': 0, 'minHeight': 0},
-                                config={
-                                    'responsive': True,
-                                    'displayModeBar': True,
-                                    'displaylogo': False,
-                                    'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
-                                    'toImageButtonOptions': {
-                                        'format': 'png',
-                                        'filename': 'chart',
-                                        'height': None,
-                                        'width': None,
-                                        'scale': 2
-                                    }
-                                }
-                            )
-                        ]
+                        config={
+                            'responsive': True,
+                            'displayModeBar': True,
+                            'displaylogo': False,
+                            'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+                            'toImageButtonOptions': {
+                                'format': 'png',
+                                'filename': 'chart',
+                                'height': None,
+                                'width': None,
+                                'scale': 2
+                            }
+                        }
                     ),
                     html.Div(
                         id='signal-count-bar',
@@ -100,10 +107,11 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
                     )
                 ],
                 style={
-                    'height': '100%',
-                    'width': '100%',
+                    **_CHART_PANEL_BASE,
                     'visibility': 'visible',
-                    'opacity': 1
+                    'opacity': 1,
+                    'pointerEvents': 'auto',
+                    'zIndex': 1,
                 }
             ),
             html.Div(
@@ -113,13 +121,13 @@ def _create_chart_area(styles: dict, theme: dict) -> html.Main:
                     html.Div(id='tv-volume-chart', style={'height': '25%', 'minHeight': '120px'}),
                 ],
                 style={
-                    'height': '100%',
-                    'width': '100%',
+                    **_CHART_PANEL_BASE,
                     'display': 'flex',
                     'flexDirection': 'column',
                     'visibility': 'hidden',
                     'opacity': 0,
-                    'pointerEvents': 'none'
+                    'pointerEvents': 'none',
+                    'zIndex': 0,
                 }
             )
         ], style={

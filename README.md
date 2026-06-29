@@ -61,10 +61,12 @@ locally and does not need IB Gateway.
 python main.py
 ```
 
-Then open http://127.0.0.1:8050 in a browser. Hot reload is on by default;
-edits to files under `lib/dash/` will auto refresh the page.
+Then open http://127.0.0.1:8050 in a browser. Dev reload is on by default
+(`DASH_DEV=1`); edits under `lib/dash/` and `lib/dash/assets/` auto-restart
+the server. CSS is served with `no-store` in dev, so hard refresh is rarely
+needed.
 
-To disable the development reload (faster startup, no auto refresh):
+To disable development reload (faster startup, no auto refresh):
 
 ```bash
 # Linux / macOS

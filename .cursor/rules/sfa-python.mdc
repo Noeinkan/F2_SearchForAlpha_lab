@@ -1,6 +1,9 @@
 ---
 description: SearchForAlpha Python and signal conventions
-globs: lib/**/*.py
+globs:
+  - lib/**/*.py
+  - "!lib/dash/**"
+  - "!lib/cli/**"
 alwaysApply: false
 ---
 

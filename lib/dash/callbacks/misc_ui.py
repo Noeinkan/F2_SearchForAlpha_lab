@@ -11,6 +11,7 @@ from lib.dash.dash_config import (
     DEFAULT_THEME,
     THEME_BUTTON_LABELS,
     THEME_CYCLE,
+    UI_STORAGE_VERSION,
     get_theme,
 )
 from lib.dash.state import dashboard_state
@@ -122,6 +123,32 @@ def register_misc_callbacks(app) -> None:
         new_theme = THEME_CYCLE[(current_index + 1) % len(THEME_CYCLE)]
         dashboard_state.set_theme(new_theme)
         return new_theme, _format_theme_label(new_theme)
+
+    app.clientside_callback(
+        f"""
+        function(n) {{
+            if (n === null || n === undefined) {{
+                return window.dash_clientside.no_update;
+            }}
+            var key = 'sfa-ui-storage-version';
+            var current = '{UI_STORAGE_VERSION}';
+            if (localStorage.getItem(key) !== current) {{
+                [localStorage, sessionStorage].forEach(function(store) {{
+                    for (var i = store.length - 1; i >= 0; i--) {{
+                        var k = store.key(i);
+                        if (k && k.indexOf('dash-') === 0) {{
+                            store.removeItem(k);
+                        }}
+                    }}
+                }});
+                localStorage.setItem(key, current);
+            }}
+            return window.dash_clientside.no_update;
+        }}
+        """,
+        Output('ui-storage-sync', 'children'),
+        Input('startup-interval', 'n_intervals'),
+    )
 
     app.clientside_callback(
         """
@@ -395,7 +422,7 @@ def register_misc_callbacks(app) -> None:
             return Date.now();
         }
         """,
-        Output('command-palette-bridge', 'data'),
+        Output('command-palette-after-sync', 'children'),
         Input('command-palette-bridge', 'data'),
     )
 

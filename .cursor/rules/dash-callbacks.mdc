@@ -6,8 +6,37 @@ alwaysApply: false
 
 # Dash Conventions
 
-- App init + layout: `lib/dash/integrated_dashboard.py` (~86 KB — read in chunks)
-- Charts: `lib/dash/chart_builder.py` (Plotly factory + overlay registry)
-- **One callback file per concern** in `lib/dash/callbacks/`; import each in `integrated_dashboard.py`
-- Use `@app.callback` with `prevent_initial_call=True` where appropriate
+## Architecture (post-refactor)
+- **Thin entry:** `lib/dash/integrated_dashboard.py` — app init, server boot, `register_callbacks(app)`
+- **Layout:** `lib/dash/layout/` — one file per UI region; composed by `layout/shell.py`
+- **Callbacks:** `lib/dash/callbacks/` — each file exports `register_*_callbacks(app)`; wire in `callbacks/__init__.py` — **do not** add callback imports to `integrated_dashboard.py`
+- **Routes:** `lib/dash/routes.py` — URL parsing; workspaces: `terminal`, `fundamentals`, `flow`, `ticker_terminal`
+- **Bootstrap:** `lib/dash/bootstrap.py` — `try_bootstrap_default_session()` preloads default ticker on startup
+- **State:** `lib/dash/state.py` — in-memory session cache
+
+## Large files (read in chunks)
+- `integrated_dashboard.py`, `chart_builder.py`, `fundamentals.py`
+
+## Charts
+- Plotly factory + overlay registry: `lib/dash/chart_builder.py`
+- TradingView builder: `lib/dash/tv_chart_builder.py`
+- New chart overlays must register in the overlay registry — read existing examples first
+
+## Callback patterns
+- Use `prevent_initial_call=True` unless the callback must fire on load
+- Routing/startup callbacks that need initial fire: `prevent_initial_call='initial_duplicate'` (see `routing.py`, `fundamentals.py`, `startup.py`)
+- Use `dcc.Store` for shared state; `dash.no_update` to skip unchanged outputs
+- Keep callbacks thin — delegate business logic to `lib/` modules
+
+## New callback checklist
+1. Read 2–3 existing files in `callbacks/` for the `register_*` pattern
+2. Create `lib/dash/callbacks/{name}.py` with `register_{name}_callbacks(app)`
+3. Register in `callbacks/__init__.py` inside `register_callbacks()`
+4. New UI components go in the appropriate `layout/` file, not `integrated_dashboard.py`
+
+## Tests
+`rtk python -m pytest lib/tests/test_dash_routing.py lib/tests/test_fundamentals*.py lib/tests/test_bootstrap.py lib/tests/test_dashboard.py -q`
+
+## Config
 - UI presets: `config/ui_presets.json`
+- Theme/defaults: `lib/dash/dash_config.py`

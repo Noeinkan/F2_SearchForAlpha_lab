@@ -7,9 +7,10 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 
 from lib.dash.dash_config import DEFAULT_TICKER, FONT_SIZES, FONT_FAMILY
+from lib.dash.bootstrap import BootstrapSnapshot
 
 
-def _create_header(styles: dict, theme: dict) -> html.Header:
+def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Header:
     """Create the dashboard header."""
     return html.Header([
         html.Div([
@@ -18,9 +19,21 @@ def _create_header(styles: dict, theme: dict) -> html.Header:
         ], style=styles['logo']),
 
         html.Div([
-            html.Span(DEFAULT_TICKER, id='header-ticker-symbol', className='bbg-tape-symbol'),
-            html.Span('$--', id='header-ticker-price', className='bbg-tape-price num'),
-            html.Span('READY', id='header-ticker-change', className='bbg-tape-delta muted'),
+            html.Span(
+                bootstrap.header_symbol if bootstrap else DEFAULT_TICKER,
+                id='header-ticker-symbol',
+                className='bbg-tape-symbol',
+            ),
+            html.Span(
+                bootstrap.header_price if bootstrap else '$--',
+                id='header-ticker-price',
+                className='bbg-tape-price num',
+            ),
+            html.Span(
+                bootstrap.header_change if bootstrap else 'READY',
+                id='header-ticker-change',
+                className='bbg-tape-delta muted' if not bootstrap else 'bbg-tape-delta',
+            ),
         ], style=styles['header_tape'], className='bbg-tape'),
 
         html.Div([
@@ -68,7 +81,7 @@ def _create_header(styles: dict, theme: dict) -> html.Header:
     ], style=styles['header'], className='bbg-header')
 
 
-def _create_status_bar(styles: dict, theme: dict) -> html.Div:
+def _create_status_bar(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Div:
     """Create the dense bottom status bar."""
     return html.Div([
         html.Div([
@@ -77,11 +90,21 @@ def _create_status_bar(styles: dict, theme: dict) -> html.Div:
         ], style=styles['status_segment'], className='bbg-status-segment'),
         html.Div([
             html.Span('DATA:'),
-            html.Span('WAITING', id='data-status', className='num', style={'marginLeft': '6px'}),
+            html.Span(
+                bootstrap.data_status if bootstrap else 'WAITING',
+                id='data-status',
+                className='num',
+                style={'marginLeft': '6px'},
+            ),
         ], style=styles['status_segment'], className='bbg-status-segment'),
         html.Div([
             html.Span('STRATEGY:'),
-            html.Span('--', id='strategy-order-status', className='num', style={'marginLeft': '6px'}),
+            html.Span(
+                bootstrap.strategy_order if bootstrap else '--',
+                id='strategy-order-status',
+                className='num',
+                style={'marginLeft': '6px'},
+            ),
         ], style={**styles['status_segment'], 'flex': 1, 'minWidth': 0}, className='bbg-status-segment flex-grow'),
         # Command palette launcher. The palette no longer auto-opens, so this
         # button (plus Ctrl+K and the header `[ ? ]` button) is how it is

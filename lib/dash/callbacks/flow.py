@@ -133,7 +133,7 @@ def register_flow_callbacks(app) -> None:
         ],
         [Input("app-url", "search"), Input("app-url", "pathname")],
         [State("ticker-dropdown", "data")],
-        prevent_initial_call=True,
+        prevent_initial_call='initial_duplicate',
     )
     def apply_ticker_from_flow_link(search, pathname, ticker_data):
         """Pre-select ticker from path (/fundamentals/TSLA) or ?ticker= query."""

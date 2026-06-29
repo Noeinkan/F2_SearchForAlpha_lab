@@ -15,10 +15,11 @@ from lib.dash.dash_config import (
     FONT_SIZES, FONT_FAMILY, BORDER_RADIUS, DEFAULT_SIGNAL_WINDOW,
 )
 from lib.dash.components import dense_input, ticker_pill
+from lib.dash.bootstrap import BootstrapSnapshot
 from lib.signals.indicators import get_signal_categories
 
 
-def _create_right_panel(styles: dict, theme: dict) -> html.Aside:
+def _create_right_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Aside:
     """Create the right panel with backtest controls and results."""
     return html.Aside([
         html.Div(
@@ -41,14 +42,14 @@ def _create_right_panel(styles: dict, theme: dict) -> html.Aside:
             # Panel Content
             html.Div([
                 # Backtest Panel
-                _create_backtest_panel(styles, theme),
+                _create_backtest_panel(styles, theme, bootstrap=bootstrap),
 
                 # Optimizer Panel
                 _create_optimizer_panel(styles, theme),
 
                 # Data Panel
                 html.Div(id='panel-data', children=[
-                    html.Div(id='data-table-container', style={'fontSize': FONT_SIZES['xs']}),
+                    html.Div(id='data-table-container', children=bootstrap.data_table if bootstrap else None, style={'fontSize': FONT_SIZES['xs']}),
                 ], style={'display': 'none'}),
 
             ], style=styles['panel_content']),
@@ -56,7 +57,7 @@ def _create_right_panel(styles: dict, theme: dict) -> html.Aside:
     ], style=styles['right_panel'], className='sfa-right-panel')
 
 
-def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
+def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Div:
     """Create the backtest panel content."""
 
     # Strategy mode card style
@@ -758,8 +759,18 @@ def _create_backtest_panel(styles: dict, theme: dict) -> html.Div:
                                     id='signals-unified-list',
                                     className='signals-unified-list'
                                 ),
-                                dcc.Checklist(id='buy-signals', options=[], value=[], style={'display': 'none'}),
-                                dcc.Checklist(id='sell-signals', options=[], value=[], style={'display': 'none'}),
+                                dcc.Checklist(
+                                    id='buy-signals',
+                                    options=bootstrap.buy_options if bootstrap else [],
+                                    value=[],
+                                    style={'display': 'none'},
+                                ),
+                                dcc.Checklist(
+                                    id='sell-signals',
+                                    options=bootstrap.sell_options if bootstrap else [],
+                                    value=[],
+                                    style={'display': 'none'},
+                                ),
                             ], style={'marginTop': '6px'}),
                             dbc.Tooltip(
                                 "Configure how multiple signals combine to create entries.",

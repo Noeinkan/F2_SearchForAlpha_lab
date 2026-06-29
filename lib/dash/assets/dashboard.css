@@ -35,6 +35,15 @@
     --table-row-alt:     rgba(20,20,20,0.5);
     --table-row-hover:   #1A1A1A;
 
+    /* Dash 4 DCC tokens — map to bloomberg palette (datepicker, input, etc.) */
+    --Dash-Fill-Inverse-Strong:  var(--bg-secondary);
+    --Dash-Text-Strong:          var(--text-primary);
+    --Dash-Text-Weak:            var(--text-secondary);
+    --Dash-Text-Disabled:        var(--text-tertiary);
+    --Dash-Stroke-Strong:        var(--border-primary);
+    --Dash-Fill-Interactive-Strong: var(--accent);
+    --Dash-Fill-Interactive-Weak: rgba(255, 167, 38, 0.12);
+
     /* Typography — sans for UI chrome, mono reserved for numeric data */
     --font-sans: "Source Sans 3", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
     --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
@@ -91,7 +100,8 @@ input.bbg-input:focus-visible,
 .dash-dropdown.dark-dropdown:focus-visible,
 .Select.is-focused:not(.is-open) > .Select-control:focus-visible,
 .dash-dropdown-search:focus-visible,
-.SingleDatePickerInput__withBorder:focus-within {
+.SingleDatePickerInput__withBorder:focus-within,
+.dash-datepicker-input-wrapper.dark-datepicker:focus-within {
     outline: 2px solid var(--border-focus) !important;
     outline-offset: 1px;
 }
@@ -836,6 +846,61 @@ input.bbg-input[type=number] {
    Date pickers
    ========================================================================== */
 
+/* Dash 4 date pickers — className lands on input-wrapper, not root */
+.dash-datepicker:has(.dark-datepicker) {
+    background: transparent !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+    width: 100% !important;
+}
+.dash-datepicker-input-wrapper.dark-datepicker {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    color: var(--text-primary) !important;
+    min-height: 28px !important;
+    height: 28px !important;
+    padding: 0 8px !important;
+    transition: border-color 100ms ease;
+}
+.dash-datepicker-input-wrapper.dark-datepicker:hover,
+.dash-datepicker-input-wrapper.dark-datepicker:focus-within {
+    border-color: var(--accent) !important;
+}
+.dash-datepicker-input-wrapper.dark-datepicker .dash-datepicker-input,
+.dash-datepicker-input-wrapper.dark-datepicker input {
+    background: transparent !important;
+    color: var(--text-primary) !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+    height: 26px !important;
+}
+.dash-datepicker-input-wrapper.dark-datepicker .dash-datepicker-input::placeholder,
+.dash-datepicker-input-wrapper.dark-datepicker input::placeholder {
+    color: var(--text-secondary) !important;
+}
+.dash-datepicker-input-wrapper.dark-datepicker .dash-datepicker-caret-icon,
+.dash-datepicker-input-wrapper.dark-datepicker .dash-datepicker-range-arrow,
+.dash-datepicker-input-wrapper.dark-datepicker .dash-datepicker-clear {
+    color: var(--text-secondary) !important;
+    fill: var(--text-secondary) !important;
+}
+.dash-datepicker-content {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.65) !important;
+}
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-inside {
+    color: var(--text-primary) !important;
+}
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-selected:not(.dash-datepicker-calendar-date-outside) {
+    background-color: var(--accent) !important;
+    color: #000 !important;
+}
+
+/* Dash 3 react-dates (legacy fallback) */
 .SingleDatePickerInput,
 .SingleDatePickerInput__withBorder {
     background: var(--bg-secondary) !important;
@@ -1446,6 +1511,7 @@ input[type="radio"] {
    ========================================================================== */
 #plotly-chart-container,
 #plotly-chart-container .dash-graph,
+#financial-chart,
 #plotly-chart-container .js-plotly-plot,
 #plotly-chart-container .plot-container,
 #plotly-chart-container .svg-container,
@@ -1464,14 +1530,11 @@ input[type="radio"] {
    every direct child of `#plotly-chart-container` to stretch. The Loading
    wrapper, the spinner overlay, AND the Graph wrapper all share `width:
    100%` this way. */
-#loading-chart,
-#plotly-chart-container > *,
-#plotly-chart-container > * > * {
+#plotly-chart-container > * {
     width: 100% !important;
     height: 100% !important;
     min-width: 0 !important;
-    min-height: 0 !important;
-    flex: 1 1 0 !important;
+    min-height: 480px !important;
 }
 
 @media (min-width: 1800px) {
@@ -1536,6 +1599,14 @@ body.theme-light {
     --table-header-bg:   #f6f8fa;
     --table-row-alt:     rgba(246,248,250,0.5);
     --table-row-hover:   #eaeef2;
+
+    --Dash-Fill-Inverse-Strong:  var(--bg-secondary);
+    --Dash-Text-Strong:            var(--text-primary);
+    --Dash-Text-Weak:              var(--text-secondary);
+    --Dash-Text-Disabled:          var(--text-tertiary);
+    --Dash-Stroke-Strong:          var(--border-primary);
+    --Dash-Fill-Interactive-Strong: var(--accent);
+    --Dash-Fill-Interactive-Weak:  rgba(154, 103, 0, 0.12);
 }
 
 /* =============================================================================

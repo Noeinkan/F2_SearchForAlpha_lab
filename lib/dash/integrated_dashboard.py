@@ -13,10 +13,15 @@ Public API kept stable for backwards compatibility:
 """
 
 import json
+import glob
 import logging
 import os
 import socket
-from threading import Timer
+import subprocess
+import threading
+import time
+import urllib.error
+import urllib.request
 import webbrowser
 
 import dash
@@ -33,13 +38,16 @@ from lib.dash.chart_builder import create_chart
 from lib.dash.layout import create_dashboard_layout as _create_dashboard_layout
 from lib.dash.layout.shell import wire_command_palette_is_open
 from lib.dash.callbacks import register_callbacks
-from lib.dash.ticker_search import ensure_ticker_options_loaded
+from lib.dash.bootstrap import try_bootstrap_default_session
 
 # Re-export so callers like `from lib.dash.integrated_dashboard import
 # create_dashboard_layout` keep working unchanged.
 create_dashboard_layout = _create_dashboard_layout
 
 logger = logging.getLogger(__name__)
+
+_ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 DEFAULT_FLOW_REPORT = os.path.join(os.getcwd(), "flow_report.html")
 
@@ -129,12 +137,54 @@ def _kill_stale_port_listener(port: int) -> None:
         pass
 
 
+def _collect_asset_files() -> list[str]:
+    """Return tracked static asset paths for Werkzeug dev reloader."""
+    pattern = os.path.join(_ASSETS_DIR, "**", "*")
+    return [path for path in glob.glob(pattern, recursive=True) if os.path.isfile(path)]
+
+
+def _wait_for_server_ready(host: str, port: int, timeout: float = 15.0) -> bool:
+    """Poll until the dashboard responds on HTTP or timeout."""
+    deadline = time.monotonic() + timeout
+    url = f"http://{host}:{port}/"
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=1) as resp:
+                if resp.status < 500:
+                    return True
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+            pass
+        time.sleep(0.2)
+    return False
+
+
+def _schedule_browser_open(host: str, port: int) -> None:
+    """Open the browser once the server accepts HTTP connections."""
+    def _open_when_ready() -> None:
+        if _wait_for_server_ready(host, port):
+            webbrowser.open_new(f"http://{host}:{port}/")
+
+    threading.Thread(target=_open_when_ready, daemon=True).start()
+
+
+def _configure_dev_server(app: dash.Dash, dev_mode: bool) -> list[str] | None:
+    """Register dev-only server hooks and return asset paths for the reloader."""
+    if dev_mode:
+        @app.server.after_request
+        def _dev_no_cache_assets(response):  # noqa: F841
+            if request.path.startswith("/assets/"):
+                response.headers["Cache-Control"] = "no-store"
+            return response
+        return _collect_asset_files()
+    return None
+
+
 def run_dashboard(dev_mode: bool = False) -> None:
     """Run the professional trading dashboard."""
     theme = get_theme(DEFAULT_THEME)
 
-    logger.info("Loading ticker index...")
-    ensure_ticker_options_loaded()
+    logger.info("Bootstrapping default market session (%s)...", "TSLA")
+    bootstrap = try_bootstrap_default_session()
 
     app = dash.Dash(
         __name__,
@@ -164,7 +214,7 @@ def run_dashboard(dev_mode: bool = False) -> None:
     </html>
     '''
 
-    app.layout = create_dashboard_layout(theme)
+    app.layout = create_dashboard_layout(theme, bootstrap=bootstrap)
 
     # Register all callbacks
     register_callbacks(app)
@@ -205,21 +255,26 @@ def run_dashboard(dev_mode: bool = False) -> None:
         endpoint = f"sfa_shell_{idx}"
         app.server.add_url_rule(route, endpoint=endpoint, view_func=_serve_dash_shell)
 
-    # Start server
-    def open_browser():
-        webbrowser.open_new(f"http://127.0.0.1:{port}/")
-
     # In dev mode the reloader spawns two processes; keep a fixed port to
     # avoid the second process auto-selecting the next free port.
-    # For production/deploy, prefer explicit env-based binding.
     host = "127.0.0.1" if dev_mode else os.getenv("DASH_HOST", "127.0.0.1").strip()
-    port = _get_env_port(START_PORT if dev_mode else 8060)
+    port = _get_env_port(START_PORT)
     _kill_stale_port_listener(port)
-    should_open_browser = (not dev_mode) or (os.environ.get("WERKZEUG_RUN_MAIN") == "true")
-    if should_open_browser:
-        Timer(1, open_browser).start()
+    _schedule_browser_open(host, port)
+    extra_files = _configure_dev_server(app, dev_mode)
+    # Reloader is opt-in via DASH_RELOAD=1. Werkzeug's reloader on Windows
+    # spawns a child process that can silently exit the parent; defaulting
+    # it off keeps `python main.py` reliable. Debug error pages still honour
+    # dev_mode.
+    use_reloader = os.getenv("DASH_RELOAD", "0") == "1"
     logger.info("Starting dashboard on %s:%s", host, port)
-    app.run(debug=dev_mode, use_reloader=dev_mode, host=host, port=port)
+    app.run(
+        debug=dev_mode,
+        use_reloader=use_reloader,
+        host=host,
+        port=port,
+        extra_files=extra_files if use_reloader else None,
+    )
 
 
 # =============================================================================
@@ -258,9 +313,9 @@ def plot_financial_chart_dash(df, ticker: str, backtest_results: dict) -> None:
     """Legacy function for backwards compatibility."""
     app = create_dash_app(df, ticker, backtest_results)
     port = find_available_port()
-    Timer(1, lambda: webbrowser.open_new(f"http://127.0.0.1:{port}/")).start()
+    _schedule_browser_open("127.0.0.1", port)
     app.run(debug=False, use_reloader=False, port=port)
 
 
 if __name__ == '__main__':
-    run_dashboard()
+    run_dashboard(dev_mode=os.getenv("DASH_DEV", "1") == "1")

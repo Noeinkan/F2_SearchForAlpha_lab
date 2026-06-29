@@ -1,0 +1,15 @@
+﻿# OpenClaw / research — not Cursor coding context (read via @docs/openclaw-research.md)
+AGENTS.md
+RESEARCH.md
+docs/token-efficiency.md
+
+# Generated / runtime outputs
+results/
+export/
+
+# Experimental — not production code
+lib/WIP/
+
+# Python bytecode
+**/__pycache__/
+*.pyc

@@ -16,26 +16,26 @@ from lib.dash.routes import (
 
 
 def register_routing_callbacks(app) -> None:
-    # Flask serves the same Dash shell for /fundamentals/TSLA etc. The server
-    # renders app-url.pathname as "/" before hydration; sync from the browser
-    # URL on mount so deep-links open the correct workspace immediately.
+    # Flask serves the same Dash shell for /fundamentals/TSLA etc. Dash still
+    # hydrates dcc.Location with pathname "/" until we sync from the browser.
+    # Input('app-url', 'id') does not reliably fire on mount in Dash 4.x, so
+    # url-boot-interval (1ms, once) is the trigger instead.
     app.clientside_callback(
         """
-        function(_id) {
+        function(_n) {
             var boot = window.__SFA_BOOT_URL__;
-            if (boot && boot.pathname) {
-                return [boot.pathname, boot.search || ''];
-            }
-            return [window.location.pathname, window.location.search || ''];
+            var path = (boot && boot.pathname)
+                ? boot.pathname
+                : (window.location.pathname || '/');
+            var search = (boot && boot.search !== undefined)
+                ? boot.search
+                : (window.location.search || '');
+            return [path, search || ''];
         }
         """,
         [Output('app-url', 'pathname', allow_duplicate=True),
          Output('app-url', 'search', allow_duplicate=True)],
-        Input('app-url', 'id'),
-        # Dash 4.x: allow_duplicate=True paired with the default
-        # prevent_initial_call=False is rejected. This callback must fire on
-        # mount so deep-links land on the right workspace, so we use the
-        # explicit 'initial_duplicate' sentinel.
+        Input('url-boot-interval', 'n_intervals'),
         prevent_initial_call='initial_duplicate',
     )
 

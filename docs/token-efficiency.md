@@ -1,4 +1,4 @@
-# Efficienza dei token — implementazione e rationale
+﻿# Efficienza dei token â€” implementazione e rationale
 
 Documentazione dell'architettura a livelli adottata in SearchForAlpha Lab per ridurre il consumo di token da parte degli agenti AI (Cursor, Claude Code, GitHub Copilot, OpenClaw), senza perdere le istruzioni operative necessarie.
 
@@ -17,48 +17,48 @@ Ogni sessione con un agente AI carica automaticamente file di contesto dal repos
 
 **Conseguenze:**
 
-1. **Duplicazione** — la stessa informazione (es. albero dei moduli, naming dei segnali) compariva in più file.
-2. **Contesto irrilevante** — le regole OpenClaw per la ricerca quantitativa venivano caricate anche durante modifiche al dashboard Dash o ai segnali Python.
-3. **Output shell verbose** — `git diff`, `pytest -v`, `sfa ... --json` producevano migliaia di token di output a ogni comando.
+1. **Duplicazione** â€” la stessa informazione (es. albero dei moduli, naming dei segnali) compariva in piÃ¹ file.
+2. **Contesto irrilevante** â€” le regole OpenClaw per la ricerca quantitativa venivano caricate anche durante modifiche al dashboard Dash o ai segnali Python.
+3. **Output shell verbose** â€” `git diff`, `pytest -v`, `sfa ... --json` producevano migliaia di token di output a ogni comando.
 
 ### Evidenza esterna
 
 Studi recenti (ETH Zurich, *Evaluating AGENTS.md*, 2026; ricerche su *tiered injection*) indicano che:
 
-- I file di contesto **non inferibili dal codice** aiutano (~4% successo in più).
-- Ogni token in un file always-on ha un **costo fisso per sessione** (~19–20% overhead se il file è troppo lungo).
-- Le regole **scoped** (caricate solo quando servono) riducono il contesto del 60–80% mantenendo l'accuratezza.
-- Le istruzioni generate da LLM spesso **aumentano i costi del 20%+** senza migliorare i risultati — meglio regole umane, minimali, specifiche.
+- I file di contesto **non inferibili dal codice** aiutano (~4% successo in piÃ¹).
+- Ogni token in un file always-on ha un **costo fisso per sessione** (~19â€“20% overhead se il file Ã¨ troppo lungo).
+- Le regole **scoped** (caricate solo quando servono) riducono il contesto del 60â€“80% mantenendo l'accuratezza.
+- Le istruzioni generate da LLM spesso **aumentano i costi del 20%+** senza migliorare i risultati â€” meglio regole umane, minimali, specifiche.
 
 ---
 
 ## La soluzione: tre leve
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  LIVELLO 1 — Always-on (poche righe, solo l'essenziale)     │
-│  CLAUDE.md · token-efficiency.mdc · model-routing.mdc       │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│  LIVELLO 2 — On-demand (.cursor/rules/*.mdc per glob)       │
-│  sfa-python · dash-callbacks · sfa-cli-research             │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│  LIVELLO 3 — Ricerca OpenClaw (lettura esplicita a sessione)│
-│  AGENTS.md (slim) · docs/openclaw-research.md · RESEARCH.md │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│  LIVELLO 0 — Output shell (rtk hook, trasparente)           │
-│  .cursor/hooks.json · .github/copilot-instructions.md       │
-└─────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  LIVELLO 1 â€” Always-on (poche righe, solo l'essenziale)     â”‚
+â”‚  CLAUDE.md Â· token-efficiency.mdc Â· model-routing.mdc       â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                              â”‚
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  LIVELLO 2 â€” On-demand (.cursor/rules/*.mdc per glob)       â”‚
+â”‚  sfa-python Â· dash-callbacks Â· sfa-cli-research             â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                              â”‚
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  LIVELLO 3 â€” Ricerca OpenClaw (lettura esplicita a sessione)â”‚
+â”‚  AGENTS.md (slim) Â· docs/openclaw-research.md Â· RESEARCH.md â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                              â”‚
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  LIVELLO 0 â€” Output shell (rtk hook, trasparente)           â”‚
+â”‚  .cursor/hooks.json Â· .github/copilot-instructions.md       â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
 
-## Livello 1 — Contesto always-on ridotto
+## Livello 1 â€” Contesto always-on ridotto
 
 ### `CLAUDE.md` (~18 righe)
 
@@ -68,22 +68,22 @@ Prima conteneva l'intero albero dell'architettura, tutte le convenzioni e snippe
 - Puntatori a indice e regole scoped
 - Convenzioni **non ovvie** (naming segnali, `config_loader`, callback Dash)
 
-**Rationale:** tutto ciò che è deducibile leggendo il codice o l'indice non deve stare in un file always-on.
+**Rationale:** tutto ciÃ² che Ã¨ deducibile leggendo il codice o l'indice non deve stare in un file always-on.
 
 ### `.cursor/rules/token-efficiency.mdc`
 
 Regola always-on con due discipline:
 
-1. **Shell** — prefissare con `rtk` (vedi Livello 0).
-2. **Contesto** — navigare via indice, leggere file grandi a chunk, citare con `startLine:endLine:path` invece di incollare file interi.
+1. **Shell** â€” prefissare con `rtk` (vedi Livello 0).
+2. **Contesto** â€” navigare via indice, leggere file grandi a chunk, citare con `startLine:endLine:path` invece di incollare file interi.
 
 ### `.cursor/rules/model-routing.mdc`
 
-Policy Kimi-first / escalation Sonnet-Opus, migrata da `.cursorrules` (eliminato). Una sola responsabilità per file.
+Policy Kimi-first / escalation Sonnet-Opus, migrata da `.cursorrules` (eliminato). Una sola responsabilitÃ  per file.
 
 ---
 
-## Livello 2 — Regole scoped (on-demand)
+## Livello 2 â€” Regole scoped (on-demand)
 
 Cursor carica i file `.mdc` in `.cursor/rules/` **solo quando** il glob corrisponde ai file aperti o modificati:
 
@@ -99,13 +99,13 @@ Principio: **una preoccupazione per file**, sotto le 50 righe dove possibile.
 
 ---
 
-## Livello 3 — Split di `AGENTS.md`
+## Livello 3 â€” Split di `AGENTS.md`
 
 ### Il problema specifico
 
-`AGENTS.md` è lo standard cross-tool ([agents.md](https://agents.md)) letto automaticamente da Cursor, Copilot, OpenClaw, ecc. Il contenuto originale (~245 righe) descriveva **solo** l'agente di ricerca OpenClaw che orchestra la CLI `sfa` via SSH — non la scrittura di codice.
+`AGENTS.md` Ã¨ lo standard cross-tool ([agents.md](https://agents.md)) letto automaticamente da Cursor, Copilot, OpenClaw, ecc. Il contenuto originale (~245 righe) descriveva **solo** l'agente di ricerca OpenClaw che orchestra la CLI `sfa` via SSH â€” non la scrittura di codice.
 
-Cursor lo caricava comunque durante sessioni di coding → ~180 righe sprecate per turno.
+Cursor lo caricava comunque durante sessioni di coding â†’ ~180 righe sprecate per turno.
 
 ### La soluzione: split slim + companion
 
@@ -125,19 +125,19 @@ Before any research action, read:
 
 **Rationale dello split:**
 
-- **Cursor (coding)** — carica solo le ~67 righe; non vede sweep ETF, research notes, pre-registration budget.
-- **OpenClaw (research)** — carica `AGENTS.md` + legge esplicitamente il companion all'avvio sessione.
-- **Compatibilità** — `AGENTS.md` resta alla root (richiesto dallo standard e dal deploy su `/opt/searchforalpha`).
+- **Cursor (coding)** â€” carica solo le ~67 righe; non vede sweep ETF, research notes, pre-registration budget.
+- **OpenClaw (research)** â€” carica `AGENTS.md` + legge esplicitamente il companion all'avvio sessione.
+- **CompatibilitÃ ** â€” `AGENTS.md` resta alla root (richiesto dallo standard e dal deploy su `/opt/searchforalpha`).
 
-> **Nota:** OpenClaw non ha un meccanismo nativo “carica questo file solo per la ricerca”. Lo split funziona perché il file always-on è sottile e l'agente research è istruito a leggere il companion — non perché esista un loader separato.
+> **Nota:** OpenClaw non ha un meccanismo nativo â€œcarica questo file solo per la ricercaâ€. Lo split funziona perchÃ© il file always-on Ã¨ sottile e l'agente research Ã¨ istruito a leggere il companion â€” non perchÃ© esista un loader separato.
 
 ---
 
-## Livello 0 — `rtk` e hook shell
+## Livello 0 â€” `rtk` e hook shell
 
-### Cos'è `rtk`
+### Cos'Ã¨ `rtk`
 
-CLI proxy che filtra e comprime l'output dei comandi shell. Risparmio tipico: **60–90%** sui token di output (git, pytest, diff).
+CLI proxy che filtra e comprime l'output dei comandi shell. Risparmio tipico: **60â€“90%** sui token di output (git, pytest, diff).
 
 Esempio:
 
@@ -153,11 +153,11 @@ rtk python -m pytest lib/tests/ -q
 
 | Tool | Meccanismo | File |
 |------|-----------|------|
-| **Cursor** | Hook `preToolUse` → `rtk hook cursor` | `.cursor/hooks.json` (progetto) + `~/.cursor/hooks.json` (globale) |
+| **Cursor** | Hook `preToolUse` â†’ `rtk hook cursor` | `.cursor/hooks.json` (progetto) + `~/.cursor/hooks.json` (globale) |
 | **GitHub Copilot** | Hook PreToolUse | `.github/hooks/rtk-rewrite.json` |
 | **Istruzioni manuali** | Tabella comandi | `.github/copilot-instructions.md` |
 
-L'hook Cursor riscrive automaticamente i comandi Shell prima dell'esecuzione — l'agente non deve ricordarsi di prefissare `rtk` (la regola in `token-efficiency.mdc` resta come fallback).
+L'hook Cursor riscrive automaticamente i comandi Shell prima dell'esecuzione â€” l'agente non deve ricordarsi di prefissare `rtk` (la regola in `token-efficiency.mdc` resta come fallback).
 
 Setup una tantum per macchina:
 
@@ -187,24 +187,24 @@ Comandi ad alto impatto in questo repo: `git diff`, `git log`, `pytest`, `sfa ..
 
 ```
 SearchForAlpha_lab/
-├── CLAUDE.md                          # Always-on slim (~18 righe)
-├── AGENTS.md                          # Always-on slim OpenClaw (~67 righe)
-├── docs/
-│   ├── openclaw-research.md           # Manuale research completo
-│   └── token-efficiency.md            # ← questo documento
-├── .claude/
-│   └── PROJECT_INDEX.md               # Indice navigazione + tabella tier
-├── .cursor/
-│   ├── hooks.json                     # rtk hook Cursor (progetto)
-│   └── rules/
-│       ├── token-efficiency.mdc       # Always-on
-│       ├── model-routing.mdc          # Always-on
-│       ├── sfa-python.mdc             # Glob: lib/**/*.py
-│       ├── dash-callbacks.mdc         # Glob: lib/dash/**
-│       └── sfa-cli-research.mdc       # Glob: lib/cli/**
-└── .github/
-    ├── copilot-instructions.md        # rtk per Copilot
-    └── hooks/rtk-rewrite.json         # Hook Copilot
+â”œâ”€â”€ CLAUDE.md                          # Always-on slim (~18 righe)
+â”œâ”€â”€ AGENTS.md                          # Always-on slim OpenClaw (~67 righe)
+â”œâ”€â”€ docs/
+â”‚   â”œâ”€â”€ openclaw-research.md           # Manuale research completo
+â”‚   â””â”€â”€ token-efficiency.md            # â† questo documento
+â”œâ”€â”€ .claude/
+â”‚   â””â”€â”€ PROJECT_INDEX.md               # Indice navigazione + tabella tier
+â”œâ”€â”€ .cursor/
+â”‚   â”œâ”€â”€ hooks.json                     # rtk hook Cursor (progetto)
+â”‚   â””â”€â”€ rules/
+â”‚       â”œâ”€â”€ token-efficiency.mdc       # Always-on
+â”‚       â”œâ”€â”€ model-routing.mdc          # Always-on
+â”‚       â”œâ”€â”€ sfa-python.mdc             # Glob: lib/**/*.py
+â”‚       â”œâ”€â”€ dash-callbacks.mdc         # Glob: lib/dash/**
+â”‚       â””â”€â”€ sfa-cli-research.mdc       # Glob: lib/cli/**
+â””â”€â”€ .github/
+    â”œâ”€â”€ copilot-instructions.md        # rtk per Copilot
+    â””â”€â”€ hooks/rtk-rewrite.json         # Hook Copilot
 ```
 
 ---
@@ -213,10 +213,10 @@ SearchForAlpha_lab/
 
 | Intervento | Risparmio |
 |------------|-----------|
-| `CLAUDE.md` 108 → 18 righe | ~90 righe/tokens per sessione Cursor |
-| `AGENTS.md` 245 → 67 righe | ~178 righe/tokens per sessione Cursor |
+| `CLAUDE.md` 108 â†’ 18 righe | ~90 righe/tokens per sessione Cursor |
+| `AGENTS.md` 245 â†’ 67 righe | ~178 righe/tokens per sessione Cursor |
 | Regole scoped | Convenzioni Python/Dash/CLI solo quando servono |
-| Hook `rtk` | 60–90% sui token di output shell |
+| Hook `rtk` | 60â€“90% sui token di output shell |
 | Context discipline | Meno read completi di file da 1800+ righe |
 
 Trade-off accettato: l'agente OpenClaw **deve** leggere `docs/openclaw-research.md` all'inizio sessione. Se non lo fa, mancano regole di sweep e promotion. Mitigazione: istruzione esplicita in cima a `AGENTS.md`.
@@ -225,19 +225,19 @@ Trade-off accettato: l'agente OpenClaw **deve** leggere `docs/openclaw-research.
 
 ## Principi guida (checklist)
 
-1. **Ogni token always-on deve guadagnarselo** — se il codice lo dice già, non ripeterlo.
-2. **Tiered injection** — essenziale sempre; dettaglio per glob o lettura on-demand.
-3. **Una preoccupazione per file** — no monoliti da 500 righe.
-4. **Referenzia path, non incollare codice** — evita staleness e spreco.
-5. **Output shell compresso** — `rtk` + flag `-q`, `-10`, `--tb=short`.
-6. **Regola dei tre** — codifica un pattern come regola solo dopo 3 fallimenti ripetuti dello stesso tipo.
-7. **Non generare regole con LLM** — aumentano costi del 20%+ senza beneficio netto.
+1. **Ogni token always-on deve guadagnarselo** â€” se il codice lo dice giÃ , non ripeterlo.
+2. **Tiered injection** â€” essenziale sempre; dettaglio per glob o lettura on-demand.
+3. **Una preoccupazione per file** â€” no monoliti da 500 righe.
+4. **Referenzia path, non incollare codice** â€” evita staleness e spreco.
+5. **Output shell compresso** â€” `rtk` + flag `-q`, `-10`, `--tb=short`.
+6. **Regola dei tre** â€” codifica un pattern come regola solo dopo 3 fallimenti ripetuti dello stesso tipo.
+7. **Non generare regole con LLM** â€” aumentano costi del 20%+ senza beneficio netto.
 
 ---
 
 ## Deploy server (OpenClaw)
 
-Il deploy rsync dell'intero repo include già `docs/`. Se usi `scp` selettivo, aggiungi:
+Il deploy rsync dell'intero repo include giÃ  `docs/`. Se usi `scp` selettivo, aggiungi:
 
 ```bash
 scp .../docs/openclaw-research.md root@server:/opt/searchforalpha/docs/
@@ -245,12 +245,25 @@ scp .../docs/openclaw-research.md root@server:/opt/searchforalpha/docs/
 
 OpenClaw legge `AGENTS.md` da `/opt/searchforalpha/AGENTS.md`; il companion deve essere presente nello stesso percorso relativo.
 
+
+---
+
+## Phase 2 changelog (2026-06)
+
+- **`.cursorignore`** — `AGENTS.md`, `RESEARCH.md`, `docs/token-efficiency.md`, `results/`, `export/`, `lib/WIP/`, bytecode; stops Cursor auto-loading OpenClaw rules during coding sessions.
+- **`sfa-python.mdc` glob** — excludes `lib/dash/**` and `lib/cli/**` to avoid overlap with scoped Dash/CLI rules.
+- **`dash-callbacks.mdc`** — refreshed for register/layout/routes/bootstrap architecture (post-refactor).
+- **`PROJECT_INDEX` split** — slim hub + `PROJECT_INDEX_MODULES.md` on demand.
+- **Claude artifacts** — `new-callback` command and `dashboard-dev` agent synced to register pattern.
+
+Research in Cursor: `@docs/openclaw-research.md` (see `CLAUDE.md`).
+
 ---
 
 ## Riferimenti
 
-- [AGENTS.md standard](https://agents.md) — formato cross-tool
-- [Cursor Rules docs](https://docs.cursor.com/context/rules) — `.mdc` con glob e `alwaysApply`
-- [rtk CLI](https://github.com/rtk-ai/rtk) — compressione output shell
-- `.claude/PROJECT_INDEX.md` — tabella tier aggiornata
-- `RESEARCH.md` — knowledge base mercato/ticker per OpenClaw
+- [AGENTS.md standard](https://agents.md) â€” formato cross-tool
+- [Cursor Rules docs](https://docs.cursor.com/context/rules) â€” `.mdc` con glob e `alwaysApply`
+- [rtk CLI](https://github.com/rtk-ai/rtk) â€” compressione output shell
+- `.claude/PROJECT_INDEX.md` â€” tabella tier aggiornata
+- `RESEARCH.md` â€” knowledge base mercato/ticker per OpenClaw

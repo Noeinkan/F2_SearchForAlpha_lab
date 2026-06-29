@@ -10,9 +10,11 @@ from dash.dcc.express import send_data_frame
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 
+from lib.dash.bootstrap import build_default_chart_config
 from lib.dash.chart_builder import create_chart, create_empty_chart
 from lib.dash.components import ticker_pill
 from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, FONT_SIZES, FONT_FAMILY, get_theme
+from lib.dash.layout.chart_area import _CHART_PANEL_BASE
 from lib.dash.state import dashboard_state
 from lib.dash.callbacks.shared import (
     _collect_selected_plots,
@@ -37,18 +39,38 @@ def register_plotly_callbacks(app) -> None:
     )
     def toggle_chart_visibility(chart_library):
         """Show/hide Plotly vs TradingView containers."""
-        base_style = {
-            'position': 'absolute',
-            'inset': 0,
-            'height': '100%',
-            'width': '100%'
+        plotly_style = {
+            **_CHART_PANEL_BASE,
+            'visibility': 'visible',
+            'opacity': 1,
+            'pointerEvents': 'auto',
+            'zIndex': 1,
         }
-        plotly_style = {**base_style, 'visibility': 'visible', 'opacity': 1, 'pointerEvents': 'auto', 'zIndex': 1}
-        tv_style = {**base_style, 'display': 'flex', 'flexDirection': 'column', 'visibility': 'hidden',
-                    'opacity': 0, 'pointerEvents': 'none', 'zIndex': 0}
+        tv_style = {
+            **_CHART_PANEL_BASE,
+            'display': 'flex',
+            'flexDirection': 'column',
+            'visibility': 'hidden',
+            'opacity': 0,
+            'pointerEvents': 'none',
+            'zIndex': 0,
+        }
         if chart_library == 'tradingview':
-            return {**plotly_style, 'visibility': 'hidden', 'opacity': 0, 'pointerEvents': 'none'}, \
-                {**tv_style, 'visibility': 'visible', 'opacity': 1, 'pointerEvents': 'auto', 'zIndex': 2}
+            return {
+                **_CHART_PANEL_BASE,
+                'visibility': 'hidden',
+                'opacity': 0,
+                'pointerEvents': 'none',
+                'zIndex': 0,
+            }, {
+                **_CHART_PANEL_BASE,
+                'display': 'flex',
+                'flexDirection': 'column',
+                'visibility': 'visible',
+                'opacity': 1,
+                'pointerEvents': 'auto',
+                'zIndex': 2,
+            }
         return plotly_style, tv_style
 
     @app.callback(
@@ -115,14 +137,22 @@ def register_plotly_callbacks(app) -> None:
         buy_signals = buy_signals or []
         sell_signals = sell_signals or []
 
+        defaults = build_default_chart_config(indicator_settings or DEFAULT_INDICATOR_SETTINGS)
+        chart_elements = (
+            chart_elements
+            if chart_elements is not None
+            else ['candlesticks', 'signals', 'bollinger']
+        )
+        selected_plots = _collect_selected_plots(plot_values) or defaults['selected_plots']
+
         config = {
-            'selected_plots': _collect_selected_plots(plot_values) or ['candlestick'],
-            'show_candlesticks': 'candlesticks' in (chart_elements or []),
-            'show_bollinger': 'bollinger' in (chart_elements or []),
-            'show_sma': 'sma' in (chart_elements or []),
-            'show_ema': 'ema' in (chart_elements or []),
-            'show_buy_sell_signals': 'signals' in (chart_elements or []),
-            'show_legend': 'legend' in (chart_elements or []),
+            'selected_plots': selected_plots,
+            'show_candlesticks': 'candlesticks' in chart_elements,
+            'show_bollinger': 'bollinger' in chart_elements,
+            'show_sma': 'sma' in chart_elements,
+            'show_ema': 'ema' in chart_elements,
+            'show_buy_sell_signals': 'signals' in chart_elements,
+            'show_legend': 'legend' in chart_elements,
             'selected_signals': selected_signals or [],
             'buy_signal_columns': buy_signals,
             'sell_signal_columns': sell_signals,

@@ -20,6 +20,11 @@ from lib.dash.dash_config import (
 from lib.dash.components import bloomberg_section, dense_input
 
 
+def _default_ticker_option() -> list[dict[str, str]]:
+    """Minimal seed until startup-interval loads the full ticker index."""
+    return [{"value": DEFAULT_TICKER, "label": DEFAULT_TICKER}]
+
+
 def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
     """Create the left sidebar with controls."""
     help_icon_style = styles['help_icon']
@@ -37,7 +42,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                     limit=50,
                     comboboxProps={"withinPortal": True, "shadow": "md"},
                     size="xs",
-                    data=[{"value": DEFAULT_TICKER, "label": DEFAULT_TICKER}],
+                    data=_default_ticker_option(),
                     style={'fontSize': FONT_SIZES['sm']},
                 ),
             ], style={'marginBottom': '12px'}),
@@ -49,6 +54,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                         id='start-date',
                         date=START_DATE,
                         display_format='YYYY-MM-DD',
+                        className='dark-datepicker',
                         style={'width': '100%'}
                     ),
                 ], style={'flex': 1}),
@@ -58,7 +64,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                         id='end-date',
                         date=date.today().isoformat(),
                         display_format='YYYY-MM-DD',
-                        className='date-picker-end',
+                        className='dark-datepicker date-picker-end',
                         style={'width': '100%'}
                     ),
                 ], style={'flex': 1}),
@@ -75,12 +81,17 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
             ], style={'marginBottom': '12px'}),
 
             html.Button(
-                [html.Span("LOAD DATA"), html.Span(" ENTER", style={'opacity': '0.65', 'marginLeft': '8px', 'fontSize': '10px'})],
+                [html.Span("REFRESH"), html.Span(" ENTER", style={'opacity': '0.65', 'marginLeft': '8px', 'fontSize': '10px'})],
                 id='load-data-button',
-                style={**styles['button_primary'], 'width': '100%'},
+                style={**styles['button_outline'], 'width': '100%', 'marginTop': '4px'},
                 n_clicks=0
             ),
-            dbc.Tooltip("Fetch market data and calculate indicators (Ctrl+Enter)", target='load-data-button', placement='right'),
+            dbc.Tooltip(
+                "Re-fetch with the current symbol and date range (Ctrl+Enter). "
+                "Symbol changes load automatically.",
+                target='load-data-button',
+                placement='right',
+            ),
             html.Button(
                 "OPEN FUNDAMENTALS",
                 id='open-fundamentals-button',

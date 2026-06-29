@@ -7,11 +7,14 @@ import logging
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.dash.dash_config import DEFAULT_TICKER, PRESET_FILE_PATH
-from lib.dash.routes import is_ticker_terminal_route
+from lib.dash.dash_config import DEFAULT_TICKER, PRESET_FILE_PATH, get_theme
+from lib.dash.routes import is_flow_route, is_fundamentals_route, is_ticker_terminal_route
 from lib.dash.preset_storage import load_presets
 from lib.dash.ticker_search import dmc_ticker_select_data, ensure_ticker_options_loaded
 from lib.dash.callbacks.shared import _format_preset_options
+from lib.dash.bootstrap import build_default_chart_config
+from lib.dash.chart_builder import create_chart
+from lib.dash.state import dashboard_state
 
 logger = logging.getLogger(__name__)
 
@@ -31,20 +34,26 @@ def register_startup_callbacks(app) -> None:
         [Output("ticker-dropdown", "data"),
          Output("ticker-dropdown", "value", allow_duplicate=True)],
         Input("startup-interval", "n_intervals"),
-        State("ticker-dropdown", "value"),
+        [State("ticker-dropdown", "value"),
+         State("route-ticker-store", "data")],
         # Dash 4.x: allow_duplicate=True requires an explicit
         # prevent_initial_call sentinel so the framework can acknowledge
         # that two callbacks may write the same Output on the first tick.
         # 'initial_duplicate' matches the sibling callback below.
         prevent_initial_call='initial_duplicate',
     )
-    def populate_tickers(_n_intervals, current_value):
+    def populate_tickers(_n_intervals, current_value, route_ticker):
         """Populate the dmc.Select once on startup; restore value after data refresh."""
         if _n_intervals is None:
             raise PreventUpdate
         data = dmc_ticker_select_data()
         known = {str(row.get("value", "")).upper() for row in data}
-        value = str(current_value or DEFAULT_TICKER).strip().upper()
+        if route_ticker:
+            value = str(route_ticker).strip().upper()
+        else:
+            # Preserve an in-flight user pick; only fall back to the page default
+            # when the dropdown is still empty on first populate.
+            value = str(current_value or DEFAULT_TICKER).strip().upper()
         if value not in known:
             value = DEFAULT_TICKER if DEFAULT_TICKER in known else data[0]["value"]
         return data, value
@@ -66,6 +75,19 @@ def register_startup_callbacks(app) -> None:
         return data, options, None
 
     @app.callback(
+        Output('financial-chart', 'figure', allow_duplicate=True),
+        Input('startup-interval', 'n_intervals'),
+        prevent_initial_call='initial_duplicate',
+    )
+    def seed_chart_from_bootstrap(_n_intervals):
+        """Paint the chart on first tick when server bootstrap already loaded data."""
+        if _n_intervals is None or dashboard_state.df is None:
+            raise PreventUpdate
+        theme = get_theme()
+        config = build_default_chart_config()
+        return create_chart(dashboard_state.df, config, theme)
+
+    @app.callback(
         Output(_USER_TICKER_STORE, 'data'),
         Input(_TICKER_DROPDOWN, 'value'),
         prevent_initial_call=True,
@@ -85,20 +107,18 @@ def register_startup_callbacks(app) -> None:
     @app.callback(
         Output(_TICKER_DROPDOWN, 'value', allow_duplicate=True),
         Input('route-ticker-store', 'data'),
-        [State(_USER_TICKER_STORE, 'data'),
-         State('app-url', 'pathname')],
-        # Dash 4.x: combining allow_duplicate=True with a non-True
-        # prevent_initial_call requires the explicit 'initial_duplicate'
-        # sentinel to acknowledge that ordering across duplicate callbacks
-        # is not guaranteed.
+        State('app-url', 'pathname'),
         prevent_initial_call='initial_duplicate',
     )
-    def apply_route_ticker_to_dropdown(path_ticker, user_ticker, pathname):
-        """Sync terminal dropdown from /ticker/<sym> deep-links."""
+    def apply_route_ticker_to_dropdown(path_ticker, pathname):
+        """Sync sidebar dropdown from /ticker|/fundamentals|/flow/<sym> deep-links."""
         if not path_ticker:
             raise PreventUpdate
-        if user_ticker:
-            raise PreventUpdate
-        if not is_ticker_terminal_route(pathname):
+        on_deep_link = (
+            is_ticker_terminal_route(pathname)
+            or is_fundamentals_route(pathname)
+            or is_flow_route(pathname)
+        )
+        if not on_deep_link:
             raise PreventUpdate
         return str(path_ticker).strip().upper()

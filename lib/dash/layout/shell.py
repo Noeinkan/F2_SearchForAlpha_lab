@@ -23,6 +23,7 @@ from .sidebar import _create_sidebar
 from .chart_area import _create_chart_area
 from .right_panel import _create_right_panel
 from .command_palette import _create_command_palette
+from lib.dash.bootstrap import BootstrapSnapshot
 
 # Optional TradingView lightweight chart wrapper. Not all environments will
 # have `dash_tvlwc` installed (it's an optional dependency). Provide a safe
@@ -39,15 +40,16 @@ except Exception:
         return html.Div("TradingView component not installed (dash_tvlwc).", style={'display': 'none'})
 
 
-def create_dashboard_layout(theme: dict) -> html.Div:
+def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Div:
     """Create the main dashboard layout."""
     styles = get_styles(theme)
+    bootstrapped = bootstrap is not None
 
     content = html.Div([
         dcc.Location(id='app-url', refresh=False),
         # Hidden stores
         dcc.Store(id='theme-store', data=DEFAULT_THEME, storage_type='local'),
-        dcc.Store(id='data-loaded-store', data=False),
+        dcc.Store(id='data-loaded-store', data=1 if bootstrapped else 0),
         dcc.Store(id='layout-store', data={}),
         dcc.Store(id='presets-store', data={'presets': {}}),
         dcc.Store(id='active-preset-name', data=None),
@@ -63,20 +65,22 @@ def create_dashboard_layout(theme: dict) -> html.Div:
             'sort_ascending': False
         }),
         dcc.Store(id='optimization-results-store', data=[]),
-        dcc.Store(id='signals-unified-store', data=[]),
+        dcc.Store(id='signals-unified-store', data=bootstrap.unified_rows if bootstrap else []),
         dcc.Store(id='indicator-settings-store', data=DEFAULT_INDICATOR_SETTINGS),
         dcc.Store(id='active-indicator-store', data=None),
         dcc.Store(id='export-img-store', data=None),
         dcc.Store(id='fundamentals-store', data=None, storage_type='session'),
         dcc.Store(id='fundamentals-period-store', data=DEFAULT_FUNDAMENTALS_PERIOD, storage_type='session'),
-        # Tracks tickers the user has explicitly selected. Stays None until
-        # the user changes the dropdown, so the fundamentals callback can
-        # distinguish a cold direct load (no selection yet) from a
-        # genuine user choice.
-        dcc.Store(id='user-ticker-store', data=None, storage_type='session'),
-        dcc.Store(id='route-ticker-store', data=None, storage_type='session'),
+        # Memory (not session): each page load starts with no prior ticker
+        # choice so python main.py always opens on DEFAULT_TICKER (TSLA).
+        # Session persistence previously restored SPY and reloaded the wrong chart.
+        dcc.Store(id='user-ticker-store', data=None),
+        dcc.Store(id='route-ticker-store', data=None),
         dcc.Input(id='fundamentals-esc-signal', type='text', value='', style={'display': 'none'}),
         dcc.Download(id='download-csv'),
+        # Fires once on mount (~1ms) so clientside routing can sync app-url
+        # from window.__SFA_BOOT_URL__ before the slower startup callbacks run.
+        dcc.Interval(id='url-boot-interval', interval=1, max_intervals=1),
         dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
         dcc.Interval(id='autoload-interval', interval=1000, max_intervals=1),
         dcc.Interval(id='optimization-interval', interval=500, disabled=True, n_intervals=0),
@@ -95,6 +99,7 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         # Keyboard shortcut listener
         html.Div(id='keyboard-listener', style={'display': 'none'}),
         html.Div(id='theme-class-sync', style={'display': 'none'}),
+        html.Div(id='ui-storage-sync', style={'display': 'none'}),
 
         # Phase 5 — command palette. The modal lives at the bottom of the
         # shell so it stacks above every overlay. `is_open` is driven by
@@ -111,12 +116,13 @@ def create_dashboard_layout(theme: dict) -> html.Div:
         dcc.Store(id='command-palette-bridge', data=None),
         dcc.Store(id='sfa-palette-esc-trigger', data=None),
         html.Div(id='command-palette-search-sync', style={'display': 'none'}),
+        html.Div(id='command-palette-after-sync', style={'display': 'none'}),
 
         html.Div([
-            _create_header(styles, theme),
+            _create_header(styles, theme, bootstrap=bootstrap),
             html.Div([
                 _create_sidebar(styles, theme),
-                _create_chart_area(styles, theme),
+                _create_chart_area(styles, theme, bootstrap=bootstrap),
                 # Phase 4: tabIndex + role make the splitter keyboard-resizable
                 # (left/right arrow keys) in addition to the existing mousedown
                 # drag. The clientside bind in callbacks/layout.py adds the
@@ -129,9 +135,9 @@ def create_dashboard_layout(theme: dict) -> html.Div:
                     role='separator',
                     **{'aria-label': 'Resize right panel', 'aria-orientation': 'vertical'},
                 ),
-                _create_right_panel(styles, theme),
+                _create_right_panel(styles, theme, bootstrap=bootstrap),
             ], style=styles['main_container']),
-            _create_status_bar(styles, theme),
+            _create_status_bar(styles, theme, bootstrap=bootstrap),
         ], id='terminal-shell'),
 
         _create_fundamentals_overlay(styles, theme),

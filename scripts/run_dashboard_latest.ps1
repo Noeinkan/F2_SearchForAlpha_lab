@@ -1,5 +1,5 @@
 param(
-    [int]$Port = 8765,
+    [int]$Port = 8050,
     [switch]$Dev = $false,
     [switch]$NoKill,
     [switch]$KillAll,

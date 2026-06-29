@@ -563,13 +563,13 @@ def register_fundamentals_callbacks(app) -> None:
          Output('fundamentals-ticker-input', 'value', allow_duplicate=True)],
         [Input('app-url', 'pathname'),
          Input('app-url', 'search'),
+         Input('route-ticker-store', 'data'),
          Input('refresh-fundamentals-button', 'n_clicks'),
          Input('load-fundamentals-ticker-button', 'n_clicks'),
          Input('fundamentals-ticker-input', 'n_submit')],
         [State('ticker-dropdown', 'value'),
          State('fundamentals-ticker-input', 'value'),
-         State('user-ticker-store', 'data'),
-         State('route-ticker-store', 'data')],
+         State('user-ticker-store', 'data')],
         prevent_initial_call='initial_duplicate',
     )
     def load_fundamentals(
@@ -604,6 +604,12 @@ def register_fundamentals_callbacks(app) -> None:
             raw = str(
                 effective_path_ticker or url_ticker or overlay_ticker or user_ticker or ticker or fallback
             ).strip()
+        elif trigger_id == 'route-ticker-store':
+            if not is_fundamentals_route(pathname):
+                raise PreventUpdate
+            if not path_ticker:
+                raise PreventUpdate
+            raw = str(path_ticker).strip()
         else:
             raw = str(overlay_ticker or ticker or DEFAULT_TICKER).strip()
 
@@ -626,6 +632,7 @@ def register_fundamentals_callbacks(app) -> None:
             'load-fundamentals-ticker-button',
             'fundamentals-ticker-input',
             'app-url',
+            'route-ticker-store',
         } else no_update
         return payload, title, f"LOADED {payload['as_of']}", update_global_ticker, symbol
 
