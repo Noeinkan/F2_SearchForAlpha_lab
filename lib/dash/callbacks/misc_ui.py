@@ -517,3 +517,63 @@ def register_misc_callbacks(app) -> None:
         Input('export-img-btn', 'n_clicks'),
     )
 
+    # Re-fit every subplot's Y axis when the X range changes (rangeselector
+    # 1M/3M/.../ALL click, X-axis drag zoom, or double-click "reset axes").
+    # Plotly's rangeselector only narrows the X window; it does NOT recompute
+    # `yaxis.autorange` against the now-visible bars, so the price pane keeps
+    # the Y range it computed against the full loaded dataset and the 1M
+    # candles look vertically squeezed. We watch `relayoutData`, detect a
+    # pure X-range change, and call `Plotly.relayout(gd, {yN.autorange: true})`
+    # for every existing subplot Y axis so each pane re-fits to its visible
+    # data. Skip when the relayout also carries a Y-range key (user did a
+    # box / Y-axis zoom and intentionally chose the Y window).
+    app.clientside_callback(
+        """
+        function(relayoutData) {
+            if (!relayoutData || typeof relayoutData !== 'object') {
+                return window.dash_clientside.no_update;
+            }
+            var keys = Object.keys(relayoutData);
+            if (keys.length === 0) {
+                return window.dash_clientside.no_update;
+            }
+            var hasXRange = false;
+            var hasYRange = false;
+            for (var i = 0; i < keys.length; i++) {
+                var k = keys[i];
+                if (k.indexOf('xaxis') === 0 && k.indexOf('range') !== -1) hasXRange = true;
+                if (k.indexOf('yaxis') === 0 && k.indexOf('range') !== -1) hasYRange = true;
+            }
+            // Only refit Y on a pure X-range change. If the user explicitly
+            // zoomed Y (box / Y drag), respect their selection.
+            if (!hasXRange || hasYRange) {
+                return window.dash_clientside.no_update;
+            }
+            var graph = document.getElementById('financial-chart');
+            if (!graph || !window.Plotly) {
+                return window.dash_clientside.no_update;
+            }
+            var gd = graph.querySelector('.js-plotly-plot');
+            if (!gd || !gd._fullLayout) {
+                return window.dash_clientside.no_update;
+            }
+            var yAxes = (gd._fullLayout._subplots && gd._fullLayout._subplots.yaxis) || [];
+            if (!yAxes.length) {
+                return window.dash_clientside.no_update;
+            }
+            var payload = {};
+            for (var j = 0; j < yAxes.length; j++) {
+                payload[yAxes[j] + '.autorange'] = true;
+            }
+            // The relayout this triggers carries only yaxis.* keys, which our
+            // guard above already ignores (no xaxis.range key), so there is
+            // no re-entrant loop.
+            try { window.Plotly.relayout(gd, payload); }
+            catch (err) { /* layout may have torn down between events */ }
+            return window.dash_clientside.no_update;
+        }
+        """,
+        Output('chart-y-autorange-sync', 'children'),
+        Input('financial-chart', 'relayoutData'),
+    )
+

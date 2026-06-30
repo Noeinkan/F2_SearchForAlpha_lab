@@ -101,6 +101,9 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         html.Div(id='keyboard-listener', style={'display': 'none'}),
         html.Div(id='theme-class-sync', style={'display': 'none'}),
         html.Div(id='ui-storage-sync', style={'display': 'none'}),
+        # Sink for the clientside Y-autorange refit triggered by X-range changes
+        # (rangeselector 1M/3M/... clicks, X drag zoom, double-click reset).
+        html.Div(id='chart-y-autorange-sync', style={'display': 'none'}),
 
         # Phase 5 — command palette. The modal lives at the bottom of the
         # shell so it stacks above every overlay. `is_open` is driven by
