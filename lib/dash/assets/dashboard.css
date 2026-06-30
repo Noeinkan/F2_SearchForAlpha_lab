@@ -1170,6 +1170,39 @@ input[type="radio"] {
 
 .sfa-flow-overlay {
     background: #0A0A0A;
+    display: flex;
+    flex-direction: column;
+}
+
+.sfa-flow-overlay #flow-scroll-region {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sfa-flow-overlay #flow-loading {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sfa-flow-overlay #flow-loading > div {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sfa-flow-overlay #flow-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .sfa-flow-overlay.sfa-flow-route {

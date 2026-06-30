@@ -12,6 +12,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+import lib.data_processing as dp
 from lib.data_processing import (
     fetch_data, get_all_tickers, 
     calculate_max_drawdown, calculate_sharpe_ratio,
@@ -217,50 +218,78 @@ class TestCreateBacktestResults(unittest.TestCase):
 class TestGetAllTickers(unittest.TestCase):
     """Tests for get_all_tickers function."""
 
-    @patch('lib.data_processing.pd.read_html')
-    def test_get_all_tickers_returns_dataframe(self, mock_read_html):
+    def setUp(self):
+        dp._TICKER_CACHE = None
+        dp._TICKER_CACHE_TIME = None
+
+    @patch('lib.data_processing._get_default_tickers')
+    @patch('lib.data_processing._fetch_russell2000_from_wikipedia')
+    @patch('lib.data_processing._fetch_nasdaq100_from_wikipedia')
+    @patch('lib.data_processing._fetch_sp500_from_github')
+    def test_get_all_tickers_returns_dataframe(
+        self,
+        mock_sp500,
+        mock_nasdaq100,
+        mock_russell2000,
+        mock_default_tickers,
+    ):
         """Test that get_all_tickers returns a DataFrame."""
-        # Mock Wikipedia responses
-        sp500_df = pd.DataFrame({
+        mock_sp500.return_value = pd.DataFrame({
             'Symbol': ['AAPL', 'MSFT'],
-            'Security': ['Apple Inc.', 'Microsoft Corp.']
+            'Security': ['Apple Inc.', 'Microsoft Corp.'],
+            'Index': ['S&P 500', 'S&P 500'],
+            'Exchange': ['NASDAQ', 'NASDAQ'],
         })
-        nasdaq_df = pd.DataFrame({
-            'Ticker': ['GOOGL', 'AMZN'],
-            'Company': ['Alphabet Inc.', 'Amazon.com Inc.']
+        mock_nasdaq100.return_value = pd.DataFrame({
+            'Symbol': ['GOOGL'],
+            'Security': ['Alphabet Inc.'],
+            'Index': ['NASDAQ-100'],
+            'Exchange': ['NASDAQ'],
         })
-        
-        mock_read_html.side_effect = [
-            [sp500_df],  # S&P 500
-            [None, None, None, None, nasdaq_df]  # NASDAQ-100 (index 4)
-        ]
-        
+        mock_russell2000.return_value = pd.DataFrame({
+            'Symbol': ['RKLB'],
+            'Security': ['Rocket Lab Corporation'],
+            'Index': ['Russell 2000'],
+            'Exchange': ['NASDAQ'],
+        })
+        mock_default_tickers.return_value = pd.DataFrame(
+            columns=['Symbol', 'Security', 'Index', 'Exchange']
+        )
+
         result = get_all_tickers()
-        
+
         self.assertIsInstance(result, pd.DataFrame)
         self.assertIn('Symbol', result.columns)
         self.assertIn('Security', result.columns)
+        self.assertIn('RKLB', result['Symbol'].values)
 
-    @patch('lib.data_processing.pd.read_html')
-    def test_get_all_tickers_includes_etfs(self, mock_read_html):
-        """Test that ETFs are included."""
-        sp500_df = pd.DataFrame({
+    @patch('lib.data_processing._get_default_tickers')
+    @patch('lib.data_processing._fetch_russell2000_from_wikipedia', return_value=None)
+    @patch('lib.data_processing._fetch_nasdaq100_from_wikipedia', return_value=None)
+    @patch('lib.data_processing._fetch_sp500_from_github')
+    def test_get_all_tickers_includes_etfs(
+        self,
+        mock_sp500,
+        mock_nasdaq100,
+        mock_russell2000,
+        mock_default_tickers,
+    ):
+        """Test that ETFs from local config are included."""
+        mock_sp500.return_value = pd.DataFrame({
             'Symbol': ['AAPL'],
-            'Security': ['Apple Inc.']
+            'Security': ['Apple Inc.'],
+            'Index': ['S&P 500'],
+            'Exchange': ['NASDAQ'],
         })
-        nasdaq_df = pd.DataFrame({
-            'Ticker': ['GOOGL'],
-            'Company': ['Alphabet Inc.']
+        mock_default_tickers.return_value = pd.DataFrame({
+            'Symbol': ['SPY', 'QQQ'],
+            'Security': ['SPDR S&P 500 ETF', 'Invesco QQQ Trust'],
+            'Index': ['Index ETF', 'Index ETF'],
+            'Exchange': ['NYSE', 'NASDAQ'],
         })
-        
-        mock_read_html.side_effect = [
-            [sp500_df],
-            [None, None, None, None, nasdaq_df]
-        ]
-        
+
         result = get_all_tickers()
-        
-        # Check that ETFs are included
+
         self.assertIn('SPY', result['Symbol'].values)
         self.assertIn('QQQ', result['Symbol'].values)
 

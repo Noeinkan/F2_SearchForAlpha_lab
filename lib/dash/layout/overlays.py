@@ -200,32 +200,45 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
             'borderBottom': f'1px solid {theme["border_primary"]}',
         }),
         html.Div(id='flow-glossary', style={'display': 'none'}, children=[]),
-        dcc.Loading(
-            id='flow-loading',
-            type='circle',
-            color=theme['accent_blue'],
-            children=html.Div(
-                id='flow-content',
+        html.Div(
+            dcc.Loading(
+                id='flow-loading',
+                type='circle',
+                color=theme['accent_blue'],
                 children=html.Div(
-                    "No report yet. Click RESCAN NOW.",
+                    id='flow-content',
+                    children=html.Div(
+                        "No report yet. Click RESCAN NOW.",
+                        style={
+                            'fontFamily': FONT_FAMILY,
+                            'fontSize': FONT_SIZES['sm'],
+                            'color': theme['text_secondary'],
+                            'padding': '24px',
+                            'textAlign': 'center',
+                        },
+                    ),
                     style={
-                        'fontFamily': FONT_FAMILY,
-                        'fontSize': FONT_SIZES['sm'],
-                        'color': theme['text_secondary'],
-                        'padding': '24px',
-                        'textAlign': 'center',
+                        'flex': '1 1 auto',
+                        'minHeight': 0,
+                        'overflowY': 'auto',
+                        'overflowX': 'hidden',
+                        'backgroundColor': theme['bg_primary'],
                     },
                 ),
-                style={
-                    'height': 'calc(100% - 36px)',
-                    'overflow': 'auto',
-                    'backgroundColor': theme['bg_primary'],
-                },
             ),
+            id='flow-scroll-region',
+            style={
+                'flex': '1 1 auto',
+                'minHeight': 0,
+                'display': 'flex',
+                'flexDirection': 'column',
+                'overflow': 'hidden',
+            },
         ),
     ], id='flow-overlay', style={
         'display': 'none',
         'position': 'fixed',
+        'flexDirection': 'column',
         # Matches fundamentals-overlay — clear of the 44px header / 24px footer.
         'inset': '44px 6px 24px 6px',
         'zIndex': 20,

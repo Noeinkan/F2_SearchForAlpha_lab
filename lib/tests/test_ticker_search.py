@@ -75,7 +75,14 @@ def test_filter_prefers_symbol_prefix_matches():
     assert filtered[0]["value"] == "GOOGL"
 
 
-def test_resolve_keeps_exact_symbol():
+def test_filter_finds_rocket_lab_by_nickname():
+    df = pd.DataFrame([{"Symbol": "RKLB", "Security": "Rocket Lab Corporation"}])
+    options = build_ticker_options(df)
+    filtered = filter_ticker_options(options, "rocket lab")
+
+    assert len(filtered) == 1
+    assert filtered[0]["value"] == "RKLB"
+
     df = pd.DataFrame([{"Symbol": "TSLA", "Security": "Tesla, Inc."}])
     options = build_ticker_options(df)
 

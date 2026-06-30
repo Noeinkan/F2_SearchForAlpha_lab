@@ -25,6 +25,11 @@ SYMBOL_SEARCH_ALIASES: Dict[str, str] = {
     "BRK.A": "berkshire berkshire hathaway",
     "BRK.B": "berkshire berkshire hathaway",
     "TSLA": "tesla",
+    "RKLB": "rocket lab",
+    "MSTR": "microstrategy",
+    "RIVN": "rivian",
+    "SOFI": "sofi",
+    "SNOW": "snowflake",
 }
 
 

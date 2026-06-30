@@ -160,21 +160,36 @@ def _fetch_sp500_from_github() -> Optional[pd.DataFrame]:
     return None
 
 
+_WIKIPEDIA_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+}
+
+
+def _find_wikipedia_table(
+    html: str,
+    required_columns: set[str],
+) -> Optional[pd.DataFrame]:
+    """Return the first Wikipedia HTML table containing all required columns."""
+    from io import StringIO
+
+    for table in pd.read_html(StringIO(html)):
+        columns = {str(col).strip() for col in table.columns}
+        if required_columns.issubset(columns):
+            return table
+    return None
+
+
 def _fetch_from_wikipedia() -> Optional[pd.DataFrame]:
-    """Fetch tickers from Wikipedia with retry logic."""
+    """Fetch S&P 500 tickers from Wikipedia with retry logic."""
     import requests
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
     max_retries = 1
     backoff_factor = 1.0
-    
+
     for attempt in range(max_retries):
         try:
-            # Fetch S&P 500 tickers
             sp500_resp = requests.get(
                 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
-                headers=headers, timeout=5
+                headers=_WIKIPEDIA_HEADERS, timeout=5
             )
             sp500_resp.raise_for_status()
             sp500 = pd.read_html(sp500_resp.text)[0]
@@ -195,6 +210,104 @@ def _fetch_from_wikipedia() -> Optional[pd.DataFrame]:
     return None
 
 
+def _fetch_nasdaq100_from_wikipedia() -> Optional[pd.DataFrame]:
+    """Fetch NASDAQ-100 constituents from Wikipedia."""
+    import requests
+
+    try:
+        response = requests.get(
+            'https://en.wikipedia.org/wiki/Nasdaq-100',
+            headers=_WIKIPEDIA_HEADERS,
+            timeout=5,
+        )
+        response.raise_for_status()
+        table = _find_wikipedia_table(response.text, {'Ticker', 'Company'})
+        if table is None:
+            logger.warning("NASDAQ-100 constituents table not found on Wikipedia")
+            return None
+
+        df = table.rename(columns={'Ticker': 'Symbol', 'Company': 'Security'})
+        df['Index'] = 'NASDAQ-100'
+        df['Exchange'] = 'NASDAQ'
+        logger.info(f"Fetched {len(df)} tickers from Wikipedia (NASDAQ-100)")
+        return df[['Symbol', 'Security', 'Index', 'Exchange']]
+    except Exception as e:
+        logger.warning(f"Failed to fetch NASDAQ-100 from Wikipedia: {e}")
+        return None
+
+
+def _fetch_russell2000_from_github() -> Optional[pd.DataFrame]:
+    """Fetch Russell 2000 constituents from a community GitHub CSV."""
+    import requests
+    from io import StringIO
+
+    url = (
+        'https://raw.githubusercontent.com/ikoniaris/Russell2000/master/'
+        'russell_2000_components.csv'
+    )
+    max_retries = 2
+    backoff_factor = 1.0
+
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            df = pd.read_csv(StringIO(response.text))
+            df = df.rename(columns={'Ticker': 'Symbol', 'Name': 'Security'})
+            df['Index'] = 'Russell 2000'
+            df['Exchange'] = 'NYSE'
+            logger.info(f"Fetched {len(df)} tickers from GitHub (Russell 2000)")
+            return df[['Symbol', 'Security', 'Index', 'Exchange']]
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                wait_time = backoff_factor * (2 ** attempt)
+                logger.warning(
+                    f"Russell 2000 GitHub timeout, retrying in {wait_time}s..."
+                )
+                time.sleep(wait_time)
+            else:
+                logger.warning("Russell 2000 GitHub fetch failed after retries")
+        except Exception as e:
+            logger.warning(f"Failed to fetch Russell 2000 from GitHub: {e}")
+            break
+    return None
+
+
+def _fetch_russell2000_from_wikipedia() -> Optional[pd.DataFrame]:
+    """Fetch Russell 2000 constituents (GitHub primary, Wikipedia secondary)."""
+    russell_df = _fetch_russell2000_from_github()
+    if russell_df is not None:
+        return russell_df
+
+    import requests
+
+    try:
+        response = requests.get(
+            'https://en.wikipedia.org/wiki/Russell_2000_Index',
+            headers=_WIKIPEDIA_HEADERS,
+            timeout=5,
+        )
+        response.raise_for_status()
+        table = _find_wikipedia_table(response.text, {'Ticker', 'Company'})
+        if table is None:
+            table = _find_wikipedia_table(response.text, {'Symbol', 'Security'})
+        if table is None:
+            logger.warning("Russell 2000 constituents table not found on Wikipedia")
+            return None
+
+        if 'Ticker' in table.columns:
+            df = table.rename(columns={'Ticker': 'Symbol', 'Company': 'Security'})
+        else:
+            df = table.copy()
+        df['Index'] = 'Russell 2000'
+        df['Exchange'] = 'Unknown'
+        logger.info(f"Fetched {len(df)} tickers from Wikipedia (Russell 2000)")
+        return df[['Symbol', 'Security', 'Index', 'Exchange']]
+    except Exception as e:
+        logger.warning(f"Failed to fetch Russell 2000 from Wikipedia: {e}")
+        return None
+
+
 def _is_cache_valid() -> bool:
     """Check if in-memory ticker cache is still valid."""
     global _TICKER_CACHE, _TICKER_CACHE_TIME
@@ -207,14 +320,15 @@ def _is_cache_valid() -> bool:
 
 def get_all_tickers() -> pd.DataFrame:
     """
-    Get list of S&P 500, NASDAQ-100 tickers and popular ETFs.
+    Get S&P 500, NASDAQ-100, and Russell 2000 tickers plus curated extras.
 
     Uses caching with TTL to minimize network calls. Fallback strategy:
     1. Return cached data if still valid (< 24 hours old)
-    2. Try GitHub datasets repo (most reliable)
-    3. Try Wikipedia (comprehensive but may be slow)
-    4. Fall back to local config file
-    5. Use minimal bootstrap list as last resort
+    2. Try GitHub datasets repo for S&P 500 (most reliable)
+    3. Try Wikipedia for S&P 500 backup
+    4. Merge NASDAQ-100 (Wikipedia) and Russell 2000 (GitHub, Wikipedia backup)
+    5. Fall back to local config file
+    6. Use minimal bootstrap list as last resort
 
     Returns:
         DataFrame with Symbol, Security name, Index, and Exchange columns.
@@ -236,6 +350,17 @@ def get_all_tickers() -> pd.DataFrame:
     if tickers_df is None:
         logger.info("GitHub unavailable, trying Wikipedia...")
         tickers_df = _fetch_from_wikipedia()
+
+    extra_sources: List[pd.DataFrame] = []
+    for fetcher in (_fetch_nasdaq100_from_wikipedia, _fetch_russell2000_from_wikipedia):
+        fetched = fetcher()
+        if fetched is not None:
+            extra_sources.append(fetched)
+
+    if tickers_df is None and extra_sources:
+        tickers_df = pd.concat(extra_sources, ignore_index=True)
+    elif extra_sources:
+        tickers_df = pd.concat([tickers_df, *extra_sources], ignore_index=True)
     
     # Fall back to local config file
     if tickers_df is None:

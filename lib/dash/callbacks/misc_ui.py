@@ -571,13 +571,34 @@ def register_misc_callbacks(app) -> None:
             // Canonical X range. make_subplots(shared_xaxes=True) wires every
             // upper x-axis to `matches='xN'` on the bottom subplot, so after
             // resolution gd._fullLayout.xaxis.range mirrors the bottom axis.
-            var xRange = gd._fullLayout.xaxis.range;
+            // For a date axis, Plotly's supplyDefaults converts the range to
+            // millisecond numbers via ax.d2c, but gd._fullData[i].x keeps the
+            // raw ISO date strings. Comparing a string to a number coerces
+            // the string via Number() → NaN, and NaN comparisons are always
+            // false, so the visibility filter would silently pass every point
+            // and Y would be fit to the whole dataset (no visible refit).
+            // Normalize both endpoints and trace X values to the same numeric
+            // coordinate space (ms for date axis, plain number for linear).
+            var xAx = gd._fullLayout.xaxis;
+            var xRange = xAx && xAx.range;
             if (!xRange || xRange.length < 2 ||
-                !isFinite(xRange[0]) || !isFinite(xRange[1])) {
+                xRange[0] == null || xRange[1] == null) {
                 return window.dash_clientside.no_update;
             }
-            var xMin = xRange[0];
-            var xMax = xRange[1];
+            var isDateAxis = xAx.type === 'date';
+            function toXNum(v) {
+                if (typeof v === 'number') return v;
+                if (isDateAxis) {
+                    var t = Date.parse(v);
+                    return isNaN(t) ? NaN : t;
+                }
+                return Number(v);
+            }
+            var xMin = toXNum(xRange[0]);
+            var xMax = toXNum(xRange[1]);
+            if (!isFinite(xMin) || !isFinite(xMax)) {
+                return window.dash_clientside.no_update;
+            }
             if (xMin > xMax) { var tmp = xMin; xMin = xMax; xMax = tmp; }
 
             function axisKey(name) {
@@ -602,8 +623,8 @@ def register_misc_callbacks(app) -> None:
                     if (tr.type === 'candlestick') {
                         var highs = tr.high, lows = tr.low;
                         for (var k = 0; k < tx.length; k++) {
-                            var xv = tx[k];
-                            if (xv < xMin || xv > xMax) continue;
+                            var xv = toXNum(tx[k]);
+                            if (!isFinite(xv) || xv < xMin || xv > xMax) continue;
                             var hv = highs[k], lv = lows[k];
                             if (isFinite(hv) && hv > yMax) yMax = hv;
                             if (isFinite(lv) && lv < yMin) yMin = lv;
@@ -612,8 +633,8 @@ def register_misc_callbacks(app) -> None:
                         var ys = tr.y;
                         if (!ys) continue;
                         for (var k = 0; k < tx.length; k++) {
-                            var xv = tx[k];
-                            if (xv < xMin || xv > xMax) continue;
+                            var xv = toXNum(tx[k]);
+                            if (!isFinite(xv) || xv < xMin || xv > xMax) continue;
                             var yv = ys[k];
                             if (isFinite(yv)) {
                                 if (yv > yMax) yMax = yv;

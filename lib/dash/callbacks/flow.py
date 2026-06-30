@@ -73,7 +73,8 @@ def register_flow_callbacks(app) -> None:
             {
                 "backgroundColor": theme["bg_primary"],
                 "border": f'1px solid {theme["border_primary"]}',
-                "display": "block" if on_flow else "none",
+                "display": "flex" if on_flow else "none",
+                "flexDirection": "column",
                 "position": "fixed",
                 "zIndex": 20,
                 "overflow": "hidden",

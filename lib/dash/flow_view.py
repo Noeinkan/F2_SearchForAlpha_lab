@@ -588,4 +588,4 @@ def render_flow_reports(payload: Mapping[str, Any], theme: dict, *, show_glossar
             style={"fontSize": FONT_SIZES["xs"], "color": theme["text_tertiary"], "margin": "0 0 8px"},
         ))
 
-    return html.Div(children, style={"padding": "8px", "overflowY": "auto", "height": "100%"})
+    return html.Div(children, style={"padding": "8px"})
