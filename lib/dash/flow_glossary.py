@@ -23,6 +23,38 @@ TERM_DEFINITIONS: dict[str, str] = {
     "itm": "In the money — the option has intrinsic value at the current stock price.",
     "otm": "Out of the money — the option has no intrinsic value at the current stock price.",
     "weekly": "Expires within 7 days — often used for short-term directional bets.",
+    "signal": "Plain-language read of what this contract's flow may indicate — educational only.",
+    "flags": "Activity flags: U = unusual volume, HU = high unusual OTM weekly, B = block premium, RC = repeat calls.",
+}
+
+COLUMN_HEADERS: dict[str, str] = {
+    "strike": TERM_DEFINITIONS["strike"],
+    "type": TERM_DEFINITIONS["type"],
+    "last": TERM_DEFINITIONS["last"],
+    "bid": TERM_DEFINITIONS["bid"],
+    "ask": TERM_DEFINITIONS["ask"],
+    "vol": TERM_DEFINITIONS["vol"],
+    "oi": TERM_DEFINITIONS["oi"],
+    "iv": TERM_DEFINITIONS["iv"],
+    "premium": TERM_DEFINITIONS["premium"],
+    "expiry": TERM_DEFINITIONS["expiry"],
+    "flags": TERM_DEFINITIONS["flags"],
+    "signal": TERM_DEFINITIONS["signal"],
+}
+
+INSIGHT_CATEGORY_COLORS: dict[str, str] = {
+    "Bullish": "#3fb950",
+    "Bearish": "#f85149",
+    "Institutional": "#f0883e",
+    "Speculative": "#58a6ff",
+    "Neutral": "#8b949e",
+}
+
+SENTIMENT_COLORS: dict[str, str] = {
+    "Bullish": "#3fb950",
+    "Bearish": "#f85149",
+    "Mixed": "#f0c674",
+    "Neutral": "#8b949e",
 }
 
 FLAG_DEFINITIONS: dict[str, dict[str, str]] = {
@@ -84,42 +116,135 @@ def score_breakdown(report: Mapping[str, Any]) -> str:
     return " + ".join(parts) + f" = {total}"
 
 
-def interpretive_banner(report: Mapping[str, Any]) -> str | None:
-    """Neutral educational copy from flag patterns. Returns None if nothing notable."""
+def interpretive_insights(report: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """Categorized educational insights from flag patterns and volume skew."""
     flags = report.get("flags") or []
     kinds = {str(f.get("kind", "")) for f in flags}
-    messages: list[str] = []
+    insights: list[tuple[str, str]] = []
 
     if "repeat_call" in kinds:
-        messages.append(
+        insights.append((
+            "Bullish",
             "Multiple call strikes are seeing unusual activity — often interpreted as "
-            "bullish positioning by large traders."
-        )
+            "bullish positioning by large traders.",
+        ))
 
     pc_vol = float(report.get("pc_vol_ratio") or 0)
     if pc_vol > 1.0:
-        messages.append(
-            "Put volume exceeds call volume — often interpreted as hedging or bearish positioning."
-        )
+        insights.append((
+            "Bearish",
+            "Put volume exceeds call volume — often interpreted as hedging or bearish positioning.",
+        ))
     elif pc_vol < 0.7 and pc_vol > 0:
-        messages.append(
-            "Call volume dominates put volume — often interpreted as bullish or speculative interest."
-        )
+        insights.append((
+            "Bullish",
+            "Call volume dominates put volume — often interpreted as bullish or speculative interest.",
+        ))
 
     bp_count = sum(1 for f in flags if f.get("kind") == "block_premium")
     hu_count = sum(1 for f in flags if f.get("kind") == "high_unusual")
     if bp_count >= 2:
-        messages.append(
-            "Several large-premium trades flagged — institutional-sized flow."
-        )
+        insights.append((
+            "Institutional",
+            "Several large-premium trades flagged — institutional-sized flow.",
+        ))
     elif hu_count >= 2:
-        messages.append(
-            "Multiple short-dated OTM contracts with heavy volume — near-term directional bets."
-        )
+        insights.append((
+            "Speculative",
+            "Multiple short-dated OTM contracts with heavy volume — near-term directional bets.",
+        ))
 
-    if not messages:
+    if not insights:
+        score = int(report.get("unusual_score") or 0)
+        if score <= 0:
+            insights.append((
+                "Neutral",
+                "No unusual activity flags detected — flow appears within normal ranges.",
+            ))
+
+    return insights
+
+
+def interpretive_banner(report: Mapping[str, Any]) -> str | None:
+    """Neutral educational copy from flag patterns. Returns None if nothing notable."""
+    insights = interpretive_insights(report)
+    neutral_only = len(insights) == 1 and insights[0][0] == "Neutral"
+    if not insights or neutral_only:
         return None
-    return " ".join(messages)
+    return " ".join(msg for _, msg in insights)
+
+
+def ticker_sentiment(report: Mapping[str, Any]) -> tuple[str, str, str]:
+    """Returns (label, color, reason). label in Bullish/Bearish/Neutral/Mixed."""
+    flags = report.get("flags") or []
+    kinds = {str(f.get("kind", "")) for f in flags}
+    pc_vol = float(report.get("pc_vol_ratio") or 0)
+    call_pct = float(report.get("call_pct") or 50)
+
+    bullish = 0
+    bearish = 0
+    reasons: list[str] = []
+
+    if "repeat_call" in kinds:
+        bullish += 2
+        reasons.append("repeat unusual call strikes")
+    if pc_vol < 0.7 and pc_vol > 0:
+        bullish += 1
+        reasons.append("call-heavy volume")
+    if call_pct > 65:
+        bullish += 1
+    if pc_vol > 1.0:
+        bearish += 2
+        reasons.append("put-heavy volume")
+    if call_pct < 35:
+        bearish += 1
+
+    bp_count = sum(1 for f in flags if f.get("kind") == "block_premium")
+    if bp_count >= 2 and bullish >= bearish:
+        reasons.append("institutional call flow")
+
+    if bullish >= 2 and bearish >= 2:
+        label = "Mixed"
+        reason = "Conflicting bullish and bearish flow signals"
+    elif bullish > bearish:
+        label = "Bullish"
+        reason = "Driven by " + (", ".join(reasons) if reasons else "unusual call activity")
+    elif bearish > bullish:
+        label = "Bearish"
+        reason = "Driven by " + (", ".join(reasons) if reasons else "put-heavy flow")
+    else:
+        label = "Neutral"
+        reason = "No strong directional skew in today's flow"
+
+    return label, SENTIMENT_COLORS[label], reason
+
+
+def contract_signal(
+    contract: Mapping[str, Any],
+    flags: Sequence[Mapping[str, Any]] | None = None,
+) -> tuple[str, str]:
+    """Returns (chip_label, color) for a single contract row."""
+    flags = flags if flags is not None else (contract.get("flags") or [])
+    kinds = {str(f.get("kind", "")) for f in flags}
+    cp = str(contract.get("cp", ""))
+    otm = bool(contract.get("is_otm", False))
+    weekly = bool(contract.get("is_weekly", False))
+
+    if "block_premium" in kinds:
+        return "Block", FLAG_DEFINITIONS["block_premium"]["color"]
+    if "high_unusual" in kinds:
+        if cp == "C":
+            return "Speculative", FLAG_DEFINITIONS["high_unusual"]["color"]
+        return "Hedge", INSIGHT_CATEGORY_COLORS["Bearish"]
+    if "unusual" in kinds:
+        if cp == "C":
+            return "Bullish bet", INSIGHT_CATEGORY_COLORS["Bullish"]
+        return "Hedge", INSIGHT_CATEGORY_COLORS["Bearish"]
+    if otm and weekly and cp == "C":
+        return "Speculative", FLAG_DEFINITIONS["high_unusual"]["color"]
+    if cp == "P" and otm:
+        return "Hedge", INSIGHT_CATEGORY_COLORS["Bearish"]
+    return "Flow", INSIGHT_CATEGORY_COLORS["Neutral"]
 
 
 def fmt_strike(strike: float) -> str:

@@ -6,8 +6,11 @@ from lib.dash.dash_config import DEFAULT_THEME, get_theme
 from lib.dash.flow_glossary import (
     FLAG_DEFINITIONS,
     FLAG_KINDS,
+    contract_signal,
     interpretive_banner,
+    interpretive_insights,
     score_breakdown,
+    ticker_sentiment,
 )
 from lib.dash.flow_view import render_flow_reports, render_ticker_card
 
@@ -101,6 +104,86 @@ def test_interpretive_banner_block_premium_dominant():
     assert "institutional" in msg.lower()
 
 
+def test_ticker_sentiment_bullish():
+    report = _sample_report(
+        flags=[{"kind": "repeat_call", "message": "3 strikes"}],
+        pc_vol_ratio=0.5,
+        call_pct=70,
+    )
+    label, color, reason = ticker_sentiment(report)
+    assert label == "Bullish"
+    assert color
+    assert reason
+
+
+def test_ticker_sentiment_bearish():
+    report = _sample_report(pc_vol_ratio=1.5, call_pct=30, flags=[])
+    label, _, _ = ticker_sentiment(report)
+    assert label == "Bearish"
+
+
+def test_ticker_sentiment_neutral():
+    report = _sample_report(
+        pc_vol_ratio=0.85,
+        call_pct=50,
+        flags=[],
+        unusual_score=0,
+    )
+    label, _, _ = ticker_sentiment(report)
+    assert label == "Neutral"
+
+
+def test_ticker_sentiment_mixed():
+    report = _sample_report(
+        flags=[{"kind": "repeat_call", "message": "x"}],
+        pc_vol_ratio=1.5,
+        call_pct=70,
+    )
+    label, _, _ = ticker_sentiment(report)
+    assert label == "Mixed"
+
+
+def test_contract_signal_block():
+    contract = {"cp": "C", "is_otm": True, "is_weekly": False, "flags": [
+        {"kind": "block_premium", "message": "big"},
+    ]}
+    label, color = contract_signal(contract)
+    assert label == "Block"
+    assert color == FLAG_DEFINITIONS["block_premium"]["color"]
+
+
+def test_contract_signal_otm_weekly_call():
+    contract = {"cp": "C", "is_otm": True, "is_weekly": True, "flags": [
+        {"kind": "high_unusual", "message": "spec"},
+    ]}
+    label, color = contract_signal(contract)
+    assert label == "Speculative"
+    assert color == FLAG_DEFINITIONS["high_unusual"]["color"]
+
+
+def test_contract_signal_unusual_put():
+    contract = {"cp": "P", "is_otm": True, "is_weekly": False, "flags": [
+        {"kind": "unusual", "message": "hedge"},
+    ]}
+    label, _ = contract_signal(contract)
+    assert label == "Hedge"
+
+
+def test_interpretive_insights_returns_categories():
+    report = _sample_report(
+        flags=[
+            {"kind": "repeat_call", "message": "a"},
+            {"kind": "block_premium", "message": "b"},
+            {"kind": "block_premium", "message": "c"},
+        ],
+        pc_vol_ratio=0.5,
+    )
+    insights = interpretive_insights(report)
+    categories = {cat for cat, _ in insights}
+    assert "Bullish" in categories
+    assert "Institutional" in categories
+
+
 def test_render_ticker_card_returns_div_with_table():
     theme = get_theme(DEFAULT_THEME)
     card = render_ticker_card(_sample_report(), theme, index=0)
@@ -108,6 +191,26 @@ def test_render_ticker_card_returns_div_with_table():
     serialized = str(card)
     assert "NVDA" in serialized
     assert "flow-table-0-NVDA" in serialized
+
+
+def test_render_ticker_card_has_sentiment_badge():
+    theme = get_theme(DEFAULT_THEME)
+    card = render_ticker_card(_sample_report(), theme, index=0)
+    serialized = str(card)
+    assert "sfa-flow-sentiment-badge" in serialized
+    assert "BULLISH" in serialized or "NEUTRAL" in serialized or "MIXED" in serialized
+
+
+def test_render_ticker_card_has_insight_list():
+    theme = get_theme(DEFAULT_THEME)
+    card = render_ticker_card(
+        _sample_report(flags=[{"kind": "repeat_call", "message": "3"}]),
+        theme,
+        index=0,
+    )
+    serialized = str(card)
+    assert "sfa-flow-insights" in serialized
+    assert "sfa-flow-insight-chip" in serialized
 
 
 def test_render_flow_reports_composes_summary_and_cards():

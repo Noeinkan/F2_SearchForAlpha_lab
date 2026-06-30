@@ -517,16 +517,26 @@ def register_misc_callbacks(app) -> None:
         Input('export-img-btn', 'n_clicks'),
     )
 
-    # Re-fit every subplot's Y axis when the X range changes (rangeselector
-    # 1M/3M/.../ALL click, X-axis drag zoom, or double-click "reset axes").
-    # Plotly's rangeselector only narrows the X window; it does NOT recompute
-    # `yaxis.autorange` against the now-visible bars, so the price pane keeps
-    # the Y range it computed against the full loaded dataset and the 1M
-    # candles look vertically squeezed. We watch `relayoutData`, detect a
-    # pure X-range change, and call `Plotly.relayout(gd, {yN.autorange: true})`
-    # for every existing subplot Y axis so each pane re-fits to its visible
-    # data. Skip when the relayout also carries a Y-range key (user did a
-    # box / Y-axis zoom and intentionally chose the Y window).
+    # Re-fit every subplot's Y axis to the data that is actually visible
+    # inside the current X window, whenever the X window changes (1M/3M/...
+    # rangeselector click, X-axis drag zoom, double-click "reset axes").
+    #
+    # Why we cannot just set `yaxis.autorange: true` (the previous, broken
+    # fix): Plotly's `autorange` recomputes the Y range from ALL trace data,
+    # NOT from the data inside the visible X window. So re-applying it on a
+    # rangeselector click just reproduces the same full-history Y range and
+    # the 1M candles stay squeezed at the top. Worse, the recursive relayout
+    # corrupted the subplot domain layout in some Plotly versions, producing
+    # the "data pinned at top, empty middle, indicators at bottom" screenshot.
+    #
+    # Correct approach: read the current X range, walk every trace on every
+    # subplot Y axis, compute the min/max of the Y values whose X falls
+    # inside [xMin, xMax], then set `yaxis.range = [ymin, ymax]` explicitly
+    # with `autorange: false`. The relayout this triggers carries only
+    # `yaxis.range[0]/[1]` keys, which our guard ignores (no `xaxis.range`),
+    # so there is no re-entrant loop. Box / Y-axis zooms carry `yaxis.range`
+    # keys too, so the guard skips them and respects the user's manual Y
+    # selection.
     app.clientside_callback(
         """
         function(relayoutData) {
@@ -544,8 +554,9 @@ def register_misc_callbacks(app) -> None:
                 if (k.indexOf('xaxis') === 0 && k.indexOf('range') !== -1) hasXRange = true;
                 if (k.indexOf('yaxis') === 0 && k.indexOf('range') !== -1) hasYRange = true;
             }
-            // Only refit Y on a pure X-range change. If the user explicitly
-            // zoomed Y (box / Y drag), respect their selection.
+            // Only refit Y on a pure X-range change. If the relayout also
+            // carries a Y-range key (box / Y-axis zoom), respect the user's
+            // manual Y selection.
             if (!hasXRange || hasYRange) {
                 return window.dash_clientside.no_update;
             }
@@ -554,20 +565,72 @@ def register_misc_callbacks(app) -> None:
                 return window.dash_clientside.no_update;
             }
             var gd = graph.querySelector('.js-plotly-plot');
-            if (!gd || !gd._fullLayout) {
+            if (!gd || !gd._fullLayout || !gd._fullData) {
                 return window.dash_clientside.no_update;
             }
+            // Canonical X range. make_subplots(shared_xaxes=True) wires every
+            // upper x-axis to `matches='xN'` on the bottom subplot, so after
+            // resolution gd._fullLayout.xaxis.range mirrors the bottom axis.
+            var xRange = gd._fullLayout.xaxis.range;
+            if (!xRange || xRange.length < 2 ||
+                !isFinite(xRange[0]) || !isFinite(xRange[1])) {
+                return window.dash_clientside.no_update;
+            }
+            var xMin = xRange[0];
+            var xMax = xRange[1];
+            if (xMin > xMax) { var tmp = xMin; xMin = xMax; xMax = tmp; }
+
+            function axisKey(name) {
+                return name === 'y' ? 'yaxis' : 'yaxis' + name.substring(1);
+            }
+
             var yAxes = (gd._fullLayout._subplots && gd._fullLayout._subplots.yaxis) || [];
             if (!yAxes.length) {
                 return window.dash_clientside.no_update;
             }
+
             var payload = {};
-            for (var j = 0; j < yAxes.length; j++) {
-                payload[yAxes[j] + '.autorange'] = true;
+            for (var ai = 0; ai < yAxes.length; ai++) {
+                var axName = yAxes[ai];
+                var yMin = Infinity, yMax = -Infinity;
+                for (var ti = 0; ti < gd._fullData.length; ti++) {
+                    var tr = gd._fullData[ti];
+                    var trYAxis = tr.yaxis || 'y';
+                    if (trYAxis !== axName) continue;
+                    var tx = tr.x;
+                    if (!tx || !tx.length) continue;
+                    if (tr.type === 'candlestick') {
+                        var highs = tr.high, lows = tr.low;
+                        for (var k = 0; k < tx.length; k++) {
+                            var xv = tx[k];
+                            if (xv < xMin || xv > xMax) continue;
+                            var hv = highs[k], lv = lows[k];
+                            if (isFinite(hv) && hv > yMax) yMax = hv;
+                            if (isFinite(lv) && lv < yMin) yMin = lv;
+                        }
+                    } else {
+                        var ys = tr.y;
+                        if (!ys) continue;
+                        for (var k = 0; k < tx.length; k++) {
+                            var xv = tx[k];
+                            if (xv < xMin || xv > xMax) continue;
+                            var yv = ys[k];
+                            if (isFinite(yv)) {
+                                if (yv > yMax) yMax = yv;
+                                if (yv < yMin) yMin = yv;
+                            }
+                        }
+                    }
+                }
+                if (isFinite(yMin) && isFinite(yMax) && yMax > yMin) {
+                    var pad = (yMax - yMin) * 0.05;
+                    payload[axisKey(axName) + '.range'] = [yMin - pad, yMax + pad];
+                    payload[axisKey(axName) + '.autorange'] = false;
+                }
             }
-            // The relayout this triggers carries only yaxis.* keys, which our
-            // guard above already ignores (no xaxis.range key), so there is
-            // no re-entrant loop.
+            if (Object.keys(payload).length === 0) {
+                return window.dash_clientside.no_update;
+            }
             try { window.Plotly.relayout(gd, payload); }
             catch (err) { /* layout may have torn down between events */ }
             return window.dash_clientside.no_update;

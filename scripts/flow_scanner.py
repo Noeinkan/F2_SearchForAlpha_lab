@@ -29,11 +29,14 @@ from rich.text import Text
 from lib.dash.flow_glossary import (
     DISCLAIMER,
     FLAG_DEFINITIONS,
+    INSIGHT_CATEGORY_COLORS,
     TERM_DEFINITIONS,
+    contract_signal,
     fmt_premium,
     fmt_strike,
-    interpretive_banner,
+    interpretive_insights,
     score_breakdown,
+    ticker_sentiment,
 )
 
 logger = logging.getLogger(__name__)
@@ -512,6 +515,47 @@ def _contract_sort_key(report: TickerReport, contract: Contract) -> tuple:
     return (hu, bp, u, contract.volume)
 
 
+def _html_insights_block(report_dict: dict) -> str:
+    insights = interpretive_insights(report_dict)
+    if not insights:
+        return ""
+    items = []
+    for category, message in insights:
+        color = INSIGHT_CATEGORY_COLORS.get(category, "#8b949e")
+        items.append(
+            f'<li><span class="insight-chip" style="background:{color}33;color:{color}">'
+            f'{escape(category.upper())}</span> {escape(message)}</li>'
+        )
+    return f'<ul class="insights">{"".join(items)}</ul>'
+
+
+def _premium_cell_class(premium: float) -> str:
+    if premium >= 5_000_000:
+        return "heat-premium-xl"
+    if premium >= 1_000_000:
+        return "heat-premium-lg"
+    if premium >= 250_000:
+        return "heat-premium-md"
+    return ""
+
+
+def _iv_cell_class(iv: float) -> str:
+    if iv >= 1.5:
+        return "heat-iv-high"
+    if iv >= 0.8:
+        return "heat-iv-mid"
+    return ""
+
+
+def _html_signal_cell_from_dict(contract_dict: dict) -> str:
+    label, color = contract_signal(contract_dict, contract_dict.get("flags"))
+    tip = escape(TERM_DEFINITIONS["signal"])
+    return (
+        f'<span class="signal-chip" style="color:{color};font-weight:600" '
+        f'title="{tip}">{escape(label)}</span>'
+    )
+
+
 def _html_th(label: str, term_key: str) -> str:
     tip = escape(TERM_DEFINITIONS.get(term_key, label))
     return f'<th title="{tip}">{escape(label)}</th>'
@@ -626,26 +670,42 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
         rc_badge = '<span class="badge badge-rc">REPEAT CALLS</span>' if repeat else ""
         report_dict = _report_to_dict(report, today)
         score_tip = escape(score_breakdown(report_dict))
-        interp = interpretive_banner(report_dict)
-        interp_html = f'<p class="interp">{escape(interp)}</p>' if interp else ""
+        insights_html = _html_insights_block(report_dict)
+        sent_label, sent_color, sent_reason = ticker_sentiment(report_dict)
+        sentiment_badge = (
+            f'<span class="sentiment-badge" style="background:{sent_color}33;color:{sent_color}" '
+            f'title="{escape(sent_reason)}">{escape(sent_label.upper())}</span>'
+        )
 
         rows = []
         flagged = [c for c in report.contracts if _contract_flags(report, c)]
         flagged.sort(key=lambda c: _contract_sort_key(report, c), reverse=True)
         for c in flagged[:50]:
-            badges = _html_flag_badges(_contract_flags(report, c), c)
+            cflags = _contract_flags(report, c)
+            badges = _html_flag_badges(cflags, c)
+            contract_dict = {
+                "cp": c.cp,
+                "is_otm": c.is_otm(report.spot),
+                "is_weekly": c.is_weekly(today),
+                "flags": [{"kind": f.kind, "message": f.message} for f in cflags],
+            }
+            row_cls = "row-unusual" if c.volume > c.open_interest else ""
+            prem_cls = _premium_cell_class(c.premium)
+            iv_cls = _iv_cell_class(c.iv)
             rows.append(
-                "<tr>"
+                f'<tr class="{row_cls}">'
                 f"<td>{_html_strike_cell(report, c, today)}</td>"
                 f"<td>{_html_type_cell(c.cp)}</td>"
                 f"<td>{c.last:.2f}</td><td>{c.bid:.2f}</td><td>{c.ask:.2f}</td>"
                 f"<td>{c.volume:,}</td><td>{c.open_interest:,}</td>"
-                f"<td>{c.iv * 100:.1f}%</td><td>{fmt_premium(c.premium)}</td>"
+                f'<td class="{iv_cls}">{c.iv * 100:.1f}%</td>'
+                f'<td class="{prem_cls}">{fmt_premium(c.premium)}</td>'
                 f"<td>{_html_expiry_cell(c, today)}</td>"
-                f"<td>{badges}</td></tr>"
+                f"<td>{badges}</td>"
+                f"<td>{_html_signal_cell_from_dict(contract_dict)}</td></tr>"
             )
 
-        table_body = "\n".join(rows) if rows else '<tr><td colspan="11">No flagged contracts</td></tr>'
+        table_body = "\n".join(rows) if rows else '<tr><td colspan="12">No flagged contracts</td></tr>'
 
         top_calls = ", ".join(f"${s:.0f} ({v:,})" for s, v in report.top_call_strikes[:5]) or "—"
         top_puts = ", ".join(f"${s:.0f} ({v:,})" for s, v in report.top_put_strikes[:5]) or "—"
@@ -661,13 +721,14 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
             _html_th("IV", "iv"),
             _html_th("Premium", "premium"),
             _html_th("Expiry", "expiry"),
-            _html_th("Flags", "score"),
+            _html_th("Flags", "flags"),
+            _html_th("Signal", "signal"),
         ])
 
         cards.append(
             f"""<div class="card" data-ticker="{escape(report.ticker)}">
   <div class="card-header">
-    <h2>{escape(report.ticker)} ${report.spot:,.2f} {rc_badge}</h2>
+    <h2>{escape(report.ticker)} ${report.spot:,.2f} {sentiment_badge} {rc_badge}</h2>
     <a class="flow-link" href="/fundamentals?ticker={escape(report.ticker)}">Open Fundamentals</a>
   </div>
   <div class="kpis">
@@ -683,7 +744,7 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
     <span>Puts {report.put_pct:.1f}%</span>
   </div>
   <p class="top-strikes">Top calls: {escape(top_calls)} | Top puts: {escape(top_puts)}</p>
-  {interp_html}
+  {insights_html}
   <div class="table-wrap">
   <table class="sortable">
     <thead><tr>{th_row}</tr></thead>
@@ -720,6 +781,17 @@ h1 {{ font-size:1.4rem; margin:0 0 12px; }}
 .bar-call {{ height:100%; background:#3fb950; }}
 .top-strikes {{ font-size:0.8rem; color:#8b949e; }}
 .interp {{ font-size:0.85rem; color:#58a6ff; margin:8px 0; line-height:1.4; }}
+.insights {{ list-style:none; margin:8px 0; padding:0; font-size:0.85rem; }}
+.insights li {{ margin-bottom:4px; line-height:1.4; color:#8b949e; }}
+.insight-chip {{ display:inline-block; padding:1px 6px; border-radius:4px; font-weight:600; font-size:0.75rem; margin-right:6px; }}
+.sentiment-badge {{ display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:600; margin-left:6px; cursor:help; }}
+.signal-chip {{ font-size:0.82rem; }}
+.row-unusual td {{ background:#21262d; }}
+.heat-premium-xl {{ background:#f0883e44; color:#f0883e; font-weight:600; }}
+.heat-premium-lg {{ background:#f0883e22; color:#f0883e; font-weight:600; }}
+.heat-premium-md {{ background:#d2992218; color:#d29922; }}
+.heat-iv-high {{ background:#f8514922; color:#f85149; }}
+.heat-iv-mid {{ background:#d2992218; color:#d29922; }}
 .table-wrap {{ overflow-x:auto; margin-top:8px; }}
 table {{ width:100%; border-collapse:collapse; font-size:0.82rem; }}
 th, td {{ padding:6px 8px; text-align:right; border-bottom:1px solid #21262d; white-space:nowrap; }}
