@@ -496,6 +496,21 @@ DATA_COLUMN_GROUPS = [
 
 DATA_EXPORT_MAX_ROWS = 5000
 
+# -----------------------------------------------------------------------------
+# Optimizer — concurrency and cost-estimate
+# -----------------------------------------------------------------------------
+# Max worker threads for the optimizer's batch evaluator. NumPy/pandas release
+# the GIL during numeric work, so we get real parallelism on multi-core boxes.
+# Capped conservatively to avoid spawning 100s of threads on a 500-combo run.
+# Set to 1 to revert to sequential behaviour.
+OPTIMIZER_WORKERS = max(1, min(8, (os.cpu_count() or 4)))
+
+# Fallback seconds-per-combo used when we have no recent calibration. The
+# optimizer calibrates against a 5-combo micro-benchmark on the current window
+# the first time it runs, then reuses the calibrated value for the rest of the
+# session. This is the prior only.
+OPTIMIZER_COST_FALLBACK_SEC_PER_COMBO = 0.05
+
 # =============================================================================
 # INDICATOR SETTINGS
 # =============================================================================

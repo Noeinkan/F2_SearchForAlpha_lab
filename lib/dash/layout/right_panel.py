@@ -1030,6 +1030,8 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
                     ticker_pill('SELL', '0', color='down', value_id='preview-sell-count'),
                     html.Span('│', className='num', style={'color': theme['border_primary']}),
                     ticker_pill('COMBOS', '0', color='amber', value_id='preview-combo-count'),
+                    html.Span('│', className='num', style={'color': theme['border_primary']}),
+                    ticker_pill('EST', '—', color='neutral', value_id='optimization-cost'),
                 ], style={'display': 'flex', 'alignItems': 'center', 'gap': '6px', 'flexWrap': 'wrap'}),
             ]),
         ], style=card_style),

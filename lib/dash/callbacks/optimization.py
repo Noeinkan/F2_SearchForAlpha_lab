@@ -2,13 +2,23 @@
 Optimization callbacks.
 """
 
+import logging
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pandas as pd
 from dash import html
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.dash.components import build_alert, build_progress_bar
-from lib.dash.dash_config import FONT_SIZES, get_theme
+from lib.dash.dash_config import (
+    FONT_SIZES,
+    OPTIMIZER_COST_FALLBACK_SEC_PER_COMBO,
+    OPTIMIZER_WORKERS,
+    get_theme,
+)
 from lib.dash.helpers import (
     extract_signals,
     generate_signal_combinations,
@@ -22,6 +32,82 @@ from lib.dash.callbacks.shared import (
     _create_optimization_table,
     _create_optimization_table_mini,
 )
+
+logger = logging.getLogger(__name__)
+
+
+# Sentinel returned by a worker whose run was cancelled mid-flight (i.e. the
+# user clicked RUN OPTIMIZER again while this batch was in flight). Treated
+# specially by ``process_optimization_batch``.
+_CANCELLED = object()
+
+
+def _eval_with_cancel_guard(
+    run_token: int,
+    df: pd.DataFrame,
+    initial_capital: float,
+    buy_combo,
+    sell_combo,
+):
+    """Evaluate a single combination, returning ``_CANCELLED`` if the run was
+    superseded by a fresh ``start_optimization`` click while we were waiting
+    in the thread pool queue.
+
+    Cheap check: ``id(dashboard_state.optimization_state)`` will differ from
+    ``run_token`` if ``reset_optimization()`` swapped in a fresh dict.
+    """
+    if id(dashboard_state.optimization_state) != run_token:
+        return _CANCELLED
+    return evaluate_signal_combination(
+        df,
+        initial_capital,
+        tuple(buy_combo),
+        tuple(sell_combo),
+    )
+
+
+# -----------------------------------------------------------------------------
+# Thread-pool executor — shared across interval ticks so we don't pay the pool
+# spin-up cost on every batch. NumPy/pandas release the GIL during numeric
+# work, so multiple workers give real speedup on multi-core boxes.
+# Lazy-initialised on first use so importing this module is side-effect free.
+# -----------------------------------------------------------------------------
+_EXECUTOR: ThreadPoolExecutor | None = None
+_EXECUTOR_LOCK = threading.Lock()
+# Latest measured seconds-per-combo, calibrated on the first batch of the
+# current run. Used to populate the cost-estimate pill before the user clicks
+# RUN, and as the speedometer shown next to the progress bar mid-run.
+_LAST_SEC_PER_COMBO: float | None = None
+
+
+def _get_executor() -> ThreadPoolExecutor:
+    global _EXECUTOR
+    if _EXECUTOR is not None:
+        return _EXECUTOR
+    with _EXECUTOR_LOCK:
+        if _EXECUTOR is None:
+            _EXECUTOR = ThreadPoolExecutor(
+                max_workers=OPTIMIZER_WORKERS,
+                thread_name_prefix="opt-batch",
+            )
+            logger.info(
+                "Optimizer thread-pool initialised with %d workers (cpu_count=%d)",
+                OPTIMIZER_WORKERS,
+                __import__("os").cpu_count(),
+            )
+    return _EXECUTOR
+
+
+def _shutdown_executor() -> None:
+    """Tear down the shared pool. Hooked into DashboardState.reset for clean
+    shutdown and into start_optimization so we pick up a fresh pool if the
+    worker count is reconfigured at runtime."""
+    global _EXECUTOR
+    with _EXECUTOR_LOCK:
+        if _EXECUTOR is not None:
+            _EXECUTOR.shutdown(wait=False, cancel_futures=True)
+            _EXECUTOR = None
+            logger.info("Optimizer thread-pool shut down")
 
 
 def _parse_date_bound(value, *, default: str | None) -> pd.Timestamp | None:
@@ -72,19 +158,68 @@ def _slice_df_to_sidebar_range(
     return sliced, f"{start_label} → {end_label}"
 
 
+def _format_duration(seconds: float) -> str:
+    """Render a duration in the form ``~3.2 s`` / ``~1 m 12 s`` / ``~2 m``."""
+    if seconds is None or seconds <= 0:
+        return "—"
+    if seconds < 1:
+        return f"~{seconds * 1000:.0f} ms"
+    if seconds < 60:
+        return f"~{seconds:.1f} s"
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    if minutes < 10:
+        return f"~{minutes} m {secs:02d} s"
+    return f"~{minutes} m"
+
+
+def _estimate_runtime_seconds(combinations: int) -> float | None:
+    """Estimate how long the optimizer will take to chew through ``combinations``.
+
+    Uses the last calibrated seconds-per-combo (set after the first batch of a
+    real run) and divides by the worker count so the estimate reflects the
+    parallel speedup. Falls back to ``OPTIMIZER_COST_FALLBACK_SEC_PER_COMBO``
+    on first use.
+    """
+    if combinations <= 0:
+        return None
+    sec_per_combo = _LAST_SEC_PER_COMBO or OPTIMIZER_COST_FALLBACK_SEC_PER_COMBO
+    workers = max(1, OPTIMIZER_WORKERS)
+    return (combinations * sec_per_combo) / workers
+
+
+def _calibrate_sec_per_combo(elapsed: float, n_combos: int) -> None:
+    """Update the rolling seconds-per-combo estimate after a batch finishes."""
+    global _LAST_SEC_PER_COMBO
+    if elapsed <= 0 or n_combos <= 0:
+        return
+    measured = elapsed / n_combos
+    # Exponential moving average so a slow first batch doesn't pin the estimate.
+    alpha = 0.4
+    if _LAST_SEC_PER_COMBO is None:
+        _LAST_SEC_PER_COMBO = measured
+    else:
+        _LAST_SEC_PER_COMBO = (1 - alpha) * _LAST_SEC_PER_COMBO + alpha * measured
+    logger.debug(
+        "Optimizer calibration: %.4fs/combo (batch avg=%.4fs over %d combos, workers=%d)",
+        _LAST_SEC_PER_COMBO, measured, n_combos, OPTIMIZER_WORKERS,
+    )
+
+
 def register_optimization_callbacks(app) -> None:
     @app.callback(
         [Output('preview-buy-count', 'children'),
          Output('preview-sell-count', 'children'),
-         Output('preview-combo-count', 'children')],
+         Output('preview-combo-count', 'children'),
+         Output('optimization-cost', 'children')],
         [Input('data-loaded-store', 'data'),
          Input('max-signals-slider', 'value'),
          Input('max-combos-input', 'value')]
     )
     def update_signal_preview(data_loaded, max_signals, max_combos):
-        """Show preview of available signals and estimated combinations."""
+        """Show preview of available signals, the combo cap, and an estimated runtime."""
         if not data_loaded or dashboard_state.df is None:
-            return "0", "0", "0"
+            return "0", "0", "0", "—"
 
         df = dashboard_state.df
         buy_signals, sell_signals = extract_signals(df)
@@ -92,7 +227,15 @@ def register_optimization_callbacks(app) -> None:
         combinations = generate_signal_combinations(buy_signals, sell_signals, max_signals)
         actual_combos = min(len(combinations), max_combos or 100)
 
-        return str(len(buy_signals)), str(len(sell_signals)), str(actual_combos)
+        est_seconds = _estimate_runtime_seconds(actual_combos)
+        cost_label = _format_duration(est_seconds) if est_seconds is not None else "—"
+
+        return (
+            str(len(buy_signals)),
+            str(len(sell_signals)),
+            str(actual_combos),
+            cost_label,
+        )
 
     @app.callback(
         [Output('optimization-state', 'data'),
@@ -123,6 +266,13 @@ def register_optimization_callbacks(app) -> None:
     ):
         """Initialize optimization run and enable interval for progress updates."""
         if not n_clicks:
+            raise PreventUpdate
+
+        # Guard against re-clicks while a run is in flight. ``current_state``
+        # mirrors the most recent ``optimization-state`` snapshot the browser
+        # has rendered; if the server already marked the run as running, the
+        # second click is just a nervous double-click and we silently drop it.
+        if current_state and current_state.get('running'):
             raise PreventUpdate
 
         theme = get_theme()
@@ -157,7 +307,10 @@ def register_optimization_callbacks(app) -> None:
         # Convert tuples to lists for JSON serialization
         combinations_serializable = [[list(buy), list(sell)] for buy, sell in combinations]
 
-        # Reset state in dashboard_state
+        # Reset state in dashboard_state. reset_optimization() replaces the
+        # underlying dict with a brand-new one — any in-flight worker threads
+        # from the previous run will see id(state) change and drop their
+        # pending writes (see _eval_with_cancel_guard below).
         dashboard_state.reset_optimization()
         dashboard_state.update_optimization_state(
             running=True,
@@ -177,10 +330,13 @@ def register_optimization_callbacks(app) -> None:
             'min_trades': min_trades or 10,
         }
 
+        est_seconds = _estimate_runtime_seconds(len(combinations))
+        est_label = _format_duration(est_seconds) if est_seconds is not None else "…"
         progress_ui = html.Div([
             build_progress_bar(0, f"Testing 0/{len(combinations)} combinations...", theme=theme),
             html.Div(
-                f"Window: {window_label}  ·  Starting optimization...",
+                f"Window: {window_label}  ·  Est. runtime: {est_label} "
+                f"({OPTIMIZER_WORKERS} worker{'s' if OPTIMIZER_WORKERS != 1 else ''})",
                 style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginTop': '4px'},
             ),
         ])
@@ -209,7 +365,14 @@ def register_optimization_callbacks(app) -> None:
         prevent_initial_call=True
     )
     def process_optimization_batch(n_intervals, state, start_date, end_date):
-        """Process a batch of combinations on each interval tick."""
+        """Process a batch of combinations on each interval tick.
+
+        Uses a thread pool so multiple backtests run in parallel. Each worker
+        re-checks ``id(dashboard_state.optimization_state)`` against the token
+        captured at dispatch time — if the user clicked RUN OPTIMIZER again
+        mid-flight (which replaces the state dict), stale results are
+        discarded instead of polluting the new run.
+        """
         theme = get_theme()
 
         if not state or not state.get('running'):
@@ -231,13 +394,42 @@ def register_optimization_callbacks(app) -> None:
         if not combinations or current_idx >= total:
             raise PreventUpdate
 
-        # Process batch
-        end_idx = min(current_idx + OPTIMIZATION_BATCH_SIZE, total)
+        # Cancellation token — captured before dispatching the batch. If a
+        # concurrent ``start_optimization`` call replaces ``_optimization_state``
+        # (via ``reset_optimization``), this id will no longer match and the
+        # workers' writes will be discarded.
+        run_token = id(opt_state)
 
-        for i in range(current_idx, end_idx):
-            buy_combo, sell_combo = combinations[i]
-            result = evaluate_signal_combination(df, initial_capital, tuple(buy_combo), tuple(sell_combo))
+        # Process batch in parallel. Cap batch size at the actual remaining
+        # work so we don't dispatch empty futures after the last tick.
+        end_idx = min(current_idx + OPTIMIZATION_BATCH_SIZE, total)
+        batch = combinations[current_idx:end_idx]
+        batch_size = len(batch)
+
+        t0 = time.perf_counter()
+        executor = _get_executor()
+        # Snapshot df once for the worker closure — workers share the read-only
+        # DataFrame; pandas is fine with concurrent reads.
+        futures = [
+            executor.submit(
+                _eval_with_cancel_guard,
+                run_token,
+                df,
+                initial_capital,
+                buy_combo,
+                sell_combo,
+            )
+            for buy_combo, sell_combo in batch
+        ]
+        for fut in futures:
+            result = fut.result()
+            if result is _CANCELLED:
+                # The user reset state mid-batch. Drop the rest and bail out
+                # so the next tick can pick up the new run cleanly.
+                raise PreventUpdate
             results.append(result)
+
+        _calibrate_sec_per_combo(time.perf_counter() - t0, batch_size)
 
         # Update state
         dashboard_state.update_optimization_state(
@@ -325,10 +517,25 @@ def register_optimization_callbacks(app) -> None:
         # Still processing - update progress
         state['current_index'] = end_idx
 
+        # Estimate remaining wall-clock time using the latest calibration.
+        # ``None`` until the first batch finishes, in which case we just show
+        # the worker count so the user sees the parallel rig is engaged.
+        remaining = max(0, total - end_idx)
+        if _LAST_SEC_PER_COMBO is not None and remaining > 0:
+            eta_seconds = (remaining * _LAST_SEC_PER_COMBO) / max(1, OPTIMIZER_WORKERS)
+            eta_label = f"~{_format_duration(eta_seconds)} remaining"
+        else:
+            eta_label = (
+                f"{OPTIMIZER_WORKERS} worker"
+                f"{'s' if OPTIMIZER_WORKERS != 1 else ''} running"
+            )
+
         progress_ui = html.Div([
             build_progress_bar(progress_pct, f"Testing {end_idx}/{total} combinations...", theme=theme),
-            html.Div(f"Found {len([r for r in results if 'Total_Return_%' in r])} valid strategies so far...",
-                     style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginTop': '4px'})
+            html.Div(
+                f"{eta_label}  ·  Found {len([r for r in results if 'Total_Return_%' in r])} valid strategies so far…",
+                style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginTop': '4px'},
+            ),
         ])
 
         # Show partial results (top 5 so far)
