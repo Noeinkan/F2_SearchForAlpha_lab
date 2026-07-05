@@ -475,7 +475,8 @@ button.bbg-status-btn .sfa-status-kbd {
 /* Compact, square-ish icon button used by the theme toggle and the
    keyboard-shortcut launcher. Sized so the two controls don't crowd
    the right edge of the header. */
-button.bbg-icon-button {
+button.bbg-icon-button,
+a.bbg-icon-button {
     background: transparent;
     color: var(--text-secondary);
     border: 1px solid var(--border-primary);
@@ -493,13 +494,17 @@ button.bbg-icon-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    text-decoration: none;
+    box-sizing: border-box;
 }
-button.bbg-icon-button:hover {
+button.bbg-icon-button:hover,
+a.bbg-icon-button:hover {
     color: var(--accent);
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
-button.bbg-icon-button:active {
+button.bbg-icon-button:active,
+a.bbg-icon-button:active {
     background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 

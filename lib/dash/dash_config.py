@@ -267,6 +267,9 @@ INDICATOR_HEIGHT = '120px'
 # =============================================================================
 
 DEFAULT_TICKER = 'TSLA'
+# Ko-fi support page — replace username with your handle before publishing.
+KOFI_USERNAME = 'noeinkan'
+KOFI_URL = f'https://ko-fi.com/{KOFI_USERNAME}'
 # Cold-load fallback on the /fundamentals route when the user has not
 # explicitly selected a ticker. The main page also defaults to
 # DEFAULT_TICKER (TSLA), so a fundamentals deep-link that omits the
