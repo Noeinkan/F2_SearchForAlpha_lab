@@ -26,6 +26,9 @@ def register_misc_callbacks(app) -> None:
          Output('tab-backtest', 'style'),
          Output('tab-optimizer', 'style'),
          Output('tab-data', 'style'),
+         Output('tab-backtest', 'className'),
+         Output('tab-optimizer', 'className'),
+         Output('tab-data', 'className'),
          Output('active-tab-store', 'data')],
         [Input('tab-backtest', 'n_clicks'),
          Input('tab-optimizer', 'n_clicks'),
@@ -47,6 +50,9 @@ def register_misc_callbacks(app) -> None:
                     styles['tab'],
                     {**styles['tab'], **styles['tab_active']},
                     styles['tab'],
+                    'panel-tab',
+                    'panel-tab active',
+                    'panel-tab',
                     'optimizer'
                 )
             if tab_name == 'data':
@@ -57,6 +63,9 @@ def register_misc_callbacks(app) -> None:
                     styles['tab'],
                     styles['tab'],
                     {**styles['tab'], **styles['tab_active']},
+                    'panel-tab',
+                    'panel-tab',
+                    'panel-tab active',
                     'data'
                 )
             return (
@@ -66,6 +75,9 @@ def register_misc_callbacks(app) -> None:
                 {**styles['tab'], **styles['tab_active']},
                 styles['tab'],
                 styles['tab'],
+                'panel-tab active',
+                'panel-tab',
+                'panel-tab',
                 'backtest'
             )
 
@@ -85,10 +97,16 @@ def register_misc_callbacks(app) -> None:
     @app.callback(
         [Output('header-status', 'children'),
          Output('status-clock', 'children')],
-        [Input('startup-interval', 'n_intervals')]
+        [Input('clock-interval', 'n_intervals')]
     )
     def update_header_status(_):
-        """Update header status."""
+        """Update header status.
+
+        Driven by ``clock-interval`` (1s, no max_intervals) so the
+        timestamp keeps ticking every second. Previously this was wired
+        to ``startup-interval``, which has ``max_intervals=1`` and only
+        fires once on mount — that's why the header time appeared frozen.
+        """
         timestamp = datetime.now().strftime("%H:%M:%S")
         return timestamp, timestamp
 

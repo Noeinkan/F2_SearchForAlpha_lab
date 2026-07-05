@@ -2191,6 +2191,19 @@ aside.sfa-right-panel .sfa-panel-toggle-wrap {
     z-index: 4;
 }
 
+/* Inner wrapper is a flex column so `panel_content` (flex:1; overflow:auto)
+   actually scrolls. Without `display:flex; min-height:0` the child grows to
+   full content height and the scrollbar never appears — the user sees
+   content bleed past the panel bottom and can't reach it. */
+.sfa-right-panel-inner {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
 /* Splitter handle — 8px draggable column between chart and right panel */
 .sfa-splitter {
     flex: 0 0 8px;

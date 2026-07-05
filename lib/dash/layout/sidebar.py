@@ -40,6 +40,8 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                     clearable=False,
                     nothingFoundMessage="No matches",
                     limit=50,
+                    openOnFocus=True,
+                    selectFirstOptionOnChange=False,
                     comboboxProps={"withinPortal": True, "shadow": "md"},
                     size="xs",
                     data=_default_ticker_option(),

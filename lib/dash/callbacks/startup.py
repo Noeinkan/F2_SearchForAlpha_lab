@@ -106,3 +106,25 @@ def register_startup_callbacks(app) -> None:
         if not on_deep_link:
             raise PreventUpdate
         return str(path_ticker).strip().upper()
+
+    @app.callback(
+        Output(_TICKER_DROPDOWN, 'value', allow_duplicate=True),
+        [Input(_TICKER_DROPDOWN, 'searchValue'),
+         Input(_TICKER_DROPDOWN, 'dropdownOpened')],
+        State(_TICKER_DROPDOWN, 'value'),
+        prevent_initial_call=True,
+    )
+    def clear_preselected_ticker_on_first_focus(search_value, dropdown_opened, current_value):
+        """Clear the preselected ticker the moment the user focuses / types.
+
+        Accelerates research: the field opens with the page default so the chart
+        loads with the correct symbol, but the moment the user clicks/opens the
+        dropdown or starts typing, the field goes blank so they can immediately
+        enter a new ticker without backspacing.
+        """
+        if str(current_value or '').strip().upper() != DEFAULT_TICKER:
+            raise PreventUpdate
+        user_focused = bool(dropdown_opened) or bool((search_value or '').strip())
+        if not user_focused:
+            raise PreventUpdate
+        return None

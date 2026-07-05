@@ -30,7 +30,7 @@ def _create_right_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapshot 
             # Tabs
             html.Div([
                 html.Button("Backtest", id='tab-backtest', n_clicks=0,
-                           style={**styles['tab'], **styles['tab_active']}, className='panel-tab active'),
+                           style=styles['tab'], className='panel-tab'),
                 html.Span('│', className='num', style={'color': theme['border_primary'], 'alignSelf': 'center'}),
                 html.Button("Optimizer", id='tab-optimizer', n_clicks=0,
                            style=styles['tab'], className='panel-tab'),

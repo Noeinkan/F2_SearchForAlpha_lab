@@ -83,6 +83,9 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Interval(id='url-boot-interval', interval=1, max_intervals=1),
         dcc.Interval(id='startup-interval', interval=500, max_intervals=1),
         dcc.Interval(id='autoload-interval', interval=1000, max_intervals=1),
+        # Live wall-clock for the header / status bar. Runs forever (no
+        # max_intervals) so the timestamp keeps ticking every second.
+        dcc.Interval(id='clock-interval', interval=1000),
         dcc.Interval(id='optimization-interval', interval=500, disabled=True, n_intervals=0),
         dcc.Store(id='flow-state-store', data={'last_scan_at': None, 'tickers': []}, storage_type='session'),
         dcc.Store(id='flow-data-store', data=None, storage_type='session'),
