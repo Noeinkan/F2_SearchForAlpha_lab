@@ -76,7 +76,8 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
             ),
             id='chart-frame',
             style={
-                'height': '720px',
+                'flex': '1 1 0',
+                'minHeight': '720px',
                 'width': '100%',
                 'position': 'relative',
                 'minWidth': 0,

@@ -61,12 +61,25 @@ locally and does not need IB Gateway.
 python main.py
 ```
 
-Then open http://127.0.0.1:8050 in a browser. Dev reload is on by default
-(`DASH_DEV=1`); edits under `lib/dash/` and `lib/dash/assets/` auto-restart
-the server. CSS is served with `no-store` in dev, so hard refresh is rarely
-needed.
+The app auto-opens your browser at the default ticker terminal
+(`http://127.0.0.1:8050/ticker/TSLA`). Dev mode is on by default
+(`DASH_DEV=1`): it serves debug error pages and CSS with `no-store`, so a
+hard refresh is rarely needed after an asset edit.
 
-To disable development reload (faster startup, no auto refresh):
+Auto-restart on file edits (the Werkzeug reloader) is **opt-in** via
+`DASH_RELOAD=1`; it is off by default because the reloader is unreliable on
+Windows (the child process can silently exit the parent):
+
+```bash
+# Linux / macOS
+DASH_RELOAD=1 python main.py
+
+# Windows (PowerShell)
+$env:DASH_RELOAD = "1"; python main.py
+```
+
+To disable dev mode entirely (faster startup, cached assets, plain error
+pages) set `DASH_DEV=0`:
 
 ```bash
 # Linux / macOS
@@ -87,6 +100,13 @@ What you can do from the UI:
 - Pick buy and sell signal columns, run a backtest, and view the equity
   curve, trade markers, and metric cards.
 - Save and reload UI presets via `config/ui_presets.json`.
+- Inspect the options **Flow Scanner** at `/flow/<ticker>` (or the standalone
+  `/flow_report.html`); regenerate the report with
+  `python scripts/flow_scanner.py <ticker>`.
+
+The default CVD-safe (color-vision-deficiency) theme keeps charts and signal
+overlays readable; override it via the `theme` key in
+`config/strategy_config.yaml`.
 
 The dashboard does not place orders. For live (paper) execution use the
 `sfa run` command described below.

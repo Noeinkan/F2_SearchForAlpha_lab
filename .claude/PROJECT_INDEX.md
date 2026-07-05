@@ -26,7 +26,7 @@ Full rationale (IT): [docs/token-efficiency.md](../docs/token-efficiency.md)
 |------|---------|
 | [main.py](../main.py) | Launch Dash app at http://127.0.0.1:8050 (`DASH_DEV=1` default, auto-reload) |
 | `python -m lib.cli.app` | **sfa CLI** — backtest, optimise, walkforward, paper trade |
-| `rtk python -m pytest lib/tests/ -q` | Run test suite (26 test files) |
+| `rtk python -m pytest lib/tests/ -q` | Run test suite (29 test files) |
 
 ---
 
@@ -34,7 +34,7 @@ Full rationale (IT): [docs/token-efficiency.md](../docs/token-efficiency.md)
 
 Detailed tables (data, signals, CLI, dashboard layout/callbacks, tests, config): **[PROJECT_INDEX_MODULES.md](PROJECT_INDEX_MODULES.md)**
 
-Dashboard quick map: `integrated_dashboard.py` (thin entry) · `layout/` (UI regions) · `callbacks/` (15 registered modules + `shared.py`) · `routes.py` · `bootstrap.py`
+Dashboard quick map: `integrated_dashboard.py` (thin entry) · `layout/` (UI regions) · `callbacks/` (14 registered modules + `shared.py`) · `routes.py` · `bootstrap.py`
 
 ---
 

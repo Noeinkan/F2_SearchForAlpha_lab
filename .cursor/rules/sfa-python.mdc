@@ -24,8 +24,9 @@ Aggregator in `lib/signals/indicators.py` collects columns matching these patter
 3. Register in `lib/signals/indicators.py` (`add_indicators`, `generate_signals`)
 4. Add defaults to `config/strategy_config.yaml`
 
-## Strategy modes (`lib/strategy.py`)
-`trading` · `accumulation` · `rebalancing` · `swing_trading` · `position_trading` · `trend_following`
+## Strategy modes (`lib/strategy.py`, `strategy_mode`)
+`trading` · `accumulation` · `rebalancing`
+(Swing/Position/Trend are UI quick-presets, not engine modes.)
 
 ## Config
 Read params via `lib/config_loader.py` — never hardcode indicator windows.

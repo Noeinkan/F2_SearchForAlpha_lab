@@ -19,7 +19,6 @@ alwaysApply: false
 
 ## Charts
 - Plotly factory + overlay registry: `lib/dash/chart_builder.py`
-- TradingView builder: `lib/dash/tv_chart_builder.py`
 - New chart overlays must register in the overlay registry — read existing examples first
 
 ## Callback patterns

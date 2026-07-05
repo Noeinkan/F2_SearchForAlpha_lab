@@ -20,10 +20,10 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 ### Backtesting Engine
 | File | Key Functions |
 |------|--------------|
-| [lib/strategy.py](../lib/strategy.py) | `backtest()`, `run_backtest()` — 6 strategy modes |
+| [lib/strategy.py](../lib/strategy.py) | `backtest()`, `run_backtest()` — 3 strategy modes |
 | [lib/backtest_result.py](../lib/backtest_result.py) | `BacktestMetrics`, `BacktestResult`, `run_backtest_result()`, Sortino/Calmar |
 
-**Strategy modes:** `trading`, `accumulation`, `rebalancing`, `swing_trading`, `position_trading`, `trend_following`
+**Strategy modes** (`strategy_mode`): `trading`, `accumulation`, `rebalancing`. (Swing/Position/Trend are separate UI quick-presets — `strategy-preset` values `swing`/`position`/`trend` in `right_panel.py`, not engine modes.)
 
 ### Signals & Indicators
 | File | Class / Function |
@@ -97,7 +97,6 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | [lib/dash/integrated_dashboard.py](../lib/dash/integrated_dashboard.py) | App init, server boot, `register_callbacks(app)`, `_schedule_browser_open` (lands on `/ticker/<DEFAULT_TICKER>`), `/flow_report.html` route |
 | [lib/dash/bootstrap.py](../lib/dash/bootstrap.py) | `try_bootstrap_default_session()` — preload default ticker on startup |
 | [lib/dash/chart_builder.py](../lib/dash/chart_builder.py) | Plotly figure factory + overlay registry |
-| [lib/dash/tv_chart_builder.py](../lib/dash/tv_chart_builder.py) | TradingView lightweight chart builder |
 | [lib/dash/dash_config.py](../lib/dash/dash_config.py) | Theme, defaults, indicator settings |
 | [lib/dash/state.py](../lib/dash/state.py) | `dashboard_state` — in-memory session cache |
 | [lib/dash/routes.py](../lib/dash/routes.py) | URL route parsing — terminal, fundamentals, flow, ticker_terminal |
@@ -116,7 +115,7 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | `overlays.py` | Fundamentals + Flow Scanner overlays |
 | `command_palette.py` | Cmd+K command palette |
 
-**Callbacks** (`lib/dash/callbacks/` — 15 registered modules via `register_callbacks()`):
+**Callbacks** (`lib/dash/callbacks/` — 14 registered modules via `register_callbacks()`):
 | File | Concern |
 |------|---------|
 | `startup.py` | Initial load, bootstrap wiring |
@@ -124,7 +123,6 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | `strategy_ui.py` | Strategy mode / param controls |
 | `signals.py` | Signal toggle callbacks |
 | `chart_plotly.py` | Plotly chart updates |
-| `chart_tv.py` | TradingView chart updates |
 | `backtest.py` | Run backtest from UI |
 | `optimization.py` | In-dashboard optimisation |
 | `fundamentals.py` | Fundamentals overlay |
@@ -164,7 +162,7 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 
 ---
 
-## Tests (26 files)
+## Tests (29 files)
 | Area | Files |
 |------|-------|
 | Strategy & signals | `test_strategy`, `test_indicators`, `test_signal_combination`, `test_param_propagation`, `test_determinism` |
@@ -172,8 +170,9 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | CLI contracts | `test_cli_contracts` |
 | Live runner | `test_runner_safety`, `test_guards`, `test_broker_mock` |
 | Dashboard | `test_dashboard`, `test_dashboard_startup`, `test_bootstrap`, `test_data_loading`, `test_dash_routing`, `test_dash_no_writeback`, `test_dash_enriched_cache`, `test_command_palette`, `test_ticker_search` |
+| Flow Scanner | `test_flow_scanner_json`, `test_flow_view` |
 | Fundamentals | `test_fundamentals`, `test_fundamentals_explainability`, `test_fundamentals_formula_rendering` |
-| Data | `test_data_processing` |
+| Data | `test_data_processing`, `test_ticker_universe` |
 
 Run: `rtk python -m pytest lib/tests/ -q`
 

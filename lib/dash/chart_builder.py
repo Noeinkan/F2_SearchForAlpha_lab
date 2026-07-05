@@ -155,7 +155,7 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
         )
 
         _add_range_selector(fig, plot_count, theme)
-        _update_layout(fig, plot_count, config.get('show_legend', False), config, theme)
+        _update_layout(fig, df, plot_count, config.get('show_legend', False), config, theme)
         _add_crosshair(fig, plot_count, theme)
 
 
@@ -607,7 +607,7 @@ def _add_range_selector(fig: go.Figure, plot_count: int, theme: dict) -> None:
     )
 
 
-def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: Dict, theme: dict) -> None:
+def _update_layout(fig: go.Figure, df: pd.DataFrame, plot_count: int, show_legend: bool, config: Dict, theme: dict) -> None:
     """Update figure layout with professional styling."""
     title_text = config.get('title', '')
 
@@ -694,6 +694,15 @@ def _update_layout(fig: go.Figure, plot_count: int, show_legend: bool, config: D
     # structure and produced a cross-axis configuration (traces on
     # xaxis='x' with yN anchored to xN) that Plotly 6.x draws as a blank
     # canvas. Leave the shared-axes layout untouched.
+
+    # Pin the bottom row's x-axis to the data range plus a small right-side
+    # buffer so Plotly's default ~5% autorange padding stops adding an empty
+    # rectangle past the rightmost candle. The shared-xaxes wiring above
+    # propagates this range to every upper row automatically.
+    fig.update_xaxes(
+        range=[df.index.min(), df.index.max() + pd.Timedelta(days=2)],
+        row=plot_count, col=1,
+    )
 
 
 def _add_crosshair(fig: go.Figure, plot_count: int, theme: dict) -> None:
