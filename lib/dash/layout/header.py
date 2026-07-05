@@ -73,9 +73,13 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
 def _create_status_bar(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Div:
     """Create the dense bottom status bar."""
     return html.Div([
+        # Activity segment — driven by the callback lifecycle in
+        # callbacks/status.py: a clientside handler flips it to WORKING… the
+        # instant an action button is clicked, and server-side resolvers flip
+        # it back to READY (or ERROR on a failed data load).
         html.Div([
-            html.Span(className='dot dot-up'),
-            html.Span('READY'),
+            html.Span(id='status-activity-dot', className='dot dot-up'),
+            html.Span('READY', id='status-activity-label'),
         ], style=styles['status_segment'], className='bbg-status-segment'),
         html.Div([
             html.Span('DATA:'),

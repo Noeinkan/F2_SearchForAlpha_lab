@@ -103,6 +103,10 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         html.Div(id='ui-storage-sync', style={'display': 'none'}),
         # Sink for the clientside Y-refit-on-X-range-change handler.
         html.Div(id='chart-y-autorange-sync', style={'display': 'none'}),
+        # Phase 8 — visible x-range detected from the chart's relayout events.
+        # Feeds the bar-count readout and the gated large-data downsample
+        # rerender in callbacks/chart_view.py. `None` = full range (autoscale).
+        dcc.Store(id='chart-view-range-store', data=None),
 
         # Phase 5 — command palette. The modal lives at the bottom of the
         # shell so it stacks above every overlay. `is_open` is driven by

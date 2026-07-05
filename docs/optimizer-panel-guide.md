@@ -72,19 +72,29 @@ many.
 - Quick scan: `50–100`.
 - Thorough sweep: `300–1000` (slower).
 
+### C2 — Min Trades
+*Number box, default `10`.*
+
+The reliability floor. Any combination that traded **fewer** times than this is tagged
+**"low sample"** and pushed *below* the credible ones in the ranking — it isn't deleted,
+just deprioritised. A great-looking Sharpe or profit factor built on 3 trades is luck, not
+edge, so this stops flukes from topping the board.
+
 ### D — Sort Results By
 *Segmented buttons.* Which metric ranks the leaderboard:
 
 | Button | Ranks by | You want… |
 |---|---|---|
+| **SCORE** | Robustness Score (default) | The best all-round pick — risk-adjusted return with a penalty for too-few trades |
 | **RET** | Total Return % | Biggest raw gain |
 | **SHARPE** | Sharpe Ratio | Best *risk-adjusted* return (smoothest ride) |
+| **CALMAR** | Calmar Ratio | Best return relative to worst-case drawdown |
 | **DD** | Max Drawdown % | Smallest worst-case loss (sorted so least-bad is on top) |
 | **TRADES** | Number of trades | Most (or fewest) trades |
 
 > 💡 You can change this **after** a run — the table re-ranks instantly without re-testing
-> anything. So run once, then flip between RET / SHARPE / DD to see the picture from
-> different angles.
+> anything. So run once, then flip between SCORE / RET / SHARPE / CALMAR / DD to see the
+> picture from different angles. Low-sample combos always stay grouped below credible ones.
 
 ### The button — RUN OPTIMIZER
 Press it. A progress bar appears and the search begins.
@@ -100,9 +110,13 @@ Press it. A progress bar appears and the search begins.
 - The RUN OPTIMIZER button is disabled until it finishes (the search runs in the background in small batches, so the app stays responsive).
 
 **When it finishes:**
-- A green *"✓ Completed! Tested N combinations"* message.
-- A **Best Strategy highlight** card — the winner by your chosen metric.
-- A **top-10 table** of the best combinations with their metrics.
+- A green *"✓ Completed! Tested N combinations"* message, followed by a one-line honesty
+  caption reminding you that testing many combos makes the top result more likely to be luck.
+- A **Best Strategy highlight** card — the winner by your chosen metric. It shows Total
+  Return, Sharpe, Max Drawdown, **Sortino, Calmar, Win Rate, Profit Factor**, trade count,
+  and a **"vs Buy & Hold" alpha** line so you can instantly see whether the strategy actually
+  beat simply holding the stock. A **"LOW SAMPLE"** chip appears if the winner traded too few times.
+- A **top-10 table** with the same metrics (plus Alpha %). Low-sample rows are greyed out.
 - An **Apply Best Strategy** button appears at the bottom.
 
 ### Apply Best Strategy
@@ -147,11 +161,13 @@ knobs and Transaction Costs applied (see §7 for why that second step matters).
 ## 6. Reading the leaderboard
 
 Each row is one signal combination. The columns mirror the Backtest scorecards — Total
-Return %, Sharpe, Max Drawdown %, trade count, etc. Quick reading rules:
+Return %, **Alpha %** (vs buy-and-hold), Sharpe, **Sortino, Calmar**, Max Drawdown %,
+**Win Rate %, Profit Factor**, and trade count. Quick reading rules:
 
-- **Don't just take row #1.** A tiny difference in return between #1 and #5 is noise; prefer the combo that also has a decent Sharpe and a controlled drawdown.
-- **Beware very few trades.** A combo that "won" on 2 trades is luck, not edge. Favour combos with enough trades to be believable.
-- **Cross-check metrics.** Re-sort by SHARPE and DD; a combo that ranks well under *all three* is far more trustworthy than one that only tops RET.
+- **Check Alpha first.** A big Total Return means little if the stock itself doubled. **Alpha %** is the strategy's return *minus* buy-and-hold — if it's negative, you'd have done better just holding.
+- **Don't just take row #1.** A tiny difference in return between #1 and #5 is noise; prefer the combo that also has a decent Sharpe/Calmar and a controlled drawdown.
+- **Beware greyed-out (low-sample) rows.** A combo that "won" on 2 trades is luck, not edge — that's why the Min Trades floor pushes them down the board.
+- **Cross-check metrics.** Re-sort by SHARPE, CALMAR and DD; a combo that ranks well under *all* of them is far more trustworthy than one that only tops RET. **SCORE** already blends these for you.
 
 ---
 

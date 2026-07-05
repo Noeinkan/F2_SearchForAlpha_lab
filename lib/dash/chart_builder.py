@@ -26,6 +26,146 @@ CHART_ROW_HEIGHT_MAIN = 4.5
 CHART_ROW_HEIGHT_INDICATOR = 1
 SIGNAL_OFFSET_FACTOR = 0.015
 
+# Phase 8 — performance for large datasets. Plotly candlesticks get sluggish
+# past a few thousand bars, so once the *full* series exceeds
+# DOWNSAMPLE_THRESHOLD we render at most MAX_RENDER_BARS points by aggregating
+# fixed-size row blocks (proper OHLCV agg). Daily equity data stays well under
+# the threshold, so this is a strict no-op today and only engages when
+# intraday / very-long-history series arrive.
+DOWNSAMPLE_THRESHOLD = 5000
+MAX_RENDER_BARS = 1500
+
+
+def _downsample_ohlcv(df: pd.DataFrame, target_bars: int = MAX_RENDER_BARS) -> pd.DataFrame:
+    """Aggregate ``df`` down to ~``target_bars`` rows via fixed row-block groups.
+
+    Row-block aggregation (rather than time-based ``resample``) keeps exactly
+    ~target_bars points regardless of weekend/holiday gaps and never introduces
+    empty buckets. OHLCV columns use canonical agg; boolean signal columns use
+    ``max`` (a block counts as a signal if any bar in it fired); every other
+    column carries its last value forward — an overview-grade approximation
+    that keeps the frame's shape intact so downstream plot functions never
+    ``KeyError``.
+    """
+    n = len(df)
+    if n <= target_bars or target_bars < 1:
+        return df
+    step = int(np.ceil(n / target_bars))
+    if step <= 1:
+        return df
+
+    blocks = np.arange(n) // step
+    agg_map: Dict[str, str] = {}
+    for col in df.columns:
+        lc = str(col).lower()
+        if lc == 'open':
+            agg_map[col] = 'first'
+        elif lc == 'high':
+            agg_map[col] = 'max'
+        elif lc == 'low':
+            agg_map[col] = 'min'
+        elif lc == 'close':
+            agg_map[col] = 'last'
+        elif lc == 'volume':
+            agg_map[col] = 'sum'
+        elif df[col].dtype == bool:
+            agg_map[col] = 'max'
+        else:
+            agg_map[col] = 'last'
+
+    grouped = df.groupby(blocks)
+    out = grouped.agg(agg_map)
+    # Anchor each block to the timestamp of its last bar so the x-axis and the
+    # 'last'-aggregated Close stay consistent.
+    out.index = pd.Index([df.index[min((b + 1) * step, n) - 1] for b in range(len(out))], name=df.index.name)
+    return out
+
+
+def _prepare_render_df(df: pd.DataFrame, config: Dict) -> pd.DataFrame:
+    """Slice to the visible window (if any) and downsample oversized series.
+
+    A strict identity for any series at/under ``DOWNSAMPLE_THRESHOLD`` so the
+    common daily-data path is byte-for-byte unchanged. When a ``view_range``
+    (from the relayout zoom store) is supplied we render only that window at
+    full detail, downsampling only if the window itself is still huge.
+    """
+    if df is None or len(df) <= DOWNSAMPLE_THRESHOLD:
+        return df
+
+    render_df = df
+    view_range = config.get('view_range') or {}
+    start, end = view_range.get('start'), view_range.get('end')
+    if start and end:
+        try:
+            s, e = pd.to_datetime(start), pd.to_datetime(end)
+            windowed = df.loc[(df.index >= s) & (df.index <= e)]
+            if len(windowed) >= 2:
+                render_df = windowed
+        except (ValueError, TypeError):
+            pass
+
+    max_bars = int(config.get('max_render_bars') or MAX_RENDER_BARS)
+    if len(render_df) > max_bars:
+        render_df = _downsample_ohlcv(render_df, max_bars)
+    return render_df
+
+
+def infer_bar_interval(index: pd.Index) -> str:
+    """Best-effort bar-interval label ('1D', '1W', '1H', '15m', …).
+
+    Uses the *median* consecutive gap so weekend/holiday jumps in daily equity
+    data still resolve to '1D' rather than being skewed by Fri→Mon gaps.
+    """
+    if index is None or len(index) < 3:
+        return '—'
+    try:
+        deltas = pd.Series(index[1:]) - pd.Series(index[:-1])
+        secs = deltas.median().total_seconds()
+    except (TypeError, ValueError, AttributeError):
+        return '—'
+    if not secs or secs <= 0:
+        return '—'
+
+    minute, hour, day = 60, 3600, 86400
+    if secs < hour:
+        return f"{int(round(secs / minute))}m"
+    if secs < day:
+        return f"{int(round(secs / hour))}H"
+    if secs < 6 * day:
+        return f"{int(round(secs / day))}D"
+    if secs < 20 * day:
+        return "1W"
+    return "1M"
+
+
+def bar_count_summary(df: pd.DataFrame, view_range: dict | None = None) -> str:
+    """Toolbar string like ``1,247 bars · 1D · 2018-01-02 → 2024-12-31``.
+
+    Reflects the visible window when a ``view_range`` (zoom store) is active,
+    otherwise the full series.
+    """
+    if df is None or len(df) == 0:
+        return ''
+    interval = infer_bar_interval(df.index)
+    visible = df
+    if view_range:
+        start, end = view_range.get('start'), view_range.get('end')
+        if start and end:
+            try:
+                s, e = pd.to_datetime(start), pd.to_datetime(end)
+                windowed = df.loc[(df.index >= s) & (df.index <= e)]
+                if len(windowed) > 0:
+                    visible = windowed
+            except (ValueError, TypeError):
+                pass
+    n = len(visible)
+    try:
+        start_s = pd.to_datetime(visible.index[0]).strftime('%Y-%m-%d')
+        end_s = pd.to_datetime(visible.index[-1]).strftime('%Y-%m-%d')
+    except (ValueError, TypeError, IndexError):
+        return f"{n:,} bars · {interval}"
+    return f"{n:,} bars · {interval} · {start_s} → {end_s}"
+
 
 def _get_indicator_setting(config: Dict, indicator: str, key: str, default: float | int) -> float | int:
     settings = config.get('indicator_settings', {}) or {}
@@ -80,6 +220,10 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
         Plotly Figure object
     """
     try:
+        # Phase 8: cap rendered points for oversized series (no-op for the
+        # daily-data common path). Downstream helpers all read this `df`.
+        df = _prepare_render_df(df, config)
+
         selected_plots = config['selected_plots'].copy()
         if 'candlestick' in selected_plots:
             selected_plots.remove('candlestick')
@@ -158,6 +302,20 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
         _update_layout(fig, df, plot_count, config.get('show_legend', False), config, theme)
         _add_crosshair(fig, plot_count, theme)
 
+        # Phase 8: when rendering a zoomed window (large-data path), pin the
+        # x-axis to that window so _update_layout's full-range reset doesn't
+        # snap the view back to ALL. Harmless on the common path where no
+        # view_range is supplied.
+        view_range = config.get('view_range') or {}
+        vr_start, vr_end = view_range.get('start'), view_range.get('end')
+        if vr_start and vr_end:
+            try:
+                fig.update_xaxes(
+                    range=[pd.to_datetime(vr_start), pd.to_datetime(vr_end)],
+                    row=plot_count, col=1,
+                )
+            except (ValueError, TypeError):
+                pass
 
         return fig
 

@@ -9,9 +9,11 @@ from dash.exceptions import PreventUpdate
 from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_TERMINAL, get_theme
 from lib.dash.routes import (
     build_fundamentals_path,
+    build_ticker_terminal_path,
     extract_path_ticker,
     is_fundamentals_route,
     is_flow_route,
+    normalize_pathname,
 )
 
 
@@ -46,6 +48,28 @@ def register_routing_callbacks(app) -> None:
     )
     def sync_route_ticker(pathname):
         return extract_path_ticker(pathname)
+
+    @app.callback(
+        Output('app-url', 'pathname', allow_duplicate=True),
+        Input('ticker-dropdown', 'value'),
+        State('app-url', 'pathname'),
+        prevent_initial_call=True,
+    )
+    def sync_dropdown_to_url(ticker, pathname):
+        """Reflect the sidebar ticker pick in the browser URL (/ticker/<sym>).
+
+        Skipped on the fundamentals/flow overlays so picking a ticker there
+        doesn't navigate away, and when the path already matches so we don't
+        loop against apply_route_ticker_to_dropdown (URL -> dropdown sync).
+        """
+        if not ticker:
+            raise PreventUpdate
+        if is_fundamentals_route(pathname) or is_flow_route(pathname):
+            raise PreventUpdate
+        new_path = build_ticker_terminal_path(ticker)
+        if normalize_pathname(pathname) == normalize_pathname(new_path):
+            raise PreventUpdate
+        return new_path
 
     @app.callback(
         Output('app-url', 'pathname', allow_duplicate=True),

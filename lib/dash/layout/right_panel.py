@@ -755,9 +755,15 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         className='signals-category-filter'
                                     ),
                                 ], className='signals-unified-controls'),
-                                html.Div(
-                                    id='signals-unified-list',
-                                    className='signals-unified-list'
+                                dcc.Loading(
+                                    id='signals-unified-loading',
+                                    type='circle',
+                                    color=theme['accent_blue'],
+                                    delay_show=200,
+                                    children=html.Div(
+                                        id='signals-unified-list',
+                                        className='signals-unified-list'
+                                    ),
                                 ),
                                 dcc.Checklist(
                                     id='buy-signals',
@@ -908,7 +914,13 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
         ),
         dbc.Tooltip("Simulate trading with selected buy/sell signals", target='run-backtest-btn', placement='top'),
 
-        html.Div(id='backtest-results', style={'marginTop': '10px'}),
+        dcc.Loading(
+            id='backtest-loading',
+            type='circle',
+            color=theme['accent_blue'],
+            delay_show=200,
+            children=html.Div(id='backtest-results', style={'marginTop': '10px'}),
+        ),
     ])
 
 
@@ -983,6 +995,25 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
             ),
         ], style={'marginBottom': '16px'}),
 
+        html.Div([
+            html.Div([
+                html.Label("Min Trades", style={
+                    'fontSize': FONT_SIZES['xs'],
+                    'color': theme['text_secondary'],
+                    'marginBottom': 0,
+                    'display': 'block'
+                }),
+                html.Span("?", id='help-min-trades', style=help_icon_style),
+            ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '4px'}),
+            dense_input(
+                id='min-trades-input',
+                type='number',
+                value=10,
+                min=1, max=500,
+                style=styles['input']
+            ),
+        ], style={'marginBottom': '16px'}),
+
         # Sort Options
         html.Div([
             html.Div([
@@ -997,12 +1028,14 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
             dcc.RadioItems(
                 id='sort-metric-dropdown',
                 options=[
+                    {'label': 'SCORE', 'value': 'Robustness_Score'},
                     {'label': 'RET', 'value': 'Total_Return_%'},
                     {'label': 'SHARPE', 'value': 'Sharpe_Ratio'},
+                    {'label': 'CALMAR', 'value': 'Calmar'},
                     {'label': 'DD', 'value': 'Max_Drawdown_%'},
                     {'label': 'TRADES', 'value': 'Trades'},
                 ],
-                value='Total_Return_%',
+                value='Robustness_Score',
                 inline=True,
                 className='bbg-radio-seg'
             ),
@@ -1026,7 +1059,15 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
             trigger='hover focus',
         ),
         dbc.Tooltip(
-            "Choose the metric used to rank results.",
+            "Combos with fewer trades than this are flagged 'low sample' and "
+            "ranked below credible ones — a great ratio on a handful of trades is noise.",
+            target='help-min-trades',
+            placement='left',
+            trigger='hover focus',
+        ),
+        dbc.Tooltip(
+            "Choose the metric used to rank results. SCORE is a robustness-weighted "
+            "blend that rewards risk-adjusted return and penalises too-few trades.",
             target='help-sort-metric',
             placement='left',
             trigger='hover focus',

@@ -1160,6 +1160,25 @@ input[type="radio"] {
     min-width: 0 !important;
 }
 
+/* Phase 7: the dcc.Loading wrapper (and any intermediate div it renders)
+   must be full-height so the Graph's height:100% resolves against the
+   flex-sized frame instead of collapsing. */
+#chart-frame > div,
+#chart-frame > div > div {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+}
+
+/* Keep the spinner centered over the chart/panel without stealing layout
+   height, and tint it with the loading colour we pass from Python. */
+._dash-loading-callback,
+.dash-spinner-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 /* =============================================================================
    Fundamentals workspace
    ========================================================================== */

@@ -72,19 +72,31 @@ ferma dopo questo numero.
 - Scansione rapida: `50–100`.
 - Sweep esaustivo: `300–1000` (più lento).
 
+### C2 — Min Trades
+*Casella numerica, predefinito `10`.*
+
+La soglia di affidabilità. Ogni combinazione che ha fatto **meno** operazioni di questo
+numero viene etichettata come **"low sample"** e spinta *sotto* quelle credibili nella
+classifica — non viene eliminata, solo declassata. Uno Sharpe o un profit factor
+splendidi costruiti su 3 operazioni sono fortuna, non vantaggio: così si evita che le
+casualità dominino la classifica.
+
 ### D — Sort Results By
 *Pulsanti segmentati.* Quale metrica ordina la classifica:
 
 | Pulsante | Ordina per | Vuoi… |
 |---|---|---|
+| **SCORE** | Robustness Score (predefinito) | La scelta migliore a tutto tondo — rendimento aggiustato per il rischio con penalità per troppe poche operazioni |
 | **RET** | Total Return % | Il guadagno grezzo maggiore |
 | **SHARPE** | Sharpe Ratio | Il miglior rendimento *aggiustato per il rischio* (percorso più regolare) |
+| **CALMAR** | Calmar Ratio | Il miglior rendimento rispetto al drawdown nel caso peggiore |
 | **DD** | Max Drawdown % | La perdita nel caso peggiore più contenuta (ordinato con la meno grave in cima) |
 | **TRADES** | Numero di operazioni | Il maggior (o minor) numero di operazioni |
 
 > 💡 Puoi cambiare questa impostazione **dopo** un'esecuzione — la tabella si riordina
-> istantaneamente senza ritestare nulla. Quindi esegui una volta, poi alterna tra RET /
-> SHARPE / DD per vedere il quadro da angolazioni diverse.
+> istantaneamente senza ritestare nulla. Quindi esegui una volta, poi alterna tra SCORE /
+> RET / SHARPE / CALMAR / DD per vedere il quadro da angolazioni diverse. Le combo
+> low-sample restano sempre raggruppate sotto quelle credibili.
 
 ### Il pulsante — RUN OPTIMIZER
 Premilo. Appare una barra di avanzamento e la ricerca comincia.
@@ -100,9 +112,15 @@ Premilo. Appare una barra di avanzamento e la ricerca comincia.
 - Il pulsante RUN OPTIMIZER è disabilitato finché non finisce (la ricerca gira in background a piccoli lotti, così l'app resta reattiva).
 
 **Quando finisce:**
-- Un messaggio verde *"✓ Completed! Tested N combinations"*.
-- Una card **Best Strategy highlight** — il vincitore secondo la metrica scelta.
-- Una **tabella top-10** delle migliori combinazioni con le loro metriche.
+- Un messaggio verde *"✓ Completed! Tested N combinations"*, seguito da una riga di
+  onestà che ricorda che testare molte combo rende più probabile che il primo risultato
+  sia fortuna.
+- Una card **Best Strategy highlight** — il vincitore secondo la metrica scelta. Mostra
+  Total Return, Sharpe, Max Drawdown, **Sortino, Calmar, Win Rate, Profit Factor**, numero
+  di operazioni e una riga **"vs Buy & Hold" alpha**, così vedi subito se la strategia ha
+  davvero battuto il semplice possesso del titolo. Un badge **"LOW SAMPLE"** compare se il
+  vincitore ha fatto troppe poche operazioni.
+- Una **tabella top-10** con le stesse metriche (più Alpha %). Le righe low-sample sono in grigio.
 - In fondo appare un pulsante **Apply Best Strategy**.
 
 ### Apply Best Strategy
@@ -148,12 +166,13 @@ passaggio è importante).
 ## 6. Leggere la classifica
 
 Ogni riga è una combinazione di segnali. Le colonne rispecchiano le scorecard del
-Backtest — Total Return %, Sharpe, Max Drawdown %, numero di operazioni, ecc. Regole di
-lettura rapide:
+Backtest — Total Return %, **Alpha %** (vs buy-and-hold), Sharpe, **Sortino, Calmar**,
+Max Drawdown %, **Win Rate %, Profit Factor** e numero di operazioni. Regole di lettura rapide:
 
-- **Non prendere semplicemente la riga #1.** Una differenza minima di rendimento tra la #1 e la #5 è rumore; preferisci la combo che ha anche uno Sharpe decente e un drawdown controllato.
-- **Diffida di pochissime operazioni.** Una combo che ha "vinto" su 2 operazioni è fortuna, non vantaggio. Prediligi combo con abbastanza operazioni da essere credibili.
-- **Incrocia le metriche.** Riordina per SHARPE e DD; una combo che si piazza bene in *tutte e tre* è molto più affidabile di una che domina solo il RET.
+- **Guarda prima l'Alpha.** Un Total Return alto conta poco se il titolo stesso è raddoppiato. **Alpha %** è il rendimento della strategia *meno* quello del buy-and-hold — se è negativo, avresti fatto meglio a limitarti a tenere il titolo.
+- **Non prendere semplicemente la riga #1.** Una differenza minima di rendimento tra la #1 e la #5 è rumore; preferisci la combo che ha anche uno Sharpe/Calmar decente e un drawdown controllato.
+- **Diffida delle righe grigie (low-sample).** Una combo che ha "vinto" su 2 operazioni è fortuna, non vantaggio — per questo la soglia Min Trades le spinge in fondo alla classifica.
+- **Incrocia le metriche.** Riordina per SHARPE, CALMAR e DD; una combo che si piazza bene in *tutte* è molto più affidabile di una che domina solo il RET. **SCORE** le combina già per te.
 
 ---
 

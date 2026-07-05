@@ -95,6 +95,14 @@ def build_fundamentals_path(ticker: str | None = None) -> str:
     return ROUTE_FUNDAMENTALS
 
 
+def build_ticker_terminal_path(ticker: str | None = None) -> str:
+    """Build a /ticker/<symbol> terminal deep-link, or the root terminal path."""
+    symbol = str(ticker or '').strip().upper()
+    if symbol:
+        return f'{ROUTE_TICKER_TERMINAL}/{symbol}'
+    return ROUTE_TERMINAL
+
+
 def build_flow_path(ticker: str | None = None) -> str:
     """Build a flow-scanner URL, optionally including a ticker segment."""
     symbol = str(ticker or '').strip().upper()

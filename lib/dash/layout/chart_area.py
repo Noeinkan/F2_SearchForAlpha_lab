@@ -43,6 +43,19 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
                     ], style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}),
                     style=styles['signal_count_bar'],
                 ),
+                # Phase 8: bar-count / interval / span readout. Driven by
+                # callbacks/chart_view.py; reflects the zoomed window when the
+                # relayout store is active.
+                html.Span(
+                    id='chart-bar-count',
+                    children='',
+                    className='num',
+                    style={
+                        'fontSize': FONT_SIZES['xs'],
+                        'color': theme['text_tertiary'],
+                        'whiteSpace': 'nowrap',
+                    },
+                ),
             ], style={'display': 'flex', 'gap': '12px', 'alignItems': 'baseline', 'flex': '1 1 auto', 'minWidth': 0}),
 
             html.Div([
@@ -52,27 +65,41 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
         ], style={**styles['chart_toolbar'], 'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'gap': '12px'}),
 
         html.Div(
-            dcc.Graph(
-                id='financial-chart',
-                figure=(
-                    bootstrap.chart_figure
-                    if bootstrap
-                    else create_empty_chart(theme, "Loading TSLA\u2026")
-                ),
-                style={'height': '100%', 'width': '100%'},
-                config={
-                    'responsive': True,
-                    'displayModeBar': True,
-                    'displaylogo': False,
-                    'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
-                    'toImageButtonOptions': {
-                        'format': 'png',
-                        'filename': 'chart',
-                        'height': None,
-                        'width': None,
-                        'scale': 2
+            # `delay_show` keeps the spinner from flashing on the many fast,
+            # sidebar-driven chart rebuilds (toggle an overlay \u2192 sub-100ms
+            # redraw). It only appears when a redraw genuinely stalls \u2014 a data
+            # (re)load or a slow enrichment pass.
+            dcc.Loading(
+                id='chart-loading',
+                type='circle',
+                color=theme['accent_blue'],
+                delay_show=350,
+                parent_style={'height': '100%', 'width': '100%'},
+                children=dcc.Graph(
+                    id='financial-chart',
+                    figure=(
+                        bootstrap.chart_figure
+                        if bootstrap
+                        else create_empty_chart(theme, "Loading TSLA\u2026")
+                    ),
+                    style={'height': '100%', 'width': '100%'},
+                    # height/width None = size the PNG export to the on-screen
+                    # chart. Dash's Config TypedDict doesn't model the None, so
+                    # the literal trips Pylance — harmless at runtime.
+                    config={  # type: ignore[reportArgumentType]
+                        'responsive': True,
+                        'displayModeBar': True,
+                        'displaylogo': False,
+                        'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+                        'toImageButtonOptions': {
+                            'format': 'png',
+                            'filename': 'chart',
+                            'height': None,
+                            'width': None,
+                            'scale': 2
+                        }
                     }
-                }
+                ),
             ),
             id='chart-frame',
             style={

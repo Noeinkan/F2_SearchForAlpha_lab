@@ -13,6 +13,7 @@ import yfinance as yf
 
 from lib.dash.state import dashboard_state
 from lib.strategy import run_backtest
+from lib.backtest_result import metrics_from_result_df
 from lib.signals.indicators import classify_signal_columns
 
 logger = logging.getLogger(__name__)
@@ -145,32 +146,73 @@ def evaluate_signal_combination(
             sell_indicators=list(sell_combo)
         )
 
-        final_value = result_df['Portfolio_Value'].iloc[-1]
-        total_return = (final_value - initial_capital) / initial_capital * 100
+        # Reuse the tested metrics engine instead of hand-rolling a fragile
+        # subset here (return, Sharpe, Sortino, Calmar, DD, trades, win rate,
+        # profit factor, turnover all computed from the actual result columns).
+        m = metrics_from_result_df(result_df, initial_capital)
 
-        returns = result_df['Strategy_Returns'].dropna()
-        sharpe = (returns.mean() / returns.std() * np.sqrt(252)) if returns.std() > 0 else 0
-
-        cumulative = (1 + returns).cumprod()
-        peak = cumulative.expanding().max()
-        drawdown = ((cumulative - peak) / peak).min() * 100
+        # Buy-and-hold benchmark over the same window: the single clearest
+        # "is this strategy actually adding value?" signal.
+        close = result_df['Close']
+        first_close = close.iloc[0]
+        buy_hold_return = ((close.iloc[-1] / first_close) - 1.0) * 100 if first_close else 0.0
+        total_return_pct = m.total_return * 100
 
         return {
             'Buy_Signals': ', '.join(buy_combo),
             'Sell_Signals': ', '.join(sell_combo),
-            'Final_Value': final_value,
-            'Total_Return_%': total_return,
-            'Sharpe_Ratio': sharpe,
-            'Max_Drawdown_%': drawdown,
-            'Trades': result_df['Position'].diff().abs().sum() / 2
+            'Final_Value': result_df['Portfolio_Value'].iloc[-1],
+            'Total_Return_%': total_return_pct,
+            'BuyHold_Return_%': buy_hold_return,
+            'Alpha_%': total_return_pct - buy_hold_return,
+            'Sharpe_Ratio': m.sharpe,
+            'Sortino': m.sortino,
+            'Calmar': m.calmar,
+            # Keep the existing negative-drawdown convention (engine reports
+            # max_drawdown as a positive magnitude).
+            'Max_Drawdown_%': -m.max_drawdown * 100,
+            'Win_Rate_%': m.win_rate * 100,
+            'Profit_Factor': m.profit_factor,
+            'Turnover': m.turnover,
+            'Trades': int(m.num_trades),
         }
     except Exception as e:
-        logger.error(f"Error testing combination: {e}")
+        logger.warning(f"Error testing combination {buy_combo}/{sell_combo}: {e}")
         return {
             'Buy_Signals': ', '.join(buy_combo),
             'Sell_Signals': ', '.join(sell_combo),
             'Error': str(e)
         }
+
+
+def compute_robustness_scores(results_df: pd.DataFrame, min_trades: int) -> pd.DataFrame:
+    """
+    Add a robustness-weighted score and a low-sample flag to optimization results.
+
+    The score rewards risk-adjusted performance (Sharpe, with Calmar as a mild
+    bonus) and penalises combinations that traded too few times to be credible,
+    via a confidence factor that ramps from 0 to 1 as trade count approaches
+    ``min_trades``. Raw return is folded in only as a small tiebreaker.
+
+    Best practice: a strong ratio on a handful of trades is noise, not edge.
+    """
+    df = results_df.copy()
+    if df.empty:
+        return df
+
+    min_trades = max(1, int(min_trades or 1))
+    trades = df.get('Trades', pd.Series(0, index=df.index)).fillna(0).clip(lower=0)
+    confidence = (trades / min_trades).clip(upper=1.0)
+
+    sharpe = df.get('Sharpe_Ratio', pd.Series(0.0, index=df.index)).fillna(0.0)
+    calmar = df.get('Calmar', pd.Series(0.0, index=df.index)).fillna(0.0)
+    total_return = df.get('Total_Return_%', pd.Series(0.0, index=df.index)).fillna(0.0)
+
+    df['Low_Sample'] = trades < min_trades
+    df['Robustness_Score'] = (
+        (sharpe + 0.25 * calmar) * confidence + 0.001 * total_return
+    )
+    return df
 
 
 def calculate_performance_metrics(result_df: pd.DataFrame, initial_capital: float) -> Dict[str, float]:

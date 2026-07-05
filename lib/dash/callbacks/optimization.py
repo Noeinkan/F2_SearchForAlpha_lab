@@ -9,7 +9,12 @@ from dash.exceptions import PreventUpdate
 
 from lib.dash.components import build_alert, build_progress_bar
 from lib.dash.dash_config import FONT_SIZES, get_theme
-from lib.dash.helpers import extract_signals, generate_signal_combinations, evaluate_signal_combination
+from lib.dash.helpers import (
+    extract_signals,
+    generate_signal_combinations,
+    evaluate_signal_combination,
+    compute_robustness_scores,
+)
 from lib.dash.state import dashboard_state
 from lib.dash.callbacks.shared import (
     OPTIMIZATION_BATCH_SIZE,
@@ -52,10 +57,11 @@ def register_optimization_callbacks(app) -> None:
         [State('initial-capital', 'value'),
          State('max-signals-slider', 'value'),
          State('max-combos-input', 'value'),
+         State('min-trades-input', 'value'),
          State('optimization-state', 'data')],
         prevent_initial_call=True
     )
-    def start_optimization(n_clicks, initial_capital, max_signals, max_combos, current_state):
+    def start_optimization(n_clicks, initial_capital, max_signals, max_combos, min_trades, current_state):
         """Initialize optimization run and enable interval for progress updates."""
         if not n_clicks:
             raise PreventUpdate
@@ -96,7 +102,8 @@ def register_optimization_callbacks(app) -> None:
             running=True,
             total_combinations=len(combinations),
             combinations=combinations_serializable,
-            initial_capital=initial_capital
+            initial_capital=initial_capital,
+            min_trades=min_trades or 10,
         )
 
         new_state = {
@@ -104,8 +111,9 @@ def register_optimization_callbacks(app) -> None:
             'current_index': 0,
             'total_combinations': len(combinations),
             'completed': False,
-            'sort_by': 'Total_Return_%',
-            'sort_ascending': False
+            'sort_by': 'Robustness_Score',
+            'sort_ascending': False,
+            'min_trades': min_trades or 10,
         }
 
         progress_ui = html.Div([
@@ -175,19 +183,27 @@ def register_optimization_callbacks(app) -> None:
         # Check if complete
         if end_idx >= total:
             dashboard_state.update_optimization_state(running=False, completed=True)
+            min_trades = opt_state.get('min_trades', 10)
 
             results_df = pd.DataFrame(results)
+            # Drop error rows (no finite return) BEFORE deciding success, so a
+            # run where every combo failed shows an honest failure instead of a
+            # fake 0% winner.
             if 'Total_Return_%' in results_df.columns:
                 results_df = results_df[results_df['Total_Return_%'].notna()]
-                results_df = results_df.sort_values(state.get('sort_by', 'Total_Return_%'),
-                                                    ascending=state.get('sort_ascending', False))
+            else:
+                results_df = results_df.iloc[0:0]
 
             if results_df.empty:
                 state['running'] = False
                 state['completed'] = True
+                first_error = next((r.get('Error') for r in results if r.get('Error')), None)
+                msg = "All combinations failed"
+                if first_error:
+                    msg += f": {first_error}"
                 return (
                     state,
-                    build_alert("All combinations failed", "warning", theme=theme),
+                    build_alert(msg, "warning", theme=theme),
                     html.Div(),
                     True,
                     False,
@@ -195,13 +211,33 @@ def register_optimization_callbacks(app) -> None:
                     []
                 )
 
+            results_df = compute_robustness_scores(results_df, min_trades)
+            sort_by = state.get('sort_by', 'Robustness_Score')
+            if sort_by not in results_df.columns:
+                sort_by = 'Robustness_Score'
+            # Keep credible (>= min_trades) combinations above low-sample ones,
+            # then rank within each group by the chosen metric.
+            results_df = results_df.sort_values(
+                ['Low_Sample', sort_by],
+                ascending=[True, sort_by == 'Max_Drawdown_%'],
+            )
+
             state['running'] = False
             state['completed'] = True
 
             final_progress = html.Div([
-                html.Span("\u2713 ", style={'color': theme['accent_green']}),
-                html.Span(f"Completed! Tested {total} combinations",
-                         style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_green']})
+                html.Div([
+                    html.Span("\u2713 ", style={'color': theme['accent_green']}),
+                    html.Span(f"Completed! Tested {total} combinations",
+                             style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_green']})
+                ]),
+                html.Div(
+                    f"Ranked from {total} combos \u2014 the more you test, the more likely the top "
+                    "result is luck. Re-run the winner on the Backtest tab with real costs, and "
+                    "ideally on a different date range.",
+                    style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'],
+                           'marginTop': '4px', 'fontStyle': 'italic'}
+                ),
             ])
 
             results_ui = html.Div([
@@ -263,10 +299,15 @@ def register_optimization_callbacks(app) -> None:
 
         theme = get_theme()
         results_df = pd.DataFrame(results_data)
+        if sort_by not in results_df.columns:
+            sort_by = 'Robustness_Score' if 'Robustness_Score' in results_df.columns else 'Total_Return_%'
 
-        # Ascending for drawdown (less negative is better), descending for others
+        # Ascending for drawdown (less negative is better), descending for others.
+        # Keep credible combinations above low-sample ones regardless of metric.
         ascending = sort_by == 'Max_Drawdown_%'
-        results_df = results_df.sort_values(sort_by, ascending=ascending)
+        sort_cols = ['Low_Sample', sort_by] if 'Low_Sample' in results_df.columns else [sort_by]
+        sort_asc = [True, ascending] if 'Low_Sample' in results_df.columns else [ascending]
+        results_df = results_df.sort_values(sort_cols, ascending=sort_asc)
 
         return html.Div([
             _create_best_strategy_highlight(results_df.iloc[0], theme),

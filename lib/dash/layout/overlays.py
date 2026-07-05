@@ -100,18 +100,25 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
             'backgroundColor': theme['bg_secondary'],
             'borderBottom': f'1px solid {theme["border_primary"]}',
         }),
-        html.Div(id='fundamentals-content', children=[
-            html.Div("Open fundamentals after selecting a stock.", style={
-                'fontFamily': FONT_FAMILY,
-                'fontSize': FONT_SIZES['sm'],
-                'color': theme['text_secondary'],
-                'padding': '18px',
-            })
-        ], style={
-            'height': 'calc(100% - 36px)',
-            'overflow': 'auto',
-            'padding': '6px',
-        }, className='sfa-fundamentals-content'),
+        dcc.Loading(
+            id='fundamentals-loading',
+            type='circle',
+            color=theme['accent_blue'],
+            delay_show=200,
+            parent_style={'height': 'calc(100% - 36px)'},
+            children=html.Div(id='fundamentals-content', children=[
+                html.Div("Open fundamentals after selecting a stock.", style={
+                    'fontFamily': FONT_FAMILY,
+                    'fontSize': FONT_SIZES['sm'],
+                    'color': theme['text_secondary'],
+                    'padding': '18px',
+                })
+            ], style={
+                'height': '100%',
+                'overflow': 'auto',
+                'padding': '6px',
+            }, className='sfa-fundamentals-content'),
+        ),
     ], id='fundamentals-overlay', style={
         'display': 'none',
         'position': 'fixed',

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Signal Optimizer overhaul**: the optimizer now scores each combination with the shared, tested metrics engine (`metrics_from_result_df`), surfacing Sortino, Calmar, win rate, profit factor and turnover alongside return/Sharpe/drawdown. Added a per-combo **buy-and-hold benchmark and Alpha %**, a **Min Trades** reliability floor that flags and deprioritises "low sample" combos, a **robustness-weighted default ranking** (with new SCORE and CALMAR sort options), a multiple-testing honesty caption on completion, and richer Best Strategy card + results table.
 - **Flow Scanner** for options flow analysis: a new `/flow/<ticker>` route and dashboard overlay, with educational insights, sentiment categorization, and per-contract signals surfaced in the flow glossary and contract table.
 - **Fundamentals module**: fundamental analysis helpers with unit tests, a dedicated page with ticker input, quarterly financial data handling, a live price snapshot attached to financial results, and valuation/metric explainability (detailed explanations, big-five metric highlighting, ESC signal input).
 - **`sfa` research CLI**: a command skeleton built around a `BacktestResult` dataclass, an Optuna-based Bayesian optimiser (a fourth optimisation flavour), walk-forward validation with gated promotion, and a paper-trading layer (Broker protocol with an async runner).
@@ -28,8 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Streamlined `AGENTS.md`, `CLAUDE.md`, and `README.md`, and improved tooltip, table, and layout styling across the fundamentals page.
 
 ### Fixed
+- **Optimizer showed a fake "+0.0% return" winner**: `evaluate_signal_combination` read a non-existent `Position` column, so every combination silently threw `KeyError: 'Position'` and was swallowed by a bare `except`. Because the "all failed" guard only checked for an empty results list (not one full of error rows), the panel rendered the first error as a 0% strategy. The optimizer now computes trade counts and metrics from real result columns and reports honest failures ("All combinations failed") when every combo errors.
 - Date handling in the integrated dashboard and yearly close-price calculation in fundamentals.
 - Callback initialization behavior in fundamentals and routing (`initial_duplicate`) for more predictable overlay and tab handling.
+- Trade-count calculation in signal-combination evaluation, which now counts actual buy/sell executions (`Units_to_buy` / `Units_to_sell`) instead of dividing position-change deltas by two.
+- Chart container sizing so the `dcc.Loading` wrapper is full-height, preventing the chart from collapsing when its `height:100%` had nothing to resolve against.
 
 ### Removed
 - TradingView chart integration, to streamline the dashboard.
