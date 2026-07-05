@@ -67,6 +67,9 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
             'sort_ascending': False
         }),
         dcc.Store(id='optimization-results-store', data=[]),
+        dcc.Store(id='optimizer-apply-store', data=None),
+        dcc.Store(id='optimizer-autorun', data=None),
+        dcc.Store(id='optimizer-autorun-sink', data=None),
         dcc.Store(id='signals-unified-store', data=bootstrap.unified_rows if bootstrap else []),
         dcc.Store(id='indicator-settings-store', data=DEFAULT_INDICATOR_SETTINGS),
         dcc.Store(id='active-indicator-store', data=None),

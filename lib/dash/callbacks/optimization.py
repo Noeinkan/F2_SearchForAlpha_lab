@@ -206,6 +206,57 @@ def _calibrate_sec_per_combo(elapsed: float, n_combos: int) -> None:
     )
 
 
+def _build_origin_note(best: pd.Series, theme: dict) -> html.Div:
+    """Reconciliation banner shown above the auto-run scorecard.
+
+    Explains that the Optimizer leaderboard number is idealized (no costs, no
+    Trade Setup) while the scorecard below reflects the user's real settings, so
+    the two figures are expected to differ.
+    """
+    total_return = best.get('Total_Return_%', None)
+    alpha = best.get('Alpha_%', None)
+    low_sample = bool(best.get('Low_Sample', False))
+
+    headline = (
+        f"{float(total_return):+.1f}%" if total_return is not None else "—"
+    )
+    alpha_txt = (
+        f" ({float(alpha):+.1f}% vs buy & hold)" if alpha is not None else ""
+    )
+
+    children = [
+        html.Span("Applied from Optimizer ", style={'fontWeight': '600'}),
+        html.Span(
+            f"— leaderboard showed {headline}{alpha_txt} with no costs or stops. ",
+        ),
+        html.Span(
+            "The scorecard below uses your current Transaction Costs & Trade Setup, "
+            "so the number will differ — that's the honest, tradeable figure.",
+            style={'color': theme['text_secondary']},
+        ),
+    ]
+    if low_sample:
+        children.append(
+            html.Div(
+                "⚠ This winner is low-sample (few trades) — treat it with extra caution.",
+                style={'color': theme['accent_orange'], 'marginTop': '4px', 'fontSize': FONT_SIZES['xs']},
+            )
+        )
+
+    return html.Div(
+        children,
+        style={
+            'padding': '8px 10px',
+            'borderRadius': '6px',
+            'border': f'1px solid {theme["accent_blue"]}40',
+            'backgroundColor': f'{theme["accent_blue"]}12',
+            'color': theme['text_primary'],
+            'fontSize': FONT_SIZES['xs'],
+            'lineHeight': '1.5',
+        },
+    )
+
+
 def register_optimization_callbacks(app) -> None:
     @app.callback(
         [Output('preview-buy-count', 'children'),
@@ -589,9 +640,9 @@ def register_optimization_callbacks(app) -> None:
         ], className='fade-in')
 
     @app.callback(
-        [Output('buy-signals', 'value', allow_duplicate=True),
-         Output('sell-signals', 'value', allow_duplicate=True),
-         Output('tab-backtest', 'n_clicks', allow_duplicate=True)],
+        [Output('optimizer-apply-store', 'data'),
+         Output('tab-backtest', 'n_clicks', allow_duplicate=True),
+         Output('backtest-origin-note', 'children')],
         [Input('apply-strategy-btn', 'n_clicks')],
         [State('optimization-results-store', 'data'),
          State('sort-metric-dropdown', 'value'),
@@ -599,13 +650,33 @@ def register_optimization_callbacks(app) -> None:
         prevent_initial_call=True
     )
     def apply_best_strategy(n_clicks, results_data, sort_by, current_backtest_clicks):
-        """Apply the best strategy from optimization to the backtest panel."""
+        """Apply the best strategy from optimization to the backtest panel.
+
+        Signals are routed through ``optimizer-apply-store`` (consumed by
+        ``sync_signal_selection``, the single source of truth for the visible
+        toggle rows) rather than written to ``buy-signals``/``sell-signals``
+        directly — this keeps the on-screen SIGNALS list in sync, exactly like
+        the preset-apply path, and avoids a dual-writer race. That sync callback
+        also fires the Backtest auto-run once the signals are committed, so the
+        user lands on the honest scorecard (real costs/Trade Setup applied). The
+        note reconciles that figure against the Optimizer's idealized leaderboard.
+        """
         if not n_clicks or not results_data:
             raise PreventUpdate
 
+        theme = get_theme()
         results_df = pd.DataFrame(results_data)
+
+        # Mirror the leaderboard's displayed order: credible combos above
+        # low-sample ones, then by the chosen metric — so the row we apply is
+        # the same #1 the user is looking at.
+        if sort_by not in results_df.columns:
+            sort_by = 'Robustness_Score' if 'Robustness_Score' in results_df.columns else 'Total_Return_%'
         ascending = sort_by == 'Max_Drawdown_%'
-        results_df = results_df.sort_values(sort_by, ascending=ascending)
+        if 'Low_Sample' in results_df.columns:
+            results_df = results_df.sort_values(['Low_Sample', sort_by], ascending=[True, ascending])
+        else:
+            results_df = results_df.sort_values(sort_by, ascending=ascending)
 
         best = results_df.iloc[0]
 
@@ -614,5 +685,35 @@ def register_optimization_callbacks(app) -> None:
         sell_signals_str = str(best.get('Sell_Signals', ''))
         sell_signals = [s.strip() for s in sell_signals_str.split(',') if s.strip()]
 
-        # Return values to populate checklists and switch to backtest tab
-        return buy_signals, sell_signals, (current_backtest_clicks or 0) + 1
+        note = _build_origin_note(best, theme)
+
+        # The nonce changes every Apply so sync_signal_selection re-fires even
+        # when the same winner is applied twice in a row.
+        apply_payload = {
+            'buy': buy_signals,
+            'sell': sell_signals,
+            'nonce': time.time(),
+        }
+        return (
+            apply_payload,
+            (current_backtest_clicks or 0) + 1,
+            note,
+        )
+
+    # Clientside: when ``optimizer-autorun`` changes (set by sync_signal_selection
+    # AFTER buy/sell-signals are committed), click RUN BACKTEST. Ordering is
+    # guaranteed because the signal values and this trigger are written by the
+    # same server callback return, so run_backtest_callback reads fresh signals.
+    app.clientside_callback(
+        """
+        function(trigger) {
+            if (!trigger) { return window.dash_clientside.no_update; }
+            var btn = document.getElementById('run-backtest-btn');
+            if (btn) { btn.click(); }
+            return window.dash_clientside.no_update;
+        }
+        """,
+        Output('optimizer-autorun-sink', 'data'),  # dummy sink (avoids self-cycle)
+        Input('optimizer-autorun', 'data'),
+        prevent_initial_call=True,
+    )

@@ -4,8 +4,9 @@ Signal selection and indicator settings callbacks.
 
 import copy
 import json
+import time
 
-from dash import callback_context, html, dcc
+from dash import callback_context, html, dcc, no_update
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 
@@ -137,24 +138,50 @@ def register_signal_callbacks(app) -> None:
 
     @app.callback(
         [Output('buy-signals', 'value'),
-         Output('sell-signals', 'value')],
+         Output('sell-signals', 'value'),
+         Output('optimizer-autorun', 'data')],
         [Input('preset-apply-store', 'data'),
+         Input('optimizer-apply-store', 'data'),
          Input({'type': 'signal-toggle', 'side': 'buy', 'value': ALL}, 'value'),
          Input({'type': 'signal-toggle', 'side': 'sell', 'value': ALL}, 'value')],
         [State({'type': 'signal-toggle', 'side': 'buy', 'value': ALL}, 'id'),
          State({'type': 'signal-toggle', 'side': 'sell', 'value': ALL}, 'id')]
     )
-    def sync_signal_selection(preset_data, buy_values, sell_values, buy_ids, sell_ids):
-        """Sync row toggles to unified buy/sell selections."""
+    def sync_signal_selection(preset_data, optimizer_data, buy_values, sell_values, buy_ids, sell_ids):
+        """Sync row toggles to unified buy/sell selections.
+
+        Also the single source of truth for programmatic selection: presets and
+        the Optimizer's "Apply Best Strategy" both write here so the visible
+        toggle rows stay in sync. On an Optimizer apply we additionally emit an
+        ``optimizer-autorun`` nonce — in the same return as the committed
+        signals — which a clientside callback turns into a RUN BACKTEST click.
+        """
         ctx = callback_context
-        if getattr(ctx, "triggered_id", None) == 'preset-apply-store':
+        triggered = getattr(ctx, "triggered_id", None)
+
+        if triggered == 'preset-apply-store':
             if not preset_data:
                 raise PreventUpdate
             signals = preset_data.get("signals", {})
-            return list(signals.get("buy_signals", []) or []), list(signals.get("sell_signals", []) or [])
+            return (
+                list(signals.get("buy_signals", []) or []),
+                list(signals.get("sell_signals", []) or []),
+                no_update,
+            )
+
+        if triggered == 'optimizer-apply-store':
+            if not optimizer_data:
+                raise PreventUpdate
+            # Emit the autorun nonce alongside the committed signals so the
+            # backtest fires only after buy/sell-signals are set.
+            return (
+                list(optimizer_data.get("buy", []) or []),
+                list(optimizer_data.get("sell", []) or []),
+                {'nonce': time.time()},
+            )
 
         if not buy_ids and not sell_ids:
-            return [], []
+            return [], [], no_update
 
         selected_buy = [
             item_id['value']
@@ -167,7 +194,7 @@ def register_signal_callbacks(app) -> None:
             if value
         ]
 
-        return selected_buy, selected_sell
+        return selected_buy, selected_sell, no_update
 
     @app.callback(
         [Output('summary-strategy-mode', 'children'),

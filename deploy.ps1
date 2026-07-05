@@ -6,7 +6,8 @@
 #         .\deploy.ps1 -SkipFixPerms       # skip remote openclaw/sfa permission helper after sync
 #         .\deploy.ps1 -SkipRestartDashboard  # skip systemd restart (default: restart after sync)
 #         .\deploy.ps1 -SkipPipInstall     # skip remote `pip install -r requirements.txt` after sync
-#                                          # (run by default to keep the server venv in sync with local requirements.txt)
+#                                          # (checksum-gated by default: only installs when requirements.txt changed)
+#         .\deploy.ps1 -ForcePipInstall    # force remote pip install even if requirements.txt is unchanged
 
 param(
     [switch]$DryRun,
@@ -14,7 +15,8 @@ param(
     [switch]$PushConfig,
     [switch]$SkipFixPerms,
     [switch]$SkipRestartDashboard,
-    [switch]$SkipPipInstall
+    [switch]$SkipPipInstall,
+    [switch]$ForcePipInstall
 )
 
 $SERVER   = "root@77.42.70.26"
@@ -156,6 +158,67 @@ function Invoke-RestartDashboard {
     if ($LASTEXITCODE -ne 0) { exit 1 }
 }
 
+# Post-deploy: fix remote permissions and/or restart the dashboard.
+# When both are requested (the default) they share a single SSH session — plus
+# one scp for the perms helper — instead of the 4 handshakes the two standalone
+# helper scripts would take (perms: mkdir+scp+run = 3; restart = 1). When only
+# one is requested we defer to the authoritative standalone helper so their
+# standalone behaviour stays the single source of truth.
+function Invoke-PostDeploy {
+    if ($DryRun) { return }
+    $doPerms   = -not $SkipFixPerms
+    $doRestart = -not $SkipRestartDashboard
+    if (-not $doPerms -and -not $doRestart) { return }
+
+    if ($doPerms -and -not $doRestart) {
+        Write-Step "Fixing remote permissions (scripts/fix_openclaw_server_perms.ps1)..."
+        $fixPs1 = Join-Path $PSScriptRoot "scripts\fix_openclaw_server_perms.ps1"
+        if (-not (Test-Path $fixPs1)) { Write-Err "Missing $fixPs1"; exit 1 }
+        & $fixPs1 -Server $SERVER -Remote $REMOTE -SshKey $SSH_KEY
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+        return
+    }
+    if ($doRestart -and -not $doPerms) {
+        Invoke-RestartDashboard
+        return
+    }
+
+    # Both requested → merged fast path.
+    $service    = "searchforalpha-dashboard.service"
+    $permsLocal = Join-Path $PSScriptRoot "scripts\fix_openclaw_server_perms.sh"
+    if (-not (Test-Path $permsLocal)) { Write-Err "Missing $permsLocal"; exit 1 }
+
+    Write-Step "Post-deploy: fix perms + restart $service (single SSH session)"
+    # scp the perms helper to /tmp with LF endings — /tmp always exists so no
+    # remote mkdir round-trip is needed; the run session moves it into place.
+    $tmpSh     = Join-Path ([IO.Path]::GetTempPath()) ("sfa_fix_perms_{0}.sh" -f [Guid]::NewGuid().ToString("n"))
+    $remoteTmp = "/tmp/sfa_fix_perms.sh"
+    try {
+        $raw  = [System.IO.File]::ReadAllText($permsLocal)
+        $unix = $raw -replace "`r`n", "`n" -replace "`r", "`n"
+        [System.IO.File]::WriteAllText($tmpSh, $unix, [System.Text.UTF8Encoding]::new($false))
+        $tmpPosix = ((Resolve-Path -LiteralPath $tmpSh).Path -replace '\\', '/')
+        Invoke-Scp ($SCP_BASE_ARGS + @($tmpPosix, "${SERVER}:$remoteTmp")) "scp failed for perms helper"
+    } finally {
+        Remove-Item -LiteralPath $tmpSh -Force -ErrorAction SilentlyContinue
+    }
+
+    $permsDest = "$REMOTE/scripts/fix_openclaw_server_perms.sh"
+    $postCmd = @"
+set -e
+mkdir -p $REMOTE/scripts
+mv $remoteTmp $permsDest
+export SFA_APP=$REMOTE
+/bin/bash $permsDest
+systemctl restart $service
+systemctl is-active --quiet $service && echo active
+"@
+    $out = ssh -i $SSH_KEY -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30 $SERVER $postCmd 2>&1
+    if ($out) { Write-Host $out }
+    if ($LASTEXITCODE -ne 0) { Write-Err "post-deploy (perms + restart) failed"; exit 1 }
+    Write-Ok "Permissions fixed + dashboard restarted"
+}
+
 # ── single-file shortcut ─────────────────────────────────────────────────────
 if ($File) {
     $local = $File -replace "\\", "/"
@@ -192,6 +255,10 @@ if ($hasRsync) {
     foreach ($dir in $SYNC_DIRS) {
         if ($dir -eq "config") {
             Write-Step "  config/ (per-file - strategy_config.yaml skipped unless -PushConfig)"
+            # Batch all present config files into a single scp (one SSH handshake
+            # instead of one per file). scp with multiple sources needs a directory
+            # dest, so target config/ with a trailing slash.
+            $cfgLocals = @()
             foreach ($cfg in $CONFIG_FILES_ALWAYS) {
                 $localPath = Join-Path "config" $cfg
                 if (-not (Test-Path $localPath)) { continue }
@@ -199,12 +266,12 @@ if ($hasRsync) {
                     Write-Host "  [dry-run] scp $localPath → $SERVER`:$REMOTE/config/"
                     continue
                 }
-
-                Write-Step "    $cfg"
-                $localPosix = Get-ScpLocalPosix $localPath
-                $remoteSpec = Get-ScpRemoteDest "config/$cfg"
-                Invoke-Scp ($SCP_BASE_ARGS + @($localPosix, $remoteSpec)) "scp failed for config/$cfg"
-                Write-Ok "$cfg uploaded"
+                $cfgLocals += Get-ScpLocalPosix $localPath
+            }
+            if (-not $DryRun -and $cfgLocals.Count -gt 0) {
+                $cfgDest = Get-ScpRemoteDest "config/"
+                Invoke-Scp ($SCP_BASE_ARGS + $cfgLocals + @($cfgDest)) "scp failed for config files"
+                Write-Ok "config files uploaded ($($cfgLocals.Count))"
             }
             continue
         }
@@ -226,7 +293,7 @@ if ($hasRsync) {
             Write-Host "  [dry-run] skip config/strategy_config.yaml (use -PushConfig to upload)"
         }
         if (-not $SkipPipInstall) {
-            Write-Host "  [dry-run] ssh $SERVER pip install -r $REMOTE/requirements.txt"
+            Write-Host "  [dry-run] ssh $SERVER pip install -r $REMOTE/requirements.txt (checksum-gated: only if requirements.txt changed; -ForcePipInstall overrides)"
         } else {
             Write-Host "  [dry-run] skip pip install (SkipPipInstall set)"
         }
@@ -246,7 +313,7 @@ if ($hasRsync) {
             Write-Host "  [dry-run] skip config/strategy_config.yaml (use -PushConfig to upload)"
         }
         if (-not $SkipPipInstall) {
-            Write-Host "  [dry-run] ssh $SERVER pip install -r $REMOTE/requirements.txt"
+            Write-Host "  [dry-run] ssh $SERVER pip install -r $REMOTE/requirements.txt (checksum-gated: only if requirements.txt changed; -ForcePipInstall overrides)"
         } else {
             Write-Host "  [dry-run] skip pip install (SkipPipInstall set)"
         }
@@ -261,14 +328,17 @@ if ($hasRsync) {
         Write-Ok "$dir uploaded"
     }
     Write-Step "  config/ (partial - strategy_config.yaml skipped unless -PushConfig)"
+    # Batch all present config files into a single scp (one SSH handshake).
+    $cfgLocals = @()
     foreach ($cfg in $CONFIG_FILES_ALWAYS) {
         $localPath = Join-Path "config" $cfg
         if (-not (Test-Path $localPath)) { continue }
-        Write-Step "    $cfg"
-        $localPosix = Get-ScpLocalPosix $localPath
-        $remoteSpec = Get-ScpRemoteDest "config/$cfg"
-        Invoke-Scp ($SCP_BASE_ARGS + @($localPosix, $remoteSpec)) "scp failed for config/$cfg"
-        Write-Ok "$cfg uploaded"
+        $cfgLocals += Get-ScpLocalPosix $localPath
+    }
+    if ($cfgLocals.Count -gt 0) {
+        $cfgDest = Get-ScpRemoteDest "config/"
+        Invoke-Scp ($SCP_BASE_ARGS + $cfgLocals + @($cfgDest)) "scp failed for config files"
+        Write-Ok "config files uploaded ($($cfgLocals.Count))"
     }
 }
 
@@ -294,14 +364,41 @@ if (-not $DryRun -and -not $SkipPipInstall) {
         Invoke-Scp ($SCP_BASE_ARGS + @($reqLocal, $reqDest)) "scp failed for requirements.txt"
         Write-Ok "requirements.txt uploaded"
 
-        Write-Step "Installing requirements on $SERVER (python -m ensurepip + pip install -r)"
+        Write-Step "Installing requirements on $SERVER (checksum-gated; ensurepip + pip install -r on change)"
         # ensurepip covers the case where the venv was created --without-pip.
         # `python -m pip` is used because the venv may not have a `pip` binary.
+        #
+        # Checksum gate: pip install re-resolves the whole stack on every run
+        # (~5-30s) even when nothing changed. We store the sha256 of the last
+        # successfully-installed requirements.txt in .venv/.requirements.sha256
+        # and skip the install when it matches. Safety is preserved: any change
+        # to requirements.txt (or a fresh venv with no marker) forces a full
+        # install, so the "new dep shipped but never installed" crash-loop this
+        # step guards against still can't happen. The marker is written only
+        # after a successful install (set -e), so a failed install retries next
+        # deploy. Pass -ForcePipInstall to bypass the gate.
+        #
+        # `pipefail` is required for the safety property above to actually hold:
+        # the install line is piped through `tail`, and without pipefail a
+        # pipeline's exit status is tail's (always 0), so `set -e` would let a
+        # FAILED pip install fall through and still write the checksum marker —
+        # skipping the reinstall next deploy and crash-looping on the missing
+        # module. With pipefail the pipeline returns pip's exit code, `set -e`
+        # aborts before the marker is written, and the install retries.
+        $forcePip = if ($ForcePipInstall) { "1" } else { "" }
         $pipCmd = @"
 set -e
+set -o pipefail
 cd $REMOTE
-.venv/bin/python -m ensurepip --upgrade >/dev/null 2>&1 || true
-.venv/bin/python -m pip install -r requirements.txt 2>&1 | tail -20
+newsum=`$(sha256sum requirements.txt | awk '{print `$1}')
+oldsum=`$(cat .venv/.requirements.sha256 2>/dev/null || echo none)
+if [ -z "$forcePip" ] && [ "`$newsum" = "`$oldsum" ]; then
+  echo "requirements unchanged (sha `${newsum:0:12}) - skipping pip install"
+else
+  .venv/bin/python -m ensurepip --upgrade >/dev/null 2>&1 || true
+  .venv/bin/python -m pip install -r requirements.txt 2>&1 | tail -20
+  echo "`$newsum" > .venv/.requirements.sha256
+fi
 "@
         $pipOut = ssh -i $SSH_KEY -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30 $SERVER $pipCmd 2>&1
         $pipExit = $LASTEXITCODE
@@ -321,16 +418,6 @@ $deployNote = if (-not $PushConfig) {
 } else { "" }
 Write-Ok "Deploy complete → $SERVER`:$REMOTE$deployNote"
 
-# ── Fix permissions (full helper: venv, state/, param_history.yaml ACL, /usr/local/bin/sfa) ───
-if (-not $DryRun -and -not $SkipFixPerms) {
-    Write-Step "Fixing remote permissions (scripts/fix_openclaw_server_perms.ps1)..."
-    $fixPs1 = Join-Path $PSScriptRoot "scripts\fix_openclaw_server_perms.ps1"
-    if (-not (Test-Path $fixPs1)) {
-        Write-Err "Missing $fixPs1"
-        exit 1
-    }
-    & $fixPs1 -Server $SERVER -Remote $REMOTE -SshKey $SSH_KEY
-    if ($LASTEXITCODE -ne 0) { exit 1 }
-}
-
-Invoke-RestartDashboard
+# ── Post-deploy: fix permissions (venv, state/, param_history.yaml ACL,
+#    /usr/local/bin/sfa) + restart dashboard, sharing one SSH session by default ──
+Invoke-PostDeploy

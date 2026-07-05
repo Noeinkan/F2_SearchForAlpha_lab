@@ -990,6 +990,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
         ),
         dbc.Tooltip("Simulate trading with selected buy/sell signals", target='run-backtest-btn', placement='top'),
 
+        html.Div(id='backtest-origin-note', style={'marginTop': '10px'}),
         dcc.Loading(
             id='backtest-loading',
             type='circle',
