@@ -11,14 +11,13 @@ from dash.exceptions import PreventUpdate
 
 from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, FONT_SIZES, get_theme, merge_indicator_settings
 from lib.dash.styles import get_styles
-from lib.dash.helpers import format_df_for_display
 from lib.dash.state import dashboard_state
 from lib.dash.callbacks.shared import (
     _format_signal_label,
     _build_indicator_settings_panel,
     _build_signal_options,
     _build_unified_signal_rows,
-    _create_data_table,
+    build_data_display_payload,
     get_enriched,
 )
 
@@ -367,7 +366,7 @@ def register_signal_callbacks(app) -> None:
         [Output('buy-signals', 'options', allow_duplicate=True),
          Output('sell-signals', 'options', allow_duplicate=True),
          Output('signals-unified-store', 'data', allow_duplicate=True),
-         Output('data-table-container', 'children', allow_duplicate=True)],
+         Output('data-display-store', 'data', allow_duplicate=True)],
         [Input('indicator-settings-store', 'data')],
         [State('data-loaded-store', 'data')],
         prevent_initial_call=True
@@ -377,7 +376,6 @@ def register_signal_callbacks(app) -> None:
         if not data_loaded or dashboard_state.df is None:
             raise PreventUpdate
 
-        theme = get_theme()
         indicator_settings = merge_indicator_settings(indicator_settings)
         df = get_enriched(dashboard_state.df, indicator_settings)
         if df is None or df.empty:
@@ -389,6 +387,5 @@ def register_signal_callbacks(app) -> None:
         sell_options = _build_signal_options(sell_columns)
         unified_rows = _build_unified_signal_rows(buy_columns, sell_columns)
 
-        display_df = format_df_for_display(df.tail(50)).reset_index()
-        data_table = _create_data_table(display_df, theme)
-        return buy_options, sell_options, unified_rows, data_table
+        data_display = build_data_display_payload(df)
+        return buy_options, sell_options, unified_rows, data_display

@@ -76,7 +76,7 @@ def register_data_loading_callbacks(app) -> None:
          Output('header-ticker-symbol', 'children'),
          Output('header-ticker-price', 'children'),
          Output('header-ticker-change', 'children'),
-         Output('data-table-container', 'children'),
+         Output('data-display-store', 'data'),
          Output('financial-chart', 'figure', allow_duplicate=True)],
         [Input('load-data-button', 'n_clicks'),
          Input('autoload-interval', 'n_intervals'),
@@ -150,7 +150,7 @@ def register_data_loading_callbacks(app) -> None:
                 snapshot.header_symbol,
                 snapshot.header_price,
                 snapshot.header_change,
-                snapshot.data_table,
+                snapshot.data_display,
                 snapshot.chart_figure,
             )
 

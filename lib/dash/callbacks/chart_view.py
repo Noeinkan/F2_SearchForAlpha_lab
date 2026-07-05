@@ -123,3 +123,59 @@ def register_chart_view_callbacks(app) -> None:
         )
         config['view_range'] = view_range
         return create_chart(enriched, config, get_theme())
+
+    @app.callback(
+        [
+            Output('financial-chart', 'figure', allow_duplicate=True),
+            Output('chart-focus-store', 'data'),
+        ],
+        Input('chart-focus-store', 'data'),
+        [
+            State({'type': 'plot-toggle', 'indicator': ALL}, 'value'),
+            State('chart-elements-checklist', 'value'),
+            State('signal-checklist', 'value'),
+            State('buy-signals', 'value'),
+            State('sell-signals', 'value'),
+            State('consecutive-signal-mode', 'value'),
+            State('signal-cooldown-bars', 'value'),
+            State('signal-logic-mode', 'value'),
+            State('signal-window', 'value'),
+            State('indicator-settings-store', 'data'),
+            State('data-loaded-store', 'data'),
+        ],
+        prevent_initial_call=True,
+    )
+    def zoom_chart_to_data_focus(
+        focus,
+        plot_values,
+        chart_elements,
+        selected_signals,
+        buy_signals,
+        sell_signals,
+        consecutive_signal_mode,
+        signal_cooldown_bars,
+        signal_logic,
+        signal_window,
+        indicator_settings,
+        data_loaded,
+    ):
+        """Zoom the chart when a Data tab row is clicked."""
+        if not focus or not data_loaded or dashboard_state.df is None:
+            raise PreventUpdate
+
+        enriched = get_enriched(dashboard_state.df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
+        config = _build_chart_config(
+            plot_values,
+            chart_elements,
+            selected_signals,
+            buy_signals,
+            sell_signals,
+            consecutive_signal_mode,
+            signal_cooldown_bars,
+            signal_logic,
+            signal_window,
+            indicator_settings,
+        )
+        fig = create_chart(enriched, config, get_theme())
+        fig.update_layout(xaxis=dict(range=[focus['start'], focus['end']]))
+        return fig, None

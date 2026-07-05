@@ -23,7 +23,7 @@ from lib.dash.dash_config import (
     get_theme,
     merge_indicator_settings,
 )
-from lib.dash.helpers import fetch_data_with_cache, format_df_for_display
+from lib.dash.helpers import fetch_data_with_cache
 from lib.dash.state import dashboard_state
 from lib.signals.indicators import (
     add_indicators,
@@ -76,7 +76,7 @@ class BootstrapSnapshot:
     buy_options: list
     sell_options: list
     unified_rows: list
-    data_table: Any
+    data_display: dict[str, Any]
     chart_figure: Any
 
 
@@ -95,7 +95,7 @@ def load_market_session(
     from lib.dash.callbacks.shared import (
         _build_signal_options,
         _build_unified_signal_rows,
-        _create_data_table,
+        build_data_display_payload,
         _create_price_subtitle,
         clear_enriched_cache,
     )
@@ -119,8 +119,7 @@ def load_market_session(
     sell_options = _build_signal_options(sell_columns)
     unified_rows = _build_unified_signal_rows(buy_columns, sell_columns)
 
-    display_df = format_df_for_display(df.tail(50)).reset_index()
-    data_table = _create_data_table(display_df, theme)
+    data_display = build_data_display_payload(df)
     subtitle = _create_price_subtitle(df, theme)
 
     latest_close = df['Close'].iloc[-1]
@@ -154,7 +153,7 @@ def load_market_session(
         buy_options=buy_options,
         sell_options=sell_options,
         unified_rows=unified_rows,
-        data_table=data_table,
+        data_display=data_display,
         chart_figure=chart_figure,
     )
 

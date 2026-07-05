@@ -5,7 +5,7 @@ The backtest accordion is intentionally inline (one giant builder) to keep
 the JSX structure of the four accordion sections co-located — splitting it
 further would scatter section IDs and tooltips across files and make
 edit-and-test slower. The optimizer panel is dense enough to deserve its
-own builder; the data tab is just a placeholder div.
+own builder; the data tab renders a filterable OHLCV/indicator/signal table.
 """
 
 import dash_bootstrap_components as dbc
@@ -13,6 +13,7 @@ from dash import dcc, html
 
 from lib.dash.dash_config import (
     FONT_SIZES, FONT_FAMILY, BORDER_RADIUS, DEFAULT_SIGNAL_WINDOW,
+    DATA_ROW_OPTIONS, DATA_COLUMN_GROUPS,
 )
 from lib.dash.components import dense_input, ticker_pill
 from lib.dash.bootstrap import BootstrapSnapshot
@@ -49,7 +50,82 @@ def _create_right_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapshot 
 
                 # Data Panel
                 html.Div(id='panel-data', children=[
-                    html.Div(id='data-table-container', children=bootstrap.data_table if bootstrap else None, style={'fontSize': FONT_SIZES['xs']}),
+                    html.Div([
+                        html.Div([
+                            html.Label('Rows', style={
+                                'fontSize': FONT_SIZES['xs'],
+                                'color': theme['text_secondary'],
+                                'marginBottom': '4px',
+                                'display': 'block',
+                            }),
+                            dcc.RadioItems(
+                                id='data-rows',
+                                options=DATA_ROW_OPTIONS,
+                                value=50,
+                                inline=True,
+                                className='bbg-radio-seg',
+                            ),
+                        ], style={'marginBottom': '10px'}),
+                        html.Div([
+                            html.Label('Columns', style={
+                                'fontSize': FONT_SIZES['xs'],
+                                'color': theme['text_secondary'],
+                                'marginBottom': '4px',
+                                'display': 'block',
+                            }),
+                            dcc.Checklist(
+                                id='data-col-groups',
+                                options=DATA_COLUMN_GROUPS,
+                                value=['ohlcv', 'indicators', 'signals'],
+                                inline=True,
+                                inputStyle={'marginRight': '4px'},
+                                labelStyle={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'marginRight': '10px',
+                                    'color': theme['text_primary'],
+                                },
+                            ),
+                        ], style={'marginBottom': '10px'}),
+                        html.Div([
+                            html.Div([
+                                html.Label('From', style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_secondary'],
+                                    'marginBottom': '4px',
+                                    'display': 'block',
+                                }),
+                                dcc.DatePickerSingle(
+                                    id='data-date-start',
+                                    display_format='YYYY-MM-DD',
+                                    className='dark-datepicker',
+                                    style={'width': '100%'},
+                                ),
+                            ], style={'flex': 1}),
+                            html.Div([
+                                html.Label('To', style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_secondary'],
+                                    'marginBottom': '4px',
+                                    'display': 'block',
+                                }),
+                                dcc.DatePickerSingle(
+                                    id='data-date-end',
+                                    display_format='YYYY-MM-DD',
+                                    className='dark-datepicker date-picker-end',
+                                    style={'width': '100%'},
+                                ),
+                            ], style={'flex': 1}),
+                        ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '10px'}),
+                        html.Button(
+                            'EXPORT CSV',
+                            id='data-export-btn',
+                            style={**styles['button_outline'], 'width': '100%', 'marginBottom': '10px'},
+                            n_clicks=0,
+                        ),
+                        dcc.Download(id='data-download'),
+                    ]),
+                    html.Div(id='data-summary-strip'),
+                    html.Div(id='data-table-container', style={'fontSize': FONT_SIZES['xs']}),
                 ], style={'display': 'none'}),
 
             ], style=styles['panel_content']),

@@ -299,7 +299,7 @@ START_PORT = 8050
 MAX_PORT_TRIES = 100
 
 # Bump when persisted dcc.Store shape changes (clears stale dash-* browser storage).
-UI_STORAGE_VERSION = "1"
+UI_STORAGE_VERSION = "2"
 
 # Dashboard URL routes (browser refresh uses pathname as source of truth)
 ROUTE_TERMINAL = '/'
@@ -478,6 +478,23 @@ SIGNAL_OPTIONS = [
     ('Buy', 'buy'),
     ('Sell', 'sell')
 ]
+
+# Data tab — row slice and column-group filters
+DATA_ROW_OPTIONS = [
+    {'label': '5', 'value': 5},
+    {'label': '25', 'value': 25},
+    {'label': '50', 'value': 50},
+    {'label': '100', 'value': 100},
+    {'label': 'All', 'value': 'all'},
+]
+
+DATA_COLUMN_GROUPS = [
+    {'label': 'OHLCV', 'value': 'ohlcv'},
+    {'label': 'Indicators', 'value': 'indicators'},
+    {'label': 'Signals', 'value': 'signals'},
+]
+
+DATA_EXPORT_MAX_ROWS = 5000
 
 # =============================================================================
 # INDICATOR SETTINGS

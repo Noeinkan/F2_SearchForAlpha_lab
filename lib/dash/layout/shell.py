@@ -50,6 +50,8 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         # Hidden stores
         dcc.Store(id='theme-store', data=DEFAULT_THEME, storage_type='local'),
         dcc.Store(id='data-loaded-store', data=1 if bootstrapped else 0),
+        dcc.Store(id='data-display-store', data=bootstrap.data_display if bootstrap else None),
+        dcc.Store(id='chart-focus-store', data=None),
         dcc.Store(id='layout-store', data={}),
         dcc.Store(id='presets-store', data={'presets': {}}),
         dcc.Store(id='active-preset-name', data=None),

@@ -109,22 +109,23 @@ def register_startup_callbacks(app) -> None:
 
     @app.callback(
         Output(_TICKER_DROPDOWN, 'value', allow_duplicate=True),
-        [Input(_TICKER_DROPDOWN, 'searchValue'),
-         Input(_TICKER_DROPDOWN, 'dropdownOpened')],
+        Input(_TICKER_DROPDOWN, 'searchValue'),
         State(_TICKER_DROPDOWN, 'value'),
         prevent_initial_call=True,
     )
-    def clear_preselected_ticker_on_first_focus(search_value, dropdown_opened, current_value):
-        """Clear the preselected ticker the moment the user focuses / types.
+    def clear_preselected_ticker_on_first_typing(search_value, current_value):
+        """Clear the preselected ticker the moment the user starts typing.
 
-        Accelerates research: the field opens with the page default so the chart
-        loads with the correct symbol, but the moment the user clicks/opens the
-        dropdown or starts typing, the field goes blank so they can immediately
-        enter a new ticker without backspacing.
+        Accelerates research: the page-default value is kept so deep-link
+        routes (``/ticker/TSLA``) still preselect the right symbol, but the
+        moment the user types the first character the field goes blank so
+        they can immediately enter a new ticker without backspacing.
+        ``n_blur`` / ``dropdownOpened`` were avoided because Mantine can
+        dispatch them during hydration, which would wipe the page-default
+        before the user has actually touched the control.
         """
         if str(current_value or '').strip().upper() != DEFAULT_TICKER:
             raise PreventUpdate
-        user_focused = bool(dropdown_opened) or bool((search_value or '').strip())
-        if not user_focused:
+        if not (search_value or '').strip():
             raise PreventUpdate
         return None

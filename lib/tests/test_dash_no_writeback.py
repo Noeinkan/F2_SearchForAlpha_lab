@@ -71,8 +71,7 @@ def test_signals_callback_does_not_write_df():
     with patch.object(signals_mod, "dashboard_state", recorder):
         with patch.object(signals_mod, "get_enriched", return_value=recorder.df):
             with patch.object(signals_mod, "merge_indicator_settings", return_value=indicator_settings):
-                with patch.object(signals_mod, "format_df_for_display", return_value=recorder.df.tail(10).reset_index()):
-                    with patch.object(signals_mod, "_create_data_table", return_value=MagicMock()):
+                with patch.object(signals_mod, "build_data_display_payload", return_value={'records': []}):
                         try:
                             signals_mod.register_signal_callbacks.__wrapped__
                         except AttributeError:

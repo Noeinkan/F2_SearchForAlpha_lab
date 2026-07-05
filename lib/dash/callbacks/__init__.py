@@ -5,6 +5,7 @@ Callback registry for the dashboard.
 from .startup import register_startup_callbacks
 from .presets import register_preset_callbacks
 from .data_loading import register_data_loading_callbacks
+from .data_table import register_data_table_callbacks
 from .strategy_ui import register_strategy_callbacks
 from .signals import register_signal_callbacks
 from .chart_plotly import register_plotly_callbacks
@@ -25,6 +26,7 @@ def register_callbacks(app) -> None:
     register_startup_callbacks(app)
     register_preset_callbacks(app)
     register_data_loading_callbacks(app)
+    register_data_table_callbacks(app)
     register_strategy_callbacks(app)
     register_signal_callbacks(app)
     register_plotly_callbacks(app)
