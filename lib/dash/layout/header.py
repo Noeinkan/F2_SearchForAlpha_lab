@@ -48,6 +48,16 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
             html.Span('CONNECTED', className='bbg-header-status-label'),
             html.Span('│', className='bbg-header-divider'),
             html.Div(id='header-status', className='num bbg-header-clock'),
+            # Donate link — warm CTA distinct from neutral header icon buttons.
+            html.A(
+                'Donate',
+                href=KOFI_URL,
+                target='_blank',
+                rel='noopener noreferrer',
+                className='bbg-donate-button',
+                title='Support this project on Ko-fi',
+                **{'aria-label': 'Donate — support this project on Ko-fi'},
+            ),
             # Theme toggle — Phase 4: cycle DARK → CVD → LIGHT.
             html.Button(
                 id='theme-toggle',
@@ -56,17 +66,6 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
                 n_clicks=0,
                 title='Cycle theme: Dark → CVD-safe → Light',
                 **{'aria-label': 'Cycle theme (Dark, CVD-safe, Light)'},
-            ),
-            # Ko-fi donation link — external support button (plain text label
-            # inherits theme accent on hover; no per-theme logo overrides).
-            html.A(
-                '[ KO-FI ]',
-                href=KOFI_URL,
-                target='_blank',
-                rel='noopener noreferrer',
-                className='bbg-icon-button',
-                title='Support this project on Ko-fi',
-                **{'aria-label': 'Support this project on Ko-fi'},
             ),
             # Phase 5 — keyboard-shortcut catalog button.
             html.Button(
