@@ -71,33 +71,6 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
             ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '12px'}),
 
             html.Div([
-                html.Label("Interval", style={
-                    'fontSize': FONT_SIZES['xs'],
-                    'color': theme['text_secondary'],
-                    'marginBottom': '4px',
-                    'display': 'block',
-                }),
-                dcc.RadioItems(
-                    id='bar-interval',
-                    options=[
-                        {'label': 'D', 'value': '1d'},
-                        {'label': '1H', 'value': '1h'},
-                        {'label': '4H', 'value': '4h'},
-                    ],
-                    value='1d',
-                    inline=True,
-                    className='sfa-bar-interval',
-                    inputStyle={'marginRight': '4px'},
-                    labelStyle={
-                        'marginRight': '12px',
-                        'fontSize': FONT_SIZES['sm'],
-                        'color': theme['text_primary'],
-                        'cursor': 'pointer',
-                    },
-                ),
-            ], style={'marginBottom': '12px'}),
-
-            html.Div([
                 html.Label("Initial Capital", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '4px', 'display': 'block'}),
                 dense_input(
                     id='initial-capital',

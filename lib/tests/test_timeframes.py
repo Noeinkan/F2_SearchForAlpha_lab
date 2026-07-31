@@ -53,6 +53,15 @@ def test_clamp_window_rejects_stale_intraday_range():
         clamp_window("2024-01-01", "2024-06-30", "1h", as_of=as_of)
 
 
+def test_clamp_window_relocates_stale_intraday_range():
+    as_of = datetime(2026, 7, 31)
+    start, end = clamp_window(
+        "2018-05-01", "2020-07-27", "4h", as_of=as_of, relocate=True
+    )
+    assert end == "2026-07-31"
+    assert start == "2024-07-31"  # duration > 730d → clipped to lookback
+
+
 def test_resample_ohlcv_4h():
     # Align to calendar 4h buckets so Open/Close mapping is deterministic.
     idx = pd.date_range("2024-01-02 08:00", periods=8, freq="1h")

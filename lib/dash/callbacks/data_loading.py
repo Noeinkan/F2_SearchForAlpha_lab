@@ -4,7 +4,7 @@ Data loading callbacks.
 
 import logging
 
-from dash import callback_context, html
+from dash import callback_context, html, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
@@ -19,7 +19,7 @@ from lib.dash.dash_config import (
 )
 from lib.dash.chart_builder import create_empty_chart
 from lib.dash.state import dashboard_state
-from lib.timeframes import clamp_window, normalize_interval
+from lib.timeframes import IntervalError, clamp_window, normalize_interval
 
 logger = logging.getLogger(__name__)
 
@@ -84,14 +84,15 @@ def register_data_loading_callbacks(app) -> None:
             return DEFAULT_BAR_INTERVAL
 
     @app.callback(
-        Output('start-date', 'date', allow_duplicate=True),
+        [Output('start-date', 'date', allow_duplicate=True),
+         Output('end-date', 'date', allow_duplicate=True)],
         Input('bar-interval', 'value'),
         State('start-date', 'date'),
         State('end-date', 'date'),
         prevent_initial_call=True,
     )
-    def clamp_start_for_interval(interval, start_date, end_date):
-        """Auto-clamp start when switching to 1h/4h if range exceeds Yahoo max."""
+    def adjust_dates_for_interval(interval, start_date, end_date):
+        """Fit date pickers into Yahoo's rolling lookback when switching to 1h/4h."""
         if not start_date or not end_date:
             raise PreventUpdate
         try:
@@ -100,10 +101,20 @@ def register_data_loading_callbacks(app) -> None:
             raise PreventUpdate
         if canon == "1d":
             raise PreventUpdate
-        new_start, _ = clamp_window(str(start_date)[:10], str(end_date)[:10], canon)
-        if new_start == str(start_date)[:10]:
+        try:
+            new_start, new_end = clamp_window(
+                str(start_date)[:10],
+                str(end_date)[:10],
+                canon,
+                relocate=True,
+            )
+        except IntervalError:
             raise PreventUpdate
-        return new_start
+        start_out = new_start if new_start != str(start_date)[:10] else no_update
+        end_out = new_end if new_end != str(end_date)[:10] else no_update
+        if start_out is no_update and end_out is no_update:
+            raise PreventUpdate
+        return start_out, end_out
 
     @app.callback(
         [Output('data-status', 'children'),
@@ -180,14 +191,19 @@ def register_data_loading_callbacks(app) -> None:
         else:
             raise PreventUpdate
 
-        if start_date and end_date:
-            start_date, end_date = clamp_window(
-                str(start_date)[:10], str(end_date)[:10], canon
-            )
-
         theme = get_theme()
 
         try:
+            if start_date and end_date:
+                # UI relocates stale windows into Yahoo's rolling lookback so
+                # switching D→1H/4H with an old End Date still refreshes the chart.
+                start_date, end_date = clamp_window(
+                    str(start_date)[:10],
+                    str(end_date)[:10],
+                    canon,
+                    relocate=True,
+                )
+
             # Lazy import avoids bootstrap ↔ callbacks circular import on startup.
             from lib.dash.bootstrap import load_market_session
 

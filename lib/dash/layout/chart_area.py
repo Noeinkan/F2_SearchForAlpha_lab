@@ -59,6 +59,17 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
             ], style={'display': 'flex', 'gap': '12px', 'alignItems': 'baseline', 'flex': '1 1 auto', 'minWidth': 0}),
 
             html.Div([
+                dcc.RadioItems(
+                    id='bar-interval',
+                    options=[
+                        {'label': 'D', 'value': '1d'},
+                        {'label': '1H', 'value': '1h'},
+                        {'label': '4H', 'value': '4h'},
+                    ],
+                    value='1d',
+                    inline=True,
+                    className='bbg-radio-seg sfa-bar-interval',
+                ),
                 html.Button("Export CSV", id='export-csv-btn', style=styles['button_outline'], n_clicks=0),
                 html.Button("Export Image", id='export-img-btn', style=styles['button_outline'], n_clicks=0),
             ], style={'display': 'flex', 'gap': '12px', 'alignItems': 'center', 'flexShrink': 0}),

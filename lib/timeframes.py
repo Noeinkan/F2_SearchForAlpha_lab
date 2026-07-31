@@ -87,15 +87,19 @@ def clamp_window(
     interval: str | None,
     *,
     as_of: datetime | None = None,
+    relocate: bool = False,
 ) -> tuple[str, str]:
     """Clamp the window into Yahoo's rolling lookback for ``interval``.
 
     Yahoo measures the intraday cap (~730 days) from *now*, not from
     ``end``. Daily bars are not clamped.
 
-    Returns ``(start, end)`` as ``YYYY-MM-DD`` strings. Raises
-    ``IntervalError`` when the entire requested window falls outside the
-    available range (so callers do not silently backtest a different era).
+    Returns ``(start, end)`` as ``YYYY-MM-DD`` strings.
+
+    When the entire window is older than Yahoo's lookback:
+    - ``relocate=False`` (CLI default): raise ``IntervalError``
+    - ``relocate=True`` (Dash UI): shift the window into the available
+      range, preserving duration when possible, ending at ``as_of``/today.
 
     ``as_of`` is for tests; production uses ``datetime.now()``.
     """
@@ -128,12 +132,27 @@ def clamp_window(
         end_dt = latest
 
     if end_dt < earliest:
-        raise IntervalError(
-            f"Yahoo {canon} history only covers the last {max_days} days "
-            f"(from {_fmt_date(earliest)}). Requested window "
-            f"{_fmt_date(orig_start)} → {_fmt_date(orig_end)} is outside that range. "
-            f"Use a more recent --to date (e.g. within the last {max_days} days)."
+        if not relocate:
+            raise IntervalError(
+                f"Yahoo {canon} history only covers the last {max_days} days "
+                f"(from {_fmt_date(earliest)}). Requested window "
+                f"{_fmt_date(orig_start)} → {_fmt_date(orig_end)} is outside that range. "
+                f"Use a more recent --to date (e.g. within the last {max_days} days)."
+            )
+        duration = orig_end - orig_start
+        end_dt = latest
+        start_dt = end_dt - duration
+        if start_dt < earliest:
+            start_dt = earliest
+        logger.warning(
+            "Interval %s window %s→%s outside Yahoo lookback; relocated → %s→%s",
+            canon,
+            _fmt_date(orig_start),
+            _fmt_date(orig_end),
+            _fmt_date(start_dt),
+            _fmt_date(end_dt),
         )
+        return _fmt_date(start_dt), _fmt_date(end_dt)
 
     if start_dt < earliest:
         logger.warning(
