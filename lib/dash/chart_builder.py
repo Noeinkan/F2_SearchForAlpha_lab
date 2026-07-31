@@ -4,7 +4,7 @@ Professional financial chart creation with Plotly.
 """
 
 import logging
-from typing import Dict, List
+from typing import Any, Dict, List
 import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
@@ -138,11 +138,44 @@ def infer_bar_interval(index: pd.Index) -> str:
     return "1M"
 
 
+def is_subdaily(index: pd.Index) -> bool:
+    """True when median bar spacing is under one calendar day."""
+    label = infer_bar_interval(index)
+    return bool(label.endswith('H') or (len(label) > 1 and label.endswith('m')))
+
+
+def _median_bar_delta(index: pd.Index) -> pd.Timedelta:
+    """Median consecutive gap; falls back to 1 day."""
+    if index is None or len(index) < 2:
+        return pd.Timedelta(days=1)
+    try:
+        deltas = pd.Series(index[1:]) - pd.Series(index[:-1])
+        med = deltas.median()
+        if pd.isna(med) or med <= pd.Timedelta(0):
+            return pd.Timedelta(days=1)
+        return pd.Timedelta(med)
+    except (TypeError, ValueError, AttributeError):
+        return pd.Timedelta(days=1)
+
+
+def _apply_intraday_hover(fig: go.Figure, df: pd.DataFrame) -> None:
+    """Upgrade date-only hovertemplates to include time for sub-daily bars."""
+    if not is_subdaily(df.index):
+        return
+    for tr in fig.data:
+        ht = getattr(tr, 'hovertemplate', None)
+        if isinstance(ht, str) and '%{x|%Y-%m-%d}' in ht and '%H:%M' not in ht:
+            tr.hovertemplate = ht.replace('%{x|%Y-%m-%d}', '%{x|%Y-%m-%d %H:%M}')
+
+
 def bar_count_summary(df: pd.DataFrame, view_range: dict | None = None) -> str:
     """Toolbar string like ``1,247 bars · 1D · 2018-01-02 → 2024-12-31``.
 
     Reflects the visible window when a ``view_range`` (zoom store) is active,
-    otherwise the full series.
+    otherwise the full series. When the Plotly path downsamples (full series
+    above ``DOWNSAMPLE_THRESHOLD`` and the render window still exceeds
+    ``MAX_RENDER_BARS``), appends ``(showing 1,500)`` so the toolbar matches
+    what is drawn.
     """
     if df is None or len(df) == 0:
         return ''
@@ -159,12 +192,26 @@ def bar_count_summary(df: pd.DataFrame, view_range: dict | None = None) -> str:
             except (ValueError, TypeError):
                 pass
     n = len(visible)
+    # Mirror _prepare_render_df: downsample only engages above threshold,
+    # and only when the (possibly zoomed) window is still over the cap.
+    downsampled = (
+        len(df) > DOWNSAMPLE_THRESHOLD and n > MAX_RENDER_BARS
+    )
+    bars_label = (
+        f"{n:,} bars (showing {MAX_RENDER_BARS:,})" if downsampled else f"{n:,} bars"
+    )
     try:
-        start_s = pd.to_datetime(visible.index[0]).strftime('%Y-%m-%d')
-        end_s = pd.to_datetime(visible.index[-1]).strftime('%Y-%m-%d')
+        start_ts = pd.to_datetime(visible.index[0])
+        end_ts = pd.to_datetime(visible.index[-1])
+        if is_subdaily(df.index):
+            start_s = start_ts.strftime('%Y-%m-%d %H:%M')
+            end_s = end_ts.strftime('%Y-%m-%d %H:%M')
+        else:
+            start_s = start_ts.strftime('%Y-%m-%d')
+            end_s = end_ts.strftime('%Y-%m-%d')
     except (ValueError, TypeError, IndexError):
-        return f"{n:,} bars · {interval}"
-    return f"{n:,} bars · {interval} · {start_s} → {end_s}"
+        return f"{bars_label} · {interval}"
+    return f"{bars_label} · {interval} · {start_s} → {end_s}"
 
 
 def _get_indicator_setting(config: Dict, indicator: str, key: str, default: float | int) -> float | int:
@@ -298,9 +345,10 @@ def create_chart(df: pd.DataFrame, config: Dict, theme: dict) -> go.Figure:
             )
         )
 
-        _add_range_selector(fig, plot_count, theme)
+        _add_range_selector(fig, plot_count, theme, df=df)
         _update_layout(fig, df, plot_count, config.get('show_legend', False), config, theme)
         _add_crosshair(fig, plot_count, theme)
+        _apply_intraday_hover(fig, df)
 
         # Phase 8: when rendering a zoomed window (large-data path), pin the
         # x-axis to that window so _update_layout's full-range reset doesn't
@@ -724,7 +772,12 @@ def _add_signal_traces(
     _add_combined_markers('sell', sell_signal_columns or [])
 
 
-def _add_range_selector(fig: go.Figure, plot_count: int, theme: dict) -> None:
+def _add_range_selector(
+    fig: go.Figure,
+    plot_count: int,
+    theme: dict,
+    df: pd.DataFrame | None = None,
+) -> None:
     """Add time range selector buttons to the canonical (bottom) shared x-axis.
 
     With ``make_subplots(shared_xaxes=True)`` every row's xaxis is created
@@ -739,16 +792,27 @@ def _add_range_selector(fig: go.Figure, plot_count: int, theme: dict) -> None:
     normalized paper coordinates, so the buttons stay visually at the top
     of the figure regardless of which subplot owns them.
     """
+    subdaily = bool(df is not None and is_subdaily(df.index))
+    if subdaily:
+        buttons = [
+            dict(count=5, label="5D", step="day", stepmode="backward"),
+            dict(count=1, label="1M", step="month", stepmode="backward"),
+            dict(count=3, label="3M", step="month", stepmode="backward"),
+            dict(step="all", label="ALL"),
+        ]
+    else:
+        buttons = [
+            dict(count=1, label="1M", step="month", stepmode="backward"),
+            dict(count=3, label="3M", step="month", stepmode="backward"),
+            dict(count=6, label="6M", step="month", stepmode="backward"),
+            dict(count=1, label="YTD", step="year", stepmode="todate"),
+            dict(count=1, label="1Y", step="year", stepmode="backward"),
+            dict(step="all", label="ALL"),
+        ]
+
     fig.update_xaxes(
         rangeselector=dict(
-            buttons=list([
-                dict(count=1, label="1M", step="month", stepmode="backward"),
-                dict(count=3, label="3M", step="month", stepmode="backward"),
-                dict(count=6, label="6M", step="month", stepmode="backward"),
-                dict(count=1, label="YTD", step="year", stepmode="todate"),
-                dict(count=1, label="1Y", step="year", stepmode="backward"),
-                dict(step="all", label="ALL")
-            ]),
+            buttons=list(buttons),
             bgcolor='rgba(0,0,0,0)',
             activecolor=theme['accent_blue'],
             font=dict(color=theme['text_secondary'], size=11, family=FONT_FAMILY),
@@ -802,7 +866,7 @@ def _update_layout(fig: go.Figure, df: pd.DataFrame, plot_count: int, show_legen
     )
 
     for i in range(1, plot_count + 1):
-        fig.update_xaxes(
+        x_kwargs: Dict[str, Any] = dict(
             rangeslider_visible=False,
             showgrid=True,
             gridcolor=theme['chart_grid'],
@@ -815,8 +879,14 @@ def _update_layout(fig: go.Figure, df: pd.DataFrame, plot_count: int, show_legen
             tickfont=dict(color=theme['text_secondary'], size=11, family=FONT_FAMILY),
             ticks='outside',
             ticklen=4,
-            row=i, col=1
+            row=i, col=1,
         )
+        if is_subdaily(df.index):
+            # Hide weekends so 1H/4H charts don't show empty Sat–Sun stretches.
+            x_kwargs['rangebreaks'] = [dict(bounds=["sat", "mon"])]
+            x_kwargs['tickformat'] = '%b %d\n%H:%M'
+            x_kwargs['nticks'] = 10
+        fig.update_xaxes(**x_kwargs)
         fig.update_yaxes(
             showgrid=True,
             gridcolor=theme['chart_grid'],
@@ -855,10 +925,11 @@ def _update_layout(fig: go.Figure, df: pd.DataFrame, plot_count: int, show_legen
 
     # Pin the bottom row's x-axis to the data range plus a small right-side
     # buffer so Plotly's default ~5% autorange padding stops adding an empty
-    # rectangle past the rightmost candle. The shared-xaxes wiring above
-    # propagates this range to every upper row automatically.
+    # rectangle past the rightmost candle. Scale the pad to bar size so
+    # intraday charts don't get a multi-day empty strip.
+    right_pad = _median_bar_delta(df.index) * 3
     fig.update_xaxes(
-        range=[df.index.min(), df.index.max() + pd.Timedelta(days=2)],
+        range=[df.index.min(), df.index.max() + right_pad],
         row=plot_count, col=1,
     )
 
@@ -882,10 +953,16 @@ def _add_crosshair(fig: go.Figure, plot_count: int, theme: dict) -> None:
 
 
 def create_empty_chart(theme: dict, message: str = "Load data to view chart") -> go.Figure:
-    """Create an empty chart with a placeholder message."""
+    """Create an empty chart with a placeholder message.
+
+    Layout knobs (``autosize``, margins) match ``_update_layout`` so the
+    placeholder fills ``#chart-frame`` the same way a live multi-panel chart does.
+    """
     fig = go.Figure()
     fig.update_layout(
         template='plotly_dark',
+        autosize=True,
+        margin=dict(l=60, r=20, t=56, b=36),
         plot_bgcolor=theme['bg_primary'],
         paper_bgcolor=theme['bg_primary'],
         font=dict(color=theme['text_secondary'], family=FONT_FAMILY),

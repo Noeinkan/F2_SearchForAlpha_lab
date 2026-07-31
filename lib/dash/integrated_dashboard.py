@@ -25,7 +25,6 @@ import urllib.request
 import webbrowser
 
 import dash
-import dash_bootstrap_components as dbc
 from flask import Response, request, send_file
 
 from lib.dash.dash_config import (
@@ -205,9 +204,12 @@ def run_dashboard(dev_mode: bool = False) -> None:
     # on-demand via window._dashPlotlyJSURL; if that lazy load loses the
     # race against dcc.Graph's async chunk (or the suite endpoint 500s),
     # the chart container stays a dark void with no canvas drawn.
+    # Bootstrap CSS is vendored at lib/dash/assets/bootstrap.min.css and
+    # auto-served by Dash (no CDN) — avoids Edge Tracking Prevention noise
+    # from jsdelivr. dash-bootstrap-components is still used for components.
     app = dash.Dash(
         __name__,
-        external_stylesheets=[dbc.themes.BOOTSTRAP],
+        external_stylesheets=[],
         suppress_callback_exceptions=True,
         eager_loading=True,
         meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}]
@@ -306,7 +308,7 @@ def create_dash_app(df, ticker: str, backtest_results: dict) -> dash.Dash:
     from dash import dcc, html
 
     theme = get_theme()
-    app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+    app = dash.Dash(__name__, external_stylesheets=[])
 
     config = {
         'selected_plots': ['candlestick', 'volume', 'rsi'],

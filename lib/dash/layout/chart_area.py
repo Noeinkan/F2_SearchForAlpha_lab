@@ -1,5 +1,5 @@
 """
-Central chart region: toolbar (title, export) and a single Plotly graph.
+Central chart region: toolbar (title, interval, export) and a single Plotly graph.
 """
 
 from dash import dcc, html
@@ -14,6 +14,7 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
     """Create the main chart area."""
     return html.Main([
         html.Div([
+            # Left: title / subtitle / signal pills / bar-count
             html.Div([
                 html.H2(id='chart-title', children=bootstrap.chart_title if bootstrap else "Select a symbol to begin", style={
                     'fontSize': FONT_SIZES['sm'],
@@ -43,9 +44,6 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
                     ], style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}),
                     style=styles['signal_count_bar'],
                 ),
-                # Phase 8: bar-count / interval / span readout. Driven by
-                # callbacks/chart_view.py; reflects the zoomed window when the
-                # relayout store is active.
                 html.Span(
                     id='chart-bar-count',
                     children='',
@@ -56,9 +54,17 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
                         'whiteSpace': 'nowrap',
                     },
                 ),
-            ], style={'display': 'flex', 'gap': '12px', 'alignItems': 'baseline', 'flex': '1 1 auto', 'minWidth': 0}),
+            ], style={
+                'display': 'flex',
+                'gap': '12px',
+                'alignItems': 'center',
+                'flex': '1 1 auto',
+                'minWidth': 0,
+                'flexWrap': 'wrap',
+            }),
 
-            html.Div([
+            # Mid-left: bar interval — sits above Plotly's 1M/3M rangeselector
+            html.Div(
                 dcc.RadioItems(
                     id='bar-interval',
                     options=[
@@ -70,16 +76,23 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
                     inline=True,
                     className='bbg-radio-seg sfa-bar-interval',
                 ),
+                style={'flexShrink': 0, 'marginLeft': '8px', 'marginRight': '8px'},
+            ),
+
+            # Right: export only
+            html.Div([
                 html.Button("Export CSV", id='export-csv-btn', style=styles['button_outline'], n_clicks=0),
                 html.Button("Export Image", id='export-img-btn', style=styles['button_outline'], n_clicks=0),
             ], style={'display': 'flex', 'gap': '12px', 'alignItems': 'center', 'flexShrink': 0}),
-        ], style={**styles['chart_toolbar'], 'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'gap': '12px'}),
+        ], style={
+            **styles['chart_toolbar'],
+            'display': 'flex',
+            'justifyContent': 'space-between',
+            'alignItems': 'center',
+            'gap': '12px',
+        }),
 
         html.Div(
-            # `delay_show` keeps the spinner from flashing on the many fast,
-            # sidebar-driven chart rebuilds (toggle an overlay \u2192 sub-100ms
-            # redraw). It only appears when a redraw genuinely stalls \u2014 a data
-            # (re)load or a slow enrichment pass.
             dcc.Loading(
                 id='chart-loading',
                 type='circle',
@@ -94,14 +107,12 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
                         else create_empty_chart(theme, "Loading TSLA\u2026")
                     ),
                     style={'height': '100%', 'width': '100%'},
-                    # height/width None = size the PNG export to the on-screen
-                    # chart. Dash's Config TypedDict doesn't model the None, so
-                    # the literal trips Pylance — harmless at runtime.
                     config={  # type: ignore[reportArgumentType]
                         'responsive': True,
                         'displayModeBar': True,
                         'displaylogo': False,
-                        'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+                        # toImage removed — toolbar Export Image is the sole PNG path
+                        'modeBarButtonsToRemove': ['lasso2d', 'select2d', 'toImage'],
                         'toImageButtonOptions': {
                             'format': 'png',
                             'filename': 'chart',

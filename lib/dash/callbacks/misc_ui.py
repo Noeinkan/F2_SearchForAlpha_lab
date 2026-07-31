@@ -524,8 +524,8 @@ def register_misc_callbacks(app) -> None:
             window.Plotly.downloadImage(plotlyGraph, {
                 format: 'png',
                 filename: 'chart',
-                height: 800,
-                width: 1200,
+                height: null,
+                width: null,
                 scale: 2
             });
             return Date.now();

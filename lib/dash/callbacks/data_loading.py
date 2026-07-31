@@ -17,7 +17,6 @@ from lib.dash.dash_config import (
     START_DATE,
     get_theme,
 )
-from lib.dash.chart_builder import create_empty_chart
 from lib.dash.state import dashboard_state
 from lib.timeframes import IntervalError, clamp_window, normalize_interval
 
@@ -129,7 +128,7 @@ def register_data_loading_callbacks(app) -> None:
          Output('header-ticker-price', 'children'),
          Output('header-ticker-change', 'children'),
          Output('data-display-store', 'data'),
-         Output('financial-chart', 'figure', allow_duplicate=True)],
+         Output('chart-view-range-store', 'data', allow_duplicate=True)],
         [Input('load-data-button', 'n_clicks'),
          Input('autoload-interval', 'n_intervals'),
          Input('ticker-dropdown', 'value'),
@@ -138,9 +137,8 @@ def register_data_loading_callbacks(app) -> None:
          State('end-date', 'date'),
          State('indicator-settings-store', 'data'),
          State('data-loaded-store', 'data')],
-        # Dash 4: financial-chart uses allow_duplicate=True alongside
-        # chart_plotly + startup writers — initial_duplicate keeps autoload
-        # eligible on the first interval tick.
+        # Dash 4: figure is owned solely by chart_plotly.update_chart via
+        # data-loaded-store. initial_duplicate keeps autoload eligible.
         prevent_initial_call='initial_duplicate',
     )
     def load_data(
@@ -153,7 +151,11 @@ def register_data_loading_callbacks(app) -> None:
         indicator_settings,
         load_generation,
     ):
-        """Load market data on startup, manual refresh, ticker, or interval change."""
+        """Load market data on startup, manual refresh, ticker, or interval change.
+
+        Does not write ``financial-chart.figure`` — that is owned by
+        ``update_chart`` to avoid same-cycle dual figure writes.
+        """
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
@@ -192,6 +194,9 @@ def register_data_loading_callbacks(app) -> None:
             raise PreventUpdate
 
         theme = get_theme()
+        orig_start = str(start_date)[:10] if start_date else None
+        orig_end = str(end_date)[:10] if end_date else None
+        window_adjusted = False
 
         try:
             if start_date and end_date:
@@ -202,6 +207,10 @@ def register_data_loading_callbacks(app) -> None:
                     str(end_date)[:10],
                     canon,
                     relocate=True,
+                )
+                window_adjusted = (
+                    canon != "1d"
+                    and (start_date != orig_start or end_date != orig_end)
                 )
 
             # Lazy import avoids bootstrap ↔ callbacks circular import on startup.
@@ -214,8 +223,14 @@ def register_data_loading_callbacks(app) -> None:
                 indicator_settings or DEFAULT_INDICATOR_SETTINGS,
                 interval=canon,
             )
+            status = snapshot.data_status
+            if canon != "1d":
+                status = f"{status} · {canon.upper()}"
+            if window_adjusted:
+                status = f"{status} · WINDOW ADJUSTED (YAHOO 730D)"
+
             return (
-                snapshot.data_status,
+                status,
                 snapshot.strategy_order,
                 next_generation,
                 snapshot.buy_options,
@@ -227,23 +242,24 @@ def register_data_loading_callbacks(app) -> None:
                 snapshot.header_price,
                 snapshot.header_change,
                 snapshot.data_display,
-                snapshot.chart_figure,
+                None,  # clear zoom so stale daily range doesn't fight new bars
             )
 
         except Exception as e:
             logger.error(f"Error loading data: {e}")
+            # Keep previous dashboard_state.df so a failed 1H fetch doesn't blank a good daily chart.
             return (
-                "ERROR",
+                f"ERROR: {str(e)[:48]}",
                 "--",
-                0,
-                [],
-                [],
-                [],
-                "Error",
-                "",
+                load_generation or 0,
+                no_update,
+                no_update,
+                no_update,
+                no_update,
+                no_update,
                 (ticker or DEFAULT_TICKER).upper(),
-                "$--",
+                no_update,
                 html.Span(str(e)[:40].upper(), style={'color': theme['accent_red']}),
-                None,
-                create_empty_chart(theme, str(e)[:60]),
+                no_update,
+                no_update,
             )

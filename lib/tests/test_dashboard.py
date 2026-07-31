@@ -212,6 +212,8 @@ class TestChartBuilder:
         assert fig is not None
         assert len(fig.data) == 0
         assert len(fig.layout.annotations) == 1
+        assert fig.layout.autosize is True
+        assert fig.layout.margin.l == 60
 
     def test_create_empty_chart_custom_message(self, dark_theme):
         """Test empty chart with custom message."""

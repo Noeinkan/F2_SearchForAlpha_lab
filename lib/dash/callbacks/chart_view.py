@@ -163,7 +163,8 @@ def register_chart_view_callbacks(app) -> None:
         if not focus or not data_loaded or dashboard_state.df is None:
             raise PreventUpdate
 
-        enriched = get_enriched(dashboard_state.df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
+        df = dashboard_state.df
+        enriched = get_enriched(df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
         config = _build_chart_config(
             plot_values,
             chart_elements,
@@ -176,6 +177,24 @@ def register_chart_view_callbacks(app) -> None:
             signal_window,
             indicator_settings,
         )
+        # Large series: slice/downsample the focus window in create_chart
+        # (same path as rerender_for_zoom) so Plotly stays responsive.
+        focus_range = {'start': focus['start'], 'end': focus['end']}
+        if len(df) > DOWNSAMPLE_THRESHOLD:
+            config['view_range'] = focus_range
+
         fig = create_chart(enriched, config, get_theme())
-        fig.update_layout(xaxis=dict(range=[focus['start'], focus['end']]))
+
+        # shared_xaxes=True: bottom row drives all followers. Updating
+        # layout.xaxis (row 1) is a no-op once matches snaps back — same
+        # lesson as _add_range_selector.
+        selected = list(config.get('selected_plots') or ['candlestick'])
+        if 'candlestick' in selected:
+            selected = ['candlestick'] + [p for p in selected if p != 'candlestick']
+        plot_count = max(len(selected), 1)
+        fig.update_xaxes(
+            range=[focus['start'], focus['end']],
+            row=plot_count,
+            col=1,
+        )
         return fig, None

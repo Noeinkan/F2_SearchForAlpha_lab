@@ -911,7 +911,9 @@ def _format_preset_options(presets: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def _create_price_subtitle(df: pd.DataFrame, theme: dict) -> html.Span:
-    """Create price change subtitle."""
+    """Create price change subtitle with last-bar as-of stamp."""
+    from lib.dash.chart_builder import infer_bar_interval
+
     latest_close = df['Close'].iloc[-1]
     prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
     change = latest_close - prev_close
@@ -919,10 +921,22 @@ def _create_price_subtitle(df: pd.DataFrame, theme: dict) -> html.Span:
     change_color = theme['accent_green'] if change >= 0 else theme['accent_red']
     change_sign = '+' if change >= 0 else ''
 
+    last_ts = pd.Timestamp(df.index[-1])
+    interval = infer_bar_interval(df.index)
+    if interval.endswith('H') or (len(interval) > 1 and interval.endswith('m')):
+        as_of = last_ts.strftime('%Y-%m-%d %H:%M')
+    else:
+        as_of = last_ts.strftime('%Y-%m-%d')
+
     return html.Span([
         html.Span(f"${latest_close:.2f}", className='num', style={'color': theme['text_primary']}),
         html.Span(f" {change_sign}{change:.2f} ({change_sign}{change_pct:.2f}%)",
                  className='num', style={'color': change_color, 'marginLeft': '8px'}),
+        html.Span(
+            f" · as of {as_of}",
+            className='num',
+            style={'color': theme['text_tertiary'], 'marginLeft': '8px', 'fontSize': '11px'},
+        ),
     ])
 
 

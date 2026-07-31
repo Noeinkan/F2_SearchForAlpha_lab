@@ -2,6 +2,9 @@
 Plotly chart callbacks — single figure writer for sidebar-driven updates.
 """
 
+from __future__ import annotations
+
+import logging
 from datetime import datetime
 
 import pandas as pd
@@ -11,7 +14,7 @@ from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 
 from lib.dash.bootstrap import build_default_chart_config
-from lib.dash.chart_builder import create_chart
+from lib.dash.chart_builder import create_chart, create_empty_chart
 from lib.dash.components import ticker_pill
 from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, get_theme
 from lib.dash.state import dashboard_state
@@ -21,6 +24,8 @@ from lib.dash.callbacks.shared import (
     _compute_trigger_counts,
     get_enriched,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _build_chart_config(
@@ -106,24 +111,29 @@ def register_plotly_callbacks(app) -> None:
         signal_window,
         indicator_settings,
     ):
-        """Rebuild the financial chart from sidebar selections."""
+        """Rebuild the financial chart from sidebar selections / data loads."""
         if not data_loaded or dashboard_state.df is None:
             raise PreventUpdate
 
-        df = get_enriched(dashboard_state.df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
-        config = _build_chart_config(
-            plot_values,
-            chart_elements,
-            selected_signals,
-            buy_signals,
-            sell_signals,
-            consecutive_signal_mode,
-            signal_cooldown_bars,
-            signal_logic,
-            signal_window,
-            indicator_settings,
-        )
-        return create_chart(df, config, get_theme())
+        theme = get_theme()
+        try:
+            df = get_enriched(dashboard_state.df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
+            config = _build_chart_config(
+                plot_values,
+                chart_elements,
+                selected_signals,
+                buy_signals,
+                sell_signals,
+                consecutive_signal_mode,
+                signal_cooldown_bars,
+                signal_logic,
+                signal_window,
+                indicator_settings,
+            )
+            return create_chart(df, config, theme)
+        except Exception as exc:
+            logger.error("update_chart failed: %s", exc)
+            return create_empty_chart(theme, f"Chart error: {str(exc)[:50]}")
 
     @app.callback(
         Output('signal-count-bar', 'children'),

@@ -266,6 +266,16 @@ html, body {
     display: none !important;
 }
 
+/* Chart toolbar bar-interval segment — sit clear of title meta */
+.sfa-bar-interval.bbg-radio-seg {
+    flex-shrink: 0;
+}
+.sfa-bar-interval.bbg-radio-seg > label {
+    padding: 5px 12px !important;
+    min-width: 28px;
+    justify-content: center;
+}
+
 /* =============================================================================
    Section primitives (sidebar / right panel)
    ========================================================================== */
