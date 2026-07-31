@@ -107,6 +107,7 @@ def prepare_dataframe(
     window_to: str,
     params: dict[str, Any] | None = None,
     ticker_override: str | None = None,
+    interval: str = "1d",
 ) -> pd.DataFrame:
     """Fetch OHLCV, apply indicator settings, generate signals."""
     ticker = ticker_override or bundle.ticker
@@ -114,7 +115,7 @@ def prepare_dataframe(
         raise ValueError(f"Strategy {bundle.name} has no ticker configured")
 
     indicator_settings = params_to_indicator_settings(params or bundle.live_params)
-    df = fetch_data(ticker, window_from, window_to)
+    df = fetch_data(ticker, window_from, window_to, interval=interval)
     df = add_indicators(df, indicator_settings)
     df, _headers = generate_signals(df, indicator_settings)
     return df

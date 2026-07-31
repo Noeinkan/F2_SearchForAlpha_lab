@@ -55,6 +55,7 @@ def register_preset_callbacks(app) -> None:
          State('start-date', 'date'),
          State('end-date', 'date'),
          State('initial-capital', 'value'),
+         State('bar-interval', 'value'),
          State({'type': 'plot-toggle', 'indicator': ALL}, 'value'),
          State('chart-elements-checklist', 'value'),
          State('signal-checklist', 'value'),
@@ -82,7 +83,7 @@ def register_preset_callbacks(app) -> None:
     )
     def manage_presets(save_clicks, save_as_clicks, rename_clicks, delete_clicks,
                        presets_data, preset_selected, preset_name_input,
-                       ticker, start_date, end_date, initial_capital,
+                       ticker, start_date, end_date, initial_capital, bar_interval,
                        plot_values, chart_elements, signal_checklist,
                        indicator_settings,
                        strategy_mode, strategy_preset, min_holding_period,
@@ -127,7 +128,8 @@ def register_preset_callbacks(app) -> None:
                 consecutive_signal_mode,
                 signal_cooldown_bars, signal_logic_mode, signal_window,
                 buy_signals, sell_signals,
-                fx_fee_pct, slippage_pct, commission_pct
+                fx_fee_pct, slippage_pct, commission_pct,
+                interval=bar_interval or "1d",
             )
             data["presets"] = presets
             save_presets(PRESET_FILE_PATH, data)
@@ -156,7 +158,8 @@ def register_preset_callbacks(app) -> None:
                 consecutive_signal_mode,
                 signal_cooldown_bars, signal_logic_mode, signal_window,
                 buy_signals, sell_signals,
-                fx_fee_pct, slippage_pct, commission_pct
+                fx_fee_pct, slippage_pct, commission_pct,
+                interval=bar_interval or "1d",
             )
             data["presets"] = presets
             save_presets(PRESET_FILE_PATH, data)

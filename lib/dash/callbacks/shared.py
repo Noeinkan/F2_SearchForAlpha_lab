@@ -843,14 +843,16 @@ def _build_preset_payload(
     sell_signals: List[str],
     fx_fee_pct: Any,
     slippage_pct: Any,
-    commission_pct: Any
+    commission_pct: Any,
+    interval: str = "1d",
 ) -> Dict[str, Any]:
     payload = {
         "market_data": {
             "ticker": ticker,
             "start_date": start_date,
             "end_date": end_date,
-            "initial_capital": initial_capital
+            "initial_capital": initial_capital,
+            "interval": interval or "1d",
         },
         "chart": {
             "plot_toggles": _extract_selected_plots(plot_values),

@@ -25,7 +25,7 @@ from lib.backtest_result import BacktestMetrics
 from lib.store import trials as trials_store
 
 
-def _fake_fetch(symbol: str, start_date: str, end_date: str, validate: bool = True) -> pd.DataFrame:
+def _fake_fetch(symbol: str, start_date: str, end_date: str, validate: bool = True, interval: str = "1d") -> pd.DataFrame:
     rng = np.random.default_rng(2024)
     dates = pd.date_range(start_date, end_date, freq="D")
     n = max(len(dates), 200)
@@ -196,7 +196,7 @@ def test_optimise_accepts_ticker_override(isolated_db):
     runner = CliRunner()
     seen_symbols: list[str] = []
 
-    def fake_fetch(symbol: str, start_date: str, end_date: str, validate: bool = True) -> pd.DataFrame:
+    def fake_fetch(symbol: str, start_date: str, end_date: str, validate: bool = True, interval: str = "1d") -> pd.DataFrame:
         seen_symbols.append(symbol)
         return _fake_fetch(symbol, start_date, end_date, validate)
 

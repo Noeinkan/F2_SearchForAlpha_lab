@@ -102,6 +102,11 @@ def test_infer_bar_interval_hourly():
     assert infer_bar_interval(idx) == "1H"
 
 
+def test_infer_bar_interval_4h():
+    idx = pd.date_range("2020-01-01", periods=100, freq="4h")
+    assert infer_bar_interval(idx) == "4H"
+
+
 def test_infer_bar_interval_short_index_is_safe():
     idx = pd.date_range("2020-01-01", periods=2, freq="D")
     assert infer_bar_interval(idx) == "—"

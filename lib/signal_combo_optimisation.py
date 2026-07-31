@@ -68,11 +68,12 @@ def test_combination(df: dd.DataFrame, params: Dict[str, Any]) -> pd.Series:
 
         buy_signals_count = result_df[list(params['buy_combo'])].sum().sum() if params['buy_combo'] else 0
         sell_signals_count = result_df[list(params['sell_combo'])].sum().sum() if params['sell_combo'] else 0
-            
+
+        ppy = int(params.get('periods_per_year', 252))
         final_portfolio_value = result_df['Portfolio_Value'].iloc[-1]
         total_return = (final_portfolio_value - params['initial_capital']) / params['initial_capital']
-        annual_return = (result_df['Cumulative_Returns'].iloc[-1] ** (252 / len(result_df)) - 1)
-        
+        annual_return = (result_df['Cumulative_Returns'].iloc[-1] ** (ppy / len(result_df)) - 1)
+
         return pd.Series({
             'Buy_Signals': str(params['buy_combo']),
             'Sell_Signals': str(params['sell_combo']),
@@ -82,7 +83,9 @@ def test_combination(df: dd.DataFrame, params: Dict[str, Any]) -> pd.Series:
             'Total_Return': total_return,
             'Annual_Return': annual_return,
             'Max_Drawdown': calculate_max_drawdown(result_df),
-            'Sharpe_Ratio': calculate_sharpe_ratio(result_df['Strategy_Returns']),
+            'Sharpe_Ratio': calculate_sharpe_ratio(
+                result_df['Strategy_Returns'], periods_per_year=ppy
+            ),
             'Win_Rate': calculate_win_rate(result_df),
             'Profit_Factor': calculate_profit_factor(result_df),
             'Average_Trade_Duration': calculate_average_trade_duration(result_df)

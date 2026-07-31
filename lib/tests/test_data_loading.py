@@ -29,6 +29,6 @@ def test_load_data_listens_to_ticker_dropdown():
     input_ids = [item["id"] for item in spec["inputs"]]
     state_ids = [item["id"] for item in spec.get("state", [])]
 
-    assert input_ids == ["load-data-button", "autoload-interval", "ticker-dropdown"]
+    assert input_ids == ["load-data-button", "autoload-interval", "ticker-dropdown", "bar-interval"]
     assert "ticker-dropdown" not in state_ids
     assert "user-ticker-store" not in input_ids

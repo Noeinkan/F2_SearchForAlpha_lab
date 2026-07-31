@@ -9,12 +9,13 @@ from typing import List, Tuple, Dict, Any, Optional
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
 from lib.dash.state import dashboard_state
 from lib.strategy import run_backtest
 from lib.backtest_result import metrics_from_result_df
 from lib.signals.indicators import classify_signal_columns
+from lib.timeframes import periods_per_year as periods_per_year_for
+
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +37,20 @@ def format_df_for_display(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def fetch_data_with_cache(ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
+def fetch_data_with_cache(
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    interval: str = "1d",
+) -> pd.DataFrame:
     """
-    Fetch data with caching support.
+    Fetch data with caching support via shared ``fetch_data``.
 
     Args:
         ticker: Stock ticker symbol
         start_date: Start date string
         end_date: End date string
+        interval: Bar size ``1d`` / ``1h`` / ``4h``
 
     Returns:
         DataFrame with OHLCV data
@@ -51,29 +58,25 @@ def fetch_data_with_cache(ticker: str, start_date: str, end_date: str) -> pd.Dat
     Raises:
         ValueError: If no data available for ticker
     """
-    cache_key = f"{ticker}_{start_date}_{end_date}"
+    from lib.data_processing import DataFetchError, fetch_data
+    from lib.timeframes import normalize_interval
+
+    canon = normalize_interval(interval)
+    cache_key = f"{ticker}_{canon}_{start_date}_{end_date}"
     cached = dashboard_state.get_cached_data(cache_key)
 
     if cached is not None:
         logger.debug(f"Cache hit for {cache_key}")
         return cached
 
-    logger.info(f"Fetching data for {ticker}")
-    df = yf.download(ticker, start=start_date, end=end_date)
-    if df.empty:
-        raise ValueError(f"No data available for {ticker}")
+    logger.info(f"Fetching data for {ticker} (interval={canon})")
+    try:
+        df = fetch_data(ticker, start_date, end_date, interval=canon)
+    except DataFetchError as exc:
+        raise ValueError(str(exc)) from exc
 
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-
-    # yfinance can append a placeholder row for the current/incomplete
-    # period with NaN OHLCV (seen on non-trading days). Such a row blanks
-    # the live price header ($nan) and feeds a NaN candle into the chart,
-    # so drop any rows that have no usable Close.
-    if 'Close' in df.columns:
-        df = df[df['Close'].notna()]
-    if df.empty:
-        raise ValueError(f"No data available for {ticker}")
 
     dashboard_state.set_cached_data(cache_key, df)
     return df
@@ -215,13 +218,18 @@ def compute_robustness_scores(results_df: pd.DataFrame, min_trades: int) -> pd.D
     return df
 
 
-def calculate_performance_metrics(result_df: pd.DataFrame, initial_capital: float) -> Dict[str, float]:
+def calculate_performance_metrics(
+    result_df: pd.DataFrame,
+    initial_capital: float,
+    interval: str = "1d",
+) -> Dict[str, float]:
     """
     Calculate performance metrics from backtest results.
 
     Args:
         result_df: DataFrame with backtest results
         initial_capital: Starting capital
+        interval: Bar interval for Sharpe annualization
 
     Returns:
         Dict with performance metrics
@@ -232,7 +240,8 @@ def calculate_performance_metrics(result_df: pd.DataFrame, initial_capital: floa
     returns = result_df['Strategy_Returns'].dropna()
 
     # Sharpe ratio (annualized)
-    sharpe = (returns.mean() / returns.std() * np.sqrt(252)) if returns.std() > 0 else 0
+    ppy = periods_per_year_for(interval)
+    sharpe = (returns.mean() / returns.std() * np.sqrt(ppy)) if returns.std() > 0 else 0
 
     # Max drawdown
     cumulative = (1 + returns).cumprod()

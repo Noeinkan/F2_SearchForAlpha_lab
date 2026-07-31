@@ -51,12 +51,12 @@ def optimize_parameters(df: pd.DataFrame,
     
     return best_params, best_metric_value
 
-def calculate_metric(df: pd.DataFrame, metric: str) -> float:
+def calculate_metric(df: pd.DataFrame, metric: str, periods_per_year: int = 252) -> float:
     if metric == 'total_return':
         return (df['Portfolio_Value'].iloc[-1] / df['Portfolio_Value'].iloc[0]) - 1
     elif metric == 'sharpe_ratio':
         returns = df['Strategy_Returns']
-        return (returns.mean() / returns.std()) * np.sqrt(252)  # Annualized Sharpe Ratio
+        return (returns.mean() / returns.std()) * np.sqrt(periods_per_year)
     elif metric == 'max_drawdown':
         return calculate_max_drawdown(df)
     else:

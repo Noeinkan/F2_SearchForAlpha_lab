@@ -11,6 +11,7 @@ from dash.exceptions import PreventUpdate
 from datetime import date
 
 from lib.dash.dash_config import (
+    DEFAULT_BAR_INTERVAL,
     DEFAULT_INDICATOR_SETTINGS,
     DEFAULT_TICKER,
     START_DATE,
@@ -18,6 +19,7 @@ from lib.dash.dash_config import (
 )
 from lib.dash.chart_builder import create_empty_chart
 from lib.dash.state import dashboard_state
+from lib.timeframes import clamp_window, normalize_interval
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,8 @@ def register_data_loading_callbacks(app) -> None:
         [Output('ticker-dropdown', 'value'),
          Output('start-date', 'date'),
          Output('end-date', 'date'),
-         Output('initial-capital', 'value')],
+         Output('initial-capital', 'value'),
+         Output('bar-interval', 'value')],
         [Input('preset-apply-store', 'data')],
         prevent_initial_call=True
     )
@@ -57,12 +60,50 @@ def register_data_loading_callbacks(app) -> None:
             raise PreventUpdate
 
         market = preset_data.get("market_data", {})
+        try:
+            interval = normalize_interval(market.get("interval") or DEFAULT_BAR_INTERVAL)
+        except Exception:
+            interval = DEFAULT_BAR_INTERVAL
         return (
             market.get("ticker"),
             market.get("start_date"),
             _resolve_preset_end_date(market.get("end_date")),
             market.get("initial_capital"),
+            interval,
         )
+
+    @app.callback(
+        Output('bar-interval-store', 'data'),
+        Input('bar-interval', 'value'),
+        prevent_initial_call=False,
+    )
+    def sync_bar_interval_store(interval):
+        try:
+            return normalize_interval(interval or DEFAULT_BAR_INTERVAL)
+        except Exception:
+            return DEFAULT_BAR_INTERVAL
+
+    @app.callback(
+        Output('start-date', 'date', allow_duplicate=True),
+        Input('bar-interval', 'value'),
+        State('start-date', 'date'),
+        State('end-date', 'date'),
+        prevent_initial_call=True,
+    )
+    def clamp_start_for_interval(interval, start_date, end_date):
+        """Auto-clamp start when switching to 1h/4h if range exceeds Yahoo max."""
+        if not start_date or not end_date:
+            raise PreventUpdate
+        try:
+            canon = normalize_interval(interval or DEFAULT_BAR_INTERVAL)
+        except Exception:
+            raise PreventUpdate
+        if canon == "1d":
+            raise PreventUpdate
+        new_start, _ = clamp_window(str(start_date)[:10], str(end_date)[:10], canon)
+        if new_start == str(start_date)[:10]:
+            raise PreventUpdate
+        return new_start
 
     @app.callback(
         [Output('data-status', 'children'),
@@ -80,7 +121,8 @@ def register_data_loading_callbacks(app) -> None:
          Output('financial-chart', 'figure', allow_duplicate=True)],
         [Input('load-data-button', 'n_clicks'),
          Input('autoload-interval', 'n_intervals'),
-         Input('ticker-dropdown', 'value')],
+         Input('ticker-dropdown', 'value'),
+         Input('bar-interval', 'value')],
         [State('start-date', 'date'),
          State('end-date', 'date'),
          State('indicator-settings-store', 'data'),
@@ -94,18 +136,24 @@ def register_data_loading_callbacks(app) -> None:
         n_clicks,
         n_intervals,
         ticker,
+        bar_interval,
         start_date,
         end_date,
         indicator_settings,
         load_generation,
     ):
-        """Load market data on startup, manual refresh, or ticker selection."""
+        """Load market data on startup, manual refresh, ticker, or interval change."""
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
 
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         next_generation = int(load_generation or 0) + 1
+
+        try:
+            canon = normalize_interval(bar_interval or DEFAULT_BAR_INTERVAL)
+        except Exception:
+            canon = DEFAULT_BAR_INTERVAL
 
         if trigger_id == 'autoload-interval':
             if n_intervals is None or n_intervals < 1:
@@ -123,8 +171,19 @@ def register_data_loading_callbacks(app) -> None:
             if not ticker:
                 raise PreventUpdate
             ticker = str(ticker).strip().upper()
+        elif trigger_id == 'bar-interval':
+            if not ticker:
+                raise PreventUpdate
+            ticker = str(ticker).strip().upper()
+            start_date = start_date or START_DATE
+            end_date = end_date or date.today().isoformat()
         else:
             raise PreventUpdate
+
+        if start_date and end_date:
+            start_date, end_date = clamp_window(
+                str(start_date)[:10], str(end_date)[:10], canon
+            )
 
         theme = get_theme()
 
@@ -137,6 +196,7 @@ def register_data_loading_callbacks(app) -> None:
                 start_date,
                 end_date,
                 indicator_settings or DEFAULT_INDICATOR_SETTINGS,
+                interval=canon,
             )
             return (
                 snapshot.data_status,

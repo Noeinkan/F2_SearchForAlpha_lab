@@ -166,6 +166,7 @@ def _build_objective(
     search_to: str,
     held_out_to: str,
     ticker: str,
+    interval: str = "1d",
 ) -> Callable[[optuna.trial.Trial], float]:
     def objective(trial: optuna.trial.Trial) -> float:
         params = suggest_from_space(trial, bundle.search_space)
@@ -187,6 +188,7 @@ def _build_objective(
             signal_logic=bundle.signal_logic,
             signal_window=bundle.signal_window,
             seed=seed,
+            interval=interval,
         )
         score = score_metrics(metric, result.metrics)
         wall = time.perf_counter() - started
@@ -226,14 +228,19 @@ def run_study(
     db_path: Path | None = None,
     json_output: bool = False,
     ticker_override: str | None = None,
+    interval: str = "1d",
 ) -> OptimisationResult:
     """Run an Optuna TPE study end to end and return the best trial.
 
     The last *held_out_months* of data are withheld from the parameter search
     so that walk-forward validation has genuinely unseen out-of-sample evidence.
     """
+    from lib.timeframes import normalize_interval
+
     if metric not in VALID_METRICS:
         raise ValueError(f"Unknown metric {metric!r}; expected one of {VALID_METRICS}")
+
+    canon = normalize_interval(interval)
 
     bundle = load_bundle(strategy_name)
     if not bundle.search_space:
@@ -253,7 +260,7 @@ def run_study(
         db_path = DEFAULT_DB_PATH
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    base_df = fetch_data(ticker, window_from, window_to)
+    base_df = fetch_data(ticker, window_from, window_to, interval=canon)
     if not isinstance(base_df.index, pd.DatetimeIndex):
         base_df.index = pd.to_datetime(base_df.index)
     search_to_dt = pd.to_datetime(window_to) - pd.DateOffset(months=held_out_months)
@@ -284,6 +291,7 @@ def run_study(
         search_to=search_to,
         held_out_to=window_to,
         ticker=ticker,
+        interval=canon,
     )
 
     if not json_output:
@@ -330,6 +338,7 @@ def run_optimise_cli(
     seed: int,
     json_output: bool,
     ticker: str | None,
+    interval: str = "1d",
 ) -> None:
     try:
         result = run_study(
@@ -342,6 +351,7 @@ def run_optimise_cli(
             study_id=study_id,
             json_output=json_output,
             ticker_override=ticker,
+            interval=interval,
         )
     except StrategyNotFoundError:
         typer.echo(json.dumps(CliError("unknown_strategy", f"No agent strategy named {name!r}.").as_dict()))

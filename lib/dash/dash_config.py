@@ -299,7 +299,10 @@ START_PORT = 8050
 MAX_PORT_TRIES = 100
 
 # Bump when persisted dcc.Store shape changes (clears stale dash-* browser storage).
-UI_STORAGE_VERSION = "2"
+UI_STORAGE_VERSION = "3"
+
+# Default OHLCV bar interval for the dashboard (1d / 1h / 4h).
+DEFAULT_BAR_INTERVAL = "1d"
 
 # Dashboard URL routes (browser refresh uses pathname as source of truth)
 ROUTE_TERMINAL = '/'

@@ -13,7 +13,7 @@ import dash_mantine_components as dmc
 
 from lib.dash.dash_config import (
     DEFAULT_THEME, DEFAULT_FUNDAMENTALS_PERIOD,
-    DEFAULT_INDICATOR_SETTINGS,
+    DEFAULT_INDICATOR_SETTINGS, DEFAULT_BAR_INTERVAL,
 )
 from lib.dash.styles import get_styles
 
@@ -72,6 +72,7 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Store(id='optimizer-autorun-sink', data=None),
         dcc.Store(id='signals-unified-store', data=bootstrap.unified_rows if bootstrap else []),
         dcc.Store(id='indicator-settings-store', data=DEFAULT_INDICATOR_SETTINGS),
+        dcc.Store(id='bar-interval-store', data=DEFAULT_BAR_INTERVAL, storage_type='session'),
         dcc.Store(id='active-indicator-store', data=None),
         dcc.Store(id='export-img-store', data=None),
         dcc.Store(id='fundamentals-store', data=None, storage_type='session'),

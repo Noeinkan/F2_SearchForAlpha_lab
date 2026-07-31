@@ -21,10 +21,18 @@ def register(app: typer.Typer) -> None:
         to: Annotated[str | None, typer.Option("--to")] = None,
         study: Annotated[str | None, typer.Option("--study")] = None,
         seed: Annotated[int, typer.Option("--seed")] = 42,
+        interval: Annotated[str, typer.Option("--interval", help="Bar size: 1d, 1h, or 4h.")] = "1d",
         json_output: Annotated[bool, typer.Option("--json")] = False,
     ) -> None:
         """Run a Bayesian (TPE) parameter search. Implemented in Phase 2."""
         from lib.bayesian_optimization import run_optimise_cli
+        from lib.timeframes import IntervalError, normalize_interval
+
+        try:
+            canon = normalize_interval(interval)
+        except IntervalError as exc:
+            typer.echo(json.dumps(CliError("invalid_interval", str(exc)).as_dict()))
+            raise typer.Exit(code=2) from exc
 
         run_optimise_cli(
             name=name,
@@ -36,4 +44,5 @@ def register(app: typer.Typer) -> None:
             seed=seed,
             json_output=json_output,
             ticker=ticker,
+            interval=canon,
         )

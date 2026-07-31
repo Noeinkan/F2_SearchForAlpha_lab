@@ -11,6 +11,7 @@ import typer
 from lib.agent_strategy import AgentStrategyBundle, StrategyNotFoundError, load_bundle, prepare_dataframe
 from lib.backtest_result import run_backtest_result
 from lib.cli.contracts import CliError
+from lib.timeframes import IntervalError, normalize_interval
 
 
 def _parse_params(raw: str | None) -> dict | None:
@@ -36,13 +37,16 @@ def build_backtest_contract(
     ticker_override: str | None,
     initial_capital: float,
     seed: int,
+    interval: str = "1d",
 ) -> dict:
+    canon = normalize_interval(interval)
     df = prepare_dataframe(
         bundle,
         window_from=window_from,
         window_to=window_to,
         params=params,
         ticker_override=ticker_override,
+        interval=canon,
     )
 
     result = run_backtest_result(
@@ -59,6 +63,7 @@ def build_backtest_contract(
         signal_logic=bundle.signal_logic,
         signal_window=bundle.signal_window,
         seed=seed,
+        interval=canon,
     )
     return result.to_contract()
 
@@ -73,9 +78,16 @@ def register(app: typer.Typer) -> None:
         ticker: Annotated[str | None, typer.Option("--ticker", help="Override the bundle ticker.")] = None,
         initial_capital: Annotated[float, typer.Option("--capital", help="Starting capital.")] = 10_000.0,
         seed: Annotated[int, typer.Option("--seed", help="RNG seed.")] = 42,
+        interval: Annotated[str, typer.Option("--interval", help="Bar size: 1d, 1h, or 4h.")] = "1d",
         json_output: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
     ) -> None:
         """Backtest a strategy on a date window."""
+        try:
+            canon = normalize_interval(interval)
+        except IntervalError as exc:
+            typer.echo(json.dumps(CliError("invalid_interval", str(exc)).as_dict()))
+            raise typer.Exit(code=2) from exc
+
         try:
             bundle = load_bundle(name)
         except StrategyNotFoundError:
@@ -94,6 +106,7 @@ def register(app: typer.Typer) -> None:
                 ticker_override=ticker,
                 initial_capital=initial_capital,
                 seed=seed,
+                interval=canon,
             )
         except Exception as exc:
             typer.echo(json.dumps(CliError("data_preparation_failed", str(exc)).as_dict()))
@@ -104,7 +117,8 @@ def register(app: typer.Typer) -> None:
         m = contract["metrics"]
         typer.echo(
             f"{contract['strategy']}  {contract['ticker']}  "
-            f"{contract['window']['from']} -> {contract['window']['to']}\n"
+            f"{contract['window']['from']} -> {contract['window']['to']}  "
+            f"[{contract['window']['interval']}]\n"
             f"  total_return    {m['total_return']:+.4f}\n"
             f"  sharpe          {m['sharpe']:.3f}\n"
             f"  sortino         {m['sortino']:.3f}\n"

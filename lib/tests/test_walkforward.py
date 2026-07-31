@@ -28,7 +28,7 @@ from lib.walkforward.verdict import (
 )
 
 
-def _fake_long_fetch(symbol: str, start_date: str, end_date: str, validate: bool = True) -> pd.DataFrame:
+def _fake_long_fetch(symbol: str, start_date: str, end_date: str, validate: bool = True, interval: str = "1d") -> pd.DataFrame:
     """Multi year synthetic OHLCV. Long enough for any walk forward window."""
     rng = np.random.default_rng(2025)
     dates = pd.date_range(start_date, end_date, freq="D")

@@ -43,6 +43,7 @@ class TestFetchData(unittest.TestCase):
         
         self.assertIsInstance(result, pd.DataFrame)
         self.assertEqual(len(result), 2)
+        self.assertIsInstance(result.index, pd.DatetimeIndex)
 
     @patch('lib.data_processing.yf.Ticker')
     def test_fetch_data_empty_raises_error(self, mock_ticker):

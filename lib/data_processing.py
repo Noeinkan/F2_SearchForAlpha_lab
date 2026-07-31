@@ -30,45 +30,97 @@ def fetch_data(
     symbol: str,
     start_date: str,
     end_date: str,
-    validate: bool = True
+    validate: bool = True,
+    interval: str = "1d",
 ) -> pd.DataFrame:
     """
     Fetch historical price data from Yahoo Finance.
-    
+
     Args:
         symbol: Ticker symbol to fetch.
         start_date: Start date in 'YYYY-MM-DD' format.
         end_date: End date in 'YYYY-MM-DD' format.
         validate: Whether to validate the returned data.
-        
+        interval: Bar size ``1d`` / ``1h`` / ``4h`` (4h resamples from 1h).
+
     Returns:
-        DataFrame with OHLCV data.
-        
+        DataFrame with OHLCV data and a timezone-naive DatetimeIndex.
+
     Raises:
         DataFetchError: If data cannot be fetched or is invalid.
     """
+    from lib.timeframes import (
+        IntervalError,
+        clamp_window,
+        normalize_interval,
+        resample_ohlcv,
+        yf_interval,
+    )
+
     if not symbol or not isinstance(symbol, str):
         raise DataFetchError(f"Invalid symbol: {symbol}")
-    
-    logger.info(f"Fetching data for {symbol} from {start_date} to {end_date}")
-    
+
+    try:
+        canon = normalize_interval(interval)
+    except IntervalError as exc:
+        raise DataFetchError(str(exc)) from exc
+
+    try:
+        start_date, end_date = clamp_window(start_date, end_date, canon)
+    except IntervalError as exc:
+        raise DataFetchError(str(exc)) from exc
+    yf_int = yf_interval(canon)
+    logger.info(
+        "Fetching data for %s from %s to %s (interval=%s, yf=%s)",
+        symbol,
+        start_date,
+        end_date,
+        canon,
+        yf_int,
+    )
+
     try:
         ticker = yf.Ticker(symbol)
-        df = ticker.history(start=start_date, end=end_date)
-        
+        df = ticker.history(start=start_date, end=end_date, interval=yf_int)
+
         if df.empty:
             raise DataFetchError(
-                f"No data available for {symbol} between {start_date} and {end_date}"
+                f"No data available for {symbol} between {start_date} and {end_date} "
+                f"(interval={canon})"
             )
-        
-        df.index = pd.to_datetime(df.index).date
-        
+
+        df.index = pd.to_datetime(df.index)
+        if getattr(df.index, "tz", None) is not None:
+            df.index = df.index.tz_localize(None)
+
+        # Drop incomplete/placeholder rows with no usable Close.
+        if "Close" in df.columns:
+            df = df[df["Close"].notna()]
+        if df.empty:
+            raise DataFetchError(
+                f"No data available for {symbol} between {start_date} and {end_date} "
+                f"(interval={canon})"
+            )
+
+        if canon == "4h":
+            df = resample_ohlcv(df, "4h")
+            if df.empty:
+                raise DataFetchError(
+                    f"No 4h bars after resampling for {symbol} "
+                    f"between {start_date} and {end_date}"
+                )
+
         if validate:
             _validate_price_data(df, symbol)
-        
-        logger.info(f"Successfully fetched {len(df)} rows for {symbol}")
+
+        logger.info(
+            "Successfully fetched %s rows for %s (interval=%s)",
+            len(df),
+            symbol,
+            canon,
+        )
         return df
-        
+
     except DataFetchError:
         raise
     except Exception as e:
@@ -517,27 +569,28 @@ def calculate_max_consecutive(series: pd.Series) -> int:
 
 def calculate_average_trade_duration(df: pd.DataFrame) -> float:
     """
-    Calculate average trade duration in days.
-    
+    Calculate average trade duration in days (fractional for intraday holds).
+
     Args:
         df: DataFrame with 'Units' column.
-        
+
     Returns:
         Average trade duration in days.
     """
     if 'Units' not in df.columns:
         return 0.0
-        
+
     try:
         trade_starts = df.index[df['Units'] != df['Units'].shift(1)]
         trade_ends = df.index[df['Units'] != df['Units'].shift(-1)]
-        
+
         if len(trade_starts) > 0 and len(trade_ends) > 0:
-            trade_durations = [
-                (end - start).days 
-                for start, end in zip(trade_starts, trade_ends) 
-                if end > start
-            ]
+            trade_durations = []
+            for start, end in zip(trade_starts, trade_ends):
+                if end <= start:
+                    continue
+                delta = pd.Timestamp(end) - pd.Timestamp(start)
+                trade_durations.append(delta.total_seconds() / 86400.0)
             return sum(trade_durations) / len(trade_durations) if trade_durations else 0.0
     except Exception as e:
         logger.warning(f"Error calculating trade duration: {e}")

@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from lib.store import trials as trials_store
 
 
-def _fake_fetch(symbol: str, start_date: str, end_date: str, validate: bool = True) -> pd.DataFrame:
+def _fake_fetch(symbol: str, start_date: str, end_date: str, validate: bool = True, interval: str = "1d") -> pd.DataFrame:
     rng = np.random.default_rng(2025)
     dates = pd.date_range(start_date, end_date, freq="D")
     if len(dates) < 30:

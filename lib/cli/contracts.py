@@ -54,11 +54,16 @@ class StrategySweep:
     failure_count: int
     results: list[dict[str, Any]] = field(default_factory=list)
     failures: list[StrategySweepFailure] = field(default_factory=list)
+    interval: str = "1d"
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "ticker": self.ticker,
-            "window": {"from": self.window_from, "to": self.window_to},
+            "window": {
+                "from": self.window_from,
+                "to": self.window_to,
+                "interval": self.interval,
+            },
             "strategy_count": self.strategy_count,
             "success_count": self.success_count,
             "failure_count": self.failure_count,

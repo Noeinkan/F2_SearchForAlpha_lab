@@ -11,6 +11,7 @@ from lib.agent_strategy import StrategyNotFoundError, load_bundle
 from lib.cli.commands.backtest_cmd import build_backtest_contract
 from lib.cli.commands.list_cmd import build_strategy_list
 from lib.cli.contracts import CliError, StrategySweep, StrategySweepFailure
+from lib.timeframes import IntervalError, normalize_interval
 
 
 def register(app: typer.Typer) -> None:
@@ -21,9 +22,16 @@ def register(app: typer.Typer) -> None:
         to: Annotated[str, typer.Option("--to", help="End date (YYYY-MM-DD).")],
         initial_capital: Annotated[float, typer.Option("--capital", help="Starting capital.")] = 10_000.0,
         seed: Annotated[int, typer.Option("--seed", help="RNG seed.")] = 42,
+        interval: Annotated[str, typer.Option("--interval", help="Bar size: 1d, 1h, or 4h.")] = "1d",
         json_output: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
     ) -> None:
         """Backtest every configured strategy bundle on one ticker and window."""
+        try:
+            canon = normalize_interval(interval)
+        except IntervalError as exc:
+            typer.echo(json.dumps(CliError("invalid_interval", str(exc)).as_dict()))
+            raise typer.Exit(code=2) from exc
+
         strategy_entries = build_strategy_list().strategies
         if not strategy_entries:
             typer.echo(json.dumps(CliError("no_strategies", "No agent strategies configured.").as_dict()))
@@ -43,6 +51,7 @@ def register(app: typer.Typer) -> None:
                     ticker_override=ticker,
                     initial_capital=initial_capital,
                     seed=seed,
+                    interval=canon,
                 )
                 results.append(contract)
             except StrategyNotFoundError:
@@ -71,13 +80,14 @@ def register(app: typer.Typer) -> None:
             failure_count=len(failures),
             results=results,
             failures=failures,
+            interval=canon,
         ).as_dict()
 
         if json_output:
             typer.echo(json.dumps(payload, indent=2, default=str))
             return
 
-        typer.echo(f"sweep-single  {ticker}  {from_} -> {to}")
+        typer.echo(f"sweep-single  {ticker}  {from_} -> {to}  [{canon}]")
         for contract in sorted(results, key=lambda item: item["metrics"]["sortino"], reverse=True):
             metrics = contract["metrics"]
             typer.echo(

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 
-PRESET_SCHEMA_VERSION = 1
+PRESET_SCHEMA_VERSION = 2
 
 
 def _now_iso() -> str:

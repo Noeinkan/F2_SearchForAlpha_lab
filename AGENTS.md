@@ -63,5 +63,6 @@ Details: research sweeps, regime metrics, promotion gates → `docs/openclaw-res
 - Guard triggered (`sfa status --json`) → `sfa kill` immediately, no wait.
 - Never retry a command more than twice; never paste full JSON in replies.
 - JSON contracts: `lib/cli/contracts.py` — field names are stable.
+- Backtest `window` includes `interval` (`1d`|`1h`|`4h`, default `1d`). Pass `--interval` on backtest/optimise/sweep-single/walkforward. Yahoo intraday lookback ~730d; see `docs/openclaw-research.md`.
 
 Full rule set → `docs/openclaw-research.md`.

@@ -29,7 +29,13 @@ from lib.cli.commands.sample_universe_cmd import build_sample_universe_contract
 runner = CliRunner()
 
 
-def _fake_fetch(symbol: str, start_date: str, end_date: str, validate: bool = True) -> pd.DataFrame:
+def _fake_fetch(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    validate: bool = True,
+    interval: str = "1d",
+) -> pd.DataFrame:
     """Synthetic OHLCV. Deterministic: no network, no yfinance."""
     rng = np.random.default_rng(2024)
     dates = pd.date_range(start_date, end_date, freq="D")
@@ -91,7 +97,7 @@ def test_backtest_contract_shape():
     payload = json.loads(result.output)
     assert payload["strategy"] == "mean_reversion_rsi_bb"
     assert payload["ticker"] == "SPY"
-    assert payload["window"] == {"from": "2024-01-01", "to": "2024-06-30"}
+    assert payload["window"] == {"from": "2024-01-01", "to": "2024-06-30", "interval": "1d"}
     assert isinstance(payload["params"], dict)
     assert isinstance(payload["seed"], int)
     assert isinstance(payload["duration_seconds"], (int, float))
@@ -168,7 +174,7 @@ def test_sweep_single_contract_shape():
     result_names = {entry["strategy"] for entry in payload["results"]}
 
     assert payload["ticker"] == "TSLA"
-    assert payload["window"] == {"from": "2024-01-01", "to": "2024-10-01"}
+    assert payload["window"] == {"from": "2024-01-01", "to": "2024-10-01", "interval": "1d"}
     assert payload["strategy_count"] == len(expected_names)
     assert payload["success_count"] == len(payload["results"])
     assert payload["failure_count"] == len(payload["failures"])

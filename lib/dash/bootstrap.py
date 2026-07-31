@@ -85,6 +85,7 @@ def load_market_session(
     start_date: str,
     end_date: str,
     indicator_settings: dict | None = None,
+    interval: str = "1d",
 ) -> BootstrapSnapshot:
     """
     Fetch OHLCV, compute indicators/signals, and populate dashboard_state.
@@ -103,7 +104,7 @@ def load_market_session(
     theme = get_theme()
     effective_settings = merge_indicator_settings(indicator_settings or DEFAULT_INDICATOR_SETTINGS)
 
-    df = fetch_data_with_cache(ticker, start_date, end_date)
+    df = fetch_data_with_cache(ticker, start_date, end_date, interval=interval)
     if df.empty:
         raise ValueError(f"No data available for {ticker}")
 

@@ -16,6 +16,7 @@ def register(app: typer.Typer) -> None:
         train_months: Annotated[int, typer.Option("--train-months")] = 12,
         test_months: Annotated[int, typer.Option("--test-months")] = 3,
         seed: Annotated[int, typer.Option("--seed")] = 42,
+        interval: Annotated[str, typer.Option("--interval", help="Bar size: 1d, 1h, or 4h.")] = "1d",
         json_output: Annotated[bool, typer.Option("--json")] = False,
     ) -> None:
         """Run rolling walk forward validation."""
@@ -29,4 +30,5 @@ def register(app: typer.Typer) -> None:
             test_months=test_months,
             seed=seed,
             json_output=json_output,
+            interval=interval,
         )

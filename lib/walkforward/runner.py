@@ -51,6 +51,7 @@ class WalkForwardOptions:
     step_months: int | None = None   # None → non-overlapping default (train + test)
     initial_capital: float = 10_000.0
     seed: int = 42
+    interval: str = "1d"
 
 
 def _slice(df: pd.DataFrame, start: datetime, end: datetime) -> pd.DataFrame:
@@ -81,6 +82,8 @@ def _backtest_metrics(
     bundle: AgentStrategyBundle,
     capital: float,
     params: dict[str, Any],
+    *,
+    interval: str = "1d",
 ) -> dict[str, Any]:
     if slice_df.empty:
         return {"sharpe": 0.0, "sortino": 0.0, "max_drawdown": 0.0, "num_trades": 0, "total_return": 0.0}
@@ -95,7 +98,7 @@ def _backtest_metrics(
         sell_indicators=bundle.sell_signals,
         strategy_mode=bundle.mode,
     )
-    metrics = metrics_from_result_df(result_df, capital)
+    metrics = metrics_from_result_df(result_df, capital, interval=interval)
     return metrics.as_dict()
 
 
@@ -122,6 +125,7 @@ def run_walkforward(
         bundle.ticker,
         base_start.strftime("%Y-%m-%d"),
         base_end.strftime("%Y-%m-%d"),
+        interval=options.interval,
     )
 
     indicator_settings = params_to_indicator_settings(params)
@@ -151,8 +155,12 @@ def run_walkforward(
         train_df = _slice(enriched, train_start, train_end)
         test_df = _slice(enriched, train_end, test_end)
 
-        train_metrics = _backtest_metrics(train_df, bundle, options.initial_capital, params)
-        test_metrics = _backtest_metrics(test_df, bundle, options.initial_capital, params)
+        train_metrics = _backtest_metrics(
+            train_df, bundle, options.initial_capital, params, interval=options.interval
+        )
+        test_metrics = _backtest_metrics(
+            test_df, bundle, options.initial_capital, params, interval=options.interval
+        )
 
         windows.append(
             {
@@ -280,12 +288,21 @@ def run_walkforward_cli(
     step_months: int | None = None,
     seed: int,
     json_output: bool,
+    interval: str = "1d",
 ) -> None:
     """CLI entry point for sfa walkforward.
 
     Uses non-overlapping windows by default (step = train + test months).
     Pass --step-months to override the stride between windows.
     """
+    from lib.timeframes import IntervalError, normalize_interval
+
+    try:
+        canon = normalize_interval(interval)
+    except IntervalError as exc:
+        typer.echo(json.dumps(CliError("invalid_interval", str(exc)).as_dict()))
+        raise typer.Exit(code=2) from exc
+
     try:
         params = _resolve_params(params_arg)
     except (ValueError, json.JSONDecodeError) as exc:
@@ -302,6 +319,7 @@ def run_walkforward_cli(
                 test_months=test_months,
                 step_months=step_months,
                 seed=seed,
+                interval=canon,
             ),
         )
     except StrategyNotFoundError:

@@ -51,6 +51,7 @@ class BacktestResult:
     metrics: BacktestMetrics
     seed: int = DEFAULT_SEED
     duration_seconds: float = 0.0
+    interval: str = "1d"
     df: pd.DataFrame | None = field(default=None, repr=False, compare=False)
 
     def to_contract(self) -> dict[str, Any]:
@@ -58,7 +59,11 @@ class BacktestResult:
         return {
             "strategy": self.strategy,
             "ticker": self.ticker,
-            "window": {"from": self.window_from, "to": self.window_to},
+            "window": {
+                "from": self.window_from,
+                "to": self.window_to,
+                "interval": self.interval,
+            },
             "params": self.params,
             "metrics": self.metrics.as_dict(),
             "seed": int(self.seed),
@@ -177,20 +182,40 @@ def calculate_turnover(df: pd.DataFrame) -> float:
     return float(gross / mean_equity)
 
 
-def metrics_from_result_df(df: pd.DataFrame, initial_capital: float) -> BacktestMetrics:
+def metrics_from_result_df(
+    df: pd.DataFrame,
+    initial_capital: float,
+    *,
+    interval: str = "1d",
+    periods_per_year: int | None = None,
+) -> BacktestMetrics:
     """Compute the JSON contract metrics from a backtest result DataFrame."""
+    from lib.timeframes import periods_per_year as ppy_for
+
     if df is None or df.empty:
         return BacktestMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+    ppy = int(periods_per_year) if periods_per_year is not None else ppy_for(interval)
 
     final_value = _safe_float(df["Portfolio_Value"].iloc[-1], initial_capital)
     total_return = (final_value / initial_capital) - 1.0 if initial_capital else 0.0
 
     returns = df.get("Strategy_Returns", pd.Series(dtype=float))
-    sharpe = _safe_float(calculate_sharpe_ratio(returns)) if len(returns) else 0.0
+    sharpe = (
+        _safe_float(calculate_sharpe_ratio(returns, periods_per_year=ppy))
+        if len(returns)
+        else 0.0
+    )
     max_dd_signed = _safe_float(calculate_max_drawdown(df))
     max_dd = abs(max_dd_signed)
-    sortino = calculate_sortino_ratio(returns) if len(returns) else 0.0
-    calmar = calculate_calmar_ratio(returns, max_dd_signed) if max_dd_signed else 0.0
+    sortino = (
+        calculate_sortino_ratio(returns, periods_per_year=ppy) if len(returns) else 0.0
+    )
+    calmar = (
+        calculate_calmar_ratio(returns, max_dd_signed, periods_per_year=ppy)
+        if max_dd_signed
+        else 0.0
+    )
     num_trades = count_trades(df)
     win_rate, profit_factor = _per_trade_metrics(df)
     if win_rate == 0.0 and profit_factor == 0.0:
@@ -229,6 +254,7 @@ def run_backtest_result(
     signal_window: int = 0,
     seed: int = DEFAULT_SEED,
     backtest_kwargs: dict[str, Any] | None = None,
+    interval: str = "1d",
 ) -> BacktestResult:
     """Run a backtest and wrap the result in a structured BacktestResult."""
     set_global_seed(seed)
@@ -251,7 +277,7 @@ def run_backtest_result(
     )
 
     duration = time.perf_counter() - started
-    metrics = metrics_from_result_df(result_df, initial_capital)
+    metrics = metrics_from_result_df(result_df, initial_capital, interval=interval)
 
     return BacktestResult(
         strategy=strategy_name,
@@ -262,5 +288,6 @@ def run_backtest_result(
         metrics=metrics,
         seed=int(seed),
         duration_seconds=float(duration),
+        interval=interval,
         df=result_df,
     )
