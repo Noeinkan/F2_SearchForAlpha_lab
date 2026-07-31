@@ -1318,6 +1318,88 @@ input[type="radio"] {
     vertical-align: baseline;
 }
 
+/* Flow Scanner — how-to-read guide, legend, strike map, learn modal */
+.sfa-flow-guide summary {
+    list-style: none;
+}
+
+.sfa-flow-guide summary::-webkit-details-marker {
+    display: none;
+}
+
+.sfa-flow-guide summary::before {
+    content: "▾ ";
+    opacity: 0.7;
+}
+
+.sfa-flow-guide:not([open]) summary::before {
+    content: "▸ ";
+}
+
+.sfa-flow-diagram-track {
+    width: 100%;
+}
+
+.sfa-flow-legend-chip {
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 1.35;
+}
+
+.sfa-flow-color-legend,
+.sfa-flow-flag-legend,
+.sfa-flow-score-chips {
+    line-height: 1.5;
+}
+
+.sfa-flow-strike-track {
+    position: relative;
+    height: 22px;
+    margin: 2px 0 0;
+}
+
+.sfa-flow-strike-track-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 2px;
+    transform: translateY(-50%);
+    border-radius: 1px;
+}
+
+.sfa-flow-strike-dot,
+.sfa-flow-strike-spot {
+    position: absolute;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid;
+    transform: translate(-50%, -50%);
+    cursor: help;
+    z-index: 1;
+}
+
+.sfa-flow-strike-spot {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    z-index: 2;
+}
+
+.sfa-flow-learn-modal .modal-content {
+    max-height: min(85vh, 720px);
+}
+
+.sfa-flow-learn-modal-body {
+    padding-top: 4px;
+}
+
+.sfa-flow-learn-section:last-of-type p {
+    margin-bottom: 0;
+}
+
 .sfa-fundamentals-content {
     scrollbar-gutter: stable;
 }

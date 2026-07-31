@@ -86,6 +86,63 @@ FLAG_DEFINITIONS: dict[str, dict[str, str]] = {
 
 FLAG_KINDS = frozenset(FLAG_DEFINITIONS)
 
+# Score weights used by unusual_score and the visual score chip row.
+SCORE_WEIGHTS: dict[str, int] = {
+    "high_unusual": 5,
+    "block_premium": 3,
+    "unusual": 2,
+    "repeat_call": 10,
+}
+
+# Order shown in score chips / LEARN copy.
+_SCORE_KIND_ORDER = ("high_unusual", "block_premium", "unusual", "repeat_call")
+
+LEARN_SECTIONS: list[dict[str, str]] = [
+    {
+        "title": "Calls vs puts",
+        "body": (
+            "A call (C) is the right to buy 100 shares at the strike price. "
+            "A put (P) is the right to sell 100 shares at the strike. "
+            "Heavy call flow is often read as bullish interest; heavy put flow as hedging or bearish interest. "
+            "Neither is a guaranteed forecast."
+        ),
+    },
+    {
+        "title": "Strike, ITM / OTM, and weeklies",
+        "body": (
+            "The strike is the exercise price. Relative to today's stock price (spot): "
+            "in-the-money (ITM) options already have intrinsic value; out-of-the-money (OTM) do not. "
+            "For calls, strikes below spot are ITM; for puts, strikes above spot are ITM. "
+            "Weekly contracts expire within about 7 days and often reflect near-term bets."
+        ),
+    },
+    {
+        "title": "Volume vs open interest",
+        "body": (
+            "Volume is contracts traded today. Open interest (OI) is contracts still open from prior days. "
+            "When volume exceeds OI, many of today's trades are likely new positions — that is the Unusual (U) flag. "
+            "High-unusual (HU) marks large OTM weekly volume that stands out even more."
+        ),
+    },
+    {
+        "title": "Premium and block trades",
+        "body": (
+            "Premium ≈ volume × last price × 100 (dollars paid for today's volume on that contract). "
+            "A Block (B) flag means premium crossed the large-trade threshold (default $1M) — "
+            "often institutional-sized flow. Color heat on the Premium column scales with size."
+        ),
+    },
+    {
+        "title": "How the unusual score is built",
+        "body": (
+            "Each ticker gets a composite score: 5×HU + 3×B + 2×U + 10×RC. "
+            "RC (repeat calls) means three or more unusual call strikes on the same expiry. "
+            "Higher scores mean more flagged activity, not a buy or sell recommendation. "
+            "Educational/research use only — not financial advice."
+        ),
+    },
+]
+
 
 def _flag_counts(flags: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     counts = {k: 0 for k in FLAG_KINDS}
@@ -96,24 +153,29 @@ def _flag_counts(flags: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     return counts
 
 
+def score_parts(report: Mapping[str, Any]) -> list[tuple[str, int, int, str]]:
+    """Return [(flag_label, count, weight, color), ...] for non-zero score contributors."""
+    counts = _flag_counts(report.get("flags") or [])
+    parts: list[tuple[str, int, int, str]] = []
+    for kind in _SCORE_KIND_ORDER:
+        n = counts.get(kind, 0)
+        if n:
+            fd = FLAG_DEFINITIONS[kind]
+            parts.append((fd["label"], n, SCORE_WEIGHTS[kind], fd["color"]))
+    return parts
+
+
 def score_breakdown(report: Mapping[str, Any]) -> str:
     """Format score formula from flag counts on a report dict or TickerReport-like object."""
-    flags = report.get("flags") or []
-    counts = _flag_counts(flags)
-    hu, bp, u, rc = counts["high_unusual"], counts["block_premium"], counts["unusual"], counts["repeat_call"]
-    parts: list[str] = []
-    if hu:
-        parts.append(f"{hu} HU × 5")
-    if bp:
-        parts.append(f"{bp} B × 3")
-    if u:
-        parts.append(f"{u} U × 2")
-    if rc:
-        parts.append(f"{rc} RC × 10")
+    parts = score_parts(report)
     if not parts:
         return "No flagged activity"
-    total = report.get("unusual_score", 5 * hu + 3 * bp + 2 * u + 10 * rc)
-    return " + ".join(parts) + f" = {total}"
+    pieces = [f"{n} {label} × {w}" for label, n, w, _ in parts]
+    total = report.get(
+        "unusual_score",
+        sum(n * w for _, n, w, _ in parts),
+    )
+    return " + ".join(pieces) + f" = {total}"
 
 
 def interpretive_insights(report: Mapping[str, Any]) -> list[tuple[str, str]]:

@@ -12,6 +12,7 @@ from lib.dash.flow_glossary import (
     DISCLAIMER,
     FLAG_DEFINITIONS,
     INSIGHT_CATEGORY_COLORS,
+    LEARN_SECTIONS,
     TERM_DEFINITIONS,
     contract_signal,
     contract_signal_weight,
@@ -19,6 +20,7 @@ from lib.dash.flow_glossary import (
     fmt_strike,
     interpretive_insights,
     score_breakdown,
+    score_parts,
     ticker_sentiment,
 )
 
@@ -160,27 +162,31 @@ def _contract_tooltips(contract: Mapping[str, Any]) -> dict[str, str]:
 
 def _table_conditional_styles(theme: dict) -> list[dict[str, Any]]:
     styles: list[dict[str, Any]] = []
+    purple = theme.get("accent_purple", FLAG_DEFINITIONS["unusual"]["color"])
 
     for cp in ("C", "P"):
+        accent = theme["accent_green"] if cp == "C" else theme["accent_red"]
         styles.append({
             "if": {"filter_query": f'{{type}} = "{cp}"', "column_id": "type"},
-            "color": theme["accent_green"] if cp == "C" else theme["accent_red"],
-            "fontWeight": "600",
+            "backgroundColor": f"{accent}33",
+            "color": accent,
+            "fontWeight": "700",
+            "textAlign": "center",
         })
 
     for kind, fd in FLAG_DEFINITIONS.items():
         label = fd["label"]
         styles.append({
             "if": {"filter_query": f'{{flag_kinds}} contains {label}', "column_id": "flags"},
-            "backgroundColor": f'{fd["color"]}33',
+            "backgroundColor": f'{fd["color"]}44',
             "color": fd["color"],
             "fontWeight": "600",
         })
 
     premium_tiers = [
-        (5_000_000, f'{theme["accent_orange"]}44', theme["accent_orange"]),
-        (1_000_000, f'{theme["accent_orange"]}22', theme["accent_orange"]),
-        (250_000, f'{theme["accent_orange"]}18', theme["accent_orange"]),
+        (5_000_000, f'{theme["accent_orange"]}55', theme["accent_orange"]),
+        (1_000_000, f'{theme["accent_orange"]}33', theme["accent_orange"]),
+        (250_000, f'{theme["accent_orange"]}22', theme["accent_orange"]),
     ]
     for threshold, bg, fg in premium_tiers:
         styles.append({
@@ -191,8 +197,8 @@ def _table_conditional_styles(theme: dict) -> list[dict[str, Any]]:
         })
 
     iv_tiers = [
-        (1.5, f'{theme["accent_red"]}22', theme["accent_red"]),
-        (0.8, f'{theme["accent_orange"]}18', theme["accent_orange"]),
+        (1.5, f'{theme["accent_red"]}33', theme["accent_red"]),
+        (0.8, f'{theme["accent_orange"]}22', theme["accent_orange"]),
     ]
     for threshold, bg, fg in iv_tiers:
         styles.append({
@@ -203,16 +209,18 @@ def _table_conditional_styles(theme: dict) -> list[dict[str, Any]]:
 
     styles.append({
         "if": {"filter_query": "{vol_raw} > {oi_raw}"},
-        "backgroundColor": theme["bg_hover"],
+        "backgroundColor": f"{purple}22",
     })
 
     styles.append({
         "if": {"filter_query": '{is_otm_raw} = "1"', "column_id": "strike"},
         "color": theme["accent_blue"],
+        "fontWeight": "600",
     })
     styles.append({
         "if": {"filter_query": '{is_otm_raw} = "0"', "column_id": "strike"},
         "color": theme["accent_green"],
+        "fontWeight": "600",
     })
     styles.append({
         "if": {"filter_query": '{is_weekly_raw} = "1"', "column_id": "expiry"},
@@ -230,6 +238,7 @@ def _table_conditional_styles(theme: dict) -> list[dict[str, Any]]:
     for signal_name, sig_color in signal_styles.items():
         styles.append({
             "if": {"filter_query": f'{{signal}} = "{signal_name}"', "column_id": "signal"},
+            "backgroundColor": f"{sig_color}33",
             "color": sig_color,
             "fontWeight": "600",
         })
@@ -237,7 +246,418 @@ def _table_conditional_styles(theme: dict) -> list[dict[str, Any]]:
     return styles
 
 
-def _contracts_table(contracts: Sequence[Mapping[str, Any]], table_id: str, theme: dict) -> dash_table.DataTable:
+def _legend_chip(label: str, color: str, theme: dict, *, tip: str = "") -> html.Span:
+    return html.Span(
+        label,
+        title=tip or label,
+        className="sfa-flow-legend-chip",
+        style={
+            "backgroundColor": f"{color}33",
+            "color": color,
+            "border": f"1px solid {color}66",
+            "padding": "1px 7px",
+            "borderRadius": "4px",
+            "fontSize": FONT_SIZES["xs"],
+            "fontWeight": "600",
+            "fontFamily": FONT_FAMILY,
+            "cursor": "help" if tip else "default",
+            "whiteSpace": "nowrap",
+        },
+    )
+
+
+def render_color_legend(theme: dict, *, compact: bool = False) -> html.Div:
+    """One-line color key for the contracts table (and the how-to-read guide)."""
+    purple = theme.get("accent_purple", FLAG_DEFINITIONS["unusual"]["color"])
+    chips = [
+        _legend_chip("Call (C)", theme["accent_green"], theme, tip=TERM_DEFINITIONS["type"]),
+        _legend_chip("Put (P)", theme["accent_red"], theme, tip=TERM_DEFINITIONS["type"]),
+        _legend_chip("OTM strike", theme["accent_blue"], theme, tip=TERM_DEFINITIONS["otm"]),
+        _legend_chip("ITM strike", theme["accent_green"], theme, tip=TERM_DEFINITIONS["itm"]),
+        _legend_chip("Weekly", theme["accent_orange"], theme, tip=TERM_DEFINITIONS["weekly"]),
+        _legend_chip("Premium heat", theme["accent_orange"], theme, tip=TERM_DEFINITIONS["premium"]),
+        _legend_chip("Vol > OI", purple, theme, tip=TERM_DEFINITIONS["oi"]),
+    ]
+    for fd in FLAG_DEFINITIONS.values():
+        chips.append(_legend_chip(fd["label"], fd["color"], theme, tip=fd["long"]))
+
+    label = "Key:" if compact else "Table colors:"
+    return html.Div(
+        [
+            html.Span(
+                label,
+                style={
+                    "color": theme["text_tertiary"],
+                    "fontSize": FONT_SIZES["xs"],
+                    "fontFamily": FONT_FAMILY,
+                    "marginRight": "6px",
+                },
+            ),
+            *chips,
+        ],
+        className="sfa-flow-color-legend",
+        style={
+            "display": "flex",
+            "flexWrap": "wrap",
+            "alignItems": "center",
+            "gap": "6px",
+            "marginBottom": "6px" if compact else "8px",
+        },
+    )
+
+
+def render_flag_legend(theme: dict) -> html.Div:
+    chips = [
+        _legend_chip(
+            f'{fd["label"]} {fd["short"]}',
+            fd["color"],
+            theme,
+            tip=fd["long"],
+        )
+        for fd in FLAG_DEFINITIONS.values()
+    ]
+    return html.Div(
+        chips,
+        className="sfa-flow-flag-legend",
+        style={"display": "flex", "flexWrap": "wrap", "gap": "6px"},
+    )
+
+
+def _otm_itm_diagram(theme: dict) -> html.Div:
+    """Pure HTML/CSS spot-line diagram for calls/puts and ITM/OTM."""
+    zone = {
+        "flex": "1",
+        "textAlign": "center",
+        "padding": "6px 4px",
+        "fontSize": FONT_SIZES["xs"],
+        "fontFamily": FONT_FAMILY,
+        "borderRadius": "4px",
+    }
+    return html.Div(
+        [
+            html.Div(
+                [
+                    html.Div(
+                        "OTM puts",
+                        title=TERM_DEFINITIONS["otm"],
+                        style={**zone, "backgroundColor": f'{theme["accent_red"]}18', "color": theme["accent_red"]},
+                    ),
+                    html.Div(
+                        "ITM puts",
+                        title=TERM_DEFINITIONS["itm"],
+                        style={**zone, "backgroundColor": f'{theme["accent_red"]}33', "color": theme["accent_red"]},
+                    ),
+                    html.Div(
+                        [
+                            html.Div("SPOT", style={"fontWeight": "700", "letterSpacing": "0.08em"}),
+                            html.Div("stock price", style={"opacity": 0.8, "fontSize": "10px"}),
+                        ],
+                        className="sfa-flow-diagram-spot",
+                        style={
+                            "flex": "0 0 auto",
+                            "padding": "6px 10px",
+                            "textAlign": "center",
+                            "backgroundColor": theme["bg_secondary"],
+                            "border": f'2px solid {theme["accent_cyan"]}',
+                            "borderRadius": "6px",
+                            "color": theme["accent_cyan"],
+                            "fontFamily": FONT_FAMILY,
+                            "fontSize": FONT_SIZES["xs"],
+                        },
+                    ),
+                    html.Div(
+                        "ITM calls",
+                        title=TERM_DEFINITIONS["itm"],
+                        style={**zone, "backgroundColor": f'{theme["accent_green"]}33', "color": theme["accent_green"]},
+                    ),
+                    html.Div(
+                        "OTM calls",
+                        title=TERM_DEFINITIONS["otm"],
+                        style={**zone, "backgroundColor": f'{theme["accent_green"]}18', "color": theme["accent_green"]},
+                    ),
+                ],
+                className="sfa-flow-diagram-track",
+                style={"display": "flex", "alignItems": "stretch", "gap": "4px", "marginBottom": "6px"},
+            ),
+            html.P(
+                "Calls = right to buy · Puts = right to sell · ITM has intrinsic value · OTM does not",
+                style={
+                    "margin": 0,
+                    "fontSize": FONT_SIZES["xs"],
+                    "color": theme["text_secondary"],
+                    "fontFamily": FONT_FAMILY,
+                },
+            ),
+        ],
+        className="sfa-flow-diagram",
+    )
+
+
+def render_flow_guide(theme: dict) -> html.Details:
+    """Always-visible (open by default) how-to-read strip for beginners."""
+    return html.Details(
+        [
+            html.Summary(
+                "How to read this page",
+                style={
+                    "cursor": "pointer",
+                    "fontWeight": "600",
+                    "color": theme["text_primary"],
+                    "fontFamily": FONT_FAMILY,
+                    "fontSize": FONT_SIZES["sm"],
+                },
+            ),
+            html.Div(
+                [
+                    _otm_itm_diagram(theme),
+                    html.Div(
+                        [
+                            html.Span(
+                                "Activity flags:",
+                                style={
+                                    "color": theme["text_tertiary"],
+                                    "fontSize": FONT_SIZES["xs"],
+                                    "fontFamily": FONT_FAMILY,
+                                    "marginRight": "6px",
+                                },
+                            ),
+                            render_flag_legend(theme),
+                        ],
+                        style={
+                            "display": "flex",
+                            "flexWrap": "wrap",
+                            "alignItems": "center",
+                            "gap": "6px",
+                            "margin": "10px 0 8px",
+                        },
+                    ),
+                    render_color_legend(theme, compact=False),
+                    html.P(
+                        "Hover any table header or cell for a short definition. "
+                        "Open LEARN for a beginner walkthrough. " + DISCLAIMER,
+                        style={
+                            "margin": "4px 0 0",
+                            "fontSize": FONT_SIZES["xs"],
+                            "color": theme["text_tertiary"],
+                            "fontFamily": FONT_FAMILY,
+                        },
+                    ),
+                ],
+                style={"marginTop": "8px"},
+            ),
+        ],
+        open=True,
+        className="sfa-flow-guide",
+        style={
+            "backgroundColor": theme["bg_tertiary"],
+            "border": f'1px solid {theme["border_primary"]}',
+            "borderRadius": "8px",
+            "padding": "10px 14px",
+            "marginBottom": "12px",
+        },
+    )
+
+
+def render_learn_modal_content(theme: dict) -> html.Div:
+    """Body for the Options 101 LEARN modal."""
+    sections: list[Any] = []
+    for section in LEARN_SECTIONS:
+        sections.append(
+            html.Div(
+                [
+                    html.H4(
+                        section["title"],
+                        style={
+                            "margin": "0 0 4px",
+                            "fontSize": FONT_SIZES["sm"],
+                            "fontFamily": FONT_FAMILY,
+                            "color": theme["text_primary"],
+                        },
+                    ),
+                    html.P(
+                        section["body"],
+                        style={
+                            "margin": "0 0 14px",
+                            "fontSize": FONT_SIZES["xs"],
+                            "lineHeight": "1.45",
+                            "color": theme["text_secondary"],
+                            "fontFamily": FONT_FAMILY,
+                        },
+                    ),
+                ],
+                className="sfa-flow-learn-section",
+            )
+        )
+    sections.append(
+        html.P(
+            DISCLAIMER,
+            style={
+                "margin": "4px 0 0",
+                "fontSize": FONT_SIZES["xs"],
+                "color": theme["text_tertiary"],
+                "fontFamily": FONT_FAMILY,
+            },
+        )
+    )
+    return html.Div(
+        [_otm_itm_diagram(theme), html.Hr(style={"borderColor": theme["border_primary"]}), *sections],
+        className="sfa-flow-learn-body",
+    )
+
+
+def _score_chip_row(report: Mapping[str, Any], theme: dict) -> html.Div | None:
+    parts = score_parts(report)
+    if not parts:
+        return None
+    chips: list[Any] = [
+        html.Span(
+            "Score",
+            style={
+                "color": theme["text_tertiary"],
+                "fontSize": FONT_SIZES["xs"],
+                "fontFamily": FONT_FAMILY,
+                "marginRight": "4px",
+            },
+        )
+    ]
+    for i, (label, n, weight, color) in enumerate(parts):
+        if i:
+            chips.append(
+                html.Span("+", style={"color": theme["text_tertiary"], "fontSize": FONT_SIZES["xs"]})
+            )
+        chips.append(
+            _legend_chip(
+                f"{n} {label} × {weight}",
+                color,
+                theme,
+                tip=FLAG_DEFINITIONS[
+                    next(k for k, fd in FLAG_DEFINITIONS.items() if fd["label"] == label)
+                ]["long"],
+            )
+        )
+    total = report.get("unusual_score", sum(n * w for _, n, w, _ in parts))
+    chips.append(
+        html.Span(
+            f"= {total}",
+            style={
+                "fontWeight": "700",
+                "color": theme["text_primary"],
+                "fontSize": FONT_SIZES["xs"],
+                "fontFamily": "IBM Plex Mono, monospace",
+                "marginLeft": "4px",
+            },
+        )
+    )
+    return html.Div(
+        chips,
+        className="sfa-flow-score-chips",
+        style={
+            "display": "flex",
+            "flexWrap": "wrap",
+            "alignItems": "center",
+            "gap": "6px",
+            "marginBottom": "8px",
+        },
+    )
+
+
+def _strike_map(report: Mapping[str, Any], theme: dict) -> html.Div | None:
+    """Horizontal track: spot marker + top call/put strike dots."""
+    spot = float(report.get("spot") or 0)
+    if spot <= 0:
+        return None
+    calls = list(report.get("top_call_strikes") or [])[:5]
+    puts = list(report.get("top_put_strikes") or [])[:5]
+    strikes = [float(s) for s, _ in calls + puts]
+    if not strikes:
+        return None
+    lo = min([spot, *strikes]) * 0.98
+    hi = max([spot, *strikes]) * 1.02
+    span = hi - lo or 1.0
+
+    def _pct(price: float) -> float:
+        return max(0.0, min(100.0, (price - lo) / span * 100.0))
+
+    markers: list[Any] = []
+    for strike, vol in puts:
+        markers.append(
+            html.Div(
+                title=f"Put ${float(strike):.0f} · vol {int(vol):,}",
+                className="sfa-flow-strike-dot sfa-flow-strike-put",
+                style={
+                    "left": f"{_pct(float(strike)):.1f}%",
+                    "backgroundColor": theme["accent_red"],
+                    "borderColor": theme["bg_tertiary"],
+                },
+            )
+        )
+    for strike, vol in calls:
+        markers.append(
+            html.Div(
+                title=f"Call ${float(strike):.0f} · vol {int(vol):,}",
+                className="sfa-flow-strike-dot sfa-flow-strike-call",
+                style={
+                    "left": f"{_pct(float(strike)):.1f}%",
+                    "backgroundColor": theme["accent_green"],
+                    "borderColor": theme["bg_tertiary"],
+                },
+            )
+        )
+    markers.append(
+        html.Div(
+            title=f"Spot ${spot:,.2f}",
+            className="sfa-flow-strike-spot",
+            style={
+                "left": f"{_pct(spot):.1f}%",
+                "backgroundColor": theme["accent_cyan"],
+                "borderColor": theme["bg_tertiary"],
+            },
+        )
+    )
+
+    return html.Div(
+        [
+            html.Div(
+                "Strike map (top volume vs spot)",
+                style={
+                    "fontSize": FONT_SIZES["xs"],
+                    "color": theme["text_tertiary"],
+                    "fontFamily": FONT_FAMILY,
+                    "marginBottom": "4px",
+                },
+            ),
+            html.Div(
+                [
+                    html.Div(
+                        className="sfa-flow-strike-track-line",
+                        style={"backgroundColor": theme["border_primary"]},
+                    ),
+                    *markers,
+                ],
+                className="sfa-flow-strike-track",
+            ),
+            html.Div(
+                [
+                    html.Span("Puts", style={"color": theme["accent_red"]}),
+                    html.Span(" · "),
+                    html.Span("Spot", style={"color": theme["accent_cyan"]}),
+                    html.Span(" · "),
+                    html.Span("Calls", style={"color": theme["accent_green"]}),
+                ],
+                style={
+                    "fontSize": "10px",
+                    "fontFamily": FONT_FAMILY,
+                    "color": theme["text_tertiary"],
+                    "marginTop": "4px",
+                },
+            ),
+        ],
+        className="sfa-flow-strike-map",
+        style={"marginBottom": "8px"},
+    )
+
+
+def _contracts_table(contracts: Sequence[Mapping[str, Any]], table_id: str, theme: dict) -> html.Div:
     sorted_contracts = sorted(
         contracts,
         key=lambda c: contract_signal_weight(c.get("flags") or []),
@@ -248,7 +668,7 @@ def _contracts_table(contracts: Sequence[Mapping[str, Any]], table_id: str, them
     columns = [{"name": label, "id": key} for label, key in _TABLE_COLUMNS]
     header_tips = {key: COLUMN_HEADERS[key] for _, key in _TABLE_COLUMNS if key in COLUMN_HEADERS}
 
-    return dash_table.DataTable(
+    table = dash_table.DataTable(
         id=table_id,
         columns=columns,
         data=rows,
@@ -265,6 +685,10 @@ def _contracts_table(contracts: Sequence[Mapping[str, Any]], table_id: str, them
         style_cell=_table_cell_style(theme),
         style_header=_table_header_style(theme),
         style_data_conditional=_table_conditional_styles(theme),
+    )
+    return html.Div(
+        [render_color_legend(theme, compact=True), table],
+        className="sfa-flow-table-wrap",
     )
 
 
@@ -469,8 +893,10 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
         ))
 
     insight_block = _insight_list(insights, theme)
+    score_chips = _score_chip_row(report, theme)
+    strike_map = _strike_map(report, theme)
 
-    return html.Div([
+    card_children: list[Any] = [
         html.Div([
             html.Div(header_children, style={"display": "flex", "alignItems": "center", "flexWrap": "wrap"}),
             html.A(
@@ -513,6 +939,12 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
             ),
             _kpi_span("Score", str(report.get("unusual_score", 0)), score_tip, theme),
         ], style={"display": "flex", "flexWrap": "wrap", "gap": "12px", "marginBottom": "8px"}),
+    ]
+    if score_chips is not None:
+        card_children.append(score_chips)
+    if strike_map is not None:
+        card_children.append(strike_map)
+    card_children.extend([
         html.Div([
             html.Span(f"Calls {call_pct:.1f}%", style={"fontSize": FONT_SIZES["xs"], "color": theme["text_secondary"]}),
             html.Div(
@@ -538,7 +970,9 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
         ),
         insight_block,
         _contracts_table(report.get("contracts") or [], f"flow-table-{index}-{ticker}", theme),
-    ], style={
+    ])
+
+    return html.Div(card_children, style={
         "backgroundColor": theme["bg_tertiary"],
         "border": f'1px solid {theme["border_primary"]}',
         "borderRadius": "8px",
@@ -568,6 +1002,7 @@ def render_flow_reports(payload: Mapping[str, Any], theme: dict, *, show_glossar
     children: list[Any] = []
     if show_glossary:
         children.append(render_glossary_panel(theme))
+    children.append(render_flow_guide(theme))
     children.append(render_summary_cards(sorted_reports, theme))
     for idx, report in enumerate(sorted_reports):
         children.append(render_ticker_card(report, theme, index=idx))

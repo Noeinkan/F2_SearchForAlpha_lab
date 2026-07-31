@@ -11,7 +11,12 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_TERMINAL, get_theme
-from lib.dash.flow_view import render_flow_placeholder, render_flow_reports, render_glossary_panel
+from lib.dash.flow_view import (
+    render_flow_placeholder,
+    render_flow_reports,
+    render_glossary_panel,
+    render_learn_modal_content,
+)
 from lib.dash.routes import build_flow_path, extract_path_ticker, is_flow_route, is_fundamentals_route, ticker_from_search
 from lib.dash.state import dashboard_state
 from scripts.flow_runner import run_flow_scan
@@ -201,6 +206,28 @@ def register_flow_callbacks(app) -> None:
                 "overflowY": "auto",
             },
         )
+
+    @app.callback(
+        Output("flow-learn-modal", "is_open"),
+        Output("flow-learn-modal-body", "children"),
+        Input("flow-learn-button", "n_clicks"),
+        Input("flow-learn-close", "n_clicks"),
+        State("flow-learn-modal", "is_open"),
+        State("theme-store", "data"),
+        prevent_initial_call=True,
+    )
+    def toggle_flow_learn_modal(learn_clicks, close_clicks, is_open, theme_name):
+        ctx = callback_context
+        if not ctx.triggered:
+            raise PreventUpdate
+        trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+        theme = get_theme(theme_name or DEFAULT_THEME)
+        body = render_learn_modal_content(theme)
+        if trigger == "flow-learn-button":
+            return (not bool(is_open)), body
+        if trigger == "flow-learn-close":
+            return False, body
+        raise PreventUpdate
 
     @app.callback(
         Output("flow-content", "children", allow_duplicate=True),

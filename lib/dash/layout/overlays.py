@@ -8,12 +8,14 @@ their respective `open-*` button is clicked.
 """
 
 from dash import dcc, html
+import dash_bootstrap_components as dbc
 
 from lib.dash.dash_config import (
     DEFAULT_TICKER,
     FONT_SIZES, FONT_FAMILY,
     FUNDAMENTALS_PERIOD_OPTIONS, DEFAULT_FUNDAMENTALS_PERIOD,
 )
+from lib.dash.flow_view import render_learn_modal_content
 
 
 def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
@@ -164,6 +166,10 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                     'alignSelf': 'center',
                     'marginRight': '8px',
                 }),
+                html.Button("LEARN", id='flow-learn-button', n_clicks=0, style={
+                    **styles['button_outline'],
+                    'padding': '6px 12px',
+                }),
                 html.Button("GLOSSARY", id='flow-glossary-button', n_clicks=0, style={
                     **styles['button_outline'],
                     'padding': '6px 12px',
@@ -207,6 +213,35 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
             'borderBottom': f'1px solid {theme["border_primary"]}',
         }),
         html.Div(id='flow-glossary', style={'display': 'none'}, children=[]),
+        dbc.Modal(
+            [
+                dbc.ModalHeader(
+                    dbc.ModalTitle("Options 101 — Flow Scanner"),
+                    close_button=True,
+                ),
+                dbc.ModalBody(
+                    render_learn_modal_content(theme),
+                    id='flow-learn-modal-body',
+                    className='sfa-flow-learn-modal-body',
+                ),
+                dbc.ModalFooter(
+                    html.Button(
+                        "Close",
+                        id='flow-learn-close',
+                        n_clicks=0,
+                        style={**styles['button_outline'], 'padding': '6px 14px'},
+                    ),
+                ),
+            ],
+            id='flow-learn-modal',
+            is_open=False,
+            centered=True,
+            size='lg',
+            backdrop=True,
+            keyboard=True,
+            className='sfa-flow-learn-modal',
+            scrollable=True,
+        ),
         html.Div(
             dcc.Loading(
                 id='flow-loading',
