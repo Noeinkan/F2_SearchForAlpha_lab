@@ -228,49 +228,104 @@ html, body {
     color: #000;
 }
 
-.bbg-radio-seg {
-    display: inline-flex;
+﻿/* Segmented RadioItems (D/1H/4H, period toggles, …).
+   Dash 4 renders RadioItems as:
+     div.dash-options-list.bbg-radio-seg[role=listbox]
+       label.dash-options-list-option[.selected][aria-selected]
+         span.dash-options-list-option-wrapper > input[readonly]
+         span.dash-options-list-option-text
+   `display:none` on the input breaks label activation in Chromium, so
+   clicks never fire onChange and the chart never reloads. Keep the input
+   visually hidden but still activatable. Dropdown `.dash-options-list*`
+   rules use !important — segment rules must match that weight and the
+   Dash 4 `.selected` / `[aria-selected]` hooks (not only :checked). */
+.bbg-radio-seg,
+.bbg-radio-seg.dash-options-list {
+    display: inline-flex !important;
     align-items: stretch;
-    border: 1px solid var(--border-primary);
-    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary) !important;
+    border-top: 1px solid var(--border-primary) !important;
+    background: var(--bg-secondary) !important;
     border-radius: 2px;
     overflow: hidden;
+    margin-top: 0 !important;
+    width: auto !important;
 }
-.bbg-radio-seg > label {
+.bbg-radio-seg > label,
+.bbg-radio-seg > .dash-options-list-option {
+    position: relative;
     display: inline-flex !important;
     align-items: center;
     margin: 0 !important;
     padding: 4px 10px !important;
-    border-right: 1px solid var(--border-primary);
+    border-right: 1px solid var(--border-primary) !important;
+    border-bottom: none !important;
+    background: transparent !important;
     color: var(--text-secondary) !important;
-    font-family: var(--font-sans);
-    font-size: 11px;
+    font-family: var(--font-sans) !important;
+    font-size: 11px !important;
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 1px;
     cursor: pointer;
     transition: background 80ms ease, color 80ms ease;
 }
-.bbg-radio-seg > label:last-child {
-    border-right: none;
+.bbg-radio-seg > label:last-child,
+.bbg-radio-seg > .dash-options-list-option:last-child {
+    border-right: none !important;
 }
-.bbg-radio-seg > label:hover {
-    background: var(--bg-hover);
+.bbg-radio-seg > label:hover,
+.bbg-radio-seg > .dash-options-list-option:hover {
+    background: var(--bg-hover) !important;
     color: var(--text-primary) !important;
 }
-.bbg-radio-seg > label:has(input:checked) {
-    background: var(--accent);
+.bbg-radio-seg > label.selected,
+.bbg-radio-seg > label[aria-selected="true"],
+.bbg-radio-seg > label:has(input:checked),
+.bbg-radio-seg > .dash-options-list-option.selected,
+.bbg-radio-seg > .dash-options-list-option[aria-selected="true"] {
+    background: var(--accent) !important;
     color: #000 !important;
 }
-.bbg-radio-seg input {
-    display: none !important;
+/* Transparent hit-target over the whole segment. Must NOT use display:none —
+   Chromium will not activate a display:none radio via its <label>, so Dash 4
+   onChange never fires. Full-size opacity:0 input receives the click. */
+.bbg-radio-seg .dash-options-list-option-wrapper {
+    position: absolute !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    z-index: 1;
+}
+.bbg-radio-seg input,
+.bbg-radio-seg .dash-options-list-option-checkbox {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    cursor: pointer !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+}
+.bbg-radio-seg .dash-options-list-option-text {
+    position: relative;
+    z-index: 0;
+    color: inherit !important;
+    font: inherit !important;
+    pointer-events: none;
 }
 
 /* Chart toolbar bar-interval segment — sit clear of title meta */
 .sfa-bar-interval.bbg-radio-seg {
     flex-shrink: 0;
 }
-.sfa-bar-interval.bbg-radio-seg > label {
+.sfa-bar-interval.bbg-radio-seg > label,
+.sfa-bar-interval.bbg-radio-seg > .dash-options-list-option {
     padding: 5px 12px !important;
     min-width: 28px;
     justify-content: center;
@@ -935,13 +990,13 @@ input.bbg-input[type=number] {
     box-shadow: none !important;
 }
 .dash-dropdown-options,
-.dash-options-list {
+.dash-options-list:not(.bbg-radio-seg) {
     background: var(--bg-secondary) !important;
     margin-top: 4px !important;
     border-top: 1px solid var(--border-primary) !important;
 }
 .dash-dropdown-option,
-.dash-options-list-option {
+.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option {
     background: var(--bg-secondary) !important;
     color: var(--text-primary) !important;
     border-bottom: 1px solid var(--border-primary) !important;
@@ -949,15 +1004,15 @@ input.bbg-input[type=number] {
     font-size: 12px !important;
 }
 .dash-dropdown-option:last-child,
-.dash-options-list-option:last-child {
+.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option:last-child {
     border-bottom: none !important;
 }
 .dash-dropdown-option:hover,
 .dash-dropdown-option[aria-selected="true"],
 .dash-dropdown-option[data-state="checked"],
-.dash-options-list-option:hover,
-.dash-options-list-option[aria-selected="true"],
-.dash-options-list-option[data-state="checked"] {
+.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option:hover,
+.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option[aria-selected="true"],
+.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option[data-state="checked"] {
     background: var(--bg-hover) !important;
     color: var(--accent) !important;
 }
