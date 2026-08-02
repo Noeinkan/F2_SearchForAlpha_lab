@@ -7,10 +7,13 @@ Three pieces:
    selector) into a compact ``{start, end}`` in ``chart-view-range-store``,
    or ``None`` on autoscale/reset.
 2. The bar-count toolbar readout (``chart-bar-count``) reflects that window.
-3. A *gated* rerender downsamples the visible window for oversized series so
-   Plotly stays responsive. It ``PreventUpdate``s for any series at/under
-   ``DOWNSAMPLE_THRESHOLD`` — i.e. every daily-equity case today — so the
-   common path keeps its existing single-writer figure behaviour.
+3. A row-click zoom (``chart-focus-store``) for the Data tab.
+
+The zoom-driven downsample rerender lives in ``chart_plotly.update_chart``,
+not here: ``load_data`` writes ``data-loaded-store`` and
+``chart-view-range-store`` in the same response, so two separate callbacks on
+those stores would both write ``financial-chart.figure`` in one dispatch layer
+and Dash 4 would abort the batch with "Duplicate callback outputs".
 """
 
 from dash.dependencies import Input, Output, State, ALL
@@ -66,68 +69,16 @@ def register_chart_view_callbacks(app) -> None:
         df = dashboard_state.df
         if not data_loaded or df is None:
             return ''
-        return bar_count_summary(df, view_range)
-
-    @app.callback(
-        Output('financial-chart', 'figure', allow_duplicate=True),
-        [Input('chart-view-range-store', 'data')],
-        [State({'type': 'plot-toggle', 'indicator': ALL}, 'value'),
-         State('chart-elements-checklist', 'value'),
-         State('signal-checklist', 'value'),
-         State('buy-signals', 'value'),
-         State('sell-signals', 'value'),
-         State('consecutive-signal-mode', 'value'),
-         State('signal-cooldown-bars', 'value'),
-         State('signal-logic-mode', 'value'),
-         State('signal-window', 'value'),
-         State('indicator-settings-store', 'data'),
-         State('data-loaded-store', 'data')],
-        prevent_initial_call=True,
-    )
-    def rerender_for_zoom(
-        view_range,
-        plot_values,
-        chart_elements,
-        selected_signals,
-        buy_signals,
-        sell_signals,
-        consecutive_signal_mode,
-        signal_cooldown_bars,
-        signal_logic,
-        signal_window,
-        indicator_settings,
-        data_loaded,
-    ):
-        """Downsample the visible window for oversized series only.
-
-        Gated on ``DOWNSAMPLE_THRESHOLD`` so daily-equity data (which never
-        needs it) leaves the figure to the normal single writer and the user's
-        client-side zoom is untouched.
-        """
-        df = dashboard_state.df
-        if not data_loaded or df is None or len(df) <= DOWNSAMPLE_THRESHOLD:
-            raise PreventUpdate
-
-        enriched = get_enriched(df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
-        config = _build_chart_config(
-            plot_values,
-            chart_elements,
-            selected_signals,
-            buy_signals,
-            sell_signals,
-            consecutive_signal_mode,
-            signal_cooldown_bars,
-            signal_logic,
-            signal_window,
-            indicator_settings,
-        )
-        config['view_range'] = view_range
-        return create_chart(enriched, config, get_theme())
+        return bar_count_summary(df, view_range, dashboard_state.interval)
 
     @app.callback(
         [
             Output('financial-chart', 'figure', allow_duplicate=True),
-            Output('chart-focus-store', 'data'),
+            # `focus_chart_from_row` (callbacks/data_table.py) is the primary
+            # writer; this one only clears the trigger back to None, so it
+            # must opt in as a duplicate. Without it Dash aborts the whole
+            # callback graph at init and every control in the app goes inert.
+            Output('chart-focus-store', 'data', allow_duplicate=True),
         ],
         Input('chart-focus-store', 'data'),
         [

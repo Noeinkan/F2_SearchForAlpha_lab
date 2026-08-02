@@ -431,29 +431,48 @@ INDICATOR_DEFINITIONS = [
     {
         'key': 'adx',
         'label': 'ADX',
-        'defaults': {'period': 14, 'threshold': 25},
+        'defaults': {'period': 14, 'threshold': 25, 'range_threshold': 20},
         'fields': [
             {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
             {'key': 'threshold', 'label': 'Trend Threshold', 'step': 0.1},
+            {'key': 'range_threshold', 'label': 'Range Threshold', 'step': 0.1},
         ],
     },
     {
         'key': 'atr',
         'label': 'ATR',
-        'defaults': {'period': 14},
+        'defaults': {
+            'period': 14,
+            'expansion_lookback': 20,
+            'expansion_factor': 1.2,
+            'compression_factor': 0.9,
+            'breakout_multiplier': 1.5,
+        },
         'fields': [
-            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1}
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
+            {'key': 'expansion_lookback', 'label': 'Expansion Lookback', 'step': 1, 'min': 1},
+            {'key': 'expansion_factor', 'label': 'Expansion Factor', 'step': 0.1, 'min': 0.1},
+            {'key': 'compression_factor', 'label': 'Compression Factor', 'step': 0.05, 'min': 0.05},
+            {'key': 'breakout_multiplier', 'label': 'Breakout ATR Multiple', 'step': 0.1, 'min': 0.1},
         ],
     },
     {
         'key': 'obv',
         'label': 'OBV',
-        'defaults': {'ma_period': 20},
+        'defaults': {'ma_period': 20, 'divergence_lookback': 20, 'confirmation_lookback': 5},
         'fields': [
-            {'key': 'ma_period', 'label': 'OBV MA Period', 'step': 1, 'min': 1}
+            {'key': 'ma_period', 'label': 'OBV MA Period', 'step': 1, 'min': 1},
+            {'key': 'divergence_lookback', 'label': 'Divergence Lookback', 'step': 1, 'min': 2},
+            {'key': 'confirmation_lookback', 'label': 'Confirmation Lookback', 'step': 1, 'min': 1},
         ],
     },
 ]
+
+# Signal categories that stay unticked in the SIGNALS panel on first load.
+# ADX/ATR/OBV are regime and confirmation filters rather than standalone
+# entries, so they are hidden until the user opts in — matching the fact that
+# their chart panes are also absent from bootstrap.DEFAULT_SELECTED_PLOTS.
+DEFAULT_OFF_SIGNAL_CATEGORIES = frozenset({'ADX', 'ATR', 'OBV'})
 
 PLOT_OPTIONS = [('Candlestick', 'candlestick')] + [
     (definition['label'], definition['key'])
@@ -549,6 +568,9 @@ def _strategy_yaml_indicator_defaults() -> dict:
     sma_cfg = get_strategy_config('sma')
     ema_cfg = get_strategy_config('ema')
     vwap_cfg = get_strategy_config('vwap')
+    adx_cfg = get_strategy_config('adx')
+    atr_cfg = get_strategy_config('atr')
+    obv_cfg = get_strategy_config('obv')
 
     return {
         'rsi': {
@@ -585,6 +607,23 @@ def _strategy_yaml_indicator_defaults() -> dict:
         },
         'vwap': {
             'window': vwap_cfg.get('vwap', {}).get('window', 20)
+        },
+        'adx': {
+            'period': adx_cfg.get('adx', {}).get('window', 14),
+            'threshold': adx_cfg.get('trend_regime', {}).get('threshold', 25),
+            'range_threshold': adx_cfg.get('range_regime', {}).get('threshold', 20)
+        },
+        'atr': {
+            'period': atr_cfg.get('atr', {}).get('window', 14),
+            'expansion_lookback': atr_cfg.get('expansion', {}).get('lookback', 20),
+            'expansion_factor': atr_cfg.get('expansion', {}).get('factor', 1.2),
+            'compression_factor': atr_cfg.get('compression', {}).get('factor', 0.9),
+            'breakout_multiplier': atr_cfg.get('breakout', {}).get('multiplier', 1.5)
+        },
+        'obv': {
+            'ma_period': obv_cfg.get('obv', {}).get('ma_period', 20),
+            'divergence_lookback': obv_cfg.get('divergence', {}).get('lookback_period', 20),
+            'confirmation_lookback': obv_cfg.get('confirmation', {}).get('lookback_period', 5)
         }
     }
 

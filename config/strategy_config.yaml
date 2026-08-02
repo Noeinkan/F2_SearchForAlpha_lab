@@ -61,6 +61,38 @@ strategies:
     vwap:
       window: 20
 
+  # ADX / ATR / OBV are regime and confirmation filters rather than standalone
+  # entries. They are registered like any other strategy but their categories
+  # start unticked in the dashboard SIGNALS panel
+  # (see DEFAULT_OFF_SIGNAL_CATEGORIES in lib/dash/dash_config.py).
+  adx:
+    adx:
+      window: 14
+    trend_regime:
+      threshold: 25
+    range_regime:
+      threshold: 20
+
+  atr:
+    atr:
+      window: 14
+    # Ratio of ATR% to its own rolling mean; ~top decile / bottom quintile.
+    expansion:
+      lookback: 20
+      factor: 1.2
+    compression:
+      factor: 0.9
+    breakout:
+      multiplier: 1.5
+
+  obv:
+    obv:
+      ma_period: 20
+    divergence:
+      lookback_period: 20
+    confirmation:
+      lookback_period: 5
+
 # Signal/strategy discovery controls (optional)
 signal_registry:
   # Optional explicit order override. Leave empty to use strategy metadata priority.
@@ -320,4 +352,88 @@ agent_strategies:
       vwap_window: 20
     search_space:
       vwap_window: { type: int, low: 5, high: 60 }
+
+  # Regime-gated variants of the bundles above. These are additive — the
+  # ungated originals are left untouched so their results stay comparable.
+  trend_macd_ema_adx_gated:
+    description: "MACD signal cross only while ADX confirms a directional trend."
+    ticker: SPY
+    buy_signals: [MACD_SignalCross_Buy, ADX_TrendRegime_Buy]
+    sell_signals: [MACD_SignalCross_Sell, ADX_TrendRegime_Sell]
+    signal_logic: and
+    signal_window: 3
+    mode: trading
+    live_params:
+      macd_fast: 12
+      macd_slow: 26
+      macd_signal: 9
+      adx_window: 14
+      adx_trend_threshold: 25
+    search_space:
+      macd_fast: { type: int, low: 5, high: 20 }
+      macd_slow: { type: int, low: 20, high: 50 }
+      macd_signal: { type: int, low: 5, high: 15 }
+      adx_window: { type: int, low: 7, high: 30 }
+      adx_trend_threshold: { type: int, low: 15, high: 40 }
+
+  mean_reversion_rsi_range_gated:
+    description: "RSI mean reversion only while ADX says the market is ranging."
+    ticker: SPY
+    buy_signals: [RSI_Oversold_Buy, ADX_RangeRegime_Buy]
+    sell_signals: [RSI_Overbought_Sell, ADX_RangeRegime_Sell]
+    signal_logic: and
+    signal_window: 2
+    mode: trading
+    live_params:
+      rsi_window: 14
+      rsi_oversold: 30
+      rsi_overbought: 70
+      adx_window: 14
+      adx_range_threshold: 20
+    search_space:
+      rsi_window: { type: int, low: 5, high: 30 }
+      rsi_oversold: { type: int, low: 15, high: 35 }
+      rsi_overbought: { type: int, low: 65, high: 85 }
+      adx_window: { type: int, low: 7, high: 30 }
+      adx_range_threshold: { type: int, low: 12, high: 28 }
+
+  bb_squeeze_vol_confirmed:
+    description: "Bollinger squeeze breakout confirmed by an ATR volatility thrust."
+    ticker: SPY
+    buy_signals: [BB_Squeeze_Buy, ATR_Breakout_Buy]
+    sell_signals: [BB_Squeeze_Sell, ATR_Breakout_Sell]
+    signal_logic: and
+    signal_window: 3
+    mode: trading
+    live_params:
+      bb_window: 20
+      bb_std: 2.0
+      atr_window: 14
+      atr_breakout_multiplier: 1.5
+    search_space:
+      bb_window: { type: int, low: 10, high: 50 }
+      bb_std: { type: float, low: 1.5, high: 3.0 }
+      atr_window: { type: int, low: 7, high: 30 }
+      atr_breakout_multiplier: { type: float, low: 0.5, high: 3.0 }
+
+  trend_ema_obv_confirmed:
+    description: "EMA triple cross confirmed by agreeing OBV volume flow."
+    ticker: SPY
+    buy_signals: [EMA_TripleCross_Buy, OBV_Confirmation_Buy]
+    sell_signals: [EMA_TripleCross_Sell, OBV_Confirmation_Sell]
+    signal_logic: and
+    signal_window: 3
+    mode: trading
+    live_params:
+      ema_short: 12
+      ema_medium: 26
+      ema_long: 50
+      obv_ma_period: 20
+      obv_confirmation_lookback: 5
+    search_space:
+      ema_short: { type: int, low: 5, high: 20 }
+      ema_medium: { type: int, low: 20, high: 60 }
+      ema_long: { type: int, low: 60, high: 200 }
+      obv_ma_period: { type: int, low: 5, high: 50 }
+      obv_confirmation_lookback: { type: int, low: 2, high: 20 }
 

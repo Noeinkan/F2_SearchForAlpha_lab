@@ -162,9 +162,15 @@ def register_command_palette_callbacks(app) -> None:
         if trigger_id in ('help-shortcuts-btn', 'palette-open-btn'):
             return True
         if trigger_id == 'sfa-palette-esc-trigger':
-            # The esc-trigger store only ever changes when the palette is
-            # open — clientside sets it to False on Esc. Close by mirroring.
-            return False if esc_data is False else (not bool(current))
+            # Nothing writes this store today — Esc is handled natively by
+            # `dbc.Modal(keyboard=True)`. So the only time it fires is when
+            # the shell remounts and it reports its default `None`. Toggling
+            # on that opened the palette by itself on page load, and its
+            # backdrop then swallowed every click in the app. Treat `None`
+            # as "no signal"; only an explicit `False` means Esc-to-close.
+            if esc_data is None:
+                raise PreventUpdate
+            return False
         raise PreventUpdate
 
     # Dispatch a palette command. Triggered by clicking a row in the

@@ -5,8 +5,11 @@ Supported intervals: ``1d``, ``1h``, ``4h``.
 ``periods_per_year`` approximates US equity regular-session bars:
 252 trading days × 6.5 hours. Hourly → 252 × 6.5 = 1638; 4h → 252 × 6.5 / 4 ≈ 410.
 
-Yahoo Finance caps intraday (1h) history at roughly 730 calendar days; 4h is
-built by resampling 1h bars so it inherits the same lookback limit.
+Yahoo Finance caps intraday (1h) history at 730 calendar days, and rejects a
+request spanning exactly 730 days with an empty response — so the clamp asks
+for 728 to stay strictly inside the cap with a day of slack for the local-vs-
+exchange timezone offset. 4h is built by resampling 1h bars so it inherits the
+same lookback limit.
 """
 
 from __future__ import annotations
@@ -27,7 +30,8 @@ YF_INTERVAL = {"1d": "1d", "1h": "1h", "4h": "1h"}
 PERIODS_PER_YEAR = {"1d": 252, "1h": 1638, "4h": 410}
 
 # Yahoo intraday lookback cap (calendar days). None = no clamp.
-MAX_LOOKBACK_DAYS: dict[str, Optional[int]] = {"1d": None, "1h": 730, "4h": 730}
+# 728, not 730: a request spanning the full 730 days comes back empty.
+MAX_LOOKBACK_DAYS: dict[str, Optional[int]] = {"1d": None, "1h": 728, "4h": 728}
 
 _ALIASES = {
     "d": "1d",
@@ -91,8 +95,8 @@ def clamp_window(
 ) -> tuple[str, str]:
     """Clamp the window into Yahoo's rolling lookback for ``interval``.
 
-    Yahoo measures the intraday cap (~730 days) from *now*, not from
-    ``end``. Daily bars are not clamped.
+    Yahoo measures the intraday cap from *now*, not from ``end``. Daily bars
+    are not clamped.
 
     Returns ``(start, end)`` as ``YYYY-MM-DD`` strings.
 

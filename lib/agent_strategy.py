@@ -47,6 +47,17 @@ PARAM_KEY_MAP: dict[str, tuple[str, str]] = {
     "ema_medium": ("ema", "medium_window"),
     "ema_long": ("ema", "long_window"),
     "vwap_window": ("vwap", "window"),
+    "adx_window": ("adx", "period"),
+    "adx_trend_threshold": ("adx", "threshold"),
+    "adx_range_threshold": ("adx", "range_threshold"),
+    "atr_window": ("atr", "period"),
+    "atr_expansion_lookback": ("atr", "expansion_lookback"),
+    "atr_expansion_factor": ("atr", "expansion_factor"),
+    "atr_compression_factor": ("atr", "compression_factor"),
+    "atr_breakout_multiplier": ("atr", "breakout_multiplier"),
+    "obv_ma_period": ("obv", "ma_period"),
+    "obv_divergence_lookback": ("obv", "divergence_lookback"),
+    "obv_confirmation_lookback": ("obv", "confirmation_lookback"),
 }
 
 

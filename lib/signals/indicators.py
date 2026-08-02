@@ -246,6 +246,9 @@ def _build_default_indicator_settings() -> dict:
     sma_cfg = get_strategy_config('sma')
     ema_cfg = get_strategy_config('ema')
     vwap_cfg = get_strategy_config('vwap')
+    adx_cfg = get_strategy_config('adx')
+    atr_cfg = get_strategy_config('atr')
+    obv_cfg = get_strategy_config('obv')
 
     return {
         'rsi': {
@@ -283,6 +286,23 @@ def _build_default_indicator_settings() -> dict:
         },
         'vwap': {
             'window': vwap_cfg.get('vwap', {}).get('window', 20)
+        },
+        'adx': {
+            'period': adx_cfg.get('adx', {}).get('window', 14),
+            'threshold': adx_cfg.get('trend_regime', {}).get('threshold', 25),
+            'range_threshold': adx_cfg.get('range_regime', {}).get('threshold', 20)
+        },
+        'atr': {
+            'period': atr_cfg.get('atr', {}).get('window', 14),
+            'expansion_lookback': atr_cfg.get('expansion', {}).get('lookback', 20),
+            'expansion_factor': atr_cfg.get('expansion', {}).get('factor', 1.2),
+            'compression_factor': atr_cfg.get('compression', {}).get('factor', 0.9),
+            'breakout_multiplier': atr_cfg.get('breakout', {}).get('multiplier', 1.5)
+        },
+        'obv': {
+            'ma_period': obv_cfg.get('obv', {}).get('ma_period', 20),
+            'divergence_lookback': obv_cfg.get('divergence', {}).get('lookback_period', 20),
+            'confirmation_lookback': obv_cfg.get('confirmation', {}).get('lookback_period', 5)
         }
     }
 
@@ -362,6 +382,25 @@ def _build_strategy_config_mappers() -> dict[str, Callable[[dict], dict]]:
                 'window': settings.get('window', 20),
             }
         },
+        'adx': lambda settings: {
+            'adx': {'window': settings.get('period', 14)},
+            'trend_regime': {'threshold': settings.get('threshold', 25)},
+            'range_regime': {'threshold': settings.get('range_threshold', 20)},
+        },
+        'atr': lambda settings: {
+            'atr': {'window': settings.get('period', 14)},
+            'expansion': {
+                'lookback': settings.get('expansion_lookback', 20),
+                'factor': settings.get('expansion_factor', 1.2),
+            },
+            'compression': {'factor': settings.get('compression_factor', 0.9)},
+            'breakout': {'multiplier': settings.get('breakout_multiplier', 1.5)},
+        },
+        'obv': lambda settings: {
+            'obv': {'ma_period': settings.get('ma_period', 20)},
+            'divergence': {'lookback_period': settings.get('divergence_lookback', 20)},
+            'confirmation': {'lookback_period': settings.get('confirmation_lookback', 5)},
+        },
     }
 
 
@@ -396,6 +435,8 @@ _WINDOWED_PARAM_KEYS: frozenset[str] = frozenset({
     "rsi_window", "bb_window", "cci_window",
     "macd_fast", "macd_slow", "macd_signal",
     "vwap_window", "period",
+    "ma_period", "expansion_lookback",
+    "divergence_lookback", "confirmation_lookback",
 })
 
 

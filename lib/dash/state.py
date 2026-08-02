@@ -22,6 +22,7 @@ class DashboardState:
 
     def __init__(self, max_cache_size: int = MAX_CACHE_SIZE):
         self._df: Optional[pd.DataFrame] = None
+        self._interval: str = "1d"
         self._all_tickers_df: Optional[pd.DataFrame] = None
         self._ticker_dropdown_options: Optional[List[Dict[str, Any]]] = None
         self._backtest_results: Optional[Dict] = None
@@ -54,6 +55,15 @@ class DashboardState:
     @df.setter
     def df(self, value: pd.DataFrame) -> None:
         self._df = value
+
+    @property
+    def interval(self) -> str:
+        """Canonical bar interval ``df`` was fetched at (``1d``/``1h``/``4h``)."""
+        return self._interval
+
+    @interval.setter
+    def interval(self, value: str) -> None:
+        self._interval = value or "1d"
 
     @property
     def all_tickers_df(self) -> Optional[pd.DataFrame]:
@@ -163,6 +173,7 @@ class DashboardState:
     def reset(self) -> None:
         """Reset all state to initial values."""
         self._df = None
+        self._interval = "1d"
         self._all_tickers_df = None
         self._ticker_dropdown_options = None
         self._backtest_results = None

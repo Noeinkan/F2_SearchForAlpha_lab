@@ -4,6 +4,7 @@ Abstract base class for all trading strategies.
 Provides common configuration handling and defines the interface for signal generation.
 """
 
+import copy
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
@@ -38,7 +39,10 @@ class BaseTradingStrategy(ABC):
             name: Name identifier for this strategy.
         """
         self.name = name
-        self.config = self._get_default_config().copy()
+        # Deep copy: DEFAULT_CONFIG is nested, and a shallow copy would let
+        # update_config() mutate the class-level defaults for every later
+        # instance in the process.
+        self.config = copy.deepcopy(self._get_default_config())
         if config:
             self.update_config(config)
         logger.debug(f"Initialized {self.name} with config: {self.config}")

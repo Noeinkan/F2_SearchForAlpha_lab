@@ -49,7 +49,7 @@ Never run more than 3 backtests without pausing to summarise findings.
 
 - Data source remains free Yahoo Finance via `yfinance` (no paid API).
 - `4h` is resampled from `1h` bars.
-- Yahoo caps intraday (`1h`/`4h`) history at roughly **730 calendar days**; longer `--from` ranges are auto-clamped.
+- Yahoo caps intraday (`1h`/`4h`) history at **730 calendar days** and returns an empty response for a window spanning exactly 730, so the clamp asks for **728**; longer `--from` ranges are auto-clamped.
 - Indicator windows are **bar counts** (RSI 14 on 1h ≠ RSI 14 on daily). Prefer daily for multi-year research sweeps unless the task is explicitly intraday.
 - Backtest JSON `window` includes `"interval"` (e.g. `"1d"`).
 

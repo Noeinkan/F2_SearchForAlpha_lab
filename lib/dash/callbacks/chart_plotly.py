@@ -8,13 +8,13 @@ import logging
 from datetime import datetime
 
 import pandas as pd
-from dash import html
+from dash import callback_context, html
 from dash.dcc.express import send_data_frame
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 
 from lib.dash.bootstrap import build_default_chart_config
-from lib.dash.chart_builder import create_chart, create_empty_chart
+from lib.dash.chart_builder import DOWNSAMPLE_THRESHOLD, create_chart, create_empty_chart
 from lib.dash.components import ticker_pill
 from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, get_theme
 from lib.dash.state import dashboard_state
@@ -86,6 +86,7 @@ def register_plotly_callbacks(app) -> None:
     @app.callback(
         Output('financial-chart', 'figure', allow_duplicate=True),
         [Input('data-loaded-store', 'data'),
+         Input('chart-view-range-store', 'data'),
          Input({'type': 'plot-toggle', 'indicator': ALL}, 'value'),
          Input('chart-elements-checklist', 'value'),
          Input('signal-checklist', 'value'),
@@ -100,6 +101,7 @@ def register_plotly_callbacks(app) -> None:
     )
     def update_chart(
         data_loaded,
+        view_range,
         plot_values,
         chart_elements,
         selected_signals,
@@ -111,13 +113,30 @@ def register_plotly_callbacks(app) -> None:
         signal_window,
         indicator_settings,
     ):
-        """Rebuild the financial chart from sidebar selections / data loads."""
+        """Rebuild the financial chart from sidebar selections / data loads.
+
+        Sole writer of ``financial-chart.figure`` for both the data-load and
+        the zoom path. ``load_data`` writes ``data-loaded-store`` and
+        ``chart-view-range-store`` in one response, so a second callback keyed
+        on the range store would land in the same dispatch layer as this one —
+        Dash 4 rejects that batch with "Duplicate callback outputs" and every
+        control in the app goes inert (that is how D/1H/4H stopped working).
+        Keeping both Inputs here collapses the fan-out into one invocation.
+        """
         if not data_loaded or dashboard_state.df is None:
+            raise PreventUpdate
+
+        source = dashboard_state.df
+        # Zoom-only rerender exists to downsample oversized series. For
+        # anything at/under the threshold, leave the user's client-side zoom
+        # alone instead of pushing a fresh figure at every pan.
+        triggered = {t['prop_id'].split('.')[0] for t in (callback_context.triggered or [])}
+        if triggered == {'chart-view-range-store'} and len(source) <= DOWNSAMPLE_THRESHOLD:
             raise PreventUpdate
 
         theme = get_theme()
         try:
-            df = get_enriched(dashboard_state.df, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
+            df = get_enriched(source, indicator_settings or DEFAULT_INDICATOR_SETTINGS)
             config = _build_chart_config(
                 plot_values,
                 chart_elements,
@@ -130,6 +149,8 @@ def register_plotly_callbacks(app) -> None:
                 signal_window,
                 indicator_settings,
             )
+            if len(source) > DOWNSAMPLE_THRESHOLD:
+                config['view_range'] = view_range
             return create_chart(df, config, theme)
         except Exception as exc:
             logger.error("update_chart failed: %s", exc)

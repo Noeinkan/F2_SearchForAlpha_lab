@@ -168,7 +168,11 @@ def _apply_intraday_hover(fig: go.Figure, df: pd.DataFrame) -> None:
             tr.hovertemplate = ht.replace('%{x|%Y-%m-%d}', '%{x|%Y-%m-%d %H:%M}')
 
 
-def bar_count_summary(df: pd.DataFrame, view_range: dict | None = None) -> str:
+def bar_count_summary(
+    df: pd.DataFrame,
+    view_range: dict | None = None,
+    interval: str | None = None,
+) -> str:
     """Toolbar string like ``1,247 bars · 1D · 2018-01-02 → 2024-12-31``.
 
     Reflects the visible window when a ``view_range`` (zoom store) is active,
@@ -176,10 +180,15 @@ def bar_count_summary(df: pd.DataFrame, view_range: dict | None = None) -> str:
     above ``DOWNSAMPLE_THRESHOLD`` and the render window still exceeds
     ``MAX_RENDER_BARS``), appends ``(showing 1,500)`` so the toolbar matches
     what is drawn.
+
+    ``interval`` is the bar size the data was actually fetched at. Prefer it
+    over ``infer_bar_interval``: a 4h series has only two bars per regular
+    session, so half its gaps are the 20h overnight jump and the median lands
+    on ``20H``. Inference stays the fallback for callers without that context.
     """
     if df is None or len(df) == 0:
         return ''
-    interval = infer_bar_interval(df.index)
+    interval = interval.upper() if interval else infer_bar_interval(df.index)
     visible = df
     if view_range:
         start, end = view_range.get('start'), view_range.get('end')

@@ -25,6 +25,7 @@ from lib.dash.dash_config import (
 )
 from lib.dash.helpers import fetch_data_with_cache
 from lib.dash.state import dashboard_state
+from lib.timeframes import normalize_interval
 from lib.signals.indicators import (
     add_indicators,
     classify_signal_columns,
@@ -112,6 +113,7 @@ def load_market_session(
     df, _ = generate_signals(df, effective_settings)
     clear_enriched_cache()
     dashboard_state.df = df
+    dashboard_state.interval = normalize_interval(interval)
 
     classified = classify_signal_columns(df.columns.tolist())
     buy_columns = classified['buy']

@@ -228,7 +228,7 @@ html, body {
     color: #000;
 }
 
-﻿/* Segmented RadioItems (D/1H/4H, period toggles, …).
+/* Segmented RadioItems (D/1H/4H, period toggles, …).
    Dash 4 renders RadioItems as:
      div.dash-options-list.bbg-radio-seg[role=listbox]
        label.dash-options-list-option[.selected][aria-selected]

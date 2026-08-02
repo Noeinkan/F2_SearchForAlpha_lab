@@ -13,7 +13,7 @@ from dash import dcc, html
 
 from lib.dash.dash_config import (
     FONT_SIZES, FONT_FAMILY, BORDER_RADIUS, DEFAULT_SIGNAL_WINDOW,
-    DATA_ROW_OPTIONS, DATA_COLUMN_GROUPS,
+    DATA_ROW_OPTIONS, DATA_COLUMN_GROUPS, DEFAULT_OFF_SIGNAL_CATEGORIES,
 )
 from lib.dash.components import dense_input, ticker_pill
 from lib.dash.bootstrap import BootstrapSnapshot
@@ -149,6 +149,12 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
     help_icon_style = styles['help_icon']
 
     signal_categories = get_signal_categories()
+    # Filter/regime categories are selectable but start unticked — see
+    # DEFAULT_OFF_SIGNAL_CATEGORIES in dash_config.
+    default_signal_categories = [
+        category for category in signal_categories
+        if category not in DEFAULT_OFF_SIGNAL_CATEGORIES
+    ]
 
     return html.Div(id='panel-backtest', children=[
         dbc.Accordion(
@@ -826,7 +832,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                     dcc.Checklist(
                                         id='signals-category-filter',
                                         options=[{'label': cat, 'value': cat} for cat in signal_categories],
-                                        value=signal_categories,
+                                        value=default_signal_categories,
                                         inline=True,
                                         className='signals-category-filter'
                                     ),

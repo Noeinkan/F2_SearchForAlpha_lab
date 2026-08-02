@@ -227,7 +227,7 @@ def register_data_loading_callbacks(app) -> None:
             if canon != "1d":
                 status = f"{status} · {canon.upper()}"
             if window_adjusted:
-                status = f"{status} · WINDOW ADJUSTED (YAHOO 730D)"
+                status = f"{status} · WINDOW ADJUSTED (YAHOO INTRADAY LIMIT)"
 
             return (
                 status,

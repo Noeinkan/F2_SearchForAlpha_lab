@@ -38,10 +38,10 @@ def test_periods_per_year_map():
 
 def test_clamp_window_intraday():
     as_of = datetime(2026, 7, 31)
-    # Window partially overlaps Yahoo's rolling 730d → start clamped to as_of-730
+    # Window partially overlaps Yahoo's rolling intraday cap → start clamped
     start, end = clamp_window("2018-01-01", "2026-06-01", "1h", as_of=as_of)
     assert end == "2026-06-01"
-    assert start == "2024-07-31"  # 730 days before 2026-07-31
+    assert start == "2024-08-02"  # 728 days before 2026-07-31
     start_d, end_d = clamp_window("2018-01-01", "2024-07-01", "1d", as_of=as_of)
     assert start_d == "2018-01-01"
     assert end_d == "2024-07-01"
@@ -59,7 +59,7 @@ def test_clamp_window_relocates_stale_intraday_range():
         "2018-05-01", "2020-07-27", "4h", as_of=as_of, relocate=True
     )
     assert end == "2026-07-31"
-    assert start == "2024-07-31"  # duration > 730d → clipped to lookback
+    assert start == "2024-08-02"  # duration exceeds lookback → clipped to it
 
 
 def test_resample_ohlcv_4h():
