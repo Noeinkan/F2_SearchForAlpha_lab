@@ -1270,9 +1270,16 @@ input[type="radio"] {
 
 /* Phase 7: the dcc.Loading wrapper (and any intermediate div it renders)
    must be full-height so the chart's height:100% resolves against the
-   flex-sized frame instead of collapsing. */
+   flex-sized frame instead of collapsing.
+
+   The `:not()` is load-bearing. The chart glue appends the floating OHLC
+   legend straight into #financial-chart (buildLegend, 10-sfa-chart.js), so it
+   matches `#chart-frame > div > div` too. Stretching it to 100%/100% turned
+   its translucent background into an opaque grey veil over the whole canvas —
+   invisible to clicks (pointer-events:none), so it read as a rendering bug.
+   Overlay children size themselves; only the chart container gets stretched. */
 #chart-frame > div,
-#chart-frame > div > div {
+#chart-frame > div > div:not(.sfa-chart-legend) {
     width: 100%;
     height: 100%;
     min-width: 0;
