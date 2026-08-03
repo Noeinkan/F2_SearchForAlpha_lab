@@ -90,7 +90,7 @@ Cursor carica i file `.mdc` in `.cursor/rules/` **solo quando** il glob corrispo
 | Regola | Glob | Contenuto |
 |--------|------|-----------|
 | `sfa-python.mdc` | `lib/**/*.py` | Naming segnali, checklist nuovo indicatore, config, test |
-| `dash-callbacks.mdc` | `lib/dash/**` | Pattern callback, `integrated_dashboard.py`, chart_builder |
+| `dash-callbacks.mdc` | `lib/dash/**` | Pattern callback, `integrated_dashboard.py`, `chart_payload.py` |
 | `sfa-cli-research.mdc` | `lib/cli/**` | Contratti JSON, `contracts.py`, test CLI |
 
 **Rationale:** un agente che modifica `lib/dash/callbacks/fundamentals.py` non ha bisogno delle regole OpenClaw per `sfa promote`. Un agente che edita `lib/signals/signals_RSI.py` non ha bisogno delle convenzioni Dash.

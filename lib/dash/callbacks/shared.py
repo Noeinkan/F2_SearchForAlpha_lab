@@ -277,63 +277,6 @@ def _axis_layout_key(axis_id: str) -> str:
     return f"yaxis{axis_id[1:]}"
 
 
-def _combine_signals_for_counts(df: pd.DataFrame, columns: List[str], logic: str, window: int) -> pd.Series:
-    """Combine signal columns using the same logic as the chart markers."""
-    if not columns:
-        return pd.Series(False, index=df.index)
-    valid_cols = [c for c in columns if c in df.columns]
-    if not valid_cols:
-        return pd.Series(False, index=df.index)
-    if logic == 'and':
-        if window and window > 0:
-            windowed = df[valid_cols].rolling(window=window + 1, min_periods=1).max()
-            return (windowed > 0).all(axis=1)
-        return df[valid_cols].all(axis=1)
-    return df[valid_cols].any(axis=1)
-
-
-def _apply_consecutive_rules_for_counts(
-    signal_series: pd.Series,
-    mode: str,
-    cooldown: int
-) -> tuple[pd.Series, pd.Series]:
-    """Return accepted/rejected masks for consecutive signal rules."""
-    mode = (mode or 'scale_in').lower()
-    cooldown = max(0, int(cooldown or 0))
-    accepted = np.zeros(len(signal_series), dtype=bool)
-    rejected = np.zeros(len(signal_series), dtype=bool)
-    wait_reset = False
-    remaining_cooldown = 0
-
-    for idx, is_signal in enumerate(signal_series.values):
-        if mode == 'reset_cooldown' and not is_signal:
-            wait_reset = False
-
-        if mode == 'edge':
-            prev = signal_series.values[idx - 1] if idx > 0 else False
-            allow = bool(is_signal) and not bool(prev)
-        elif mode == 'cooldown':
-            allow = bool(is_signal) and remaining_cooldown == 0
-        elif mode == 'reset_cooldown':
-            allow = bool(is_signal) and remaining_cooldown == 0 and not wait_reset
-        else:
-            allow = bool(is_signal)
-
-        if is_signal and allow:
-            accepted[idx] = True
-            if mode in ('cooldown', 'reset_cooldown') and cooldown > 0:
-                remaining_cooldown = cooldown
-            if mode == 'reset_cooldown':
-                wait_reset = True
-        elif is_signal and not allow:
-            rejected[idx] = True
-
-        if remaining_cooldown > 0:
-            remaining_cooldown -= 1
-
-    return pd.Series(accepted, index=signal_series.index), pd.Series(rejected, index=signal_series.index)
-
-
 def _compute_trigger_counts(
     df: pd.DataFrame,
     selected_signals: List[str],
@@ -344,33 +287,25 @@ def _compute_trigger_counts(
     consecutive_signal_mode: str,
     cooldown_bars: int
 ) -> Dict[str, int]:
-    """Compute total accepted/rejected trigger counts for buy/sell."""
-    totals = {'accepted': 0, 'rejected': 0}
-    if df is None or df.empty:
-        return totals
+    """Total accepted/rejected trigger counts for buy/sell.
 
-    selected_set = set(selected_signals or [])
-    for signal_type, columns in (("buy", buy_signals), ("sell", sell_signals)):
-        if signal_type not in selected_set:
-            continue
+    Thin wrapper over ``lib.dash.signal_markers.trigger_counts``, which the
+    chart payload also uses — the counts and the markers therefore cannot
+    disagree. Kept as a positional-argument shim because several callbacks and
+    tests already call it this way.
+    """
+    from lib.dash.signal_markers import trigger_counts
 
-        accepted_col = f"{signal_type.capitalize()}_Trigger_Accepted"
-        rejected_col = f"{signal_type.capitalize()}_Trigger_Rejected"
-        if accepted_col in df.columns and rejected_col in df.columns:
-            accepted = int(df[accepted_col].fillna(False).astype(bool).sum())
-            rejected = int(df[rejected_col].fillna(False).astype(bool).sum())
-        else:
-            combined = _combine_signals_for_counts(df, columns, signal_logic, signal_window)
-            accepted_mask, rejected_mask = _apply_consecutive_rules_for_counts(
-                combined, consecutive_signal_mode, cooldown_bars
-            )
-            accepted = int(accepted_mask.sum())
-            rejected = int(rejected_mask.sum())
-
-        totals['accepted'] += accepted
-        totals['rejected'] += rejected
-
-    return totals
+    return trigger_counts(
+        df,
+        selected_signals,
+        buy_signals,
+        sell_signals,
+        logic=signal_logic,
+        window=signal_window,
+        mode=consecutive_signal_mode,
+        cooldown=cooldown_bars,
+    )
 
 
 def _compute_y_ranges_by_axis(fig: Any,
@@ -912,7 +847,7 @@ def _format_preset_options(presets: Dict[str, Any]) -> List[Dict[str, str]]:
 
 def _create_price_subtitle(df: pd.DataFrame, theme: dict) -> html.Span:
     """Create price change subtitle with last-bar as-of stamp."""
-    from lib.dash.chart_builder import infer_bar_interval
+    from lib.dash.chart_meta import infer_bar_interval
 
     latest_close = df['Close'].iloc[-1]
     prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close

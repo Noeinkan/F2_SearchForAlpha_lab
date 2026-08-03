@@ -15,7 +15,6 @@ from typing import Any
 
 from dash import html
 
-from lib.dash.chart_builder import create_chart
 from lib.dash.dash_config import (
     DEFAULT_INDICATOR_SETTINGS,
     DEFAULT_TICKER,
@@ -78,7 +77,6 @@ class BootstrapSnapshot:
     sell_options: list
     unified_rows: list
     data_display: dict[str, Any]
-    chart_figure: Any
 
 
 def load_market_session(
@@ -114,6 +112,7 @@ def load_market_session(
     clear_enriched_cache()
     dashboard_state.df = df
     dashboard_state.interval = normalize_interval(interval)
+    dashboard_state.ticker = ticker
 
     classified = classify_signal_columns(df.columns.tolist())
     buy_columns = classified['buy']
@@ -133,12 +132,10 @@ def load_market_session(
     change_sign = '+' if change >= 0 else ''
     change_color = theme['accent_green'] if change >= 0 else theme['accent_red']
 
-    chart_figure = create_chart(
-        df,
-        build_default_chart_config(effective_settings),
-        theme,
-    )
-
+    # No chart artifact is built here. The chart is drawn client-side from
+    # `chart-payload-store`, which `callbacks.chart.update_chart_payload` fills
+    # from live sidebar state — seeding it from here would serialise a megabyte
+    # of bars into the page that the renderer then immediately replaces.
     symbol = (ticker or DEFAULT_TICKER).upper()
     return BootstrapSnapshot(
         ticker=ticker,
@@ -157,7 +154,6 @@ def load_market_session(
         sell_options=sell_options,
         unified_rows=unified_rows,
         data_display=data_display,
-        chart_figure=chart_figure,
     )
 
 

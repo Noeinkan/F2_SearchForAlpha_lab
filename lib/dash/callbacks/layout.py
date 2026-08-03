@@ -4,6 +4,10 @@ Phase 2 layout callbacks — collapsible sidebars + right-panel splitter.
 Server side only flips session-store booleans. Clientside callbacks mirror
 those flags onto the DOM and wire up the splitter drag so CSS in
 `dashboard.css` does all the visual work without a server roundtrip.
+
+Resizing the panels used to have to poke the chart (`Plotly.Plots.resize`) on
+every drag frame. Lightweight Charts is created with `autoSize: true` and
+watches its own container, so the chart now keeps up on its own.
 """
 
 from dash import callback_context, no_update
@@ -36,11 +40,23 @@ def register_layout_callbacks(app) -> None:
 
     # Mirror the collapsed flags onto the DOM. On viewports <1180px the right
     # panel is a slide-out drawer (`sfa-open` controls translateX).
+    #
+    # The chevrons point at the direction the panel will *move*, so they have to
+    # flip with the state: a left sidebar that is open collapses leftward ("<<")
+    # and reopens rightward (">>"); the right panel is the mirror image. A fixed
+    # glyph reads as pointing the wrong way in one of the two states.
     app.clientside_callback(
         """
         function(sidebarCollapsed, rightCollapsed) {
             const sidebar = document.querySelector('aside.sfa-sidebar');
             const right = document.querySelector('aside.sfa-right-panel');
+            const setGlyph = function(id, collapsed, openGlyph, closedGlyph) {
+                const btn = document.getElementById(id);
+                if (!btn) { return; }
+                btn.textContent = collapsed ? closedGlyph : openGlyph;
+                btn.title = collapsed ? 'Expand panel' : 'Collapse panel';
+                btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            };
             if (sidebar) {
                 sidebar.classList.toggle('sfa-collapsed', !!sidebarCollapsed);
             }
@@ -48,6 +64,8 @@ def register_layout_callbacks(app) -> None:
                 right.classList.toggle('sfa-collapsed', !!rightCollapsed);
                 right.classList.toggle('sfa-open', !rightCollapsed);
             }
+            setGlyph('sidebar-toggle-btn', !!sidebarCollapsed, '<<', '>>');
+            setGlyph('right-panel-toggle-btn', !!rightCollapsed, '>>', '<<');
             return window.dash_clientside.no_update;
         }
         """,
@@ -86,12 +104,6 @@ def register_layout_callbacks(app) -> None:
             }
             right.style.width = width + 'px';
             right.style.minWidth = width + 'px';
-            if (window.Plotly) {
-                const graph = document.getElementById('financial-chart');
-                if (graph) {
-                    setTimeout(function() { window.Plotly.Plots.resize(graph); }, 0);
-                }
-            }
             return window.dash_clientside.no_update;
         }
         """,
@@ -130,10 +142,6 @@ def register_layout_callbacks(app) -> None:
                 const next = Math.min(560, Math.max(240, current + dx));
                 right.style.width = next + 'px';
                 right.style.minWidth = next + 'px';
-                if (window.Plotly) {
-                    const graph = document.getElementById('financial-chart');
-                    if (graph) { window.Plotly.Plots.resize(graph); }
-                }
             });
             splitter.addEventListener('keyup', function() {
                 const finalWidth = parseInt(right.style.width, 10) || 0;
@@ -164,10 +172,6 @@ def register_layout_callbacks(app) -> None:
                 const next = Math.min(560, Math.max(240, startWidth + dx));
                 right.style.width = next + 'px';
                 right.style.minWidth = next + 'px';
-                if (window.Plotly) {
-                    const graph = document.getElementById('financial-chart');
-                    if (graph) { window.Plotly.Plots.resize(graph); }
-                }
             });
             document.addEventListener('mouseup', function() {
                 if (!dragging) { return; }

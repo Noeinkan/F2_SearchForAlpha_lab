@@ -56,7 +56,18 @@ def test_load_market_session_returns_snapshot(mock_fetch):
     assert snapshot.header_symbol == "TSLA"
     assert snapshot.data_status.endswith("ROWS")
     assert dashboard_state.df is not None
-    assert snapshot.chart_figure is not None
+    assert dashboard_state.ticker == "TSLA"
+
+
+def test_snapshot_carries_no_chart_artifact():
+    """The chart is built by callbacks.chart, never by the bootstrap.
+
+    Seeding a payload here would serialise a megabyte of bars into the page
+    that the client renderer immediately replaces.
+    """
+    assert not hasattr(BootstrapSnapshot, "chart_payload")
+    assert "chart_payload" not in BootstrapSnapshot.__dataclass_fields__
+    assert "chart_figure" not in BootstrapSnapshot.__dataclass_fields__
 
 
 @patch("lib.dash.bootstrap.load_market_session", side_effect=RuntimeError("offline"))

@@ -9,7 +9,6 @@ Public API kept stable for backwards compatibility:
 - `create_dashboard_layout(theme)` — composes the layout regions
 - `run_dashboard(dev_mode)` — boots the server
 - `find_available_port`, `_get_env_port` — port helpers
-- `create_dash_app`, `plot_financial_chart_dash` — legacy API
 """
 
 import json
@@ -35,7 +34,6 @@ from lib.dash.dash_config import (
     get_theme,
 )
 from lib.dash.styles import CUSTOM_CSS
-from lib.dash.chart_builder import create_chart
 from lib.dash.layout import create_dashboard_layout as _create_dashboard_layout
 from lib.dash.layout.shell import wire_command_palette_is_open
 from lib.dash.callbacks import register_callbacks
@@ -297,46 +295,6 @@ def run_dashboard(dev_mode: bool = False) -> None:
         port=port,
         extra_files=extra_files if use_reloader else None,
     )
-
-
-# =============================================================================
-# LEGACY SUPPORT
-# =============================================================================
-
-def create_dash_app(df, ticker: str, backtest_results: dict) -> dash.Dash:
-    """Legacy function for backwards compatibility."""
-    from dash import dcc, html
-
-    theme = get_theme()
-    app = dash.Dash(__name__, external_stylesheets=[])
-
-    config = {
-        'selected_plots': ['candlestick', 'volume', 'rsi'],
-        'show_candlesticks': True,
-        'show_bollinger': True,
-        'show_sma': True,
-        'show_ema': False,
-        'show_buy_sell_signals': True,
-        'show_legend': True,
-        'selected_signals': ['buy', 'sell'],
-        'title': f'{ticker} Analysis',
-    }
-
-    fig = create_chart(df, config, theme)
-
-    app.layout = html.Div([
-        dcc.Graph(figure=fig, style={'height': '90vh'}),
-    ], style={'backgroundColor': theme['bg_primary'], 'height': '100vh'})
-
-    return app
-
-
-def plot_financial_chart_dash(df, ticker: str, backtest_results: dict) -> None:
-    """Legacy function for backwards compatibility."""
-    app = create_dash_app(df, ticker, backtest_results)
-    port = find_available_port()
-    _schedule_browser_open("127.0.0.1", port, _default_browser_path())
-    app.run(debug=False, use_reloader=False, port=port)
 
 
 if __name__ == '__main__':

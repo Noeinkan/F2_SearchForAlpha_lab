@@ -18,7 +18,6 @@ dependencies = [
     "ta>=0.11",
     "PyYAML>=6.0",
     "ruamel.yaml>=0.18",
-    "matplotlib>=3.7",
     "plotly>=5.18",
     "dash>=2.14",
     "dash-bootstrap-components>=1.5",

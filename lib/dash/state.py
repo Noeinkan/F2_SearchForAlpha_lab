@@ -23,6 +23,7 @@ class DashboardState:
     def __init__(self, max_cache_size: int = MAX_CACHE_SIZE):
         self._df: Optional[pd.DataFrame] = None
         self._interval: str = "1d"
+        self._ticker: str = ""
         self._all_tickers_df: Optional[pd.DataFrame] = None
         self._ticker_dropdown_options: Optional[List[Dict[str, Any]]] = None
         self._backtest_results: Optional[Dict] = None
@@ -64,6 +65,15 @@ class DashboardState:
     @interval.setter
     def interval(self, value: str) -> None:
         self._interval = value or "1d"
+
+    @property
+    def ticker(self) -> str:
+        """Symbol ``df`` was fetched for. Shown in the chart's OHLC legend."""
+        return self._ticker
+
+    @ticker.setter
+    def ticker(self, value: str) -> None:
+        self._ticker = (value or "").upper()
 
     @property
     def all_tickers_df(self) -> Optional[pd.DataFrame]:
@@ -174,6 +184,7 @@ class DashboardState:
         """Reset all state to initial values."""
         self._df = None
         self._interval = "1d"
+        self._ticker = ""
         self._all_tickers_df = None
         self._ticker_dropdown_options = None
         self._backtest_results = None

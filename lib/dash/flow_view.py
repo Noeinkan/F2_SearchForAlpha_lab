@@ -64,6 +64,32 @@ def _kpi_span(label: str, value: str, tip: str, theme: dict) -> html.Span:
     )
 
 
+def _panel_style(theme: dict) -> dict[str, Any]:
+    """Shared card chrome for every collapsible flow panel."""
+    return {
+        "backgroundColor": theme["bg_tertiary"],
+        "border": f'1px solid {theme["border_primary"]}',
+        "borderRadius": "8px",
+        "padding": "10px 14px",
+        "marginBottom": "12px",
+    }
+
+
+def _panel_summary_style(theme: dict) -> dict[str, Any]:
+    """Summary row of a collapsible panel (the ▸/▾ marker comes from CSS)."""
+    return {
+        "display": "flex",
+        "alignItems": "center",
+        "flexWrap": "wrap",
+        "gap": "6px",
+        "cursor": "pointer",
+        "fontWeight": "600",
+        "color": theme["text_primary"],
+        "fontFamily": FONT_FAMILY,
+        "fontSize": FONT_SIZES["sm"],
+    }
+
+
 def _table_cell_style(theme: dict) -> dict[str, Any]:
     return {
         "backgroundColor": theme["bg_primary"],
@@ -397,16 +423,7 @@ def render_flow_guide(theme: dict) -> html.Details:
     """Always-visible (open by default) how-to-read strip for beginners."""
     return html.Details(
         [
-            html.Summary(
-                "How to read this page",
-                style={
-                    "cursor": "pointer",
-                    "fontWeight": "600",
-                    "color": theme["text_primary"],
-                    "fontFamily": FONT_FAMILY,
-                    "fontSize": FONT_SIZES["sm"],
-                },
-            ),
+            html.Summary("How to read this page", style=_panel_summary_style(theme)),
             html.Div(
                 [
                     _otm_itm_diagram(theme),
@@ -447,14 +464,8 @@ def render_flow_guide(theme: dict) -> html.Details:
             ),
         ],
         open=True,
-        className="sfa-flow-guide",
-        style={
-            "backgroundColor": theme["bg_tertiary"],
-            "border": f'1px solid {theme["border_primary"]}',
-            "borderRadius": "8px",
-            "padding": "10px 14px",
-            "marginBottom": "12px",
-        },
+        className="sfa-flow-guide sfa-flow-panel",
+        style=_panel_style(theme),
     )
 
 
@@ -726,7 +737,7 @@ def _insight_list(insights: Sequence[tuple[str, str]], theme: dict) -> html.Ul |
     )
 
 
-def render_glossary_panel(theme: dict) -> html.Details:
+def render_glossary_panel(theme: dict, *, open: bool = True) -> html.Details:
     """Collapsible glossary matching the standalone HTML legend."""
     term_items: list[Any] = []
     for k, v in TERM_DEFINITIONS.items():
@@ -756,16 +767,7 @@ def render_glossary_panel(theme: dict) -> html.Details:
         ])
 
     return html.Details([
-        html.Summary(
-            "What do these terms mean?",
-            style={
-                "cursor": "pointer",
-                "fontWeight": "600",
-                "color": theme["text_primary"],
-                "fontFamily": FONT_FAMILY,
-                "fontSize": FONT_SIZES["sm"],
-            },
-        ),
+        html.Summary("What do these terms mean?", style=_panel_summary_style(theme)),
         html.Dl(term_items, style={"margin": "8px 0 0"}),
         html.H3(
             "Activity flags",
@@ -777,16 +779,10 @@ def render_glossary_panel(theme: dict) -> html.Details:
             },
         ),
         html.Dl(flag_items, style={"margin": "0"}),
-    ], style={
-        "backgroundColor": theme["bg_tertiary"],
-        "border": f'1px solid {theme["border_primary"]}',
-        "borderRadius": "8px",
-        "padding": "10px 14px",
-        "marginBottom": "12px",
-    })
+    ], open=open, className="sfa-flow-panel sfa-flow-glossary", style=_panel_style(theme))
 
 
-def render_summary_cards(reports: Sequence[Mapping[str, Any]], theme: dict) -> html.Div:
+def render_summary_cards(reports: Sequence[Mapping[str, Any]], theme: dict) -> html.Details:
     total_unusual = sum(
         1 for r in reports for f in (r.get("flags") or []) if f.get("kind") == "unusual"
     )
@@ -814,27 +810,32 @@ def render_summary_cards(reports: Sequence[Mapping[str, Any]], theme: dict) -> h
             "color": theme["text_primary"],
         })
 
-    return html.Div([
-        _card(f"Tickers: {len(reports)}"),
-        _card(f"Unusual contracts: {total_unusual}"),
-        _card(f"Block premium flagged: {fmt_premium(total_premium)}"),
-        _card(f"Repeat-call tickers: {', '.join(repeat_tickers) or '—'}"),
-    ], style={"display": "flex", "gap": "12px", "flexWrap": "wrap", "marginBottom": "12px"})
+    return html.Details([
+        html.Summary("Scan summary", style=_panel_summary_style(theme)),
+        html.Div([
+            _card(f"Tickers: {len(reports)}"),
+            _card(f"Unusual contracts: {total_unusual}"),
+            _card(f"Block premium flagged: {fmt_premium(total_premium)}"),
+            _card(f"Repeat-call tickers: {', '.join(repeat_tickers) or '—'}"),
+        ], style={"display": "flex", "gap": "12px", "flexWrap": "wrap", "marginTop": "10px"}),
+    ], open=True, className="sfa-flow-panel sfa-flow-summary", style=_panel_style(theme))
 
 
-def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0) -> html.Div:
+def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0) -> html.Details:
     ticker = str(report.get("ticker", ""))
     if report.get("error"):
-        return html.Div([
-            html.H3(ticker, style={"color": theme["text_primary"], "margin": 0}),
-            html.P(str(report["error"]), style={"color": theme["accent_red"]}),
-        ], style={
-            "backgroundColor": theme["bg_tertiary"],
-            "border": f'1px solid {theme["border_primary"]}',
-            "borderRadius": "8px",
-            "padding": "14px",
-            "marginBottom": "12px",
-        })
+        return html.Details(
+            [
+                html.Summary(ticker, style={
+                    **_panel_summary_style(theme),
+                    "fontSize": FONT_SIZES["lg"],
+                }),
+                html.P(str(report["error"]), style={"color": theme["accent_red"], "margin": "8px 0 0"}),
+            ],
+            open=True,
+            className="sfa-flow-panel sfa-flow-ticker-card",
+            style=_panel_style(theme),
+        )
 
     repeat = any(f.get("kind") == "repeat_call" for f in (report.get("flags") or []))
     score_tip = score_breakdown(report)
@@ -896,9 +897,21 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
     score_chips = _score_chip_row(report, theme)
     strike_map = _strike_map(report, theme)
 
+    # Score stays visible on the summary row so a collapsed card is still rankable.
+    header_children.append(html.Span(
+        f"Score {report.get('unusual_score', 0)}",
+        title=score_tip,
+        style={
+            "marginLeft": "auto",
+            "fontFamily": FONT_FAMILY,
+            "fontSize": FONT_SIZES["xs"],
+            "color": theme["text_secondary"],
+            "cursor": "help",
+        },
+    ))
+
     card_children: list[Any] = [
-        html.Div([
-            html.Div(header_children, style={"display": "flex", "alignItems": "center", "flexWrap": "wrap"}),
+        html.Div(
             html.A(
                 "Open Fundamentals",
                 href=f"/fundamentals?ticker={ticker}",
@@ -909,14 +922,12 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
                     "fontFamily": FONT_FAMILY,
                 },
             ),
-        ], style={
-            "display": "flex",
-            "justifyContent": "space-between",
-            "alignItems": "center",
-            "flexWrap": "wrap",
-            "gap": "8px",
-            "marginBottom": "8px",
-        }),
+            style={
+                "display": "flex",
+                "justifyContent": "flex-end",
+                "margin": "8px 0",
+            },
+        ),
         html.Div([
             _kpi_span("Prev", f"${float(report.get('prev_close', 0)):,.2f}", "Previous session close", theme),
             _kpi_span(
@@ -972,13 +983,19 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
         _contracts_table(report.get("contracts") or [], f"flow-table-{index}-{ticker}", theme),
     ])
 
-    return html.Div(card_children, style={
-        "backgroundColor": theme["bg_tertiary"],
-        "border": f'1px solid {theme["border_primary"]}',
-        "borderRadius": "8px",
-        "padding": "14px",
-        "marginBottom": "12px",
-    })
+    return html.Details(
+        [
+            html.Summary(header_children, style={
+                **_panel_summary_style(theme),
+                "fontSize": FONT_SIZES["lg"],
+            }),
+            html.Div(card_children),
+        ],
+        # Top-scoring ticker starts expanded; the rest collapse so long scans stay scannable.
+        open=(index == 0),
+        className="sfa-flow-panel sfa-flow-ticker-card",
+        style=_panel_style(theme),
+    )
 
 
 def render_flow_placeholder(theme: dict, message: str = "No report yet. Click RESCAN NOW.") -> html.Div:

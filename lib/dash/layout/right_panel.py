@@ -24,7 +24,10 @@ def _create_right_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapshot 
     """Create the right panel with backtest controls and results."""
     return html.Aside([
         html.Div(
-            html.Button("<<", id='right-panel-toggle-btn', n_clicks=0, className='sfa-panel-toggle'),
+            # Glyph is re-set per state by the layout clientside callback; this
+            # is just the expanded-by-default first paint.
+            html.Button(">>", id='right-panel-toggle-btn', n_clicks=0, className='sfa-panel-toggle',
+                        title='Collapse panel', **{'aria-label': 'Toggle backtest panel'}),
             className='sfa-panel-toggle-wrap',
         ),
         html.Div([
@@ -402,6 +405,30 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                     'borderColor': theme['accent_red'],
                                 }
                             ),
+                            html.Div([
+                                dcc.RadioItems(
+                                    id='stop-mode',
+                                    options=[
+                                        {'label': '% TRAIL', 'value': 'percent'},
+                                        {'label': 'ATR', 'value': 'atr'},
+                                    ],
+                                    value='percent',
+                                    inline=True,
+                                    inputStyle={'marginRight': '4px'},
+                                    labelStyle={
+                                        'fontSize': FONT_SIZES['xs'],
+                                        'padding': '2px 8px',
+                                        'cursor': 'pointer',
+                                        'marginRight': '4px',
+                                    },
+                                    className='signal-logic-toggle'
+                                ),
+                            ], style={
+                                'marginTop': '8px',
+                                'backgroundColor': theme['bg_tertiary'],
+                                'borderRadius': '4px',
+                                'padding': '2px 4px',
+                            }),
                         ], style={
                             'marginBottom': '12px',
                             'display': 'none',
@@ -413,6 +440,14 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                         dbc.Tooltip(
                             "Trailing stop percentage applied after entry.",
                             target='trailing-stop-pct',
+                            placement='right',
+                            trigger='hover focus',
+                        ),
+                        dbc.Tooltip(
+                            "% TRAIL uses the fixed percentage above. ATR uses the "
+                            "volatility-scaled Chandelier stop from the ATR strategy "
+                            "(needs ATR signals generated; falls back to % otherwise).",
+                            target='stop-mode',
                             placement='right',
                             trigger='hover focus',
                         ),

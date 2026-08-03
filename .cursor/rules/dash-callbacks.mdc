@@ -15,13 +15,29 @@ alwaysApply: false
 - **State:** `lib/dash/state.py` — in-memory session cache
 
 ## Large files (read in chunks)
-- `integrated_dashboard.py`, `chart_builder.py`, `fundamentals.py`
+- `integrated_dashboard.py`, `right_panel.py`, `fundamentals.py`
 
 ## Charts
-- Plotly factory + overlay registry: `lib/dash/chart_builder.py`
-- New chart overlays must register in the overlay registry — read existing examples first
+The price chart is **TradingView Lightweight Charts, not Plotly**. Plotly is
+left only for the small fundamentals metric charts.
+
+- Payload builder: `lib/dash/chart_payload.py` (`build_chart_payload`)
+- Client renderer: `lib/dash/assets/10-sfa-chart.js` (`window.sfaChart`)
+- Callbacks: `lib/dash/callbacks/chart.py` — the only writer of `chart-payload-store`
+- Overlays: `overlay_registry.get_tv_overlay_specs`; panes: `_PANE_BUILDERS`
+- Pan/zoom/crosshair/autoscale are client-side. **Never** add a callback that
+  rebuilds the chart from a viewport change.
+- Panes read the strategy's own columns (`ATR_Pct`, `ADX_Pos_DI`, `OBV_MA`, …)
+  when present; recompute only as a fallback for bare OHLCV frames.
 
 ## Callback patterns
+- **One writer per output.** Dash 4 aborts the whole dispatch batch with
+  "Duplicate callback outputs" if two callbacks write the same output in one
+  layer, and every control in the app goes inert. This has bitten twice.
+- A callback downstream of one that raises `PreventUpdate` is **not dispatched
+  at all** — not even via its other inputs. For work that must happen on first
+  paint, trigger off a real DOM event (see `chart-boot-btn`), not off a store
+  that may never transition.
 - Use `prevent_initial_call=True` unless the callback must fire on load
 - Routing/startup callbacks that need initial fire: `prevent_initial_call='initial_duplicate'` (see `routing.py`, `fundamentals.py`, `startup.py`)
 - Use `dcc.Store` for shared state; `dash.no_update` to skip unchanged outputs

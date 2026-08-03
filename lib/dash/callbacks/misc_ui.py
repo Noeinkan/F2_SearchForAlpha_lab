@@ -369,7 +369,7 @@ def register_misc_callbacks(app) -> None:
 
     # Clientside: dispatch bridge. The server writes a `{action, ticker}`
     # dict into `command-palette-bridge`. This callback translates each
-    # action into the right DOM side-effect (button click, plotly call,
+    # action into the right DOM side-effect (button click, chart API call,
     # etc.) without bouncing back through the server.
     app.clientside_callback(
         """
@@ -392,16 +392,7 @@ def register_misc_callbacks(app) -> None:
             else if (action === 'toggle-sidebar') { clickById('sidebar-toggle-btn'); }
             else if (action === 'toggle-right')   { clickById('right-panel-toggle-btn'); }
             else if (action === 'reset-zoom') {
-                var graph = document.getElementById('financial-chart');
-                if (graph && window.Plotly) {
-                    var inner = graph.querySelector('.js-plotly-plot');
-                    if (inner) {
-                        try { window.Plotly.relayout(inner, {'xaxis.autorange': true, 'yaxis.autorange': true}); }
-                        catch (err) { /* layout doesn't support autorange */ }
-                        try { window.Plotly.relayout(inner, 'reset'); }
-                        catch (err) { /* ignore */ }
-                    }
-                }
+                if (window.sfaChart) { window.sfaChart.fitContent(); }
             }
             else if (action === 'clear-data') {
                 // No dedicated clear button in the UI; trigger the data
@@ -414,14 +405,11 @@ def register_misc_callbacks(app) -> None:
             // ticker / route changes are handled by server callbacks that
             // already consume command-palette-dispatch; nothing to do here.
 
-            // Always focus the chart (or first focusable) after a
-            // command runs so keyboard navigation keeps working.
+            // Always focus the chart after a command runs so keyboard
+            // navigation keeps working.
             setTimeout(function() {
                 var chart = document.getElementById('financial-chart');
-                if (chart) {
-                    var inner = chart.querySelector('.js-plotly-plot');
-                    if (inner) { inner.setAttribute('tabindex', '0'); inner.focus({preventScroll:true}); }
-                }
+                if (chart) { chart.focus({preventScroll: true}); }
             }, 0);
 
             return Date.now();
@@ -507,175 +495,4 @@ def register_misc_callbacks(app) -> None:
         State('command-palette-commands', 'data'),
     )
 
-    app.clientside_callback(
-        """
-        function(n_clicks) {
-            if (!n_clicks) {
-                return window.dash_clientside.no_update;
-            }
-            const graph = document.getElementById('financial-chart');
-            if (!graph || !window.Plotly) {
-                return window.dash_clientside.no_update;
-            }
-            const plotlyGraph = graph.querySelector('.js-plotly-plot');
-            if (!plotlyGraph) {
-                return window.dash_clientside.no_update;
-            }
-            window.Plotly.downloadImage(plotlyGraph, {
-                format: 'png',
-                filename: 'chart',
-                height: null,
-                width: null,
-                scale: 2
-            });
-            return Date.now();
-        }
-        """,
-        Output('export-img-store', 'data'),
-        Input('export-img-btn', 'n_clicks'),
-    )
-
-    # Re-fit every subplot's Y axis to the data that is actually visible
-    # inside the current X window, whenever the X window changes (1M/3M/...
-    # rangeselector click, X-axis drag zoom, double-click "reset axes").
-    #
-    # Why we cannot just set `yaxis.autorange: true` (the previous, broken
-    # fix): Plotly's `autorange` recomputes the Y range from ALL trace data,
-    # NOT from the data inside the visible X window. So re-applying it on a
-    # rangeselector click just reproduces the same full-history Y range and
-    # the 1M candles stay squeezed at the top. Worse, the recursive relayout
-    # corrupted the subplot domain layout in some Plotly versions, producing
-    # the "data pinned at top, empty middle, indicators at bottom" screenshot.
-    #
-    # Correct approach: read the current X range, walk every trace on every
-    # subplot Y axis, compute the min/max of the Y values whose X falls
-    # inside [xMin, xMax], then set `yaxis.range = [ymin, ymax]` explicitly
-    # with `autorange: false`. The relayout this triggers carries only
-    # `yaxis.range[0]/[1]` keys, which our guard ignores (no `xaxis.range`),
-    # so there is no re-entrant loop. Box / Y-axis zooms carry `yaxis.range`
-    # keys too, so the guard skips them and respects the user's manual Y
-    # selection.
-    app.clientside_callback(
-        """
-        function(relayoutData) {
-            if (!relayoutData || typeof relayoutData !== 'object') {
-                return window.dash_clientside.no_update;
-            }
-            var keys = Object.keys(relayoutData);
-            if (keys.length === 0) {
-                return window.dash_clientside.no_update;
-            }
-            var hasXRange = false;
-            var hasYRange = false;
-            for (var i = 0; i < keys.length; i++) {
-                var k = keys[i];
-                if (k.indexOf('xaxis') === 0 && k.indexOf('range') !== -1) hasXRange = true;
-                if (k.indexOf('yaxis') === 0 && k.indexOf('range') !== -1) hasYRange = true;
-            }
-            // Only refit Y on a pure X-range change. If the relayout also
-            // carries a Y-range key (box / Y-axis zoom), respect the user's
-            // manual Y selection.
-            if (!hasXRange || hasYRange) {
-                return window.dash_clientside.no_update;
-            }
-            var graph = document.getElementById('financial-chart');
-            if (!graph || !window.Plotly) {
-                return window.dash_clientside.no_update;
-            }
-            var gd = graph.querySelector('.js-plotly-plot');
-            if (!gd || !gd._fullLayout || !gd._fullData) {
-                return window.dash_clientside.no_update;
-            }
-            // Canonical X range. make_subplots(shared_xaxes=True) wires every
-            // upper x-axis to `matches='xN'` on the bottom subplot, so after
-            // resolution gd._fullLayout.xaxis.range mirrors the bottom axis.
-            // For a date axis, Plotly's supplyDefaults converts the range to
-            // millisecond numbers via ax.d2c, but gd._fullData[i].x keeps the
-            // raw ISO date strings. Comparing a string to a number coerces
-            // the string via Number() → NaN, and NaN comparisons are always
-            // false, so the visibility filter would silently pass every point
-            // and Y would be fit to the whole dataset (no visible refit).
-            // Normalize both endpoints and trace X values to the same numeric
-            // coordinate space (ms for date axis, plain number for linear).
-            var xAx = gd._fullLayout.xaxis;
-            var xRange = xAx && xAx.range;
-            if (!xRange || xRange.length < 2 ||
-                xRange[0] == null || xRange[1] == null) {
-                return window.dash_clientside.no_update;
-            }
-            var isDateAxis = xAx.type === 'date';
-            function toXNum(v) {
-                if (typeof v === 'number') return v;
-                if (isDateAxis) {
-                    var t = Date.parse(v);
-                    return isNaN(t) ? NaN : t;
-                }
-                return Number(v);
-            }
-            var xMin = toXNum(xRange[0]);
-            var xMax = toXNum(xRange[1]);
-            if (!isFinite(xMin) || !isFinite(xMax)) {
-                return window.dash_clientside.no_update;
-            }
-            if (xMin > xMax) { var tmp = xMin; xMin = xMax; xMax = tmp; }
-
-            function axisKey(name) {
-                return name === 'y' ? 'yaxis' : 'yaxis' + name.substring(1);
-            }
-
-            var yAxes = (gd._fullLayout._subplots && gd._fullLayout._subplots.yaxis) || [];
-            if (!yAxes.length) {
-                return window.dash_clientside.no_update;
-            }
-
-            var payload = {};
-            for (var ai = 0; ai < yAxes.length; ai++) {
-                var axName = yAxes[ai];
-                var yMin = Infinity, yMax = -Infinity;
-                for (var ti = 0; ti < gd._fullData.length; ti++) {
-                    var tr = gd._fullData[ti];
-                    var trYAxis = tr.yaxis || 'y';
-                    if (trYAxis !== axName) continue;
-                    var tx = tr.x;
-                    if (!tx || !tx.length) continue;
-                    if (tr.type === 'candlestick') {
-                        var highs = tr.high, lows = tr.low;
-                        for (var k = 0; k < tx.length; k++) {
-                            var xv = toXNum(tx[k]);
-                            if (!isFinite(xv) || xv < xMin || xv > xMax) continue;
-                            var hv = highs[k], lv = lows[k];
-                            if (isFinite(hv) && hv > yMax) yMax = hv;
-                            if (isFinite(lv) && lv < yMin) yMin = lv;
-                        }
-                    } else {
-                        var ys = tr.y;
-                        if (!ys) continue;
-                        for (var k = 0; k < tx.length; k++) {
-                            var xv = toXNum(tx[k]);
-                            if (!isFinite(xv) || xv < xMin || xv > xMax) continue;
-                            var yv = ys[k];
-                            if (isFinite(yv)) {
-                                if (yv > yMax) yMax = yv;
-                                if (yv < yMin) yMin = yv;
-                            }
-                        }
-                    }
-                }
-                if (isFinite(yMin) && isFinite(yMax) && yMax > yMin) {
-                    var pad = (yMax - yMin) * 0.05;
-                    payload[axisKey(axName) + '.range'] = [yMin - pad, yMax + pad];
-                    payload[axisKey(axName) + '.autorange'] = false;
-                }
-            }
-            if (Object.keys(payload).length === 0) {
-                return window.dash_clientside.no_update;
-            }
-            try { window.Plotly.relayout(gd, payload); }
-            catch (err) { /* layout may have torn down between events */ }
-            return window.dash_clientside.no_update;
-        }
-        """,
-        Output('chart-y-autorange-sync', 'children'),
-        Input('financial-chart', 'relayoutData'),
-    )
 

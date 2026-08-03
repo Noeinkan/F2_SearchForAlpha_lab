@@ -174,6 +174,10 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                     **styles['button_outline'],
                     'padding': '6px 12px',
                 }),
+                html.Button("COLLAPSE ALL", id='flow-collapse-all', n_clicks=0, style={
+                    **styles['button_outline'],
+                    'padding': '6px 12px',
+                }),
                 html.Button("RESCAN NOW", id='flow-rescan-button', n_clicks=0, style={
                     **styles['button_primary'],
                     'padding': '6px 12px',
@@ -203,16 +207,17 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                 'flex': '0 0 auto',
             }),
         ], style={
-            'height': '36px',
-            'padding': '0 8px',
+            'minHeight': '36px',
+            'flex': '0 0 auto',
+            'padding': '4px 8px',
             'display': 'flex',
             'alignItems': 'center',
             'justifyContent': 'space-between',
+            'flexWrap': 'wrap',
             'gap': '8px',
             'backgroundColor': theme['bg_secondary'],
             'borderBottom': f'1px solid {theme["border_primary"]}',
         }),
-        html.Div(id='flow-glossary', style={'display': 'none'}, children=[]),
         dbc.Modal(
             [
                 dbc.ModalHeader(
@@ -242,39 +247,38 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
             className='sfa-flow-learn-modal',
             scrollable=True,
         ),
+        # Single scroll container for the whole report — the glossary lives inside
+        # it so an open glossary scrolls with the content instead of stealing height.
         html.Div(
-            dcc.Loading(
-                id='flow-loading',
-                type='circle',
-                color=theme['accent_blue'],
-                children=html.Div(
-                    id='flow-content',
+            [
+                html.Div(id='flow-glossary', style={'display': 'none'}, children=[]),
+                dcc.Loading(
+                    id='flow-loading',
+                    type='circle',
+                    color=theme['accent_blue'],
                     children=html.Div(
-                        "No report yet. Click RESCAN NOW.",
-                        style={
-                            'fontFamily': FONT_FAMILY,
-                            'fontSize': FONT_SIZES['sm'],
-                            'color': theme['text_secondary'],
-                            'padding': '24px',
-                            'textAlign': 'center',
-                        },
+                        id='flow-content',
+                        children=html.Div(
+                            "No report yet. Click RESCAN NOW.",
+                            style={
+                                'fontFamily': FONT_FAMILY,
+                                'fontSize': FONT_SIZES['sm'],
+                                'color': theme['text_secondary'],
+                                'padding': '24px',
+                                'textAlign': 'center',
+                            },
+                        ),
+                        style={'backgroundColor': theme['bg_primary']},
                     ),
-                    style={
-                        'flex': '1 1 auto',
-                        'minHeight': 0,
-                        'overflowY': 'auto',
-                        'overflowX': 'hidden',
-                        'backgroundColor': theme['bg_primary'],
-                    },
                 ),
-            ),
+            ],
             id='flow-scroll-region',
             style={
                 'flex': '1 1 auto',
                 'minHeight': 0,
-                'display': 'flex',
-                'flexDirection': 'column',
-                'overflow': 'hidden',
+                'overflowY': 'auto',
+                'overflowX': 'hidden',
+                'WebkitOverflowScrolling': 'touch',
             },
         ),
     ], id='flow-overlay', style={

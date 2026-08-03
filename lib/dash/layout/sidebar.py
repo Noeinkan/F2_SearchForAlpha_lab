@@ -358,7 +358,10 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
 
     return html.Aside([
         html.Div(
-            html.Button(">>", id='sidebar-toggle-btn', n_clicks=0, className='sfa-panel-toggle'),
+            # Glyph is re-set per state by the layout clientside callback; this
+            # is just the expanded-by-default first paint.
+            html.Button("<<", id='sidebar-toggle-btn', n_clicks=0, className='sfa-panel-toggle',
+                        title='Collapse panel', **{'aria-label': 'Toggle sidebar'}),
             className='sfa-panel-toggle-wrap',
         ),
         bloomberg_section('Market Data', market_section, collapsible=True, open=True, theme=theme),

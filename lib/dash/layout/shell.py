@@ -25,31 +25,15 @@ from .right_panel import _create_right_panel
 from .command_palette import _create_command_palette
 from lib.dash.bootstrap import BootstrapSnapshot
 
-# Optional TradingView lightweight chart wrapper. Not all environments will
-# have `dash_tvlwc` installed (it's an optional dependency). Provide a safe
-# fallback so the app can run without the package. Phase 6 removes this and
-# the related preload div + chart_library toggle.
-try:
-    from dash_tvlwc import Tvlwc  # type: ignore[reportMissingImports]
-except Exception:
-    def Tvlwc(*args, **kwargs):
-        # Return a minimal placeholder component. The caller often places this
-        # inside a hidden element (preload) or expects an html.Component
-        # returned from callbacks, so return a Div that makes failure visible
-        # but does not crash the app.
-        return html.Div("TradingView component not installed (dash_tvlwc).", style={'display': 'none'})
-
 
 def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Div:
     """Create the main dashboard layout."""
     styles = get_styles(theme)
-    bootstrapped = bootstrap is not None
-
     content = html.Div([
         dcc.Location(id='app-url', refresh=False),
         # Hidden stores
         dcc.Store(id='theme-store', data=DEFAULT_THEME, storage_type='local'),
-        dcc.Store(id='data-loaded-store', data=1 if bootstrapped else 0),
+        dcc.Store(id='data-loaded-store', data=1 if bootstrap is not None else 0),
         dcc.Store(id='data-display-store', data=bootstrap.data_display if bootstrap else None),
         dcc.Store(id='chart-focus-store', data=None),
         dcc.Store(id='layout-store', data={}),
@@ -74,7 +58,6 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Store(id='indicator-settings-store', data=DEFAULT_INDICATOR_SETTINGS),
         dcc.Store(id='bar-interval-store', data=DEFAULT_BAR_INTERVAL, storage_type='session'),
         dcc.Store(id='active-indicator-store', data=None),
-        dcc.Store(id='export-img-store', data=None),
         dcc.Store(id='fundamentals-store', data=None, storage_type='session'),
         dcc.Store(id='fundamentals-period-store', data=DEFAULT_FUNDAMENTALS_PERIOD, storage_type='session'),
         # Memory (not session): each page load starts with no prior ticker
@@ -110,12 +93,28 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         html.Div(id='keyboard-listener', style={'display': 'none'}),
         html.Div(id='theme-class-sync', style={'display': 'none'}),
         html.Div(id='ui-storage-sync', style={'display': 'none'}),
-        # Sink for the clientside Y-refit-on-X-range-change handler.
-        html.Div(id='chart-y-autorange-sync', style={'display': 'none'}),
-        # Phase 8 — visible x-range detected from the chart's relayout events.
-        # Feeds the bar-count readout and the gated large-data downsample
-        # rerender in callbacks/chart_view.py. `None` = full range (autoscale).
-        dcc.Store(id='chart-view-range-store', data=None),
+
+        # --- Lightweight Charts render path ---------------------------------
+        # `chart-payload-store` is the only channel between Python and the
+        # chart. One server callback writes it; one clientside callback reads
+        # it and calls window.sfaChart.apply(). Zoom/pan/crosshair stay on the
+        # client entirely, so there is no range store feeding back to Python —
+        # that feedback loop is what previously collided in a single Dash 4
+        # dispatch layer and took the whole callback graph down.
+        dcc.Store(id='chart-payload-store', data=None),
+        dcc.Store(id='chart-type-store', data='candles', storage_type='local'),
+        dcc.Store(id='price-scale-store', data='normal', storage_type='local'),
+        html.Div(id='chart-render-sync', style={'display': 'none'}),
+        html.Div(id='chart-focus-sync', style={'display': 'none'}),
+        html.Div(id='chart-tools-sync', style={'display': 'none'}),
+        # First-paint trigger, clicked by the glue once the canvas is mounted.
+        # It has to be a real DOM event: `data-loaded-store` is an output of
+        # `load_data`, which PreventUpdates on a bootstrapped page, and Dash
+        # will not dispatch a callback that sits downstream of one that never
+        # ran — not even via its other inputs. The Plotly chart never hit this
+        # because its figure was serialised into the layout. Same trick the
+        # command palette uses to drive buttons from clientside code.
+        html.Button(id='chart-boot-btn', n_clicks=0, style={'display': 'none'}),
 
         # Phase 5 — command palette. The modal lives at the bottom of the
         # shell so it stacks above every overlay. `is_open` is driven by
@@ -167,18 +166,6 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
 
         # Hidden elements
         html.Div(id='hidden-output', style={'display': 'none'}),
-        html.Div(
-            Tvlwc(
-                id='tv-preload',
-                seriesData=[[]],
-                seriesTypes=['candlestick'],
-                seriesOptions=[{}],
-                seriesMarkers=[[]],
-                width=1,
-                height=1
-            ),
-            style={'display': 'none'}
-        ),
 
     ], style=styles['app'], id='app-container')
 

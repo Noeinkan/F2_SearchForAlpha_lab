@@ -18,7 +18,9 @@ from lib.dash.flow_view import (
     _table_conditional_styles,
     render_flow_guide,
     render_flow_reports,
+    render_glossary_panel,
     render_learn_modal_content,
+    render_summary_cards,
     render_ticker_card,
 )
 from lib.dash.layout.overlays import _create_flow_overlay
@@ -268,13 +270,40 @@ def test_render_learn_modal_content_has_sections():
     assert "score" in serialized.lower()
 
 
-def test_render_ticker_card_returns_div_with_table():
+def test_render_ticker_card_returns_collapsible_panel_with_table():
     theme = get_theme(DEFAULT_THEME)
     card = render_ticker_card(_sample_report(), theme, index=0)
-    assert card.__class__.__name__ == "Div"
+    assert card.__class__.__name__ == "Details"
+    assert card.open is True  # top-scoring card starts expanded
+    assert "sfa-flow-panel" in card.className
     serialized = str(card)
     assert "NVDA" in serialized
     assert "flow-table-0-NVDA" in serialized
+
+
+def test_render_ticker_card_collapsed_below_top_rank():
+    theme = get_theme(DEFAULT_THEME)
+    card = render_ticker_card(_sample_report(), theme, index=1)
+    assert card.open is False
+    # Score stays on the summary row so a collapsed card is still rankable.
+    assert "Score" in str(card.children[0])
+
+
+def test_render_summary_cards_is_collapsible():
+    theme = get_theme(DEFAULT_THEME)
+    panel = render_summary_cards([_sample_report()], theme)
+    assert panel.__class__.__name__ == "Details"
+    assert panel.open is True
+    assert "sfa-flow-panel" in panel.className
+
+
+def test_render_glossary_panel_is_collapsible_and_open():
+    theme = get_theme(DEFAULT_THEME)
+    panel = render_glossary_panel(theme)
+    assert panel.__class__.__name__ == "Details"
+    assert panel.open is True
+    assert "sfa-flow-panel" in panel.className
+    assert render_glossary_panel(theme, open=False).open is False
 
 
 def test_render_ticker_card_has_sentiment_badge():
@@ -326,3 +355,38 @@ def test_flow_overlay_has_learn_modal_ids():
     assert "flow-learn-modal" in serialized
     assert "flow-learn-close" in serialized
     assert "flow-glossary-button" in serialized
+    assert "flow-collapse-all" in serialized
+
+
+def _find_by_id(node, target):
+    if getattr(node, "id", None) == target:
+        return node
+    children = getattr(node, "children", None)
+    if children is None:
+        return None
+    if not isinstance(children, (list, tuple)):
+        children = [children]
+    for child in children:
+        found = _find_by_id(child, target)
+        if found is not None:
+            return found
+    return None
+
+
+def test_flow_overlay_scrolls_in_one_container():
+    """Only #flow-scroll-region scrolls; the glossary lives inside it."""
+    theme = get_theme(DEFAULT_THEME)
+    overlay = _create_flow_overlay(get_styles(theme), theme)
+
+    region = _find_by_id(overlay, "flow-scroll-region")
+    assert region is not None
+    assert region.style["overflowY"] == "auto"
+    assert region.style["minHeight"] == 0
+
+    # Content must not open a second scrollbar inside the region.
+    content = _find_by_id(region, "flow-content")
+    assert content is not None
+    assert "overflowY" not in content.style
+
+    # Glossary is nested in the scroll region, not a sibling stealing viewport height.
+    assert _find_by_id(region, "flow-glossary") is not None

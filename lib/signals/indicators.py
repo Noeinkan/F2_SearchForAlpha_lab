@@ -461,30 +461,44 @@ def longest_lookback(settings: dict | None) -> int:
 
 def add_indicators(df: pd.DataFrame, indicator_settings: dict | None = None) -> pd.DataFrame:
     """
-    Add technical indicators to the DataFrame.
-    
+    Add the bare ADX / ATR / OBV columns to the DataFrame.
+
+    These three are also computed by ADX/ATR/OBV_TradingStrategy inside
+    ``generate_signals``, which runs after this and writes identical values plus
+    its derived columns. This function exists for the callers that never reach
+    the strategy registry and read ``df['ADX']`` / ``df['ATR']`` / ``df['OBV']``
+    directly as model features or chart input (``lib/live/runner.py``,
+    ``lib/WIP/ML_strategy.py``). Settings are merged against the YAML defaults
+    for the same reason ``generate_signals`` merges them: a caller passing a
+    partial dict would otherwise get the hardcoded fallback here and the
+    configured window there, for the same column.
+
+    Note that the *derived* columns (``ATR_Pct``, ``ADX_Pos_DI``, ``OBV_MA``, …)
+    only exist after ``generate_signals``; code reading them must run after it.
+
     Args:
         df: DataFrame with OHLCV data.
-        
+        indicator_settings: Optional partial settings, merged over YAML defaults.
+
     Returns:
         DataFrame with added indicator columns.
     """
     logger.debug("Adding technical indicators")
-    indicator_settings = indicator_settings or {}
-    
+    settings = _merge_indicator_settings(indicator_settings)
+
     # ADX (Average Directional Index)
-    adx_period = indicator_settings.get('adx', {}).get('period', 14)
+    adx_period = settings.get('adx', {}).get('period', 14)
     adx = ADXIndicator(df['High'], df['Low'], df['Close'], window=adx_period)
     df['ADX'] = adx.adx()
-    
+
     # ATR (Average True Range)
-    atr_period = indicator_settings.get('atr', {}).get('period', 14)
+    atr_period = settings.get('atr', {}).get('period', 14)
     atr = AverageTrueRange(df['High'], df['Low'], df['Close'], window=atr_period)
     df['ATR'] = atr.average_true_range()
-    
+
     # OBV (On-Balance Volume)
     df['OBV'] = (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
-   
+
     return df
 
 

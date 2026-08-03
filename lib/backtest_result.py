@@ -279,12 +279,20 @@ def run_backtest_result(
     duration = time.perf_counter() - started
     metrics = metrics_from_result_df(result_df, initial_capital, interval=interval)
 
+    # Record the risk machinery that was *actually* applied. backtest() downgrades
+    # an ATR stop or ATR sizer to its percentage equivalent when the ATR columns
+    # are absent, so reading the request back would misdescribe the run.
+    recorded_params = dict(params)
+    for key in ("stop_mode", "position_sizing_strategy"):
+        if key in result_df.attrs:
+            recorded_params[key] = result_df.attrs[key]
+
     return BacktestResult(
         strategy=strategy_name,
         ticker=ticker,
         window_from=window_from,
         window_to=window_to,
-        params=dict(params),
+        params=recorded_params,
         metrics=metrics,
         seed=int(seed),
         duration_seconds=float(duration),

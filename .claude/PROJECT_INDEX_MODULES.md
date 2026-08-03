@@ -96,7 +96,10 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 |------|---------|
 | [lib/dash/integrated_dashboard.py](../lib/dash/integrated_dashboard.py) | App init, server boot, `register_callbacks(app)`, `_schedule_browser_open` (lands on `/ticker/<DEFAULT_TICKER>`), `/flow_report.html` route |
 | [lib/dash/bootstrap.py](../lib/dash/bootstrap.py) | `try_bootstrap_default_session()` — preload default ticker on startup |
-| [lib/dash/chart_builder.py](../lib/dash/chart_builder.py) | Plotly figure factory + overlay registry |
+| [lib/dash/chart_payload.py](../lib/dash/chart_payload.py) | Builds the JSON payload the client chart renders (candles, panes, series, markers) |
+| [lib/dash/chart_meta.py](../lib/dash/chart_meta.py) | Bar-interval inference + toolbar bar-count summary |
+| [lib/dash/signal_markers.py](../lib/dash/signal_markers.py) | Buy/sell trigger resolution shared by the chart markers and the TRIG/REJ counters |
+| [lib/dash/assets/10-sfa-chart.js](../lib/dash/assets/10-sfa-chart.js) | TradingView Lightweight Charts glue — owns pan/zoom/crosshair client-side |
 | [lib/dash/dash_config.py](../lib/dash/dash_config.py) | Theme, defaults, indicator settings |
 | [lib/dash/state.py](../lib/dash/state.py) | `dashboard_state` — in-memory session cache |
 | [lib/dash/routes.py](../lib/dash/routes.py) | URL route parsing — terminal, fundamentals, flow, ticker_terminal |
@@ -137,7 +140,7 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 ### Visualisation (static)
 | File | Purpose |
 |------|---------|
-| [lib/visualization.py](../lib/visualization.py) | Matplotlib chart utilities |
+| _(removed)_ | `lib/visualization.py` (matplotlib) was deleted — nothing imported it, and it was the sole reason matplotlib/mplfinance were pinned |
 
 ---
 

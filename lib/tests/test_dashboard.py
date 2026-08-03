@@ -9,7 +9,7 @@ import numpy as np
 from datetime import date, timedelta
 
 from lib.dash.state import DashboardState
-from lib.dash.chart_builder import create_chart, create_empty_chart
+from lib.dash.chart_payload import build_chart_payload, empty_payload
 from lib.dash.components import (
     build_metric_card, build_status_badge, build_alert, build_progress_bar
 )
@@ -203,27 +203,12 @@ class TestDashboardState:
 # CHART BUILDER TESTS
 # =============================================================================
 
-class TestChartBuilder:
-    """Tests for chart building functions."""
+class TestChartPayload:
+    """Tests for the Lightweight Charts payload builder."""
 
-    def test_create_empty_chart(self, dark_theme):
-        """Test empty chart creation."""
-        fig = create_empty_chart(dark_theme)
-        assert fig is not None
-        assert len(fig.data) == 0
-        assert len(fig.layout.annotations) == 1
-        assert fig.layout.autosize is True
-        assert fig.layout.margin.l == 60
-
-    def test_create_empty_chart_custom_message(self, dark_theme):
-        """Test empty chart with custom message."""
-        fig = create_empty_chart(dark_theme, message="Custom message")
-        assert fig.layout.annotations[0]['text'] == "Custom message"
-
-    def test_create_chart_candlestick_only(self, sample_df, dark_theme):
-        """Test chart with candlestick only."""
+    def _config(self, plots, **overrides):
         config = {
-            'selected_plots': ['candlestick'],
+            'selected_plots': plots,
             'show_candlesticks': True,
             'show_bollinger': False,
             'show_sma': False,
@@ -231,107 +216,68 @@ class TestChartBuilder:
             'show_buy_sell_signals': False,
             'show_legend': False,
             'selected_signals': [],
-            'title': 'Test Chart',
-        }
-        fig = create_chart(sample_df, config, dark_theme)
-        assert fig is not None
-        assert len(fig.data) > 0
-
-    def test_create_chart_with_indicators(self, sample_df, dark_theme):
-        """Test chart with multiple indicators."""
-        config = {
-            'selected_plots': ['candlestick', 'volume', 'rsi', 'macd'],
-            'show_candlesticks': True,
-            'show_bollinger': True,
-            'show_sma': True,
-            'show_ema': False,
-            'show_buy_sell_signals': True,
-            'show_legend': True,
-            'selected_signals': ['buy', 'sell'],
-            'title': 'Full Chart',
-        }
-        fig = create_chart(sample_df, config, dark_theme)
-        assert fig is not None
-        # Should have multiple traces
-        assert len(fig.data) > 4
-
-    def test_create_chart_empty_plots(self, sample_df, dark_theme):
-        """Test chart with no plots selected."""
-        config = {
-            'selected_plots': [],
-            'show_candlesticks': False,
-            'show_bollinger': False,
-            'show_sma': False,
-            'show_ema': False,
-            'show_buy_sell_signals': False,
-            'show_legend': False,
-            'selected_signals': [],
-            'title': '',
-        }
-        fig = create_chart(sample_df, config, dark_theme)
-        assert fig is not None
-        assert len(fig.data) == 0
-
-    def test_chart_theme_colors(self, sample_df, dark_theme, light_theme):
-        """Test that chart uses theme colors."""
-        config = {
-            'selected_plots': ['candlestick'],
-            'show_candlesticks': True,
-            'show_bollinger': False,
-            'show_sma': False,
-            'show_ema': False,
-            'show_buy_sell_signals': False,
-            'show_legend': False,
-            'selected_signals': [],
-            'title': '',
-        }
-
-        dark_fig = create_chart(sample_df, config, dark_theme)
-        light_fig = create_chart(sample_df, config, light_theme)
-
-        # Background colors should differ
-        assert dark_fig.layout.plot_bgcolor != light_fig.layout.plot_bgcolor
-
-    def test_chart_traces_use_native_subplot_axes(self, sample_df, dark_theme):
-        """Regression: traces stay on native subplot axes (no global xaxis='x' hack)."""
-        config = {
-            'selected_plots': ['candlestick', 'volume', 'rsi'],
-            'show_candlesticks': True,
-            'show_bollinger': False,
-            'show_sma': False,
-            'show_ema': False,
-            'show_buy_sell_signals': False,
-            'show_legend': False,
-            'selected_signals': [],
+            'buy_signal_columns': [],
+            'sell_signal_columns': [],
             'title': '',
             'indicator_settings': {},
         }
-        fig = create_chart(sample_df, config, dark_theme)
-        traces = fig.to_plotly_json()['data']
-        assert traces[0].get('xaxis', 'x') == 'x'
-        volume = next(t for t in traces if t.get('name') == 'Volume')
-        assert volume.get('xaxis') == 'x2'
-        rsi = next(t for t in traces if str(t.get('name', '')).startswith('RSI'))
-        assert rsi.get('xaxis') == 'x3'
+        config.update(overrides)
+        return config
 
-    def test_chart_autosize_no_fixed_height(self, sample_df, dark_theme):
-        """Figure height is driven by the container, not a calculated layout height."""
-        config = {
-            'selected_plots': ['candlestick', 'volume', 'rsi', 'macd', 'cci'],
-            'show_candlesticks': True,
-            'show_bollinger': False,
-            'show_sma': False,
-            'show_ema': False,
-            'show_buy_sell_signals': False,
-            'show_legend': False,
-            'selected_signals': [],
-            'title': '',
-            'indicator_settings': {},
-        }
-        fig = create_chart(sample_df, config, dark_theme)
-        assert fig.layout.autosize is True
-        assert fig.layout.height is None
+    def test_empty_payload(self, dark_theme):
+        payload = empty_payload(dark_theme)
+        assert payload['candles'] == []
+        assert payload['series'] == []
+        assert [p['key'] for p in payload['panes']] == ['price']
 
+    def test_empty_payload_custom_message(self, dark_theme):
+        payload = empty_payload(dark_theme, message="Custom message")
+        assert payload['meta']['message'] == "Custom message"
+
+    def test_candlestick_only(self, sample_df, dark_theme):
+        payload = build_chart_payload(sample_df, self._config(['candlestick']), dark_theme)
+        assert len(payload['candles']) == len(sample_df)
+        assert set(payload['candles'][0]) == {'time', 'open', 'high', 'low', 'close'}
+        assert [p['key'] for p in payload['panes']] == ['price']
+
+    def test_indicator_panes_follow_selected_plots(self, sample_df, dark_theme):
+        config = self._config(['candlestick', 'volume', 'rsi', 'macd'],
+                              show_bollinger=True, show_sma=True)
+        payload = build_chart_payload(sample_df, config, dark_theme)
+        assert [p['key'] for p in payload['panes']] == ['price', 'volume', 'rsi', 'macd']
+        # Every series must name a pane that exists, or the glue drops it.
+        pane_keys = {p['key'] for p in payload['panes']}
+        assert all(s['pane'] in pane_keys for s in payload['series'])
+
+    def test_price_pane_is_taller_than_indicator_panes(self, sample_df, dark_theme):
+        payload = build_chart_payload(
+            sample_df, self._config(['candlestick', 'rsi']), dark_theme
+        )
+        heights = {p['key']: p['height'] for p in payload['panes']}
+        assert heights['price'] > heights['rsi']
+
+    def test_no_plots_still_yields_a_price_pane(self, sample_df, dark_theme):
+        """The glue anchors the crosshair legend and markers on the price series."""
+        payload = build_chart_payload(sample_df, self._config([]), dark_theme)
+        assert [p['key'] for p in payload['panes']] == ['price']
+        assert payload['series'] == []
+        assert len(payload['candles']) == len(sample_df)
+
+    def test_theme_colors_reach_the_payload(self, sample_df, dark_theme, light_theme):
+        config = self._config(['candlestick'])
+        dark = build_chart_payload(sample_df, config, dark_theme)
+        light = build_chart_payload(sample_df, config, light_theme)
+        assert dark['theme']['bg'] != light['theme']['bg']
+        assert dark['theme']['up'] == dark_theme['chart_candle_up']
+
+    def test_payload_is_json_serialisable(self, sample_df, dark_theme):
+        """numpy scalars and NaN both break json.dumps; the builder must not emit them."""
+        import json
+
+        config = self._config(['candlestick', 'volume', 'rsi', 'cci', 'macd'],
+                              show_bollinger=True)
+        payload = build_chart_payload(sample_df, config, dark_theme)
+        json.dumps(payload)   # raises on numpy types / NaN
 
 # =============================================================================
 # COMPONENT TESTS

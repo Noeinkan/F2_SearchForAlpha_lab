@@ -20,7 +20,6 @@ F2_SearchForAlpha_lab/
 ├── lib/
 │   ├── data_processing.py          # Data fetching + metrics
 │   ├── strategy.py                 # Backtesting engine
-│   ├── visualization.py            # Matplotlib chart utilities
 │   ├── utils.py                    # Input helpers and Excel export
 │   ├── params_optimization.py      # Parameter optimization
 │   ├── signal_combo_optimisation.py# Signal combination testing

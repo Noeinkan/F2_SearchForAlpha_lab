@@ -85,10 +85,24 @@ def test_phase7_status_activity_ids_present(ids):
     assert "status-activity-dot" in ids
 
 
-def test_phase8_perf_ids_present(ids):
-    """Phase 8 added the bar-count readout and the zoom-range store."""
+def test_chart_ids_present(ids):
+    """The bar-count readout plus the stores the Lightweight Charts glue reads."""
     assert "chart-bar-count" in ids
-    assert "chart-view-range-store" in ids
+    assert "chart-payload-store" in ids
+    assert "chart-type-store" in ids
+    assert "price-scale-store" in ids
+
+
+def test_no_plotly_zoom_store(ids):
+    """Zoom lives entirely on the client now.
+
+    ``chart-view-range-store`` existed to ship a Plotly relayout window back to
+    the server so it could re-render a downsampled figure. Lightweight Charts
+    draws the whole series, so nothing feeds that loop — and removing it also
+    removes the two-store fan-out that let two callbacks write the chart in one
+    dispatch layer.
+    """
+    assert "chart-view-range-store" not in ids
 
 
 def test_region_classes_present(class_names):

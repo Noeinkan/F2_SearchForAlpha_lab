@@ -127,8 +127,7 @@ def register_data_loading_callbacks(app) -> None:
          Output('header-ticker-symbol', 'children'),
          Output('header-ticker-price', 'children'),
          Output('header-ticker-change', 'children'),
-         Output('data-display-store', 'data'),
-         Output('chart-view-range-store', 'data', allow_duplicate=True)],
+         Output('data-display-store', 'data')],
         [Input('load-data-button', 'n_clicks'),
          Input('autoload-interval', 'n_intervals'),
          Input('ticker-dropdown', 'value'),
@@ -137,8 +136,9 @@ def register_data_loading_callbacks(app) -> None:
          State('end-date', 'date'),
          State('indicator-settings-store', 'data'),
          State('data-loaded-store', 'data')],
-        # Dash 4: figure is owned solely by chart_plotly.update_chart via
-        # data-loaded-store. initial_duplicate keeps autoload eligible.
+        # Dash 4: the chart payload is owned solely by
+        # callbacks.chart.update_chart_payload, reached via data-loaded-store.
+        # initial_duplicate keeps autoload eligible.
         prevent_initial_call='initial_duplicate',
     )
     def load_data(
@@ -153,8 +153,10 @@ def register_data_loading_callbacks(app) -> None:
     ):
         """Load market data on startup, manual refresh, ticker, or interval change.
 
-        Does not write ``financial-chart.figure`` — that is owned by
-        ``update_chart`` to avoid same-cycle dual figure writes.
+        Writes ``data-loaded-store`` and nothing chart-related;
+        ``callbacks.chart.update_chart_payload`` owns the payload and picks the
+        load up from that store. Two callbacks writing the chart in one dispatch
+        layer is what Dash 4 rejects outright.
         """
         ctx = callback_context
         if not ctx.triggered:
@@ -242,7 +244,6 @@ def register_data_loading_callbacks(app) -> None:
                 snapshot.header_price,
                 snapshot.header_change,
                 snapshot.data_display,
-                None,  # clear zoom so stale daily range doesn't fight new bars
             )
 
         except Exception as e:
@@ -260,6 +261,5 @@ def register_data_loading_callbacks(app) -> None:
                 (ticker or DEFAULT_TICKER).upper(),
                 no_update,
                 html.Span(str(e)[:40].upper(), style={'color': theme['accent_red']}),
-                no_update,
                 no_update,
             )

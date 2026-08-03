@@ -32,6 +32,7 @@ def register_backtest_callbacks(app) -> None:
          State('kelly-win-loss-ratio', 'value'),
          State('min-holding-period', 'value'),
          State('trailing-stop-pct', 'value'),
+         State('stop-mode', 'value'),
          State('position-scaling-pct', 'value'),
          State('take-profit-pct', 'value'),
          State('consecutive-signal-mode', 'value'),
@@ -45,7 +46,7 @@ def register_backtest_callbacks(app) -> None:
     def run_backtest_callback(n_clicks, ticker, initial_capital, buy_signals, sell_signals,
                               strategy_mode, amount_per_buy, position_size_pct,
                               kelly_win_rate, kelly_win_loss_ratio,
-                              min_holding_period, trailing_stop_pct, position_scaling_pct,
+                              min_holding_period, trailing_stop_pct, stop_mode, position_scaling_pct,
                               take_profit_pct, consecutive_signal_mode, signal_cooldown_bars,
                               signal_logic, signal_window, fx_fee_pct, slippage_pct, commission_pct):
         """Run backtest and display results."""
@@ -70,6 +71,7 @@ def register_backtest_callbacks(app) -> None:
 
         min_holding_period = int(min_holding_period or 0)
         trailing_stop_loss = max(0.0, float(trailing_stop_pct or 0)) / 100.0
+        stop_mode = stop_mode or 'percent'
         position_scaling = max(0.0, float(position_scaling_pct or 0)) / 100.0
         take_profit = max(0.0, float(take_profit_pct or 0)) / 100.0
         fx_fee_pct = max(0.0, float(fx_fee_pct or 0)) / 100.0
@@ -90,6 +92,7 @@ def register_backtest_callbacks(app) -> None:
                 kelly_win_loss_ratio=kelly_win_loss_ratio,
                 min_holding_period=min_holding_period,
                 trailing_stop_loss=trailing_stop_loss,
+                stop_mode=stop_mode,
                 position_scaling=position_scaling,
                 take_profit=take_profit,
                 consecutive_signal_mode=consecutive_signal_mode,
@@ -114,6 +117,7 @@ def register_backtest_callbacks(app) -> None:
                     kelly_win_loss_ratio=kelly_win_loss_ratio,
                     min_holding_period=min_holding_period,
                     trailing_stop_loss=trailing_stop_loss,
+                    stop_mode=stop_mode,
                     position_scaling=position_scaling,
                     take_profit=take_profit,
                     consecutive_signal_mode=consecutive_signal_mode,
@@ -132,6 +136,18 @@ def register_backtest_callbacks(app) -> None:
             )
             cost_drag_pct = backtest_results['total_return'] - baseline_metrics['total_return']
             cost_drag_value = backtest_results['final_portfolio_value'] - baseline_metrics['final_portfolio_value']
+
+            # The engine downgrades an ATR stop to the percentage trail when the
+            # ATR columns are missing, so report what it actually applied.
+            effective_stop_mode = results.attrs.get('stop_mode', 'percent')
+            stop_label = (
+                'ATR STOP' if effective_stop_mode == 'atr'
+                else f"{trailing_stop_loss * 100:.1f}% STOP"
+            )
+            stop_color = (
+                theme['accent_orange'] if effective_stop_mode != stop_mode
+                else theme['text_primary']
+            )
 
             # Calculate metrics
             total_return = backtest_results['total_return']
@@ -176,6 +192,13 @@ def register_backtest_callbacks(app) -> None:
                         f"{cost_drag_pct:+.2f}% / ${cost_drag_value:,.2f}",
                         className='num',
                         style={'color': cost_color, 'fontWeight': '600'}
+                    ),
+                    html.Span("|", style={'color': theme['border_primary']}),
+                    html.Span("EXIT", style={'color': theme['text_secondary'], 'letterSpacing': '1.5px'}),
+                    html.Span(
+                        stop_label + (' (FALLBACK)' if effective_stop_mode != stop_mode else ''),
+                        className='num',
+                        style={'color': stop_color, 'fontWeight': '600'}
                     ),
                 ], style={
                     'display': 'flex',

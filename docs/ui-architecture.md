@@ -14,7 +14,7 @@ Entry point: `python main.py` → `run_dashboard()` builds the Dash app, sets
 ```mermaid
 graph TD
     MP[dmc.MantineProvider] --> APP["#app-container (Div)"]
-    APP --> STORES["dcc.Store / dcc.Interval / dcc.Location<br/>(theme, data-loaded, optimization,<br/>chart-view-range, command-palette, …)"]
+    APP --> STORES["dcc.Store / dcc.Interval / dcc.Location<br/>(theme, data-loaded, optimization,<br/>chart-payload, command-palette, …)"]
     APP --> SHELL["#terminal-shell (Div)"]
     APP --> FOV[".sfa-fundamentals-overlay"]
     APP --> FLOW[".sfa-flow-overlay"]
@@ -58,20 +58,42 @@ All under [`lib/dash/layout/`](../lib/dash/layout/):
 | `shell.py` | Top-level composer. Emits every `dcc.Store` / `dcc.Interval` / hidden preload div, the four visible regions, the overlays, and the command palette. Also `wire_command_palette_is_open()`. |
 | `header.py` | The Bloomberg-style header tape **and** the dense bottom status bar (`_create_header`, `_create_status_bar`). |
 | `sidebar.py` | Left sidebar: Market Data, Saved Configurations, Chart Settings. |
-| `chart_area.py` | Center chart region: toolbar (title, bar-count, export) + the `dcc.Loading`-wrapped Plotly `financial-chart`. |
+| `chart_area.py` | Center chart region: toolbar (title, bar-count, interval, chart type, price scale, fit/export/fullscreen) + the `#financial-chart` render target. |
 | `right_panel.py` | Right panel: Backtest / Optimizer / Data tabs and their controls + results. |
 | `overlays.py` | Fundamentals workspace and Flow scanner workspace (both hidden until opened). |
 | `command_palette.py` | The Ctrl+K command-palette modal. |
 
-Chart rendering itself lives in [`lib/dash/chart_builder.py`](../lib/dash/chart_builder.py)
-(`create_chart`), independent of layout.
+### The price chart
+
+`#financial-chart` is a plain `<div>`, not a Dash component. It is drawn by
+TradingView Lightweight Charts, vendored at
+[`assets/00-lightweight-charts.standalone.production.js`](../lib/dash/assets/)
+and driven by the hand-written glue in
+[`assets/10-sfa-chart.js`](../lib/dash/assets/10-sfa-chart.js).
+
+Python's only job is to keep `chart-payload-store` current;
+[`chart_payload.py`](../lib/dash/chart_payload.py) turns an enriched OHLCV frame
+into `{meta, theme, panes, candles, series, markers}`. Everything interactive —
+pan, zoom, crosshair, autoscale, chart type, price scale — happens on the client
+and never reaches the server.
+
+Two consequences worth knowing before changing anything here:
+
+- **There is no viewport round-trip.** Do not add a callback that rebuilds the
+  chart from a zoom or pan event. That loop is what previously put two writers
+  on one output in a single Dash 4 dispatch layer, which aborts the whole batch
+  with "Duplicate callback outputs" and leaves every control in the app inert.
+- **First paint needs a real DOM event.** The payload callback is downstream of
+  `load_data`, which raises `PreventUpdate` on a bootstrapped page, and Dash
+  never dispatches a callback downstream of a prevented one. The glue therefore
+  clicks a hidden `chart-boot-btn` once the container exists.
 
 Callbacks are one file per concern in [`lib/dash/callbacks/`](../lib/dash/callbacks/),
 each exposing `register_*_callbacks(app)` and wired together in
-`callbacks/__init__.py`. Notable ones: `data_loading`, `chart_plotly`,
-`chart_view` (Phase 8 bar-count + zoom), `backtest`, `optimization`,
-`status` (Phase 7 activity indicator), `command_palette`, `misc_ui`
-(keyboard shortcuts), `layout` (collapsible panels + splitter).
+`callbacks/__init__.py`. Notable ones: `data_loading`, `chart` (the sole
+`chart-payload-store` writer plus the clientside renderer), `backtest`,
+`optimization`, `status` (Phase 7 activity indicator), `command_palette`,
+`misc_ui` (keyboard shortcuts), `layout` (collapsible panels + splitter).
 
 ### Chart-collapse invariant (do not regress)
 
@@ -91,20 +113,26 @@ Signals and chart indicators are two related extension points.
    named `{INDICATOR}_{CONDITION}_Buy` / `_Sell`. Parameters always come from
    `config/strategy_config.yaml` via `lib/config_loader.py`. The `/add-signal`
    skill scaffolds this.
-2. **Chart panel** (a subplot like RSI/MACD): in `chart_builder.py`
-   - add the key to `CHART_ORDER`,
-   - write an `_add_<name>(fig, df, row, col, config, theme)` function,
-   - register it in the `plot_functions` map inside `create_chart`,
+2. **Chart pane** (like RSI/MACD): in `chart_payload.py`
+   - add the key to `INDICATOR_PANES` (this also fixes its stacking order),
+   - write a `_<name>_series(df, times, config, theme)` returning series specs,
+   - register it in `_PANE_BUILDERS`,
    - add it to `PLOT_INDICATOR_OPTIONS` in `dash_config.py` so it appears in the
      sidebar toggle list,
    - if it has tunable params, add an `INDICATOR_SETTING_SCHEMA` entry (gear icon
      + settings panel are generated from the schema).
+
+   Read the strategy's own columns when they exist (`ATR_Pct`, `ADX_Pos_DI`,
+   `OBV_MA`, …) instead of recomputing, so the plotted line is the series the
+   signal actually fired from; keep a local computation only as the fallback for
+   bare OHLCV frames. `_strategy_column()` handles the "present but all-NaN"
+   case.
 3. Keep the deeper conventions in
    [`.cursor/rules/sfa-python.mdc`](../.cursor/rules/sfa-python.mdc) in sync.
 
-Downsampling (Phase 8) is transparent to indicator code: `create_chart` reduces
-the frame **before** the `_add_*` functions run, so a new indicator computed
-from `df['Close']` automatically works on the downsampled view.
+There is no downsampling to think about: Lightweight Charts renders the full
+series, so the old `DOWNSAMPLE_THRESHOLD` / `MAX_RENDER_BARS` machinery is gone
+along with the zoom round-trip that needed it.
 
 ---
 

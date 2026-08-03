@@ -196,16 +196,30 @@ def register_flow_callbacks(app) -> None:
         visible = style.get("display") == "block"
         if visible:
             return [], {"display": "none"}
+        # No maxHeight/own scrollbar: the glossary sits inside #flow-scroll-region
+        # and scrolls with the report.
         return (
             render_glossary_panel(theme),
-            {
-                "display": "block",
-                "padding": "8px",
-                "borderBottom": f'1px solid {theme["border_primary"]}',
-                "maxHeight": "40%",
-                "overflowY": "auto",
-            },
+            {"display": "block", "padding": "8px 8px 0"},
         )
+
+    app.clientside_callback(
+        """
+        function(n_clicks) {
+            if (!n_clicks) { return window.dash_clientside.no_update; }
+            const overlay = document.getElementById('flow-overlay');
+            if (!overlay) { return window.dash_clientside.no_update; }
+            const panels = overlay.querySelectorAll('details.sfa-flow-panel, details.sfa-flow-guide');
+            if (!panels.length) { return window.dash_clientside.no_update; }
+            const anyOpen = Array.prototype.some.call(panels, function (p) { return p.open; });
+            Array.prototype.forEach.call(panels, function (p) { p.open = !anyOpen; });
+            return anyOpen ? 'EXPAND ALL' : 'COLLAPSE ALL';
+        }
+        """,
+        Output("flow-collapse-all", "children"),
+        Input("flow-collapse-all", "n_clicks"),
+        prevent_initial_call=True,
+    )
 
     @app.callback(
         Output("flow-learn-modal", "is_open"),
