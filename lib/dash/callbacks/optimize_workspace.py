@@ -23,19 +23,32 @@ def register_optimize_workspace_callbacks(app) -> None:
         function(pathname) {
             var home = document.getElementById('chart-area-home');
             var slot = document.getElementById('optimize-chart-slot');
+            var host = document.getElementById('chart-area-host')
+                || document.querySelector('#terminal-shell main');
             if (!home || !slot) { return ''; }
             var onOptimize = !!(pathname && String(pathname).indexOf('/optimize') === 0);
             if (onOptimize) {
                 if (home.parentElement !== slot) { slot.appendChild(home); }
-            } else {
-                var terminalMain = document.querySelector('#terminal-shell main');
-                if (terminalMain && home.parentElement !== terminalMain) {
-                    terminalMain.appendChild(home);
+            } else if (host && home.parentElement !== host) {
+                host.appendChild(home);
+            }
+            // Layout may still be settling (overlay display:none → flex host).
+            // Nudge twice and re-apply the last payload so a 0×0 canvas from the
+            // hidden overlay does not stick as a black void in the terminal.
+            var wake = function () {
+                if (!window.sfaChart) { return; }
+                if (typeof window.sfaChart.nudge === 'function') {
+                    window.sfaChart.nudge();
                 }
-            }
-            if (window.sfaChart && typeof window.sfaChart.nudge === 'function') {
-                window.sfaChart.nudge();
-            }
+                if (typeof window.sfaChart.reapply === 'function') {
+                    window.sfaChart.reapply();
+                }
+            };
+            wake();
+            requestAnimationFrame(function () {
+                requestAnimationFrame(wake);
+            });
+            setTimeout(wake, 120);
             return onOptimize ? 'optimize' : 'terminal';
         }
         """,

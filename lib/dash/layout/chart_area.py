@@ -43,7 +43,9 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
 
     ``#chart-area-home`` wraps the toolbar + canvas so the Optimizer route can
     reparent the same singleton into ``#optimize-chart-slot`` without duplicating
-    ``#financial-chart`` or ``chart-payload-store``.
+    ``#financial-chart`` or ``chart-payload-store``. The host ``#chart-area-host``
+    is the stable landing pad when leaving ``/optimize`` (do not rely on a bare
+    ``main`` selector — Dash may nest other landmarks).
     """
     return html.Main([
         html.Div([
@@ -180,4 +182,4 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
             'width': '100%',
             'height': '100%',
         }),
-    ], style=styles['chart_container'])
+    ], id='chart-area-host', style=styles['chart_container'])

@@ -190,6 +190,9 @@ def register_chart_callbacks(app) -> None:
             window.sfaChart.setChartType(chartType || 'candles');
             if (payload) { window.sfaChart.apply(payload); }
             window.sfaChart.setScaleMode(scaleMode || 'normal');
+            if (typeof window.sfaChart.nudge === 'function') {
+                window.sfaChart.nudge();
+            }
             return '';
         }
         """,

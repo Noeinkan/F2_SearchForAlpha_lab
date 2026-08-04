@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from dash import dash_table, html
 
-from lib.dash.dash_config import DATA_EXPORT_MAX_ROWS, FONT_SIZES
+from lib.dash.dash_config import DATA_EXPORT_MAX_ROWS, FONT_FAMILY, FONT_SIZES
 from lib.dash.helpers import format_df_for_display
 
 

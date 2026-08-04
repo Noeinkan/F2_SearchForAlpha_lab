@@ -783,7 +783,7 @@ def register_optimizer_phase3_callbacks(app) -> None:
         [Output('indicator-settings-store', 'data', allow_duplicate=True),
          Output('optimizer-apply-store', 'data', allow_duplicate=True),
          Output('tab-backtest', 'n_clicks', allow_duplicate=True),
-         Output('backtest-origin-note', 'children'),
+         Output('backtest-origin-note', 'children', allow_duplicate=True),
          Output('app-url', 'pathname', allow_duplicate=True),
          Output('bayesian-progress', 'children', allow_duplicate=True)],
         Input('apply-bayesian-btn', 'n_clicks'),
