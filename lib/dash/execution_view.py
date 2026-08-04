@@ -114,7 +114,9 @@ def render_mode_preview(theme: Mapping[str, Any], mode: str, **params: Any) -> h
 
 def _tone_style(theme: Mapping[str, Any], tone: str | None) -> dict:
     if tone == 'off':
-        return {'color': theme['text_tertiary'], 'textDecoration': 'none', 'opacity': 0.75}
+        # text_tertiary is already the audited "muted but AA-legible" token —
+        # dimming it further pushed these cells under 3:1 on bg_primary.
+        return {'color': theme['text_tertiary'], 'textDecoration': 'none'}
     if tone == 'warn':
         return {'color': theme['accent_orange']}
     return {'color': theme['text_secondary']}

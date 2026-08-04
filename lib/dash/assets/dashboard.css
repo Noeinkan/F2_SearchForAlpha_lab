@@ -1269,10 +1269,16 @@ input[type="radio"] {
    Terminal main chart frame
    ========================================================================== */
 
+/* The floor must stay well under the shortest realistic viewport. The frame
+   lives in a column that is `calc(100vh - 44px - 24px)` tall with
+   `overflow:hidden`, so any floor the flexbox cannot shrink past pushes the
+   bottom of the chart out of the clip box — and the bottom of a Lightweight
+   Chart is the time axis. A 720px floor did exactly that below ~830px of
+   viewport: the dates vanished and the last pane was cut mid-histogram. */
 #chart-frame {
     width: 100%;
     flex: 1 1 0;
-    min-height: 720px;
+    min-height: 320px;
     position: relative;
     min-width: 0;
 }
@@ -2179,9 +2185,42 @@ body.theme-light {
     line-height: 1.4;
 }
 
-/* --- Modal shell --- */
+/* --- Modal shell ---
+   dbc.Modal ships Bootstrap's light shell (#fff) while everything rendered
+   inside is coloured from the theme tokens, so accent text — the matrix
+   headers, the mode intro, the section titles — landed near-white on white.
+   Paint the shell from the theme instead; see also .sfa-flow-learn-modal. */
 .sfa-exec-learn-modal .modal-content { max-height: min(88vh, 780px); }
 .sfa-exec-learn-modal-body { padding-top: 6px; }
+
+.sfa-exec-learn-modal .modal-content,
+.sfa-flow-learn-modal .modal-content {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+}
+
+.sfa-exec-learn-modal .modal-header,
+.sfa-exec-learn-modal .modal-footer,
+.sfa-flow-learn-modal .modal-header,
+.sfa-flow-learn-modal .modal-footer {
+    border-color: var(--border-primary);
+}
+
+/* Bootstrap's close glyph is a dark SVG — invert it on the dark themes. */
+.sfa-exec-learn-modal .btn-close,
+.sfa-flow-learn-modal .btn-close {
+    filter: invert(1) grayscale(100%) brightness(1.6);
+    opacity: 0.7;
+}
+
+.sfa-exec-learn-modal .btn-close:hover,
+.sfa-flow-learn-modal .btn-close:hover { opacity: 1; }
+
+body.theme-light .sfa-exec-learn-modal .btn-close,
+body.theme-light .sfa-flow-learn-modal .btn-close {
+    filter: none;
+}
 
 /* --- Mechanics matrix --- */
 .sfa-exec-matrix-wrap {
@@ -2239,11 +2278,11 @@ body.theme-light {
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
-    opacity: 0.6;
+    opacity: 0.78;
     transition: opacity 80ms ease, background 80ms ease;
 }
 
-.sfa-exec-tab:hover { opacity: 0.9; }
+.sfa-exec-tab:hover { opacity: 0.92; }
 .sfa-exec-tab.is-active { opacity: 1; background: var(--bg-hover); }
 .sfa-exec-tab-tick { margin-left: 5px; font-size: 10px; }
 
@@ -2400,7 +2439,7 @@ body.theme-light {
 }
 
 /* Bars where nothing happened recede so the eye lands on the fills. */
-.sfa-exec-row.is-quiet td { opacity: 0.42; }
+.sfa-exec-row.is-quiet td { opacity: 0.58; }
 .sfa-exec-row:hover td { background: var(--bg-hover); opacity: 1; }
 
 .sfa-exec-chip {

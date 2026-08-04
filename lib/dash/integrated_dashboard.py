@@ -210,6 +210,7 @@ def run_dashboard(dev_mode: bool = False) -> None:
         external_stylesheets=[],
         suppress_callback_exceptions=True,
         eager_loading=True,
+        update_title=None,  # keep static tab title (clock Interval would flash "Updating...")
         meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}]
     )
 

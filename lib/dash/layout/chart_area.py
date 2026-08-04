@@ -157,7 +157,9 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
             id='chart-frame',
             style={
                 'flex': '1 1 0',
-                'minHeight': '720px',
+                # Inline wins over the #chart-frame rule, so keep the two in
+                # step — see the comment there for why the floor must be low.
+                'minHeight': '320px',
                 'width': '100%',
                 'position': 'relative',
                 'minWidth': 0,
