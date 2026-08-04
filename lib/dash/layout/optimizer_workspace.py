@@ -75,7 +75,6 @@ def _optimizer_empty_state(theme: dict) -> html.Div:
         ],
         id='optimizer-empty-state',
         className='sfa-optimize-empty',
-        style={'padding': '12px 4px'},
     )
 
 
@@ -493,6 +492,39 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                             ),
                             html.Div(id='bayesian-progress', style={'marginTop': '10px'}),
                             html.Div(id='bayesian-results', style={'marginTop': '8px'}),
+                            html.Div(
+                                id='bayesian-actions',
+                                style={'display': 'none', 'marginTop': '10px'},
+                                children=[
+                                    html.Button(
+                                        "APPLY PARAMS",
+                                        id='apply-bayesian-btn',
+                                        n_clicks=0,
+                                        style={
+                                            **styles['button_primary'],
+                                            'width': '100%',
+                                            'marginBottom': '6px',
+                                        },
+                                    ),
+                                    html.Button(
+                                        "VALIDATE OOS (BUNDLE)",
+                                        id='validate-bayesian-oos-btn',
+                                        n_clicks=0,
+                                        style={**styles['button_outline'], 'width': '100%'},
+                                    ),
+                                    dbc.Tooltip(
+                                        "Copy best params into Backtest and switch to the terminal.",
+                                        target='apply-bayesian-btn',
+                                        placement='top',
+                                    ),
+                                    dbc.Tooltip(
+                                        "Rolling walk-forward on the Bayesian winner (5 windows). "
+                                        "Click again while running to STOP.",
+                                        target='validate-bayesian-oos-btn',
+                                        placement='top',
+                                    ),
+                                ],
+                            ),
                         ]),
                     ],
                     title="Bayesian Sweep",
@@ -500,8 +532,10 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                 ),
             ],
             id='optimize-config-accordion',
+            className='compact-accordion',
             start_collapsed=False,
             always_open=True,
+            flush=True,
             active_item=['opt-capital-window', 'opt-search'],
             style={'marginBottom': '8px'},
         ),
@@ -550,78 +584,95 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
 
 
 def _create_optimize_results_pane(styles: dict, theme: dict) -> html.Div:
-    """Main pane: chart context, progress, leaderboard, apply."""
+    """Main pane: sticky chart + scrollable / collapsible results stack."""
     return html.Div([
         html.Div(
             id='optimize-chart-slot',
             className='sfa-optimize-chart-slot',
             children=[],
         ),
-        html.Div(id='optimization-progress', style={'marginBottom': '8px', 'flex': '0 0 auto'}),
-        html.Div(
-            id='optimization-results',
-            children=_optimizer_empty_state(theme),
-            style={'flex': '1 1 auto', 'minHeight': 0, 'overflowY': 'auto'},
-        ),
         html.Div([
-            _section_label("Return vs Sharpe", None, styles['help_icon'], theme),
-            dcc.Graph(
-                id='optimizer-landscape-graph',
-                figure={},
-                config={'displayModeBar': False},
-                style={'height': '220px'},
+            html.Div(id='optimization-progress', className='sfa-optimize-progress'),
+            html.Div(
+                id='optimization-results',
+                className='sfa-optimize-results-board',
+                children=_optimizer_empty_state(theme),
             ),
-        ], className='sfa-optimize-landscape', style=_card_style(theme)),
-        html.Div(id='optimizer-oos-panel', className='sfa-optimize-oos'),
-        html.Div(id='optimizer-history-panel', className='sfa-optimize-history'),
-        html.Div(id='apply-strategy-container', children=[
-            html.Div([
-                html.Button(
-                    "Apply Best Strategy",
-                    id='apply-strategy-btn',
-                    style={
-                        **styles['button_primary'],
-                        'flex': '1 1 auto',
-                        'backgroundColor': theme['accent_green'],
-                    },
-                    n_clicks=0,
+            html.Div(id='optimizer-oos-panel', className='sfa-optimize-oos'),
+            dbc.Accordion(
+                [
+                    dbc.AccordionItem(
+                        [
+                            dcc.Graph(
+                                id='optimizer-landscape-graph',
+                                figure={},
+                                config={'displayModeBar': False},
+                                className='sfa-optimize-landscape-graph',
+                                style={'height': '220px'},
+                            ),
+                        ],
+                        title="Return vs Sharpe",
+                        item_id='opt-landscape',
+                    ),
+                    dbc.AccordionItem(
+                        [
+                            html.Div(
+                                id='optimizer-history-panel',
+                                className='sfa-optimize-history-body',
+                            ),
+                        ],
+                        title="Run history",
+                        item_id='opt-history',
+                    ),
+                ],
+                id='optimize-results-accordion',
+                className='compact-accordion sfa-optimize-results-accordion',
+                always_open=True,
+                flush=True,
+                active_item=['opt-landscape'],
+            ),
+            html.Div(id='apply-strategy-container', children=[
+                html.Div([
+                    html.Button(
+                        "Apply Best Strategy",
+                        id='apply-strategy-btn',
+                        style={
+                            **styles['button_primary'],
+                            'flex': '1 1 auto',
+                            'backgroundColor': theme['accent_green'],
+                        },
+                        n_clicks=0,
+                    ),
+                    html.Button(
+                        "VALIDATE OOS",
+                        id='validate-oos-btn',
+                        style={
+                            **styles['button_outline'],
+                            'flex': '1 1 auto',
+                            'marginLeft': '8px',
+                        },
+                        n_clicks=0,
+                    ),
+                ], style={
+                    'display': 'flex',
+                    'flexDirection': 'row',
+                    'gap': '8px',
+                    'marginTop': '12px',
+                }),
+                dbc.Tooltip(
+                    "Copy the winner into the Backtest panel and return to the terminal.",
+                    target='apply-strategy-btn',
+                    placement='top',
                 ),
-                html.Button(
-                    "VALIDATE OOS",
-                    id='validate-oos-btn',
-                    style={
-                        **styles['button_outline'],
-                        'flex': '1 1 auto',
-                        'marginLeft': '8px',
-                    },
-                    n_clicks=0,
+                dbc.Tooltip(
+                    "Rolling walk-forward on the current leaderboard winner (5 windows). "
+                    "Click again while running to STOP.",
+                    target='validate-oos-btn',
+                    placement='top',
                 ),
-            ], style={
-                'display': 'flex',
-                'flexDirection': 'row',
-                'gap': '8px',
-                'marginTop': '12px',
-            }),
-            dbc.Tooltip(
-                "Copy the winner into the Backtest panel and return to the terminal.",
-                target='apply-strategy-btn',
-                placement='top',
-            ),
-            dbc.Tooltip(
-                "Rolling walk-forward on the current leaderboard winner (5 windows).",
-                target='validate-oos-btn',
-                placement='top',
-            ),
-        ], style={'display': 'none', 'flex': '0 0 auto'}),
-    ], id='optimize-results-pane', style={
-        'flex': '1 1 auto',
-        'minWidth': 0,
-        'minHeight': 0,
-        'overflow': 'hidden',
-        'padding': '12px 16px 16px',
-        'display': 'flex',
-        'flexDirection': 'column',
-    })
+            ], style={'display': 'none'}),
+        ], id='optimize-scroll-region', className='sfa-optimize-scroll'),
+    ], id='optimize-results-pane', className='sfa-optimize-results-pane')
 
 
 def _create_optimize_overlay(styles: dict, theme: dict) -> html.Div:

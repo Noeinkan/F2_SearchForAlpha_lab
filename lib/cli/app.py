@@ -14,6 +14,7 @@ import typer
 
 from lib.cli.commands import (
     backtest_cmd,
+    grid_search_cmd,
     instructions_cmd,
     kill_cmd,
     list_cmd,
@@ -50,6 +51,7 @@ def build_app() -> typer.Typer:
     backtest_cmd.register(app)
     sweep_single_cmd.register(app)
     optimise_cmd.register(app)
+    grid_search_cmd.register(app)
     trials_cmd.register(app)
     walkforward_cmd.register(app)
     promote_cmd.register(app)

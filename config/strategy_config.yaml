@@ -108,6 +108,19 @@ backtest:
   percent_of_portfolio: 0.1
   delay: 1
 
+# Shared execution-layer search space (fractions, not UI percentages).
+# Merged into a bundle's search_space by `sfa grid-search --include-execution`
+# or when a bundle declares the same keys locally. Keep steps coarse — the
+# cartesian product is hard-capped by --max-combos (default 250).
+execution_search_space:
+  min_holding_period: { type: int, low: 0, high: 10, step: 5 }
+  trailing_stop_loss: { type: float, low: 0.03, high: 0.10, step: 0.01 }
+  take_profit: { type: float, low: 0.0, high: 0.15, step: 0.05 }
+  position_scaling: { type: float, low: 0.25, high: 1.0, step: 0.25 }
+  stop_mode: { type: categorical, choices: [percent, atr] }
+  consecutive_signal_mode: { type: categorical, choices: [scale_in, edge, cooldown] }
+  cooldown_bars: { type: int, low: 0, high: 10, step: 5 }
+
 # ML Strategy defaults
 ml_strategy:
   test_size: 0.2

@@ -87,8 +87,18 @@ def _backtest_metrics(
 ) -> dict[str, Any]:
     if slice_df.empty:
         return {"sharpe": 0.0, "sortino": 0.0, "max_drawdown": 0.0, "num_trades": 0, "total_return": 0.0}
-    pos_strategy = params.get("position_sizing_strategy", "percentage_of_portfolio")
-    pos_params = params.get("position_sizing_params", {"percent": 0.1})
+    from lib.execution_params import partition_params
+
+    parted = partition_params(params)
+    exec_kwargs = dict(parted.backtest_kwargs)
+    pos_strategy = exec_kwargs.pop(
+        "position_sizing_strategy",
+        params.get("position_sizing_strategy", "percentage_of_portfolio"),
+    )
+    pos_params = exec_kwargs.pop(
+        "position_sizing_params",
+        params.get("position_sizing_params", {"percent": 0.1}),
+    )
     result_df = backtest(
         df=slice_df,
         initial_capital=capital,
@@ -97,6 +107,13 @@ def _backtest_metrics(
         buy_indicators=bundle.buy_signals,
         sell_indicators=bundle.sell_signals,
         strategy_mode=bundle.mode,
+        signal_logic=parted.signal_logic or bundle.signal_logic,
+        signal_window=(
+            parted.signal_window
+            if parted.signal_window is not None
+            else bundle.signal_window
+        ),
+        **exec_kwargs,
     )
     metrics = metrics_from_result_df(result_df, capital, interval=interval)
     return metrics.as_dict()

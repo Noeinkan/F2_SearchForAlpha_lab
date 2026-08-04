@@ -60,6 +60,8 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | [lib/params_optimization.py](../lib/params_optimization.py) | Per-indicator parameter sweeps |
 | [lib/weights_optimization.py](../lib/weights_optimization.py) | Indicator weight optimisation |
 | [lib/bayesian_optimization.py](../lib/bayesian_optimization.py) | `run_study()`, `run_optimise_cli()`, Optuna trials |
+| [lib/execution_params.py](../lib/execution_params.py) | `partition_params()`, shared execution search-space keys |
+| [lib/grid_search.py](../lib/grid_search.py) | `run_grid_search()` — capped cartesian grid over unified space |
 
 ### Walk-forward & Promotion
 | File | Key Functions |
@@ -96,6 +98,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | `list_cmd` | `list` |
 | `backtest_cmd` | `backtest` |
 | `optimise_cmd` | `optimise` |
+| `grid_search_cmd` | `grid-search` |
 | `trials_cmd` | `trials` |
 | `walkforward_cmd` | `walkforward` |
 | `promote_cmd` | `promote` |

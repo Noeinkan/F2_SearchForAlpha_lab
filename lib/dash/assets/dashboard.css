@@ -1508,11 +1508,24 @@ input[type="radio"] {
     box-shadow: none !important;
 }
 
+/* Optimizer results pane: sticky chart + one scroll stack below.
+   Nested flex:1 + overflow:hidden used to clip landscape/history. */
+.sfa-optimize-results-pane {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 12px 16px 16px;
+    display: flex;
+    flex-direction: column;
+}
+
 /* Optimizer hosts the singleton #chart-area-home while on /optimize. */
 .sfa-optimize-chart-slot {
-    flex: 0 0 42%;
-    min-height: 220px;
-    max-height: 48%;
+    flex: 0 0 auto;
+    height: min(36vh, 340px);
+    min-height: 200px;
+    max-height: 40vh;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -1534,10 +1547,32 @@ input[type="radio"] {
     min-height: 160px;
 }
 
+.sfa-optimize-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 12px;
+}
+
+.sfa-optimize-progress:empty {
+    display: none;
+}
+
+.sfa-optimize-results-board {
+    flex: 0 0 auto;
+    min-height: 0;
+}
+
 .sfa-optimize-empty {
     border: 1px dashed var(--sfa-border, #2a2a2a);
     border-radius: 4px;
     background: transparent;
+    padding: 12px 10px;
 }
 
 .sfa-optimize-realistic-off {
@@ -1545,18 +1580,28 @@ input[type="radio"] {
     pointer-events: none;
 }
 
-.sfa-optimize-landscape,
-.sfa-optimize-oos,
-.sfa-optimize-history {
-    margin-top: 10px;
+.sfa-optimize-results-accordion {
+    flex: 0 0 auto;
+}
+
+.sfa-optimize-landscape-graph {
+    width: 100%;
+}
+
+.sfa-optimize-oos {
+    flex: 0 0 auto;
     padding: 8px 10px;
     border: 1px solid var(--sfa-border, #2a2a2a);
     border-radius: 4px;
     background: var(--sfa-bg-secondary, #111);
 }
 
-.sfa-optimize-history {
-    max-height: 180px;
+.sfa-optimize-oos:empty {
+    display: none;
+}
+
+.sfa-optimize-history-body {
+    max-height: 220px;
     overflow-y: auto;
 }
 

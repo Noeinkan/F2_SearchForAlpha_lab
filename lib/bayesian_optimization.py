@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -44,6 +45,7 @@ from lib.backtest_result import BacktestMetrics, run_backtest_result
 from lib.cli.contracts import CliError
 from lib.config_loader import get_agent_config
 from lib.data_processing import fetch_data
+from lib.execution_params import partition_params
 from lib.seeds import set_global_seed
 from lib.signals.indicators import add_indicators, generate_signals
 from lib.store import trials as trials_store
@@ -83,6 +85,27 @@ def _make_progress_callback(
             file=sys.stderr,
             flush=True,
         )
+
+    return callback
+
+
+def _make_control_callback(
+    n_trials: int,
+    *,
+    cancel_event: threading.Event | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> Callable[[optuna.study.Study, optuna.trial.FrozenTrial], None]:
+    """Optuna callback: report progress and stop early when cancel_event is set."""
+
+    def callback(study: optuna.study.Study, trial: optuna.trial.FrozenTrial) -> None:
+        done = len(study.trials)
+        if progress_callback is not None:
+            try:
+                progress_callback(done, int(n_trials))
+            except Exception:
+                logger.debug("bayesian.progress_callback_failed", exc_info=True)
+        if cancel_event is not None and cancel_event.is_set():
+            study.stop()
 
     return callback
 
@@ -171,6 +194,7 @@ def _build_objective(
     def objective(trial: optuna.trial.Trial) -> float:
         params = suggest_from_space(trial, bundle.search_space)
         started = time.perf_counter()
+        parted = partition_params(params)
         indicator_settings = params_to_indicator_settings(params)
         df = add_indicators(base_df.copy(), indicator_settings)
         df, _ = generate_signals(df, indicator_settings)
@@ -185,9 +209,14 @@ def _build_objective(
             buy_signals=bundle.buy_signals,
             sell_signals=bundle.sell_signals,
             strategy_mode=bundle.mode,
-            signal_logic=bundle.signal_logic,
-            signal_window=bundle.signal_window,
+            signal_logic=parted.signal_logic or bundle.signal_logic,
+            signal_window=(
+                parted.signal_window
+                if parted.signal_window is not None
+                else bundle.signal_window
+            ),
             seed=seed,
+            backtest_kwargs=parted.backtest_kwargs or None,
             interval=interval,
         )
         score = score_metrics(metric, result.metrics)
@@ -229,11 +258,17 @@ def run_study(
     json_output: bool = False,
     ticker_override: str | None = None,
     interval: str = "1d",
+    cancel_event: threading.Event | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> OptimisationResult:
     """Run an Optuna TPE study end to end and return the best trial.
 
     The last *held_out_months* of data are withheld from the parameter search
     so that walk-forward validation has genuinely unseen out-of-sample evidence.
+
+    Optional ``cancel_event`` / ``progress_callback`` support Dash STOP UX:
+    after each trial, progress is reported and ``study.stop()`` is called when
+    the event is set. Best-so-far is returned if at least one trial finished.
     """
     from lib.timeframes import normalize_interval
 
@@ -304,11 +339,30 @@ def run_study(
         )
 
     started = time.perf_counter()
-    progress_cb = _make_progress_callback(n_trials, metric, json_output)
-    study.optimize(objective, n_trials=int(n_trials), callbacks=[progress_cb], show_progress_bar=False)
+    callbacks = [
+        _make_progress_callback(n_trials, metric, json_output),
+        _make_control_callback(
+            n_trials,
+            cancel_event=cancel_event,
+            progress_callback=progress_callback,
+        ),
+    ]
+    study.optimize(
+        objective,
+        n_trials=int(n_trials),
+        callbacks=callbacks,
+        show_progress_bar=False,
+    )
     duration = time.perf_counter() - started
 
-    best = study.best_trial
+    if not study.trials:
+        raise RuntimeError("Bayesian study stopped before any trial completed")
+
+    try:
+        best = study.best_trial
+    except ValueError as exc:
+        raise RuntimeError("Bayesian study has no successful trials") from exc
+
     persisted = trials_store.list_trials(strategy_name=strategy_name, study_id=sid, db_path=db_path)
     matching = next((t for t in persisted if t.optuna_trial_number == best.number), None)
     if matching is None:

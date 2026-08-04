@@ -180,6 +180,12 @@ The full-screen Optimizer (`/optimize`) adds a Plotly **Return vs Sharpe**
 landscape (`optimizer-landscape-graph`), OOS validation strip, run-history list,
 and a **Bayesian Sweep** rail section — callbacks in `optimizer_phase3.py`.
 
+Phase 4 extends that module with background-job polling via
+`optimizer-oos-interval` and `bayesian-interval`, STOP toggles on long runs,
+Bayesian **APPLY PARAMS** / **VALIDATE OOS (BUNDLE)**, and
+`lib/dash/optimizer_bayesian_apply.py` for merging flat Optuna params into
+`indicator-settings-store`.
+
 ---
 
 ## Keyboard shortcuts

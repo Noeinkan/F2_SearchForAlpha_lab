@@ -133,6 +133,14 @@ objective metric (sortino/sharpe/calmar/composite), and held-out months; the sea
 window is your test-window dates minus the held-out tail. Results show best params
 and metrics when the background study completes — this can take several minutes.
 
+While running, the button reads **STOP BAYESIAN** (click to cancel; partial
+trials are kept). Progress shows `Trial N/M`. When finished:
+
+- **APPLY PARAMS** copies the best flat params into indicator settings and the
+  bundle's buy/sell signals into Backtest (same handoff as combinatorial Apply).
+- **VALIDATE OOS (BUNDLE)** runs the same 5-window walk-forward on the Bayesian
+  winner; click again while running to **STOP** (result is discarded if stopped).
+
 ---
 
 ## 5. Example workflows
