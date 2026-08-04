@@ -1197,6 +1197,29 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
             ]),
         ], style=card_style),
 
+        # Run conditions — timeframe / capital / window / signal universe
+        html.Div([
+            html.Div([
+                html.Div("RUN CONDITIONS", style={
+                    'fontSize': FONT_SIZES['xs'],
+                    'color': theme['text_tertiary'],
+                    'fontWeight': '600',
+                    'letterSpacing': '0.5px'
+                }),
+                html.Span("?", id='help-optimizer-conditions', style=help_icon_style),
+            ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '6px'}),
+            html.Div(
+                id='optimizer-run-conditions',
+                children="Load data to see interval, capital, window and signals.",
+                style={
+                    'fontSize': FONT_SIZES['xs'],
+                    'color': theme['text_secondary'],
+                    'lineHeight': '1.45',
+                    'fontFamily': 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                },
+            ),
+        ], style=card_style),
+
         # Optimization Settings
         html.Div([
             html.Div([
@@ -1286,6 +1309,14 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
             trigger='hover focus',
         ),
         dbc.Tooltip(
+            "What the optimizer will search: chart interval, Backtest capital "
+            "and test window, plus buy/sell signal columns on the loaded frame. "
+            "Chart overlays are display-only — only signal columns enter combos.",
+            target='help-optimizer-conditions',
+            placement='left',
+            trigger='hover focus',
+        ),
+        dbc.Tooltip(
             "Limit how many signals can be chosen per side.",
             target='help-max-signals',
             placement='left',
@@ -1312,14 +1343,18 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
             trigger='hover focus',
         ),
 
-        # Run Button
+        # Run / Stop Button (label+style toggled by optimization callbacks)
         html.Button(
             "RUN OPTIMIZER",
             id='run-optimization-btn',
             style={**styles['button_primary'], 'width': '100%'},
             n_clicks=0
         ),
-        dbc.Tooltip("Test all signal combinations to find the best strategy", target='run-optimization-btn', placement='top'),
+        dbc.Tooltip(
+            "Run searches signal combinations; while running, click again to STOP.",
+            target='run-optimization-btn',
+            placement='top',
+        ),
 
         # Progress Section
         html.Div(id='optimization-progress', style={'marginTop': '12px'}),

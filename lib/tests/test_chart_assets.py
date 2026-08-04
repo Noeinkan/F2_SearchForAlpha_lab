@@ -132,5 +132,14 @@ def test_glue_only_sets_bar_spacing_on_first_creation(glue_src):
         )
 
 
+def test_glue_crosshair_legend_reads_visible_series(glue_src):
+    """Info panel must surface overlay/pane values from param.seriesData."""
+    assert "collectIndicatorRows" in glue_src
+    assert "positionLegend" in glue_src
+    assert "param.point" in glue_src
+    assert "sfa-chart-legend--follow" in glue_src
+    assert "subscribeCrosshairMove" in glue_src
+
+
 def test_vendor_notice_file_exists():
     assert (ASSETS / "VENDOR.md").is_file()
