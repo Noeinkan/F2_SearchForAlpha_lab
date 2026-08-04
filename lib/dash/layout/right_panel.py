@@ -128,7 +128,7 @@ def _create_right_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapshot 
                             dcc.Checklist(
                                 id='data-col-groups',
                                 options=DATA_COLUMN_GROUPS,
-                                value=['ohlcv', 'indicators', 'signals'],
+                                value=['ohlcv', 'indicators', 'signals', 'portfolio'],
                                 inline=True,
                                 inputStyle={'marginRight': '4px'},
                                 labelStyle={

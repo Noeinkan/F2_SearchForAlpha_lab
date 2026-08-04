@@ -490,24 +490,205 @@ def _build_unified_signal_rows(buy_columns: List[str], sell_columns: List[str]) 
 
 _OHLCV_NAME_SET = frozenset({'open', 'high', 'low', 'close', 'volume', 'date', 'index'})
 
+# Engine execution / portfolio columns written by ``strategy._attach_result_columns``.
+# Checked before signal classification so ``Units_to_buy`` / ``Units_to_sell`` are
+# not treated as indicator ``_Buy`` / ``_Sell`` flags.
+_PORTFOLIO_COLUMN_SET = frozenset({
+    'Units',
+    'Units_to_buy',
+    'Units_to_sell',
+    'Cash_Value',
+    'Stocks_Value',
+    'Portfolio_Value',
+    'Buy_Position',
+    'Sell_Position',
+    'Returns',
+    'Strategy_Returns',
+    'Cumulative_Returns',
+    'Cumulative_Market_Returns',
+    'Holding_Period',
+    'Trailing_Stop',
+    'Buy_Trigger_Accepted',
+    'Buy_Trigger_Rejected',
+    'Sell_Trigger_Accepted',
+    'Sell_Trigger_Rejected',
+    'Avg_Entry_Price',
+    'Avg_Cost_Basis',
+})
+
+_TRIGGER_BUY_FLAG_COLS = frozenset({
+    'Buy_Position',
+    'Buy_Trigger_Accepted',
+})
+_TRIGGER_SELL_FLAG_COLS = frozenset({
+    'Sell_Position',
+    'Sell_Trigger_Accepted',
+})
+_TRIGGER_REJECT_FLAG_COLS = frozenset({
+    'Buy_Trigger_Rejected',
+    'Sell_Trigger_Rejected',
+})
+_OUTLIER_NUMERIC_COLS = frozenset({'Returns', 'Strategy_Returns'})
+
 
 def classify_data_column_groups(
     column_names: list[str],
     buy_columns: list[str],
     sell_columns: list[str],
 ) -> dict[str, list[str]]:
-    """Partition display columns into OHLCV / indicators / signals groups."""
+    """Partition display columns into OHLCV / indicators / signals / portfolio."""
     signal_set = set(buy_columns) | set(sell_columns)
-    groups: dict[str, list[str]] = {'ohlcv': [], 'indicators': [], 'signals': []}
+    groups: dict[str, list[str]] = {
+        'ohlcv': [],
+        'indicators': [],
+        'signals': [],
+        'portfolio': [],
+    }
     for col in column_names:
         col_lower = col.lower()
-        if col in signal_set or col.endswith('_Buy') or col.endswith('_Sell'):
+        if col in _PORTFOLIO_COLUMN_SET:
+            groups['portfolio'].append(col)
+        elif col in signal_set or col.endswith('_Buy') or col.endswith('_Sell'):
             groups['signals'].append(col)
         elif col_lower in _OHLCV_NAME_SET:
             groups['ohlcv'].append(col)
         else:
             groups['indicators'].append(col)
     return groups
+
+
+def _percentile_outlier_bounds(
+    records: list[dict],
+    col_id: str,
+    *,
+    lo: float = 2.5,
+    hi: float = 97.5,
+    min_n: int = 20,
+) -> tuple[float, float] | None:
+    """Return (low, high) percentile bounds, or None if too few finite values."""
+    vals: list[float] = []
+    for rec in records:
+        raw = rec.get(col_id)
+        if raw is None:
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(value):
+            vals.append(value)
+    if len(vals) < min_n:
+        return None
+    arr = np.asarray(vals, dtype=float)
+    low = float(np.percentile(arr, lo))
+    high = float(np.percentile(arr, hi))
+    if not np.isfinite(low) or not np.isfinite(high) or low == high:
+        return None
+    return low, high
+
+
+def build_data_table_style_rules(
+    records: list[dict],
+    column_ids: list[str],
+    theme: dict,
+) -> list[dict[str, Any]]:
+    """Conditional styles: Close vs Open, triggers, and return outliers."""
+    style_rules: list[dict[str, Any]] = [
+        {'if': {'row_index': 'odd'}, 'backgroundColor': theme['table_row_alt']},
+    ]
+    col_set = set(column_ids)
+
+    if 'Close' in col_set and 'Open' in col_set:
+        style_rules.extend([
+            {
+                'if': {'filter_query': '{Close} > {Open}', 'column_id': 'Close'},
+                'color': theme['accent_green'],
+                'fontWeight': '600',
+            },
+            {
+                'if': {'filter_query': '{Close} < {Open}', 'column_id': 'Close'},
+                'color': theme['accent_red'],
+                'fontWeight': '600',
+            },
+            {
+                'if': {'filter_query': '{Close} is blank', 'column_id': 'Close'},
+                'color': theme['text_tertiary'],
+            },
+        ])
+
+    green_tint = f"{theme['accent_green']}30"
+    red_tint = f"{theme['accent_red']}30"
+    green_strong = f"{theme['accent_green']}45"
+    red_strong = f"{theme['accent_red']}45"
+    orange_tint = f"{theme['accent_orange']}35"
+
+    for col_id in column_ids:
+        if col_id in _PORTFOLIO_COLUMN_SET:
+            if col_id in _TRIGGER_BUY_FLAG_COLS:
+                style_rules.append({
+                    'if': {'filter_query': f'{{{col_id}}} = 1', 'column_id': col_id},
+                    'backgroundColor': green_strong,
+                    'fontWeight': '600',
+                })
+            elif col_id in _TRIGGER_SELL_FLAG_COLS:
+                style_rules.append({
+                    'if': {'filter_query': f'{{{col_id}}} = 1', 'column_id': col_id},
+                    'backgroundColor': red_strong,
+                    'fontWeight': '600',
+                })
+            elif col_id in _TRIGGER_REJECT_FLAG_COLS:
+                style_rules.append({
+                    'if': {'filter_query': f'{{{col_id}}} = 1', 'column_id': col_id},
+                    'backgroundColor': orange_tint,
+                })
+            elif col_id == 'Units_to_buy':
+                style_rules.append({
+                    'if': {'filter_query': f'{{{col_id}}} > 0', 'column_id': col_id},
+                    'backgroundColor': green_strong,
+                    'fontWeight': '600',
+                })
+            elif col_id == 'Units_to_sell':
+                style_rules.append({
+                    'if': {'filter_query': f'{{{col_id}}} > 0', 'column_id': col_id},
+                    'backgroundColor': red_strong,
+                    'fontWeight': '600',
+                })
+            elif col_id in _OUTLIER_NUMERIC_COLS:
+                bounds = _percentile_outlier_bounds(records, col_id)
+                if bounds is not None:
+                    low, high = bounds
+                    style_rules.extend([
+                        {
+                            'if': {
+                                'filter_query': f'{{{col_id}}} > {high}',
+                                'column_id': col_id,
+                            },
+                            'backgroundColor': orange_tint,
+                            'fontWeight': '600',
+                        },
+                        {
+                            'if': {
+                                'filter_query': f'{{{col_id}}} < {low}',
+                                'column_id': col_id,
+                            },
+                            'backgroundColor': orange_tint,
+                            'fontWeight': '600',
+                        },
+                    ])
+            continue
+
+        if col_id.endswith('_Buy'):
+            style_rules.append({
+                'if': {'filter_query': f'{{{col_id}}} = 1', 'column_id': col_id},
+                'backgroundColor': green_tint,
+            })
+        elif col_id.endswith('_Sell'):
+            style_rules.append({
+                'if': {'filter_query': f'{{{col_id}}} = 1', 'column_id': col_id},
+                'backgroundColor': red_tint,
+            })
+
+    return style_rules
 
 
 def _normalize_display_frame(df: pd.DataFrame) -> pd.DataFrame:
@@ -615,7 +796,7 @@ def filter_data_display(
     all_columns = payload['columns']
     groups = payload.get('groups', {})
     date_col = payload.get('date_column', 'Date')
-    selected_groups = col_groups or ['ohlcv', 'indicators', 'signals']
+    selected_groups = col_groups or ['ohlcv', 'indicators', 'signals', 'portfolio']
 
     visible_col_ids: list[str] = []
     for group in selected_groups:
@@ -712,37 +893,7 @@ def _create_data_table(
 ) -> dash_table.DataTable:
     """Create a styled, sortable data table for the Data tab."""
     column_ids = [col['id'] for col in columns]
-    style_rules: list[dict[str, Any]] = [
-        {'if': {'row_index': 'odd'}, 'backgroundColor': theme['table_row_alt']},
-    ]
-    if 'Close' in column_ids and 'Open' in column_ids:
-        style_rules.extend([
-            {
-                'if': {'filter_query': '{Close} > {Open}', 'column_id': 'Close'},
-                'color': theme['accent_green'],
-                'fontWeight': '600',
-            },
-            {
-                'if': {'filter_query': '{Close} < {Open}', 'column_id': 'Close'},
-                'color': theme['accent_red'],
-                'fontWeight': '600',
-            },
-            {
-                'if': {'filter_query': '{Close} is blank', 'column_id': 'Close'},
-                'color': theme['text_tertiary'],
-            },
-        ])
-    for col_id in column_ids:
-        if col_id.endswith('_Buy'):
-            style_rules.append({
-                'if': {'filter_query': f'{{{col_id}}} = 1', 'column_id': col_id},
-                'backgroundColor': f"{theme['accent_green']}30",
-            })
-        elif col_id.endswith('_Sell'):
-            style_rules.append({
-                'if': {'filter_query': f'{{{col_id}}} = 1', 'column_id': col_id},
-                'backgroundColor': f"{theme['accent_red']}30",
-            })
+    style_rules = build_data_table_style_rules(records, column_ids, theme)
 
     return dash_table.DataTable(
         id=table_id,

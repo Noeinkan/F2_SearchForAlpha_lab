@@ -531,6 +531,7 @@ DATA_COLUMN_GROUPS = [
     {'label': 'OHLCV', 'value': 'ohlcv'},
     {'label': 'Indicators', 'value': 'indicators'},
     {'label': 'Signals', 'value': 'signals'},
+    {'label': 'Portfolio', 'value': 'portfolio'},
 ]
 
 DATA_EXPORT_MAX_ROWS = 5000

@@ -8,18 +8,26 @@ import pytest
 
 from lib.dash.callbacks.shared import (
     build_data_display_payload,
+    build_data_table_style_rules,
     classify_data_column_groups,
     compute_data_summary,
     filter_data_display,
     records_to_csv,
 )
-from lib.dash.dash_config import DATA_EXPORT_MAX_ROWS
+from lib.dash.dash_config import DATA_EXPORT_MAX_ROWS, get_theme
 
 
 def _sample_df(n: int = 120) -> pd.DataFrame:
     rng = np.random.default_rng(3)
     close = 100 + np.cumsum(rng.standard_normal(n))
     dates = pd.date_range("2024-01-01", periods=n, freq="D")
+    returns = rng.standard_normal(n) * 0.01
+    returns[0] = 0.25
+    returns[1] = -0.20
+    units_buy = np.zeros(n)
+    units_buy[10] = 5.0
+    buy_pos = np.zeros(n, dtype=int)
+    buy_pos[10] = 1
     return pd.DataFrame(
         {
             "Open": close * 0.999,
@@ -30,6 +38,15 @@ def _sample_df(n: int = 120) -> pd.DataFrame:
             "RSI_14": rng.uniform(20, 80, n),
             "MACD_Buy": rng.integers(0, 2, n),
             "MACD_Sell": rng.integers(0, 2, n),
+            "Units_to_buy": units_buy,
+            "Units_to_sell": np.zeros(n),
+            "Buy_Position": buy_pos,
+            "Sell_Position": np.zeros(n, dtype=int),
+            "Portfolio_Value": 10_000 * (1 + returns).cumprod(),
+            "Strategy_Returns": returns,
+            "Returns": returns * 0.8,
+            "Buy_Trigger_Accepted": buy_pos,
+            "Buy_Trigger_Rejected": np.zeros(n, dtype=int),
         },
         index=dates,
     )
@@ -101,13 +118,63 @@ def test_compute_data_summary_empty():
 
 def test_classify_data_column_groups():
     groups = classify_data_column_groups(
-        ['Date', 'Open', 'Close', 'RSI_14', 'MACD_Buy', 'MACD_Sell'],
-        buy_columns=['MACD_Buy'],
+        [
+            'Date', 'Open', 'Close', 'RSI_14', 'MACD_Buy', 'MACD_Sell',
+            'Units_to_buy', 'Portfolio_Value', 'Buy_Position', 'Strategy_Returns',
+        ],
+        buy_columns=['MACD_Buy', 'Units_to_buy'],  # Units_* may look like signals
         sell_columns=['MACD_Sell'],
     )
     assert 'Date' in groups['ohlcv']
     assert 'RSI_14' in groups['indicators']
     assert 'MACD_Buy' in groups['signals']
+    assert 'Units_to_buy' in groups['portfolio']
+    assert 'Units_to_buy' not in groups['signals']
+    assert 'Portfolio_Value' in groups['portfolio']
+    assert 'Buy_Position' in groups['portfolio']
+    assert 'Strategy_Returns' in groups['portfolio']
+
+
+def test_filter_includes_portfolio_group(payload):
+    records, columns, _ = filter_data_display(
+        payload,
+        row_count=20,
+        col_groups=['portfolio'],
+        date_start=None,
+        date_end=None,
+    )
+    col_ids = {col['id'] for col in columns}
+    assert 'Date' in col_ids
+    assert 'Portfolio_Value' in col_ids
+    assert 'Units_to_buy' in col_ids
+    assert 'Strategy_Returns' in col_ids
+    assert 'Close' not in col_ids
+    assert 'MACD_Buy' not in col_ids
+    assert len(records) == 20
+
+
+def test_style_rules_highlight_triggers_and_outliers(payload):
+    theme = get_theme()
+    records = payload['records']
+    column_ids = [
+        'Open', 'Close', 'MACD_Buy', 'MACD_Sell',
+        'Units_to_buy', 'Buy_Position', 'Strategy_Returns',
+        'Buy_Trigger_Accepted', 'Buy_Trigger_Rejected',
+    ]
+    rules = build_data_table_style_rules(records, column_ids, theme)
+    queries = [
+        rule['if'].get('filter_query', '')
+        for rule in rules
+        if isinstance(rule.get('if'), dict)
+    ]
+    assert any('{Close} > {Open}' in q for q in queries)
+    assert any('{MACD_Buy} = 1' in q for q in queries)
+    assert any('{Units_to_buy} > 0' in q for q in queries)
+    assert any('{Buy_Position} = 1' in q for q in queries)
+    assert any('{Buy_Trigger_Accepted} = 1' in q for q in queries)
+    assert any('{Buy_Trigger_Rejected} = 1' in q for q in queries)
+    assert any('{Strategy_Returns} >' in q for q in queries)
+    assert any('{Strategy_Returns} <' in q for q in queries)
 
 
 def test_export_csv_payload(payload):
