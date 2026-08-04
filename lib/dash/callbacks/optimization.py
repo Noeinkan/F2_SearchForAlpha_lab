@@ -9,9 +9,10 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pandas as pd
-from dash import html
+from dash import html, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
+from dash import callback_context
 
 from lib.dash.components import build_alert, build_progress_bar
 from lib.dash.dash_config import (
@@ -25,7 +26,10 @@ from lib.dash.helpers import (
     generate_signal_combinations,
     evaluate_signal_combination,
     compute_robustness_scores,
+    filter_signal_universe,
+    apply_optimizer_constraints,
 )
+from lib.dash.layout.optimizer_workspace import _optimizer_empty_state
 from lib.dash.state import dashboard_state
 from lib.dash.styles import get_styles
 from lib.dash.callbacks.shared import (
@@ -47,12 +51,57 @@ _STOP_LABEL = "STOP OPTIMIZER"
 _CANCELLED = object()
 
 
+def build_eval_kwargs(
+    realistic: bool,
+    strategy_mode: Any = None,
+    min_holding_period: Any = None,
+    trailing_stop_pct: Any = None,
+    stop_mode: Any = None,
+    fx_fee_pct: Any = None,
+    slippage_pct: Any = None,
+    commission_pct: Any = None,
+) -> dict[str, Any]:
+    """Build ``run_backtest`` kwargs for realistic ranking (empty = idealized)."""
+    if not realistic:
+        return {}
+    try:
+        trail = max(0.0, float(trailing_stop_pct or 0)) / 100.0
+    except (TypeError, ValueError):
+        trail = 0.05
+    try:
+        hold = int(min_holding_period if min_holding_period is not None else 5)
+    except (TypeError, ValueError):
+        hold = 5
+    try:
+        fx = max(0.0, float(fx_fee_pct or 0)) / 100.0
+    except (TypeError, ValueError):
+        fx = 0.0
+    try:
+        slip = max(0.0, float(slippage_pct or 0)) / 100.0
+    except (TypeError, ValueError):
+        slip = 0.0
+    try:
+        comm = max(0.0, float(commission_pct or 0)) / 100.0
+    except (TypeError, ValueError):
+        comm = 0.0
+    return {
+        'strategy_mode': strategy_mode or 'trading',
+        'min_holding_period': max(0, hold),
+        'trailing_stop_loss': trail,
+        'stop_mode': stop_mode or 'percent',
+        'fx_fee_pct': fx,
+        'slippage_pct': slip,
+        'commission_per_trade': comm,
+    }
+
+
 def _eval_with_cancel_guard(
     run_token: int,
     df: pd.DataFrame,
     initial_capital: float,
     buy_combo,
     sell_combo,
+    eval_kwargs: dict | None = None,
 ):
     """Evaluate a single combination, returning ``_CANCELLED`` if the run was
     stopped (``reset_optimization`` swapped the state dict) while we were
@@ -68,6 +117,7 @@ def _eval_with_cancel_guard(
         initial_capital,
         tuple(buy_combo),
         tuple(sell_combo),
+        **(eval_kwargs or {}),
     )
 
 
@@ -225,6 +275,8 @@ def _rank_results_df(
     results: list[dict],
     min_trades: int,
     sort_by: str | None,
+    max_dd_pct: float | None = None,
+    min_sharpe: float | None = None,
 ) -> pd.DataFrame:
     """Score and sort optimization result rows; empty if none are usable."""
     results_df = pd.DataFrame(results)
@@ -238,6 +290,10 @@ def _rank_results_df(
     if results_df.empty:
         return results_df
 
+    results_df = apply_optimizer_constraints(results_df, max_dd_pct, min_sharpe)
+    if results_df.empty:
+        return results_df
+
     results_df = compute_robustness_scores(results_df, min_trades)
     metric = sort_by or 'Robustness_Score'
     if metric not in results_df.columns:
@@ -248,6 +304,10 @@ def _rank_results_df(
     )
 
 
+def _empty_results_ui(theme: dict | None = None) -> html.Div:
+    return _optimizer_empty_state(theme or get_theme())
+
+
 def _results_ui_from_df(results_df: pd.DataFrame, theme: dict) -> html.Div:
     return html.Div([
         _create_best_strategy_highlight(results_df.iloc[0], theme),
@@ -255,12 +315,11 @@ def _results_ui_from_df(results_df: pd.DataFrame, theme: dict) -> html.Div:
     ], className='fade-in')
 
 
-def _build_origin_note(best: pd.Series, theme: dict) -> html.Div:
+def _build_origin_note(best: pd.Series, theme: dict, *, realistic: bool = False) -> html.Div:
     """Reconciliation banner shown above the auto-run scorecard.
 
-    Explains that the Optimizer leaderboard number is idealized (no costs, no
-    Trade Setup) while the scorecard below reflects the user's real settings, so
-    the two figures are expected to differ.
+    Idealized runs advertise that costs/stops were off; realistic runs note that
+    ranking already used the panel friction snapshot.
     """
     total_return = best.get('Total_Return_%', None)
     alpha = best.get('Alpha_%', None)
@@ -273,16 +332,28 @@ def _build_origin_note(best: pd.Series, theme: dict) -> html.Div:
         f" ({float(alpha):+.1f}% vs buy & hold)" if alpha is not None else ""
     )
 
+    if realistic:
+        mid = (
+            f"— leaderboard showed {headline}{alpha_txt} with costs/stops/mode "
+            "from Realistic ranking. "
+        )
+        tail = (
+            "The scorecard below re-runs with your current Backtest panel — "
+            "figures should be close if settings still match."
+        )
+    else:
+        mid = (
+            f"— leaderboard showed {headline}{alpha_txt} with no costs or stops. "
+        )
+        tail = (
+            "The scorecard below uses your current Transaction Costs & Trade Setup, "
+            "so the number will differ — that's the honest, tradeable figure."
+        )
+
     children = [
         html.Span("Applied from Optimizer ", style={'fontWeight': '600'}),
-        html.Span(
-            f"— leaderboard showed {headline}{alpha_txt} with no costs or stops. ",
-        ),
-        html.Span(
-            "The scorecard below uses your current Transaction Costs & Trade Setup, "
-            "so the number will differ — that's the honest, tradeable figure.",
-            style={'color': theme['text_secondary']},
-        ),
+        html.Span(mid),
+        html.Span(tail, style={'color': theme['text_secondary']}),
     ]
     if low_sample:
         children.append(
@@ -318,6 +389,8 @@ def _cancel_optimization(theme: dict, client_state: dict | None):
         or 10
     )
     sort_by = (client_state or {}).get('sort_by', 'Robustness_Score')
+    max_dd_pct = opt_state.get('max_dd_pct')
+    min_sharpe = opt_state.get('min_sharpe')
 
     dashboard_state.reset_optimization()
     _shutdown_executor()
@@ -351,7 +424,13 @@ def _cancel_optimization(theme: dict, client_state: dict | None):
         ),
     ])
 
-    ranked = _rank_results_df(results, min_trades, sort_by)
+    ranked = _rank_results_df(
+        results,
+        min_trades,
+        sort_by,
+        max_dd_pct=max_dd_pct,
+        min_sharpe=min_sharpe,
+    )
     run_style = _optimizer_btn_style(theme, stop=False)
     if ranked.empty:
         return (
@@ -361,7 +440,7 @@ def _cancel_optimization(theme: dict, client_state: dict | None):
             False,  # button enabled
             _RUN_LABEL,
             run_style,
-            html.Div(),
+            _empty_results_ui(theme),
             {'display': 'none'},
             [],
         )
@@ -395,14 +474,20 @@ def register_optimization_callbacks(app) -> None:
          Output('preview-sell-count', 'children'),
          Output('preview-combo-count', 'children'),
          Output('optimization-cost', 'children'),
-         Output('optimizer-run-conditions', 'children')],
+         Output('optimizer-run-conditions', 'children'),
+         Output('optimizer-buy-universe', 'options'),
+         Output('optimizer-sell-universe', 'options'),
+         Output('optimizer-buy-universe', 'value'),
+         Output('optimizer-sell-universe', 'value')],
         [Input('data-loaded-store', 'data'),
          Input('max-signals-slider', 'value'),
          Input('max-combos-input', 'value'),
          Input('initial-capital', 'value'),
          Input('test-window-start', 'date'),
          Input('test-window-end', 'date'),
-         Input('bar-interval', 'value')]
+         Input('bar-interval', 'value'),
+         Input('optimizer-buy-universe', 'value'),
+         Input('optimizer-sell-universe', 'value')]
     )
     def update_signal_preview(
         data_loaded,
@@ -412,15 +497,32 @@ def register_optimization_callbacks(app) -> None:
         start_date,
         end_date,
         bar_interval,
+        buy_universe,
+        sell_universe,
     ):
-        """Show preview counts, EST runtime, and the run-conditions strip."""
+        """Show preview counts, EST runtime, conditions strip, and universe options."""
         empty_conditions = "Load data to see interval, capital, window and signals."
         if not data_loaded or dashboard_state.df is None:
-            return "0", "0", "0", "—", empty_conditions
+            return "0", "0", "0", "—", empty_conditions, [], [], None, None
 
         full_df = dashboard_state.df
         df, window_label = slice_df_to_window(full_df, start_date, end_date)
-        buy_signals, sell_signals = extract_signals(df)
+        all_buy, all_sell = extract_signals(df)
+        buy_options = [{'label': s, 'value': s} for s in all_buy]
+        sell_options = [{'label': s, 'value': s} for s in all_sell]
+
+        # Keep selection only for still-available columns; None/empty = all.
+        buy_sel = [s for s in (buy_universe or []) if s in all_buy] or None
+        sell_sel = [s for s in (sell_universe or []) if s in all_sell] or None
+        # If user had explicitly selected everything, treat as "all" (None).
+        if buy_sel is not None and len(buy_sel) == len(all_buy):
+            buy_sel = None
+        if sell_sel is not None and len(sell_sel) == len(all_sell):
+            sell_sel = None
+
+        buy_signals, sell_signals = filter_signal_universe(
+            all_buy, all_sell, buy_sel, sell_sel,
+        )
 
         combinations = generate_signal_combinations(buy_signals, sell_signals, max_signals)
         actual_combos = min(len(combinations), max_combos or 100)
@@ -447,12 +549,33 @@ def register_optimization_callbacks(app) -> None:
             },
         )
 
+        ctx = callback_context
+        trigger = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
+        buy_out: Any = no_update
+        sell_out: Any = no_update
+        if trigger == 'data-loaded-store':
+            buy_out = None
+            sell_out = None
+        else:
+            if buy_universe is not None:
+                pruned_buy = [s for s in buy_universe if s in all_buy]
+                if pruned_buy != list(buy_universe):
+                    buy_out = pruned_buy or None
+            if sell_universe is not None:
+                pruned_sell = [s for s in sell_universe if s in all_sell]
+                if pruned_sell != list(sell_universe):
+                    sell_out = pruned_sell or None
+
         return (
             str(len(buy_signals)),
             str(len(sell_signals)),
             str(actual_combos),
             cost_label,
             conditions_ui,
+            buy_options,
+            sell_options,
+            buy_out,
+            sell_out,
         )
 
     @app.callback(
@@ -474,7 +597,19 @@ def register_optimization_callbacks(app) -> None:
          State('test-window-end', 'date'),
          State('optimization-state', 'data'),
          State('run-optimization-btn', 'children'),
-         State('sort-metric-dropdown', 'value')],
+         State('sort-metric-dropdown', 'value'),
+         State('optimizer-buy-universe', 'value'),
+         State('optimizer-sell-universe', 'value'),
+         State('optimizer-realistic-ranking', 'value'),
+         State('strategy-mode', 'value'),
+         State('min-holding-period', 'value'),
+         State('trailing-stop-pct', 'value'),
+         State('stop-mode', 'value'),
+         State('fx-fee-pct', 'value'),
+         State('slippage-pct', 'value'),
+         State('commission-pct', 'value'),
+         State('opt-max-dd-pct', 'value'),
+         State('opt-min-sharpe', 'value')],
         prevent_initial_call=True
     )
     def start_optimization(
@@ -488,6 +623,18 @@ def register_optimization_callbacks(app) -> None:
         current_state,
         button_label,
         sort_by,
+        buy_universe,
+        sell_universe,
+        realistic_flags,
+        strategy_mode,
+        min_holding_period,
+        trailing_stop_pct,
+        stop_mode,
+        fx_fee_pct,
+        slippage_pct,
+        commission_pct,
+        max_dd_pct,
+        min_sharpe,
     ):
         """Start a run, or cancel when the button currently reads STOP."""
         if not n_clicks:
@@ -519,14 +666,17 @@ def register_optimization_callbacks(app) -> None:
                 False,
                 _RUN_LABEL,
                 run_style,
-                html.Div(),
+                _empty_results_ui(theme),
                 {'display': 'none'},
                 [],
             )
 
         df, window_label = slice_df_to_window(full_df, start_date, end_date)
 
-        buy_signals, sell_signals = extract_signals(df)
+        all_buy, all_sell = extract_signals(df)
+        buy_signals, sell_signals = filter_signal_universe(
+            all_buy, all_sell, buy_universe, sell_universe,
+        )
         combinations = generate_signal_combinations(buy_signals, sell_signals, max_signals)
         combinations = combinations[:max_combos]
 
@@ -538,12 +688,32 @@ def register_optimization_callbacks(app) -> None:
                 False,
                 _RUN_LABEL,
                 run_style,
-                html.Div(),
+                _empty_results_ui(theme),
                 {'display': 'none'},
                 [],
             )
 
         combinations_serializable = [[list(buy), list(sell)] for buy, sell in combinations]
+        realistic = bool(realistic_flags) and 'on' in (realistic_flags or [])
+        eval_kwargs = build_eval_kwargs(
+            realistic,
+            strategy_mode,
+            min_holding_period,
+            trailing_stop_pct,
+            stop_mode,
+            fx_fee_pct,
+            slippage_pct,
+            commission_pct,
+        )
+
+        try:
+            max_dd_val = float(max_dd_pct) if max_dd_pct is not None and max_dd_pct != '' else None
+        except (TypeError, ValueError):
+            max_dd_val = None
+        try:
+            min_sharpe_val = float(min_sharpe) if min_sharpe is not None and min_sharpe != '' else None
+        except (TypeError, ValueError):
+            min_sharpe_val = None
 
         # Reset state — replaces the dict so any leftover workers from a prior
         # run see id(state) change and drop pending writes.
@@ -555,6 +725,10 @@ def register_optimization_callbacks(app) -> None:
             combinations=combinations_serializable,
             initial_capital=initial_capital,
             min_trades=min_trades or 10,
+            eval_kwargs=eval_kwargs,
+            realistic=realistic,
+            max_dd_pct=max_dd_val,
+            min_sharpe=min_sharpe_val,
         )
 
         new_state = {
@@ -565,15 +739,17 @@ def register_optimization_callbacks(app) -> None:
             'sort_by': sort_by or 'Robustness_Score',
             'sort_ascending': False,
             'min_trades': min_trades or 10,
+            'realistic': realistic,
         }
 
         est_seconds = _estimate_runtime_seconds(len(combinations))
         est_label = _format_duration(est_seconds) if est_seconds is not None else "…"
+        mode_note = "realistic" if realistic else "idealized"
         progress_ui = html.Div([
             build_progress_bar(0, f"Testing 0/{len(combinations)} combinations...", theme=theme),
             html.Div(
                 f"Window: {window_label}  ·  Est. runtime: {est_label} "
-                f"({OPTIMIZER_WORKERS} worker{'s' if OPTIMIZER_WORKERS != 1 else ''})",
+                f"({OPTIMIZER_WORKERS} worker{'s' if OPTIMIZER_WORKERS != 1 else ''})  ·  {mode_note}",
                 style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginTop': '4px'},
             ),
         ])
@@ -585,7 +761,7 @@ def register_optimization_callbacks(app) -> None:
             False,  # Keep button enabled so STOP works
             _STOP_LABEL,
             _optimizer_btn_style(theme, stop=True),
-            html.Div(),
+            _empty_results_ui(theme),
             {'display': 'none'},
             [],
         )
@@ -635,6 +811,9 @@ def register_optimization_callbacks(app) -> None:
         combinations = opt_state.get('combinations', [])
         results = opt_state.get('results', [])
         initial_capital = opt_state.get('initial_capital', 10000)
+        eval_kwargs = opt_state.get('eval_kwargs') or {}
+        max_dd_pct = opt_state.get('max_dd_pct')
+        min_sharpe = opt_state.get('min_sharpe')
 
         if not combinations or current_idx >= total:
             raise PreventUpdate
@@ -655,6 +834,7 @@ def register_optimization_callbacks(app) -> None:
                 initial_capital,
                 buy_combo,
                 sell_combo,
+                eval_kwargs,
             )
             for buy_combo, sell_combo in batch
         ]
@@ -679,19 +859,25 @@ def register_optimization_callbacks(app) -> None:
         if end_idx >= total:
             dashboard_state.update_optimization_state(running=False, completed=True)
             min_trades = opt_state.get('min_trades', 10)
-            results_df = _rank_results_df(results, min_trades, state.get('sort_by'))
+            results_df = _rank_results_df(
+                results,
+                min_trades,
+                state.get('sort_by'),
+                max_dd_pct=max_dd_pct,
+                min_sharpe=min_sharpe,
+            )
 
             if results_df.empty:
                 state['running'] = False
                 state['completed'] = True
                 first_error = next((r.get('Error') for r in results if r.get('Error')), None)
-                msg = "All combinations failed"
+                msg = "All combinations failed or were filtered by constraints"
                 if first_error:
                     msg += f": {first_error}"
                 return (
                     state,
                     build_alert(msg, "warning", theme=theme),
-                    html.Div(),
+                    _empty_results_ui(theme),
                     True,
                     False,
                     _RUN_LABEL,
@@ -808,7 +994,8 @@ def register_optimization_callbacks(app) -> None:
         [State('optimization-results-store', 'data'),
          State('sort-metric-dropdown', 'value'),
          State('tab-backtest', 'n_clicks'),
-         State('ticker-dropdown', 'value')],
+         State('ticker-dropdown', 'value'),
+         State('optimization-state', 'data')],
         prevent_initial_call=True
     )
     def apply_best_strategy(
@@ -817,6 +1004,7 @@ def register_optimization_callbacks(app) -> None:
         sort_by,
         current_backtest_clicks,
         ticker,
+        opt_client_state,
     ):
         """Apply the best strategy from optimization to the backtest panel.
 
@@ -827,7 +1015,7 @@ def register_optimization_callbacks(app) -> None:
         the preset-apply path, and avoids a dual-writer race. That sync callback
         also fires the Backtest auto-run once the signals are committed, so the
         user lands on the honest scorecard (real costs/Trade Setup applied). The
-        note reconciles that figure against the Optimizer's idealized leaderboard.
+        note reconciles that figure against the Optimizer leaderboard.
 
         Also returns to the terminal (/ticker/<sym>) so Apply from the full-screen
         workspace closes the overlay.
@@ -854,7 +1042,10 @@ def register_optimization_callbacks(app) -> None:
         sell_signals_str = str(best.get('Sell_Signals', ''))
         sell_signals = [s.strip() for s in sell_signals_str.split(',') if s.strip()]
 
-        note = _build_origin_note(best, theme)
+        realistic = bool((opt_client_state or {}).get('realistic')) or bool(
+            dashboard_state.optimization_state.get('realistic')
+        )
+        note = _build_origin_note(best, theme, realistic=realistic)
 
         apply_payload = {
             'buy': buy_signals,

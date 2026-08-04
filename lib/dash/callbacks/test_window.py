@@ -83,18 +83,34 @@ def register_test_window_callbacks(app) -> None:
          Output('test-window-series-store', 'data'),
          Output('test-window-pending-store', 'data')],
         [Input('data-loaded-store', 'data'),
-         Input('test-window-preset', 'value')],
+         Input('test-window-preset', 'value'),
+         Input('opt-test-window-start', 'date'),
+         Input('opt-test-window-end', 'date')],
         [State('test-window-series-store', 'data'),
-         State('test-window-pending-store', 'data')],
+         State('test-window-pending-store', 'data'),
+         State('opt-test-window-start', 'date'),
+         State('opt-test-window-end', 'date')],
         prevent_initial_call=False,
     )
-    def sync_test_window(_load_generation, preset, series_key, pending):
+    def sync_test_window(
+        _load_generation,
+        preset,
+        _opt_start_in,
+        _opt_end_in,
+        series_key,
+        pending,
+        opt_start,
+        opt_end,
+    ):
         """Keep the window valid against whatever data is currently loaded.
 
         Resets to the full loaded range only when the *series* changes (new
         symbol or new bar size) — the same rule the chart glue uses to decide
         whether the old viewport still means anything. A plain refresh of the
         same series must not throw away a window the user narrowed by hand.
+
+        Optimizer date mirrors (``opt-test-window-*``) are additional Inputs so
+        this callback remains the sole writer of the SoT pickers.
         """
         bounds = _loaded_bounds()
         if bounds is None:
@@ -106,6 +122,12 @@ def register_test_window_callbacks(app) -> None:
 
         if trigger == 'test-window-preset':
             start, end = resolve_preset(preset, first, last)
+            return start, end, no_update, no_update
+
+        if trigger in ('opt-test-window-start', 'opt-test-window-end'):
+            if not opt_start or not opt_end:
+                raise PreventUpdate
+            start, end = _clamp_to_loaded(opt_start, opt_end, first, last)
             return start, end, no_update, no_update
 
         current_key = f"{dashboard_state.ticker}|{dashboard_state.interval}"

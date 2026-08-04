@@ -129,11 +129,60 @@ def generate_signal_combinations(
     return all_combinations
 
 
+def filter_signal_universe(
+    all_buy: List[str],
+    all_sell: List[str],
+    selected_buy: Optional[List[str]] = None,
+    selected_sell: Optional[List[str]] = None,
+) -> Tuple[List[str], List[str]]:
+    """Restrict buy/sell lists to a user-selected universe (empty = all)."""
+    buy = list(all_buy)
+    sell = list(all_sell)
+    if selected_buy:
+        allow = set(selected_buy)
+        buy = [s for s in buy if s in allow]
+    if selected_sell:
+        allow = set(selected_sell)
+        sell = [s for s in sell if s in allow]
+    return buy, sell
+
+
+def apply_optimizer_constraints(
+    results_df: pd.DataFrame,
+    max_dd_pct: Optional[float] = None,
+    min_sharpe: Optional[float] = None,
+) -> pd.DataFrame:
+    """Drop combos that fail optional DD / Sharpe floors before ranking.
+
+    ``Max_Drawdown_%`` uses the negative convention from ``evaluate_signal_combination``.
+    ``max_dd_pct`` is a positive magnitude (e.g. 25 means discard if DD worse than -25%).
+    """
+    if results_df is None or results_df.empty:
+        return results_df
+    out = results_df
+    if max_dd_pct is not None:
+        try:
+            floor = -abs(float(max_dd_pct))
+            if 'Max_Drawdown_%' in out.columns:
+                out = out[out['Max_Drawdown_%'] >= floor]
+        except (TypeError, ValueError):
+            pass
+    if min_sharpe is not None:
+        try:
+            floor = float(min_sharpe)
+            if 'Sharpe_Ratio' in out.columns:
+                out = out[out['Sharpe_Ratio'] >= floor]
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
 def evaluate_signal_combination(
     df: pd.DataFrame,
     initial_capital: float,
     buy_combo: Tuple[str, ...],
-    sell_combo: Tuple[str, ...]
+    sell_combo: Tuple[str, ...],
+    **backtest_kwargs: Any,
 ) -> Dict[str, Any]:
     """
     Evaluate a single combination of buy and sell signals.
@@ -143,6 +192,8 @@ def evaluate_signal_combination(
         initial_capital: Starting capital
         buy_combo: Tuple of buy signal column names
         sell_combo: Tuple of sell signal column names
+        **backtest_kwargs: Optional ``run_backtest`` kwargs (costs, stops, mode).
+            Omitted keys keep engine defaults (idealized / legacy optimizer path).
 
     Returns:
         Dict with backtest results
@@ -152,7 +203,8 @@ def evaluate_signal_combination(
             df=df,
             initial_capital=initial_capital,
             buy_indicators=list(buy_combo),
-            sell_indicators=list(sell_combo)
+            sell_indicators=list(sell_combo),
+            **backtest_kwargs,
         )
 
         # Reuse the tested metrics engine instead of hand-rolling a fragile

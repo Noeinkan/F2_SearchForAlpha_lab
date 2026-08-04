@@ -31,8 +31,9 @@ graph TD
     MAIN --> SPLIT["#right-panel-splitter"]
     MAIN --> RIGHT[".sfa-right-panel (Aside) — right_panel.py"]
 
-    CHART --> TOOLBAR["chart_toolbar<br/>title · #chart-bar-count · export"]
-    CHART --> FRAME["#chart-frame > dcc.Loading > #financial-chart"]
+    CHART --> HOME["#chart-area-home"]
+    HOME --> TOOLBAR["chart_toolbar<br/>title · #chart-bar-count · export"]
+    HOME --> FRAME["#chart-frame > dcc.Loading > #financial-chart"]
 
     RIGHT --> TABS["Backtest · Optimizer · Data tabs"]
     RIGHT --> BT["#panel-backtest → #backtest-results"]
@@ -40,7 +41,8 @@ graph TD
     RIGHT --> DATA["#panel-data → #data-table-container"]
     RIGHT --> EXEC["#execution-learn-modal"]
 
-    OPTWS --> OPTCFG["config rail + Run/Stop"]
+    OPTWS --> OPTCFG["config rail + Run/Stop + opt-* mirrors"]
+    OPTWS --> OPTSLOT["#optimize-chart-slot hosts #chart-area-home"]
     OPTWS --> OPTRES["#optimization-results"]
 
     STATUS --> ACT["#status-activity-label / #status-activity-dot"]
@@ -64,11 +66,11 @@ All under [`lib/dash/layout/`](../lib/dash/layout/):
 | `shell.py` | Top-level composer. Emits every `dcc.Store` / `dcc.Interval` / hidden preload div, the four visible regions, the overlays, and the command palette. Also `wire_command_palette_is_open()`. |
 | `header.py` | The Bloomberg-style header tape **and** the dense bottom status bar (`_create_header`, `_create_status_bar`). |
 | `sidebar.py` | Left sidebar: Market Data, Saved Configurations, Chart Settings. |
-| `chart_area.py` | Center chart region: toolbar (title, bar-count, interval, chart type, price scale, fit/export/fullscreen) + the `#financial-chart` render target. |
+| `chart_area.py` | Center chart region: `#chart-area-home` wraps toolbar + `#financial-chart` (reparented into `#optimize-chart-slot` on `/optimize`). |
 | `right_panel.py` | Right panel shell: Backtest / Optimizer / Data tabs. |
-| `backtest_panel.py` | Backtest tab accordion + execution-mode cards; emits `execution-learn-modal`; **OPEN OPTIMIZER** CTA. |
+| `backtest_panel.py` | Backtest tab accordion + execution-mode cards; emits `execution-learn-modal`; **OPEN OPTIMIZER** CTA. SoT for capital/window/costs. |
 | `optimizer_panel.py` | Optimizer tab teaser — deep-links to the full-screen workspace. |
-| `optimizer_workspace.py` | Full-screen `/optimize/<ticker>` overlay: config rail, Run/Stop, results. |
+| `optimizer_workspace.py` | Full-screen `/optimize/<ticker>` overlay: `opt-*` mirrors, universe, chart slot, Run/Stop, results. |
 | `overlays.py` | Fundamentals workspace and Flow scanner workspace (both hidden until opened), plus the Flow learn modal. |
 | `command_palette.py` | The Ctrl+K command-palette modal. |
 | `symbol_search.py` | The Ctrl+/ symbol-search modal: query box, sector / asset-class filters, watchlist rail. |
@@ -97,6 +99,10 @@ Two consequences worth knowing before changing anything here:
   `load_data`, which raises `PreventUpdate` on a bootstrapped page, and Dash
   never dispatches a callback downstream of a prevented one. The glue therefore
   clicks a hidden `chart-boot-btn` once the container exists.
+- **Optimizer reparents the same host.** On `/optimize`, clientside code moves
+  `#chart-area-home` into `#optimize-chart-slot` and calls `sfaChart.nudge()` so
+  LWC recovers from zero size under a hidden `#terminal-shell`. Close restores
+  it under the terminal `main`. Do not mount a second `#financial-chart`.
 
 Callbacks are one file per concern in [`lib/dash/callbacks/`](../lib/dash/callbacks/),
 each exposing `register_*_callbacks(app)` and wired together in

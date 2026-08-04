@@ -34,65 +34,58 @@ top-10 list.** It's a search engine for trading ideas.
 currently loaded*. No data → it says *"Please load market data first"*.
 
 On the **left sidebar** (Market Data): set **Symbol** — it loads full available history on
-its own. Then, in the **Backtest** tab, set the **Test Window** and **Initial Capital**.
-Once prices are loaded, open the Optimizer via:
+its own. Then open the Optimizer via:
 
 - **OPEN OPTIMIZER** on the Backtest tab, or
 - the right-rail **Optimizer** tab teaser → **OPEN FULL OPTIMIZER**, or
 - command palette → **Open optimizer**, or
 - URL `/optimize/<TICKER>`
 
-> The Optimizer ranks combinations over that same Test Window, and prints it while it
-> runs. Backtesting the winner afterwards measures the identical period.
+On the Optimizer page you can edit **capital**, **test window**, **signal universe**,
+and (optionally) **realistic ranking** friction without returning to Backtest. Those
+controls stay in sync with the Backtest panel (same session values).
+
+> The price chart is the same singleton as the terminal — relocated into the Optimizer
+> main pane while you are on `/optimize`. Interval lives on the chart toolbar.
 
 ---
 
 ## 3. Tour of the full-screen workspace
 
-Layout: **left config rail** + **main results pane**, with Run/Stop in the top bar.
+Layout: **left config rail** + **main pane** (chart on top, progress/leaderboard below),
+with Run/Stop in the top bar.
 
 ### A — Signal Preview
 *"What am I working with?"* Live counters that update as you load data and move the
 sliders:
 
-- **BUY** — how many buy signals are available on the loaded data.
-- **SELL** — how many sell signals are available.
-- **COMBOS** — the estimated number of combinations that will actually be tested (already capped by your Max Combinations setting).
+- **BUY** / **SELL** — how many signals are in the current search universe.
+- **COMBOS** — combinations that will actually be tested (capped by Max Combinations).
 - **EST** — rough runtime estimate.
+- A one-line **conditions** summary (interval · capital · window · signal names).
 
-### B — Run Conditions
-Shows interval, capital, test window, and the buy/sell signal names that will enter the
-search (from the loaded frame — not chart overlays).
+### B — Capital & Window
+Editable test-window presets / dates and initial capital. Changes sync to the Backtest
+panel SoT controls.
 
-### C — Max Signals per Side
-*Slider, 1–5, default `2`.*
+### C — Signal Universe
+Multi-select buy/sell lists. Empty = search **all** signal columns on the loaded frame.
+Narrow the list to focus the search (bundles-lite).
 
-How many signals may be **stacked together** on each side (buy and sell).
+### D — Search & Constraints
+- **Max Signals per Side** (1–5, default `2`) — how many signals may stack per side.
+- **Max Combinations** (10–1000, default `100`) — hard cap for speed.
+- **Min Trades** (default `10`) — low-sample floor for ranking.
+- **Sort Results By** — SCORE / RET / SHARPE / CALMAR / DD / TRADES (re-rank after a run).
+- Optional **Max |DD| %** and **Min Sharpe** — discard combos before ranking.
 
-- `1` = test single signals only (fast, simple).
-- `2` = allow pairs like "RSI oversold **+** MACD bullish" (the sweet spot).
-- `3`–`5` = richer combinations, but the number of possibilities explodes quickly.
-
-> Higher = more thorough but slower, and more prone to **overfitting** (see §7). Start at `2`.
-
-### D — Max Combinations
-*Number box, 10–1000, default `100`.*
-
-A hard **cap** on how many combinations to actually test, for speed.
-
-### E — Min Trades
-*Number box, default `10`.*
-
-The reliability floor. Any combination that traded **fewer** times than this is tagged
-**"low sample"** and pushed *below* the credible ones in the ranking.
-
-### F — Sort Results By
-*Segmented buttons.* Which metric ranks the leaderboard (SCORE / RET / SHARPE / CALMAR / DD / TRADES).
-You can change this **after** a run — the table re-ranks without re-testing.
+### E — Realistic Ranking
+Off by default (fast idealized engine defaults). Turn on to rank each combo with your
+synced **mode / min hold / trailing stop / FX / slippage / commission**.
 
 ### The button — RUN OPTIMIZER / STOP OPTIMIZER
 Press **RUN** to start. While running the button becomes **STOP** (click to cancel and keep
-partial results). Close returns to the terminal chart.
+partial results). Close restores the chart to the terminal and returns to `/ticker/<sym>`.
 
 ---
 
@@ -123,8 +116,8 @@ knobs and Transaction Costs applied (see §7 for why that second step matters).
 ## 5. Example workflows
 
 ### Workflow 1 — "I have no idea where to start" (beginner)
-1. Pick a symbol on the left, then set a **Test Window** in the Backtest tab.
-2. Click **OPEN OPTIMIZER** → leave **Max Signals per Side** = `2`, **Max Combinations** = `100`.
+1. Pick a symbol on the left so prices load.
+2. Click **OPEN OPTIMIZER** → set Capital & Window on the rail if needed; leave **Max Signals** = `2`, **Max Combinations** = `100`.
 3. Sort by **RET**. Click **RUN OPTIMIZER**.
 4. Read the Best Strategy card and top-10 table.
 5. Click **Apply Best Strategy** for the full scorecard on the Backtest tab.

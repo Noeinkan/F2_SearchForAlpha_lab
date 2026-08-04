@@ -3,6 +3,9 @@ Full-screen Optimizer workspace overlay.
 
 Holds the live optimizer control IDs (run/stop, search knobs, results) so the
 right-rail Optimizer tab can stay a thin teaser that deep-links here.
+
+Capital / window / friction editors are *mirrors* of Backtest SoT IDs — Dash
+forbids remounting those IDs. Sync lives in ``callbacks/optimizer_sync.py``.
 """
 
 from __future__ import annotations
@@ -10,7 +13,13 @@ from __future__ import annotations
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 
-from lib.dash.dash_config import BORDER_RADIUS, FONT_FAMILY, FONT_SIZES
+from lib.dash.dash_config import (
+    BORDER_RADIUS,
+    FONT_FAMILY,
+    FONT_SIZES,
+    INITIAL_CAPITAL,
+    TEST_WINDOW_PRESETS,
+)
 from lib.dash.components import dense_input, ticker_pill
 
 
@@ -24,27 +33,66 @@ def _card_style(theme: dict) -> dict:
     }
 
 
+def _section_label(text: str, help_id: str | None, help_icon_style: dict, theme: dict) -> html.Div:
+    children = [
+        html.Div(text, style={
+            'fontSize': FONT_SIZES['xs'],
+            'color': theme['text_tertiary'],
+            'fontWeight': '600',
+            'letterSpacing': '0.5px',
+        }),
+    ]
+    if help_id:
+        children.append(html.Span("?", id=help_id, style=help_icon_style))
+    return html.Div(children, style={
+        'display': 'flex',
+        'alignItems': 'center',
+        'justifyContent': 'space-between',
+        'marginBottom': '8px',
+    })
+
+
+def _optimizer_empty_state(theme: dict) -> html.Div:
+    return html.Div(
+        [
+            html.Div("Configure the rail, then RUN OPTIMIZER.", style={
+                'fontSize': FONT_SIZES['sm'],
+                'color': theme['text_secondary'],
+                'fontWeight': '600',
+                'marginBottom': '6px',
+            }),
+            html.Div(
+                "The chart above shows the same session series and test window "
+                "you will search. Idealized ranking is fast; turn on Realistic "
+                "ranking to include costs and stops.",
+                style={
+                    'fontSize': FONT_SIZES['xs'],
+                    'color': theme['text_tertiary'],
+                    'lineHeight': '1.45',
+                    'maxWidth': '520px',
+                },
+            ),
+        ],
+        id='optimizer-empty-state',
+        className='sfa-optimize-empty',
+        style={'padding': '12px 4px'},
+    )
+
+
 def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
-    """Left rail: preview, conditions, search knobs."""
+    """Left rail: preview, capital/window, universe, search, realistic ranking."""
     card_style = _card_style(theme)
     help_icon_style = styles['help_icon']
+    label_style = {
+        'fontSize': FONT_SIZES['xs'],
+        'color': theme['text_secondary'],
+        'marginBottom': '4px',
+        'display': 'block',
+    }
 
     return html.Div([
         html.Div([
-            html.Div([
-                html.Div("SIGNAL PREVIEW", style={
-                    'fontSize': FONT_SIZES['xs'],
-                    'color': theme['text_tertiary'],
-                    'fontWeight': '600',
-                    'letterSpacing': '0.5px',
-                }),
-                html.Span("?", id='help-signal-preview', style=help_icon_style),
-            ], style={
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'space-between',
-                'marginBottom': '8px',
-            }),
+            _section_label("SIGNAL PREVIEW", 'help-signal-preview', help_icon_style, theme),
             html.Div(id='signal-preview', children=[
                 html.Div([
                     ticker_pill('BUY', '0', color='up', value_id='preview-buy-count'),
@@ -56,23 +104,6 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                     ticker_pill('EST', '—', color='neutral', value_id='optimization-cost'),
                 ], style={'display': 'flex', 'alignItems': 'center', 'gap': '6px', 'flexWrap': 'wrap'}),
             ]),
-        ], style=card_style),
-
-        html.Div([
-            html.Div([
-                html.Div("RUN CONDITIONS", style={
-                    'fontSize': FONT_SIZES['xs'],
-                    'color': theme['text_tertiary'],
-                    'fontWeight': '600',
-                    'letterSpacing': '0.5px',
-                }),
-                html.Span("?", id='help-optimizer-conditions', style=help_icon_style),
-            ], style={
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'space-between',
-                'marginBottom': '6px',
-            }),
             html.Div(
                 id='optimizer-run-conditions',
                 children="Load data to see interval, capital, window and signals.",
@@ -81,122 +112,340 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                     'color': theme['text_secondary'],
                     'lineHeight': '1.45',
                     'fontFamily': 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                    'marginTop': '8px',
+                    'whiteSpace': 'pre-wrap',
                 },
             ),
         ], style=card_style),
 
-        html.Div([
-            html.Div([
-                html.Label("Max Signals per Side", style={
-                    'fontSize': FONT_SIZES['xs'],
-                    'color': theme['text_secondary'],
-                    'marginBottom': 0,
-                    'display': 'block',
-                }),
-                html.Span("?", id='help-max-signals', style=help_icon_style),
-            ], style={
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'space-between',
-                'marginBottom': '8px',
-            }),
-            dcc.Slider(
-                id='max-signals-slider',
-                min=1, max=5, value=2, step=1,
-                marks={i: {'label': str(i), 'style': {'color': theme['text_secondary']}} for i in range(1, 6)},
-            ),
-        ], style={'marginBottom': '20px'}),
-
-        html.Div([
-            html.Div([
-                html.Label("Max Combinations", style={
-                    'fontSize': FONT_SIZES['xs'],
-                    'color': theme['text_secondary'],
-                    'marginBottom': 0,
-                    'display': 'block',
-                }),
-                html.Span("?", id='help-max-combos', style=help_icon_style),
-            ], style={
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'space-between',
-                'marginBottom': '4px',
-            }),
-            dense_input(
-                id='max-combos-input',
-                type='number',
-                value=100,
-                min=10, max=1000,
-                style=styles['input'],
-            ),
-        ], style={'marginBottom': '16px'}),
-
-        html.Div([
-            html.Div([
-                html.Label("Min Trades", style={
-                    'fontSize': FONT_SIZES['xs'],
-                    'color': theme['text_secondary'],
-                    'marginBottom': 0,
-                    'display': 'block',
-                }),
-                html.Span("?", id='help-min-trades', style=help_icon_style),
-            ], style={
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'space-between',
-                'marginBottom': '4px',
-            }),
-            dense_input(
-                id='min-trades-input',
-                type='number',
-                value=10,
-                min=1, max=500,
-                style=styles['input'],
-            ),
-        ], style={'marginBottom': '16px'}),
-
-        html.Div([
-            html.Div([
-                html.Label("Sort Results By", style={
-                    'fontSize': FONT_SIZES['xs'],
-                    'color': theme['text_secondary'],
-                    'marginBottom': 0,
-                    'display': 'block',
-                }),
-                html.Span("?", id='help-sort-metric', style=help_icon_style),
-            ], style={
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'space-between',
-                'marginBottom': '4px',
-            }),
-            dcc.RadioItems(
-                id='sort-metric-dropdown',
-                options=[
-                    {'label': 'SCORE', 'value': 'Robustness_Score'},
-                    {'label': 'RET', 'value': 'Total_Return_%'},
-                    {'label': 'SHARPE', 'value': 'Sharpe_Ratio'},
-                    {'label': 'CALMAR', 'value': 'Calmar'},
-                    {'label': 'DD', 'value': 'Max_Drawdown_%'},
-                    {'label': 'TRADES', 'value': 'Trades'},
-                ],
-                value='Robustness_Score',
-                inline=True,
-                className='bbg-radio-seg',
-            ),
-        ], style={'marginBottom': '16px'}),
+        dbc.Accordion(
+            [
+                dbc.AccordionItem(
+                    [
+                        html.Div([
+                            html.Label("Test Window", style=label_style),
+                            dcc.RadioItems(
+                                id='opt-test-window-preset',
+                                options=TEST_WINDOW_PRESETS,
+                                value='max',
+                                inline=True,
+                                className='bbg-radio-seg sfa-test-window-seg',
+                            ),
+                            html.Div([
+                                html.Div([
+                                    html.Label("From", style=label_style),
+                                    dcc.DatePickerSingle(
+                                        id='opt-test-window-start',
+                                        display_format='YYYY-MM-DD',
+                                        className='dark-datepicker',
+                                        style={'width': '100%'},
+                                    ),
+                                ], style={'flex': 1}),
+                                html.Div([
+                                    html.Label("To", style=label_style),
+                                    dcc.DatePickerSingle(
+                                        id='opt-test-window-end',
+                                        display_format='YYYY-MM-DD',
+                                        className='dark-datepicker date-picker-end',
+                                        style={'width': '100%'},
+                                    ),
+                                ], style={'flex': 1}),
+                            ], style={
+                                'display': 'flex',
+                                'gap': '8px',
+                                'marginTop': '8px',
+                                'marginBottom': '12px',
+                            }),
+                            html.Label("Initial Capital", style=label_style),
+                            dense_input(
+                                id='opt-initial-capital',
+                                type='number',
+                                value=INITIAL_CAPITAL,
+                                style={**styles['input'], 'textAlign': 'right'},
+                            ),
+                        ]),
+                    ],
+                    title="Capital & Window",
+                    item_id='opt-capital-window',
+                ),
+                dbc.AccordionItem(
+                    [
+                        html.Div([
+                            html.Label("Buy signals in search", style=label_style),
+                            dcc.Dropdown(
+                                id='optimizer-buy-universe',
+                                options=[],
+                                value=None,
+                                multi=True,
+                                placeholder='All buy signals',
+                                className='dark-dropdown',
+                                style={'fontSize': FONT_SIZES['xs'], 'marginBottom': '10px'},
+                            ),
+                            html.Label("Sell signals in search", style=label_style),
+                            dcc.Dropdown(
+                                id='optimizer-sell-universe',
+                                options=[],
+                                value=None,
+                                multi=True,
+                                placeholder='All sell signals',
+                                className='dark-dropdown',
+                                style={'fontSize': FONT_SIZES['xs']},
+                            ),
+                            html.Div(
+                                "Empty = search all available columns on the loaded frame.",
+                                style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_tertiary'],
+                                    'marginTop': '6px',
+                                },
+                            ),
+                        ]),
+                    ],
+                    title="Signal Universe",
+                    item_id='opt-universe',
+                ),
+                dbc.AccordionItem(
+                    [
+                        html.Div([
+                            html.Div([
+                                html.Label("Max Signals per Side", style={
+                                    **label_style, 'marginBottom': 0,
+                                }),
+                                html.Span("?", id='help-max-signals', style=help_icon_style),
+                            ], style={
+                                'display': 'flex',
+                                'alignItems': 'center',
+                                'justifyContent': 'space-between',
+                                'marginBottom': '8px',
+                            }),
+                            dcc.Slider(
+                                id='max-signals-slider',
+                                min=1, max=5, value=2, step=1,
+                                marks={
+                                    i: {
+                                        'label': str(i),
+                                        'style': {'color': theme['text_secondary']},
+                                    }
+                                    for i in range(1, 6)
+                                },
+                            ),
+                            html.Div([
+                                html.Label("Max Combinations", style={
+                                    **label_style, 'marginBottom': 0,
+                                }),
+                                html.Span("?", id='help-max-combos', style=help_icon_style),
+                            ], style={
+                                'display': 'flex',
+                                'alignItems': 'center',
+                                'justifyContent': 'space-between',
+                                'marginTop': '12px',
+                                'marginBottom': '4px',
+                            }),
+                            dense_input(
+                                id='max-combos-input',
+                                type='number',
+                                value=100,
+                                min=10, max=1000,
+                                style=styles['input'],
+                            ),
+                            html.Div([
+                                html.Label("Min Trades", style={
+                                    **label_style, 'marginBottom': 0,
+                                }),
+                                html.Span("?", id='help-min-trades', style=help_icon_style),
+                            ], style={
+                                'display': 'flex',
+                                'alignItems': 'center',
+                                'justifyContent': 'space-between',
+                                'marginTop': '12px',
+                                'marginBottom': '4px',
+                            }),
+                            dense_input(
+                                id='min-trades-input',
+                                type='number',
+                                value=10,
+                                min=1, max=500,
+                                style=styles['input'],
+                            ),
+                            html.Div([
+                                html.Label("Sort Results By", style={
+                                    **label_style, 'marginBottom': 0,
+                                }),
+                                html.Span("?", id='help-sort-metric', style=help_icon_style),
+                            ], style={
+                                'display': 'flex',
+                                'alignItems': 'center',
+                                'justifyContent': 'space-between',
+                                'marginTop': '12px',
+                                'marginBottom': '4px',
+                            }),
+                            dcc.RadioItems(
+                                id='sort-metric-dropdown',
+                                options=[
+                                    {'label': 'SCORE', 'value': 'Robustness_Score'},
+                                    {'label': 'RET', 'value': 'Total_Return_%'},
+                                    {'label': 'SHARPE', 'value': 'Sharpe_Ratio'},
+                                    {'label': 'CALMAR', 'value': 'Calmar'},
+                                    {'label': 'DD', 'value': 'Max_Drawdown_%'},
+                                    {'label': 'TRADES', 'value': 'Trades'},
+                                ],
+                                value='Robustness_Score',
+                                inline=True,
+                                className='bbg-radio-seg',
+                            ),
+                            html.Hr(style={
+                                'borderColor': theme['border_primary'],
+                                'margin': '14px 0 10px',
+                            }),
+                            html.Label("Max |DD| % (optional)", style=label_style),
+                            dense_input(
+                                id='opt-max-dd-pct',
+                                type='number',
+                                value=None,
+                                min=0, max=100,
+                                placeholder='e.g. 25',
+                                style=styles['input'],
+                            ),
+                            html.Label("Min Sharpe (optional)", style={
+                                **label_style, 'marginTop': '10px',
+                            }),
+                            dense_input(
+                                id='opt-min-sharpe',
+                                type='number',
+                                value=None,
+                                step=0.1,
+                                placeholder='e.g. 0.5',
+                                style=styles['input'],
+                            ),
+                        ]),
+                    ],
+                    title="Search & Constraints",
+                    item_id='opt-search',
+                ),
+                dbc.AccordionItem(
+                    [
+                        html.Div([
+                            dcc.Checklist(
+                                id='optimizer-realistic-ranking',
+                                options=[{
+                                    'label': ' Rank with costs / stops / mode',
+                                    'value': 'on',
+                                }],
+                                value=[],
+                                style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_primary'],
+                                    'marginBottom': '10px',
+                                },
+                            ),
+                            html.Div(id='opt-realistic-fields', children=[
+                                html.Label("Execution mode", style=label_style),
+                                dcc.RadioItems(
+                                    id='opt-strategy-mode',
+                                    options=[
+                                        {'label': 'Trading', 'value': 'trading'},
+                                        {'label': 'Accum', 'value': 'accumulation'},
+                                        {'label': 'Rebal', 'value': 'rebalancing'},
+                                    ],
+                                    value='trading',
+                                    inline=True,
+                                    className='bbg-radio-seg',
+                                ),
+                                html.Div([
+                                    html.Div([
+                                        html.Label("Min hold", style=label_style),
+                                        dense_input(
+                                            id='opt-min-holding-period',
+                                            type='number',
+                                            value=5,
+                                            min=0,
+                                            style=styles['input'],
+                                        ),
+                                    ], style={'flex': 1}),
+                                    html.Div([
+                                        html.Label("Trail %", style=label_style),
+                                        dense_input(
+                                            id='opt-trailing-stop-pct',
+                                            type='number',
+                                            value=5,
+                                            min=0,
+                                            style=styles['input'],
+                                        ),
+                                    ], style={'flex': 1}),
+                                ], style={
+                                    'display': 'flex',
+                                    'gap': '8px',
+                                    'marginTop': '10px',
+                                }),
+                                html.Label("Stop mode", style={
+                                    **label_style, 'marginTop': '10px',
+                                }),
+                                dcc.RadioItems(
+                                    id='opt-stop-mode',
+                                    options=[
+                                        {'label': '% TRAIL', 'value': 'percent'},
+                                        {'label': 'ATR', 'value': 'atr'},
+                                    ],
+                                    value='percent',
+                                    inline=True,
+                                    className='bbg-radio-seg',
+                                ),
+                                html.Div([
+                                    html.Div([
+                                        html.Label("FX %", style=label_style),
+                                        dense_input(
+                                            id='opt-fx-fee-pct',
+                                            type='number',
+                                            value=0.15,
+                                            min=0,
+                                            step=0.01,
+                                            style=styles['input'],
+                                        ),
+                                    ], style={'flex': 1}),
+                                    html.Div([
+                                        html.Label("Slip %", style=label_style),
+                                        dense_input(
+                                            id='opt-slippage-pct',
+                                            type='number',
+                                            value=0.05,
+                                            min=0,
+                                            step=0.01,
+                                            style=styles['input'],
+                                        ),
+                                    ], style={'flex': 1}),
+                                    html.Div([
+                                        html.Label("Comm %", style=label_style),
+                                        dense_input(
+                                            id='opt-commission-pct',
+                                            type='number',
+                                            value=0.0,
+                                            min=0,
+                                            step=0.01,
+                                            style=styles['input'],
+                                        ),
+                                    ], style={'flex': 1}),
+                                ], style={
+                                    'display': 'flex',
+                                    'gap': '8px',
+                                    'marginTop': '10px',
+                                }),
+                            ]),
+                        ]),
+                    ],
+                    title="Realistic Ranking",
+                    item_id='opt-realistic',
+                ),
+            ],
+            id='optimize-config-accordion',
+            start_collapsed=False,
+            always_open=True,
+            active_item=['opt-capital-window', 'opt-search'],
+            style={'marginBottom': '8px'},
+        ),
 
         dbc.Tooltip(
             "Counts available signals and estimated combinations.",
             target='help-signal-preview',
-            placement='right',
-            trigger='hover focus',
-        ),
-        dbc.Tooltip(
-            "What the optimizer will search: chart interval, Backtest capital "
-            "and test window, plus buy/sell signal columns on the loaded frame. "
-            "Chart overlays are display-only — only signal columns enter combos.",
-            target='help-optimizer-conditions',
             placement='right',
             trigger='hover focus',
         ),
@@ -238,10 +487,19 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
 
 
 def _create_optimize_results_pane(styles: dict, theme: dict) -> html.Div:
-    """Main pane: progress, leaderboard, apply."""
+    """Main pane: chart context, progress, leaderboard, apply."""
     return html.Div([
-        html.Div(id='optimization-progress', style={'marginBottom': '12px'}),
-        html.Div(id='optimization-results', style={'flex': '1 1 auto', 'minHeight': 0}),
+        html.Div(
+            id='optimize-chart-slot',
+            className='sfa-optimize-chart-slot',
+            children=[],
+        ),
+        html.Div(id='optimization-progress', style={'marginBottom': '8px', 'flex': '0 0 auto'}),
+        html.Div(
+            id='optimization-results',
+            children=_optimizer_empty_state(theme),
+            style={'flex': '1 1 auto', 'minHeight': 0, 'overflowY': 'auto'},
+        ),
         html.Div(id='apply-strategy-container', children=[
             html.Button(
                 "Apply Best Strategy",
@@ -264,8 +522,8 @@ def _create_optimize_results_pane(styles: dict, theme: dict) -> html.Div:
         'flex': '1 1 auto',
         'minWidth': 0,
         'minHeight': 0,
-        'overflowY': 'auto',
-        'padding': '16px',
+        'overflow': 'hidden',
+        'padding': '12px 16px 16px',
         'display': 'flex',
         'flexDirection': 'column',
     })
@@ -348,6 +606,8 @@ def _create_optimize_overlay(styles: dict, theme: dict) -> html.Div:
             'flexDirection': 'row',
             'overflow': 'hidden',
         }),
+        # Clientside reparent writes a tiny status here (layout tick only).
+        html.Div(id='optimize-chart-reparent-sync', style={'display': 'none'}),
     ], id='optimize-overlay', style={
         'display': 'none',
         'position': 'fixed',

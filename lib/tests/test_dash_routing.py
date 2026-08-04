@@ -135,3 +135,8 @@ class TestDashShellRoutes(unittest.TestCase):
         self.assertIn('open-optimizer-button', layout_str)
         self.assertIn('open-optimizer-from-teaser', layout_str)
         self.assertIn('run-optimization-btn', layout_str)
+        self.assertIn('optimize-chart-slot', layout_str)
+        self.assertIn('opt-initial-capital', layout_str)
+        self.assertIn('optimizer-buy-universe', layout_str)
+        self.assertIn('optimizer-realistic-ranking', layout_str)
+        self.assertIn('chart-area-home', layout_str)

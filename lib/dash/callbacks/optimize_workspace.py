@@ -1,4 +1,4 @@
-"""Full-screen Optimizer workspace: navigate + overlay visibility."""
+"""Full-screen Optimizer workspace: navigate + overlay visibility + chart host."""
 
 from __future__ import annotations
 
@@ -16,6 +16,34 @@ from lib.dash.routes import (
 
 
 def register_optimize_workspace_callbacks(app) -> None:
+    # Reparent the singleton chart area into the optimizer slot (or home).
+    # Must stay clientside — no second #financial-chart / payload store.
+    app.clientside_callback(
+        """
+        function(pathname) {
+            var home = document.getElementById('chart-area-home');
+            var slot = document.getElementById('optimize-chart-slot');
+            if (!home || !slot) { return ''; }
+            var onOptimize = !!(pathname && String(pathname).indexOf('/optimize') === 0);
+            if (onOptimize) {
+                if (home.parentElement !== slot) { slot.appendChild(home); }
+            } else {
+                var terminalMain = document.querySelector('#terminal-shell main');
+                if (terminalMain && home.parentElement !== terminalMain) {
+                    terminalMain.appendChild(home);
+                }
+            }
+            if (window.sfaChart && typeof window.sfaChart.nudge === 'function') {
+                window.sfaChart.nudge();
+            }
+            return onOptimize ? 'optimize' : 'terminal';
+        }
+        """,
+        Output('optimize-chart-reparent-sync', 'children'),
+        Input('app-url', 'pathname'),
+        prevent_initial_call=False,
+    )
+
     @app.callback(
         Output("app-url", "pathname", allow_duplicate=True),
         [

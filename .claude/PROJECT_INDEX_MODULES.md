@@ -141,7 +141,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | `right_panel.py` | Right panel shell (Backtest / Optimizer / Data tabs) |
 | `backtest_panel.py` | Backtest tab accordion + execution-mode cards + learn modal |
 | `optimizer_panel.py` | Optimizer tab teaser → full-screen `/optimize` |
-| `optimizer_workspace.py` | Full-screen Optimizer overlay (config rail + results) |
+| `optimizer_workspace.py` | Full-screen Optimizer overlay (mirrors, universe, chart slot, results) |
 | `overlays.py` | Fundamentals + Flow Scanner overlays (incl. Flow learn modal) |
 | `command_palette.py` | Ctrl+K command palette |
 | `symbol_search.py` | Ctrl+/ (or bare `/`) symbol-search modal — search, sector/asset filters, watchlists |
@@ -162,6 +162,8 @@ The Execution Type explainer modal (`execution-learn-modal`) is emitted by `back
 | `chart.py` | Sole `chart-payload-store` writer + the clientside renderer |
 | `backtest.py` | Run backtest from UI |
 | `optimization.py` | In-dashboard optimisation (thread pool, cost estimate) |
+| `optimizer_sync.py` | Bidirectional sync of `opt-*` mirrors ↔ Backtest SoT controls |
+| `optimize_workspace.py` | `/optimize` navigate, overlay visibility, chart reparent |
 | `routing.py` | URL-based page routing |
 | `fundamentals.py` | Fundamentals overlay — register + re-exports |
 | `fundamentals_formulas.py` | Valuation formulas + explainability helpers |
