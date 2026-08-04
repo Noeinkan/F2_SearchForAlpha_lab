@@ -28,9 +28,10 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
                 'marginBottom': '8px',
             }),
             html.Div(
-                "Search hundreds of buy/sell signal combinations on a dedicated "
-                "page — room for search knobs, progress, and a full leaderboard. "
-                "Capital and test window still come from the Backtest tab.",
+                "Full-screen workspace for signal-combo grid search, Bayesian "
+                "param sweeps, and walk-forward Validate OOS — with room for "
+                "knobs, progress, and a leaderboard. Open LEARN on that page for "
+                "a beginner walkthrough.",
                 style={
                     'fontSize': FONT_SIZES['xs'],
                     'color': theme['text_secondary'],
@@ -45,14 +46,15 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
                 style={**styles['button_primary'], 'width': '100%'},
             ),
             dbc.Tooltip(
-                "Open the full-screen Optimizer workspace for the current symbol.",
+                "Open the full-screen Optimizer. Start with RUN OPTIMIZER "
+                "(combo grid search); use LEARN if the controls feel opaque.",
                 target='open-optimizer-from-teaser',
                 placement='left',
             ),
         ], style=card_style),
         html.Div(
-            "Tip: you can also open it from the Backtest tab or the command palette "
-            "(Navigate → Open optimizer).",
+            "Tip: also open from the Backtest tab or command palette "
+            "(Navigate → Open optimizer). New here? Press LEARN in the header.",
             style={
                 'fontSize': FONT_SIZES['xs'],
                 'color': theme['text_tertiary'],

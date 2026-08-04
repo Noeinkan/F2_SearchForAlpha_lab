@@ -8,14 +8,18 @@ enough to enumerate; use Optuna when it is not.
 from __future__ import annotations
 
 import json
+import logging
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 import typer
+
+logger = logging.getLogger(__name__)
 
 from lib.agent_strategy import (
     AgentStrategyBundle,
@@ -54,6 +58,8 @@ class GridSearchResult:
     metric: str
     duration_seconds: float
     space_keys: list[str]
+    trials: list[dict[str, Any]] = field(default_factory=list)
+    cancelled: bool = False
 
     def to_contract(self) -> dict[str, Any]:
         return {
@@ -69,6 +75,8 @@ class GridSearchResult:
                 "metric": self.metric,
                 "metrics": self.best_metrics,
             },
+            "trials": list(self.trials),
+            "cancelled": bool(self.cancelled),
             "duration_seconds": float(self.duration_seconds),
         }
 
@@ -152,6 +160,8 @@ def run_grid_search(
     max_combos: int = DEFAULT_MAX_COMBOS,
     dry_run: bool = False,
     json_output: bool = False,
+    cancel_event: threading.Event | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> GridSearchResult | dict[str, Any]:
     """Enumerate a capped grid and return the best combination."""
     from lib.timeframes import normalize_interval
@@ -214,8 +224,13 @@ def run_grid_search(
     best_params: dict[str, Any] = {}
     best_metrics: dict[str, Any] = {}
     best_trial_number = -1
+    trial_rows: list[dict[str, Any]] = []
+    cancelled = False
 
     for idx, params in enumerate(combos):
+        if cancel_event is not None and cancel_event.is_set():
+            cancelled = True
+            break
         # Overlay live_params so omitted dimensions stay at promoted defaults.
         full_params = dict(bundle.live_params)
         full_params.update(params)
@@ -233,6 +248,18 @@ def run_grid_search(
             interval=canon,
             trial_number=idx,
         )
+        trial_rows.append({
+            "index": idx,
+            "params": dict(params),
+            "full_params": dict(full_params),
+            "value": float(score),
+            "metrics": trial_metrics,
+        })
+        if progress_callback is not None:
+            try:
+                progress_callback(idx + 1, len(combos))
+            except Exception:
+                logger.debug("grid_search.progress_callback_failed", exc_info=True)
         if not json_output:
             import sys
 
@@ -249,6 +276,9 @@ def run_grid_search(
             best_trial_number = idx
 
     duration = time.perf_counter() - started
+    if best_trial_number < 0:
+        raise RuntimeError("Grid search produced no completed combinations")
+
     persisted = trials_store.list_trials(
         strategy_name=strategy_name, study_id=sid, db_path=db_path
     )
@@ -260,7 +290,7 @@ def run_grid_search(
 
     return GridSearchResult(
         study_id=sid,
-        combinations_tested=len(combos),
+        combinations_tested=len(trial_rows),
         combinations_total=total,
         best_trial_id=matching.trial_id,
         best_params=matching.params,
@@ -269,6 +299,8 @@ def run_grid_search(
         metric=metric,
         duration_seconds=duration,
         space_keys=list(space.keys()),
+        trials=trial_rows,
+        cancelled=cancelled,
     )
 
 

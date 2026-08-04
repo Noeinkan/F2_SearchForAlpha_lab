@@ -21,6 +21,11 @@ from lib.dash.dash_config import (
     TEST_WINDOW_PRESETS,
 )
 from lib.dash.components import dense_input, ticker_pill
+from lib.dash.optimizer_glossary import CONTROL_HINTS, SECTION_BLURBS
+from lib.dash.optimizer_view import (
+    render_optimizer_empty_state,
+    render_optimizer_learn_content,
+)
 
 
 def _card_style(theme: dict) -> dict:
@@ -52,29 +57,16 @@ def _section_label(text: str, help_id: str | None, help_icon_style: dict, theme:
     })
 
 
-def _optimizer_empty_state(theme: dict) -> html.Div:
+def _section_blurb(key: str, theme: dict) -> html.Div:
     return html.Div(
-        [
-            html.Div("Configure the rail, then RUN OPTIMIZER.", style={
-                'fontSize': FONT_SIZES['sm'],
-                'color': theme['text_secondary'],
-                'fontWeight': '600',
-                'marginBottom': '6px',
-            }),
-            html.Div(
-                "The chart above shows the same session series and test window "
-                "you will search. Idealized ranking is fast; turn on Realistic "
-                "ranking to include costs and stops.",
-                style={
-                    'fontSize': FONT_SIZES['xs'],
-                    'color': theme['text_tertiary'],
-                    'lineHeight': '1.45',
-                    'maxWidth': '520px',
-                },
-            ),
-        ],
-        id='optimizer-empty-state',
-        className='sfa-optimize-empty',
+        SECTION_BLURBS[key],
+        className='sfa-opt-section-blurb',
+        style={
+            'fontSize': FONT_SIZES['xs'],
+            'color': theme['text_tertiary'],
+            'lineHeight': '1.4',
+            'marginBottom': '10px',
+        },
     )
 
 
@@ -122,6 +114,7 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                 dbc.AccordionItem(
                     [
                         html.Div([
+                            _section_blurb('capital', theme),
                             html.Label("Test Window", style=label_style),
                             dcc.RadioItems(
                                 id='opt-test-window-preset',
@@ -170,6 +163,7 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                 dbc.AccordionItem(
                     [
                         html.Div([
+                            _section_blurb('universe', theme),
                             html.Label("Buy signals in search", style=label_style),
                             dcc.Dropdown(
                                 id='optimizer-buy-universe',
@@ -190,14 +184,6 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                                 className='dark-dropdown',
                                 style={'fontSize': FONT_SIZES['xs']},
                             ),
-                            html.Div(
-                                "Empty = search all available columns on the loaded frame.",
-                                style={
-                                    'fontSize': FONT_SIZES['xs'],
-                                    'color': theme['text_tertiary'],
-                                    'marginTop': '6px',
-                                },
-                            ),
                         ]),
                     ],
                     title="Signal Universe",
@@ -206,6 +192,7 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                 dbc.AccordionItem(
                     [
                         html.Div([
+                            _section_blurb('search', theme),
                             html.Div([
                                 html.Label("Max Signals per Side", style={
                                     **label_style, 'marginBottom': 0,
@@ -296,7 +283,17 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                                 'borderColor': theme['border_primary'],
                                 'margin': '14px 0 10px',
                             }),
-                            html.Label("Max |DD| % (optional)", style=label_style),
+                            html.Div([
+                                html.Label("Max |DD| % (optional)", style={
+                                    **label_style, 'marginBottom': 0,
+                                }),
+                                html.Span("?", id='help-opt-max-dd', style=help_icon_style),
+                            ], style={
+                                'display': 'flex',
+                                'alignItems': 'center',
+                                'justifyContent': 'space-between',
+                                'marginBottom': '4px',
+                            }),
                             dense_input(
                                 id='opt-max-dd-pct',
                                 type='number',
@@ -305,8 +302,17 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                                 placeholder='e.g. 25',
                                 style=styles['input'],
                             ),
-                            html.Label("Min Sharpe (optional)", style={
-                                **label_style, 'marginTop': '10px',
+                            html.Div([
+                                html.Label("Min Sharpe (optional)", style={
+                                    **label_style, 'marginBottom': 0,
+                                }),
+                                html.Span("?", id='help-opt-min-sharpe', style=help_icon_style),
+                            ], style={
+                                'display': 'flex',
+                                'alignItems': 'center',
+                                'justifyContent': 'space-between',
+                                'marginTop': '10px',
+                                'marginBottom': '4px',
                             }),
                             dense_input(
                                 id='opt-min-sharpe',
@@ -318,12 +324,13 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                             ),
                         ]),
                     ],
-                    title="Search & Constraints",
+                    title="Grid Search & Constraints",
                     item_id='opt-search',
                 ),
                 dbc.AccordionItem(
                     [
                         html.Div([
+                            _section_blurb('realistic', theme),
                             dcc.Checklist(
                                 id='optimizer-realistic-ranking',
                                 options=[{
@@ -437,6 +444,7 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                 dbc.AccordionItem(
                     [
                         html.Div([
+                            _section_blurb('bayesian', theme),
                             html.Label("Strategy bundle", style=label_style),
                             dcc.Dropdown(
                                 id='bayesian-strategy-dropdown',
@@ -490,6 +498,12 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                                 style={**styles['button_primary'], 'width': '100%'},
                                 n_clicks=0,
                             ),
+                            dbc.Tooltip(
+                                "Tune numeric params of the selected bundle (Optuna). "
+                                "Not the same as RUN OPTIMIZER signal-combo grid search.",
+                                target='run-bayesian-btn',
+                                placement='top',
+                            ),
                             html.Div(id='bayesian-progress', style={'marginTop': '10px'}),
                             html.Div(id='bayesian-results', style={'marginTop': '8px'}),
                             html.Div(
@@ -530,6 +544,115 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                     title="Bayesian Sweep",
                     item_id='opt-bayesian',
                 ),
+                dbc.AccordionItem(
+                    [
+                        html.Div([
+                            _section_blurb('param_grid', theme),
+                            html.Label("Strategy bundle", style=label_style),
+                            dcc.Dropdown(
+                                id='grid-strategy-dropdown',
+                                options=[],
+                                value=None,
+                                placeholder='Select agent strategy…',
+                                className='dark-dropdown',
+                                style={'fontSize': FONT_SIZES['xs'], 'marginBottom': '10px'},
+                            ),
+                            html.Label("Parameters", style=label_style),
+                            dcc.Checklist(
+                                id='grid-params-checklist',
+                                options=[],
+                                value=[],
+                                className='sfa-grid-params-checklist',
+                                style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'maxHeight': '140px',
+                                    'overflowY': 'auto',
+                                    'marginBottom': '8px',
+                                },
+                            ),
+                            dcc.Checklist(
+                                id='grid-include-execution',
+                                options=[{
+                                    'label': ' Include execution space',
+                                    'value': 'exec',
+                                }],
+                                value=[],
+                                style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_secondary'],
+                                    'marginBottom': '10px',
+                                },
+                            ),
+                            html.Div([
+                                html.Div([
+                                    html.Label("Max combos", style=label_style),
+                                    dense_input(
+                                        id='grid-max-combos-input',
+                                        type='number',
+                                        value=250,
+                                        min=1,
+                                        max=5000,
+                                        style=styles['input'],
+                                    ),
+                                ], style={'flex': 1}),
+                                html.Div([
+                                    html.Label("Metric", style=label_style),
+                                    dcc.Dropdown(
+                                        id='grid-metric-dropdown',
+                                        options=[
+                                            {'label': 'Sortino', 'value': 'sortino'},
+                                            {'label': 'Sharpe', 'value': 'sharpe'},
+                                            {'label': 'Calmar', 'value': 'calmar'},
+                                            {'label': 'Composite', 'value': 'composite'},
+                                        ],
+                                        value='sortino',
+                                        clearable=False,
+                                        className='dark-dropdown',
+                                        style={'fontSize': FONT_SIZES['xs']},
+                                    ),
+                                ], style={'flex': 1}),
+                            ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '10px'}),
+                            html.Div(id='grid-combo-estimate', className='sfa-grid-estimate'),
+                            dcc.Graph(
+                                id='grid-param-ranges-graph',
+                                figure={},
+                                config={'displayModeBar': False},
+                                style={'height': '180px', 'marginTop': '8px'},
+                                className='sfa-grid-ranges-graph',
+                            ),
+                            html.Button(
+                                "RUN GRID",
+                                id='run-grid-btn',
+                                style={**styles['button_primary'], 'width': '100%', 'marginTop': '10px'},
+                                n_clicks=0,
+                            ),
+                            html.Div(id='grid-progress', style={'marginTop': '10px'}),
+                            html.Div(id='grid-results', style={'marginTop': '8px'}),
+                            html.Div(
+                                id='grid-actions',
+                                style={'display': 'none', 'marginTop': '10px'},
+                                children=[
+                                    html.Button(
+                                        "APPLY PARAMS",
+                                        id='apply-grid-btn',
+                                        n_clicks=0,
+                                        style={
+                                            **styles['button_primary'],
+                                            'width': '100%',
+                                        },
+                                    ),
+                                    dbc.Tooltip(
+                                        "Copy best grid params into Backtest and switch to the terminal.",
+                                        target='apply-grid-btn',
+                                        placement='top',
+                                    ),
+                                ],
+                            ),
+                        ]),
+                    ],
+                    title="Param Grid Search",
+                    item_id='opt-grid',
+                ),
             ],
             id='optimize-config-accordion',
             className='compact-accordion',
@@ -541,34 +664,44 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
         ),
 
         dbc.Tooltip(
-            "Counts available signals and estimated combinations.",
+            CONTROL_HINTS['signal_preview'],
             target='help-signal-preview',
             placement='right',
             trigger='hover focus',
         ),
         dbc.Tooltip(
-            "Limit how many signals can be chosen per side.",
+            CONTROL_HINTS['max_signals'],
             target='help-max-signals',
             placement='right',
             trigger='hover focus',
         ),
         dbc.Tooltip(
-            "Cap the total combinations to test for speed.",
+            CONTROL_HINTS['max_combos'],
             target='help-max-combos',
             placement='right',
             trigger='hover focus',
         ),
         dbc.Tooltip(
-            "Combos with fewer trades than this are flagged 'low sample' and "
-            "ranked below credible ones — a great ratio on a handful of trades is noise.",
+            CONTROL_HINTS['min_trades'],
             target='help-min-trades',
             placement='right',
             trigger='hover focus',
         ),
         dbc.Tooltip(
-            "Choose the metric used to rank results. SCORE is a robustness-weighted "
-            "blend that rewards risk-adjusted return and penalises too-few trades.",
+            CONTROL_HINTS['sort_metric'],
             target='help-sort-metric',
+            placement='right',
+            trigger='hover focus',
+        ),
+        dbc.Tooltip(
+            CONTROL_HINTS['max_dd'],
+            target='help-opt-max-dd',
+            placement='right',
+            trigger='hover focus',
+        ),
+        dbc.Tooltip(
+            CONTROL_HINTS['min_sharpe'],
+            target='help-opt-min-sharpe',
             placement='right',
             trigger='hover focus',
         ),
@@ -596,9 +729,8 @@ def _create_optimize_results_pane(styles: dict, theme: dict) -> html.Div:
             html.Div(
                 id='optimization-results',
                 className='sfa-optimize-results-board',
-                children=_optimizer_empty_state(theme),
+                children=render_optimizer_empty_state(theme),
             ),
-            html.Div(id='optimizer-oos-panel', className='sfa-optimize-oos'),
             dbc.Accordion(
                 [
                     dbc.AccordionItem(
@@ -612,7 +744,20 @@ def _create_optimize_results_pane(styles: dict, theme: dict) -> html.Div:
                             ),
                         ],
                         title="Return vs Sharpe",
-                        item_id='opt-landscape',
+                        item_id='viz-return-sharpe',
+                    ),
+                    dbc.AccordionItem(
+                        [
+                            dcc.Graph(
+                                id='grid-param-landscape-graph',
+                                figure={},
+                                config={'displayModeBar': False},
+                                className='sfa-grid-landscape-graph',
+                                style={'height': '240px'},
+                            ),
+                        ],
+                        title="Param landscape",
+                        item_id='viz-param-landscape',
                     ),
                     dbc.AccordionItem(
                         [
@@ -622,14 +767,21 @@ def _create_optimize_results_pane(styles: dict, theme: dict) -> html.Div:
                             ),
                         ],
                         title="Run history",
-                        item_id='opt-history',
+                        item_id='viz-history',
+                    ),
+                    dbc.AccordionItem(
+                        [
+                            html.Div(id='optimizer-oos-panel', className='sfa-optimize-oos'),
+                        ],
+                        title="OOS validation",
+                        item_id='viz-oos',
                     ),
                 ],
-                id='optimize-results-accordion',
+                id='optimize-visuals-accordion',
                 className='compact-accordion sfa-optimize-results-accordion',
                 always_open=True,
                 flush=True,
-                active_item=['opt-landscape'],
+                active_item=[],
             ),
             html.Div(id='apply-strategy-container', children=[
                 html.Div([
@@ -660,12 +812,14 @@ def _create_optimize_results_pane(styles: dict, theme: dict) -> html.Div:
                     'marginTop': '12px',
                 }),
                 dbc.Tooltip(
-                    "Copy the winner into the Backtest panel and return to the terminal.",
+                    "Copy the winning buy/sell signals into Backtest, close this "
+                    "workspace, and run the honest scorecard with your costs/stops.",
                     target='apply-strategy-btn',
                     placement='top',
                 ),
                 dbc.Tooltip(
-                    "Rolling walk-forward on the current leaderboard winner (5 windows). "
+                    "Walk-forward stress test: re-run the leaderboard winner on 5 "
+                    "rolling windows. Prefer this before Apply if #1 looks too perfect. "
                     "Click again while running to STOP.",
                     target='validate-oos-btn',
                     placement='top',
@@ -688,7 +842,7 @@ def _create_optimize_overlay(styles: dict, theme: dict) -> html.Div:
                 }),
                 html.Div(
                     id='optimize-overlay-title',
-                    children='Signal combination search',
+                    children='Signal combo grid search',
                     style={
                         'fontFamily': FONT_FAMILY,
                         'fontSize': FONT_SIZES['lg'],
@@ -702,13 +856,25 @@ def _create_optimize_overlay(styles: dict, theme: dict) -> html.Div:
             ], style={'minWidth': 0, 'flex': '1 1 auto'}),
             html.Div([
                 html.Button(
+                    "LEARN",
+                    id='optimizer-learn-button',
+                    n_clicks=0,
+                    style={**styles['button_outline'], 'padding': '6px 12px'},
+                ),
+                dbc.Tooltip(
+                    "Beginner guide: what each analysis does and which button to press.",
+                    target='optimizer-learn-button',
+                    placement='bottom',
+                ),
+                html.Button(
                     "RUN OPTIMIZER",
                     id='run-optimization-btn',
                     style={**styles['button_primary'], 'padding': '6px 14px'},
                     n_clicks=0,
                 ),
                 dbc.Tooltip(
-                    "Run searches signal combinations; while running, click again to STOP.",
+                    "Signal-combo grid search: test many buy/sell stacks on the "
+                    "current window. While running, click again to STOP.",
                     target='run-optimization-btn',
                     placement='bottom',
                 ),
@@ -752,6 +918,35 @@ def _create_optimize_overlay(styles: dict, theme: dict) -> html.Div:
             'flexDirection': 'row',
             'overflow': 'hidden',
         }),
+        dbc.Modal(
+            [
+                dbc.ModalHeader(
+                    dbc.ModalTitle("Optimizer 101 — what to run and why"),
+                    close_button=True,
+                ),
+                dbc.ModalBody(
+                    render_optimizer_learn_content(theme),
+                    id='optimizer-learn-modal-body',
+                    className='sfa-opt-learn-modal-body',
+                ),
+                dbc.ModalFooter(
+                    html.Button(
+                        "Close",
+                        id='optimizer-learn-close',
+                        n_clicks=0,
+                        style={**styles['button_outline'], 'padding': '6px 14px'},
+                    ),
+                ),
+            ],
+            id='optimizer-learn-modal',
+            is_open=False,
+            centered=True,
+            size='lg',
+            backdrop=True,
+            keyboard=True,
+            className='sfa-opt-learn-modal',
+            scrollable=True,
+        ),
         # Clientside reparent writes a tiny status here (layout tick only).
         html.Div(id='optimize-chart-reparent-sync', style={'display': 'none'}),
     ], id='optimize-overlay', style={

@@ -47,7 +47,7 @@ COMMANDS = [
     {"id": "go-flow",          "label": "Open flow scanner",        "shortcut": "G O",
      "group": "Navigate", "hint": "Jump to options flow workspace"},
     {"id": "go-optimize",      "label": "Open optimizer",           "shortcut": "G P",
-     "group": "Navigate", "hint": "Jump to full-screen signal optimizer"},
+     "group": "Navigate", "hint": "Signal-combo grid search — press LEARN there for a walkthrough"},
     {"id": "go-terminal",      "label": "Back to terminal",         "shortcut": "G T",
      "group": "Navigate", "hint": "Return to the main chart view"},
 

@@ -1588,6 +1588,75 @@ input[type="radio"] {
     width: 100%;
 }
 
+.sfa-grid-estimate {
+    padding: 8px 0 4px;
+}
+
+.sfa-grid-estimate-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.sfa-grid-estimate-count {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.sfa-grid-estimate-cap {
+    font-size: 11px;
+    opacity: 0.75;
+}
+
+.sfa-grid-estimate-badge {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+
+.sfa-grid-estimate-ok {
+    background: rgba(38, 194, 129, 0.18);
+    color: #26C281;
+}
+
+.sfa-grid-estimate-over {
+    background: rgba(239, 83, 80, 0.18);
+    color: #EF5350;
+}
+
+.sfa-grid-estimate-hint {
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+.sfa-grid-params-checklist label {
+    display: block;
+    margin-bottom: 2px;
+}
+
+.sfa-grid-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.sfa-grid-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.2s ease;
+}
+
+.sfa-grid-ranges-graph,
+.sfa-grid-landscape-graph {
+    width: 100%;
+}
+
 .sfa-optimize-oos {
     flex: 0 0 auto;
     padding: 8px 10px;
@@ -2365,7 +2434,8 @@ body.theme-light {
 .sfa-exec-learn-modal-body { padding-top: 6px; }
 
 .sfa-exec-learn-modal .modal-content,
-.sfa-flow-learn-modal .modal-content {
+.sfa-flow-learn-modal .modal-content,
+.sfa-opt-learn-modal .modal-content {
     background: var(--bg-primary);
     color: var(--text-primary);
     border: 1px solid var(--border-primary);
@@ -2374,23 +2444,66 @@ body.theme-light {
 .sfa-exec-learn-modal .modal-header,
 .sfa-exec-learn-modal .modal-footer,
 .sfa-flow-learn-modal .modal-header,
-.sfa-flow-learn-modal .modal-footer {
+.sfa-flow-learn-modal .modal-footer,
+.sfa-opt-learn-modal .modal-header,
+.sfa-opt-learn-modal .modal-footer {
     border-color: var(--border-primary);
 }
 
 /* Bootstrap's close glyph is a dark SVG — invert it on the dark themes. */
 .sfa-exec-learn-modal .btn-close,
-.sfa-flow-learn-modal .btn-close {
+.sfa-flow-learn-modal .btn-close,
+.sfa-opt-learn-modal .btn-close {
     filter: invert(1) grayscale(100%) brightness(1.6);
     opacity: 0.7;
 }
 
 .sfa-exec-learn-modal .btn-close:hover,
-.sfa-flow-learn-modal .btn-close:hover { opacity: 1; }
+.sfa-flow-learn-modal .btn-close:hover,
+.sfa-opt-learn-modal .btn-close:hover { opacity: 1; }
 
 body.theme-light .sfa-exec-learn-modal .btn-close,
-body.theme-light .sfa-flow-learn-modal .btn-close {
+body.theme-light .sfa-flow-learn-modal .btn-close,
+body.theme-light .sfa-opt-learn-modal .btn-close {
     filter: none;
+}
+
+.sfa-opt-learn-modal .modal-content { max-height: min(88vh, 780px); }
+.sfa-opt-learn-modal-body { padding-top: 6px; }
+
+.sfa-opt-learn-section:last-of-type p { margin-bottom: 0; }
+
+.sfa-opt-learn-table {
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.sfa-opt-learn-tr {
+    display: grid;
+    grid-template-columns: minmax(140px, 1.1fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
+    gap: 8px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--border-primary);
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+}
+
+.sfa-opt-learn-tr:first-child { border-top: none; }
+
+.sfa-opt-learn-tr-head {
+    background: var(--bg-tertiary);
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.sfa-opt-section-blurb {
+    max-width: 100%;
 }
 
 /* --- Mechanics matrix --- */
@@ -2776,15 +2889,15 @@ label,
     justify-self: center;
 }
 
-/* Placeholder when a signal has no buy or sell variant (keeps the grid). */
+/* Disabled placeholder when a signal has no buy/sell variant. */
 .signal-toggle--na {
-    width: 14px;
-    height: 14px;
-    border: 1px dashed var(--border-secondary);
-    border-radius: 2px;
     opacity: 0.35;
     cursor: default;
-    box-sizing: border-box;
+}
+.signal-toggle--na .form-check-input {
+    cursor: not-allowed;
+    accent-color: var(--border-secondary);
+    border-color: var(--border-secondary);
 }
 
 .signal-toggle .form-check {

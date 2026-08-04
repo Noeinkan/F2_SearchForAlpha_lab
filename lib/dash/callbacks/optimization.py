@@ -29,8 +29,8 @@ from lib.dash.helpers import (
     filter_signal_universe,
     apply_optimizer_constraints,
 )
-from lib.dash.layout.optimizer_workspace import _optimizer_empty_state
 from lib.dash.optimizer_history import append_history, summarize_run
+from lib.dash.optimizer_view import render_optimizer_empty_state
 from lib.dash.state import dashboard_state
 from lib.dash.styles import get_styles
 from lib.dash.callbacks.shared import (
@@ -306,7 +306,7 @@ def _rank_results_df(
 
 
 def _empty_results_ui(theme: dict | None = None) -> html.Div:
-    return _optimizer_empty_state(theme or get_theme())
+    return render_optimizer_empty_state(theme or get_theme())
 
 
 def _results_ui_from_df(results_df: pd.DataFrame, theme: dict) -> html.Div:

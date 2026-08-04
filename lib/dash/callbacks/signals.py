@@ -77,28 +77,40 @@ def register_signal_callbacks(app) -> None:
 
             buy_signal = row.get('buy')
             sell_signal = row.get('sell')
-            # One-sided strategies (RSI Overbought → sell only, BB DoubleBottom
-            # → buy only, …) must not expose a ghost checkbox on the missing
-            # side — that let users "select" Overbought as a buy signal.
-            buy_toggle = (
-                dcc.Checklist(
-                    id={'type': 'signal-toggle', 'side': 'buy', 'value': buy_signal},
-                    options=[{'label': '', 'value': buy_signal}],
-                    value=[buy_signal] if buy_signal in selected_buy else [],
-                    className='signal-toggle buy-toggle signal-toggle--buy'
-                )
-                if buy_signal else
-                html.Span(className='signal-toggle signal-toggle--na', title='No buy variant')
+            # Keep a Checklist on both sides so pattern-matching ALL stays
+            # stable. Missing sides used to share id value '' (duplicate IDs
+            # across every one-sided row) which Dash 4 can abort — blank list.
+            # Use a unique disabled placeholder instead; sync ignores __na__.
+            anchor = buy_signal or sell_signal or label.replace(' ', '_') or 'row'
+            buy_value = buy_signal or f'__na_buy__{anchor}'
+            sell_value = sell_signal or f'__na_sell__{anchor}'
+            buy_toggle = dcc.Checklist(
+                id={'type': 'signal-toggle', 'side': 'buy', 'value': buy_value},
+                options=[{
+                    'label': '',
+                    'value': buy_value,
+                    'disabled': not bool(buy_signal),
+                }],
+                value=[buy_value] if buy_signal and buy_signal in selected_buy else [],
+                className=(
+                    'signal-toggle buy-toggle signal-toggle--buy'
+                    if buy_signal else
+                    'signal-toggle signal-toggle--na'
+                ),
             )
-            sell_toggle = (
-                dcc.Checklist(
-                    id={'type': 'signal-toggle', 'side': 'sell', 'value': sell_signal},
-                    options=[{'label': '', 'value': sell_signal}],
-                    value=[sell_signal] if sell_signal in selected_sell else [],
-                    className='signal-toggle sell-toggle signal-toggle--sell'
-                )
-                if sell_signal else
-                html.Span(className='signal-toggle signal-toggle--na', title='No sell variant')
+            sell_toggle = dcc.Checklist(
+                id={'type': 'signal-toggle', 'side': 'sell', 'value': sell_value},
+                options=[{
+                    'label': '',
+                    'value': sell_value,
+                    'disabled': not bool(sell_signal),
+                }],
+                value=[sell_value] if sell_signal and sell_signal in selected_sell else [],
+                className=(
+                    'signal-toggle sell-toggle signal-toggle--sell'
+                    if sell_signal else
+                    'signal-toggle signal-toggle--na'
+                ),
             )
 
             rows.append(
@@ -194,18 +206,22 @@ def register_signal_callbacks(app) -> None:
         if not buy_ids and not sell_ids:
             return [], [], no_update
 
-        selected_buy = [
-            item_id['value']
-            for item_id, value in zip(buy_ids, buy_values)
-            if value and item_id.get('value')
-        ]
-        selected_sell = [
-            item_id['value']
-            for item_id, value in zip(sell_ids, sell_values)
-            if value and item_id.get('value')
-        ]
+        def _real_selection(item_ids, item_values):
+            selected = []
+            for item_id, value in zip(item_ids or [], item_values or []):
+                raw = item_id.get('value') if item_id else None
+                if not value or not raw:
+                    continue
+                if str(raw).startswith('__na_'):
+                    continue
+                selected.append(raw)
+            return selected
 
-        return selected_buy, selected_sell, no_update
+        return (
+            _real_selection(buy_ids, buy_values),
+            _real_selection(sell_ids, sell_values),
+            no_update,
+        )
 
     @app.callback(
         [Output('summary-strategy-mode', 'children'),

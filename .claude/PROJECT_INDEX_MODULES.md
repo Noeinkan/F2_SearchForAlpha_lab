@@ -62,6 +62,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | [lib/bayesian_optimization.py](../lib/bayesian_optimization.py) | `run_study()`, `run_optimise_cli()`, Optuna trials |
 | [lib/execution_params.py](../lib/execution_params.py) | `partition_params()`, shared execution search-space keys |
 | [lib/grid_search.py](../lib/grid_search.py) | `run_grid_search()` — capped cartesian grid over unified space |
+| [lib/dash/optimizer_space_viz.py](../lib/dash/optimizer_space_viz.py) | Combo estimate card, param range bars, param landscape figures |
 
 ### Walk-forward & Promotion
 | File | Key Functions |
