@@ -4,10 +4,10 @@ A Python-based algorithmic trading research workspace for data fetching, signal 
 
 ## 🎯 Features
 
-- **Signal generation**: Bollinger Bands, RSI, MACD, CCI, SMA, EMA plus ADX/ATR/OBV indicator support.
+- **Signal generation**: Bollinger Bands, RSI, MACD, CCI, SMA, EMA, VWAP plus ADX/ATR/OBV regime filters and regime-gated strategy variants.
 - **Backtesting engine**: Trading, Accumulation (DCA), and Rebalancing modes with position sizing and trailing stops.
 - **Optimization tools**: Parameter sweeps, signal-combination testing, and indicator weight optimization.
-- **Interactive dashboard**: Plotly charts, signal overlays, and data tables with configurable views.
+- **Interactive dashboard**: TradingView Lightweight Charts, signal overlays, symbol search with watchlists, and data tables with configurable views.
 - **Performance metrics**: Total return, Sharpe, max drawdown, win rate, profit factor, and trade duration.
 
 ## 📁 Project Structure
@@ -94,18 +94,23 @@ $env:DASH_DEV = "0"; python main.py
 What you can do from the UI:
 
 - Pick a ticker and date range, fetch OHLCV from Yahoo, and chart it.
-- Toggle indicator overlays (RSI, MACD, BB, SMA, EMA, CCI, VWAP) and tune
-  their windows interactively.
+- Find symbols with the search modal (`Ctrl + /` or bare `/`): ~13k tickers
+  from `config/tickers_universe.csv`, filterable by sector and asset class,
+  with named watchlists persisted to `config/watchlists.json`.
+- Toggle indicator overlays (RSI, MACD, BB, SMA, EMA, CCI, VWAP, ADX, ATR,
+  OBV) and tune their windows interactively.
 - Pick buy and sell signal columns, run a backtest, and view the equity
-  curve, trade markers, and metric cards.
+  curve, trade markers, and metric cards. The **Execution Type** explainer
+  shows how each strategy mode sizes an order, using the real engine on a
+  fixed tape.
 - Save and reload UI presets via `config/ui_presets.json`.
 - Inspect the options **Flow Scanner** at `/flow/<ticker>` (or the standalone
   `/flow_report.html`); regenerate the report with
   `python scripts/flow_scanner.py <ticker>`.
 
-The default CVD-safe (color-vision-deficiency) theme keeps charts and signal
-overlays readable; override it via the `theme` key in
-`config/strategy_config.yaml`.
+Three themes ship in `THEMES` in `lib/dash/dash_config.py`: the default
+`bloomberg` (dark), a CVD-safe (color-vision-deficiency) palette, and `light`.
+The header button cycles through them in that order.
 
 The dashboard does not place orders. For live (paper) execution use the
 `sfa run` command described below.
@@ -234,14 +239,17 @@ results, buy_combo, sell_combo, best_value, output_file = test_all_combinations(
 
 ## 📈 Strategy Modes
 
+Three engine modes (`strategy_mode`), sized in `_execute_buy` / `_execute_sell`:
+
 | Mode | Description | Sell Signals Required? |
 |------|-------------|------------------------|
-| **Trading** | Traditional buy/sell cycles with position scaling | Yes |
-| **Accumulation (DCA)** | Fixed dollar amount per buy signal, hold until end | No |
-| **Rebalancing** | Percentage-based partial buys/sells | No (optional) |
-| **Swing Trading** | Multi-day holds targeting short-to-medium trends | Yes |
-| **Position Trading** | Multi-week/month holds based on long-term trends | Yes |
-| **Trend Following** | Stay in trend until exit signal or reversal | Yes |
+| **Trading** | Kelly size × `position_scaling`; scaling ramps each order and stacks, with no target cap | Yes |
+| **Accumulation (DCA)** | Fixed `amount_per_buy`; sell signals are discarded and the trailing stop is pinned to `inf` | No |
+| **Rebalancing** | `position_size_pct` of **portfolio value** on both sides (not of cash or units held) | No (optional) |
+
+Swing / Position / Trend Following are dashboard quick-presets
+(`strategy-preset` in `right_panel.py`) that bundle mode plus parameters —
+they are not separate engine modes.
 
 ```python
 from lib.strategy import run_backtest

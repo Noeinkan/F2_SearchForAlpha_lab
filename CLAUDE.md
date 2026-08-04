@@ -14,6 +14,7 @@ Python algorithmic trading research: Yahoo Finance OHLCV → indicator signals �
 - Signal columns: `{INDICATOR}_{CONDITION}_Buy` / `_Sell` — see `lib/signals/indicators.py`
 - Indicator params: always from `config/strategy_config.yaml` via `lib/config_loader.py`
 - Dash callbacks: one file per concern in `lib/dash/callbacks/`; register via `register_*_callbacks(app)` in `callbacks/__init__.py`
+- Price chart is TradingView Lightweight Charts, **not Plotly**: Python only writes `chart-payload-store` (`lib/dash/chart_payload.py`), the client renders it (`assets/10-sfa-chart.js`). Never add a callback that rebuilds the chart from a pan/zoom event — see [docs/ui-architecture.md](docs/ui-architecture.md)
 - Dash dev: `DASH_DEV=1` default; bump `UI_STORAGE_VERSION` in `dash_config.py` when persisted store shape changes
 - Dash reload: `DASH_RELOAD=1` opt-in (off by default — Werkzeug reloader is unreliable on Windows; debug error pages still honour `DASH_DEV`)
 - Browser landing: `run_dashboard()` opens `http://127.0.0.1:<port>/ticker/<DEFAULT_TICKER>` via `_default_browser_path()` (bootstrap-driven)

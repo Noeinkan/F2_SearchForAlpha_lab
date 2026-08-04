@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- The symbol-search sector dropdown now refills from the asset-class tab click itself
+  rather than the `symbol-search-filters` store, which is written downstream of the
+  dropdown and so still held the *previous* class when the options were rebuilt. Picking
+  an asset class now immediately offers that class's sectors (and clears a selection the
+  new class does not have) instead of lagging one click behind.
 - **Rebalancing mode now sizes off portfolio value on both sides** (`lib/strategy.py`
   `_execute_buy` / `_execute_sell`). It previously bought a percentage of *remaining cash*
   — so consecutive buys decayed geometrically (25%, 18.75%, 14.1%…) — and sold a
@@ -21,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   full Kelly-sized entry instead of quietly quartering it.
 
 ### Added
+- **Portfolio column group in the data table.** A fourth "Portfolio" toggle (on by
+  default, alongside OHLCV / Indicators / Signals) exposes the execution columns the
+  backtest engine writes — units held and traded, cash/stock/portfolio value, per-bar and
+  cumulative returns, holding period, trailing stop, average entry price and cost basis,
+  and the accepted/rejected trigger flags. The table now colours these to make a run
+  readable at a glance: accepted buy and sell triggers are tinted green and red, rejected
+  triggers orange, `Close` is coloured against `Open`, and `Returns` / `Strategy_Returns`
+  outliers outside the 2.5–97.5 percentile band are highlighted (skipped when there are
+  fewer than 20 finite values to measure).
 - **Execution Type explainer.** Each mode card now shows a live preview of what the first
   buy signal actually does in dollars, plus an equity-curve fingerprint; a new
   "HOW EXECUTION WORKS" modal adds a three-column mechanics matrix and an interactive

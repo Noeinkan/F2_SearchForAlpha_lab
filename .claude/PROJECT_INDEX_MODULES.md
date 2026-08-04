@@ -11,11 +11,14 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 ### Data & Config
 | File | Key Functions |
 |------|--------------|
-| [lib/data_processing.py](../lib/data_processing.py) | `fetch_data(ticker, start, end)`, `calculate_metrics(trades_df)`, `calculate_performance_stats()` |
+| [lib/data_processing.py](../lib/data_processing.py) | `fetch_data(ticker, start, end)`, `get_all_tickers()`, `validate_symbol()`, `create_backtest_results()`, `calculate_max_drawdown/sharpe_ratio/win_rate/profit_factor()` |
 | [lib/config_loader.py](../lib/config_loader.py) | `load_config()` → reads `config/strategy_config.yaml` |
 | [lib/fundamentals.py](../lib/fundamentals.py) | `fetch_fundamentals()`, `build_fundamentals_result()` — SEC + yfinance financials |
-| [lib/utils.py](../lib/utils.py) | `export_to_excel()`, input validation helpers |
+| [lib/utils.py](../lib/utils.py) | `export_priceaction_to_excel()`, `get_user_input()`, `TradingStrategyInput` |
 | [lib/seeds.py](../lib/seeds.py) | Deterministic RNG seed helpers |
+| [lib/ticker_universe.py](../lib/ticker_universe.py) | Loads `config/tickers_universe.csv` — symbol lookup, sector / asset-class facets |
+| [lib/timeframes.py](../lib/timeframes.py) | Interval metadata + `clamp_window()` (Yahoo's 728d intraday lookback limit, stale-range relocation) |
+| [lib/agent_strategy.py](../lib/agent_strategy.py) | Resolves agent strategy bundles (`config/agent.yaml`) to executable backtests |
 
 ### Backtesting Engine
 | File | Key Functions |
@@ -35,7 +38,7 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 ### Signals & Indicators
 | File | Class / Function |
 |------|-----------------|
-| [lib/signals/base_strategy.py](../lib/signals/base_strategy.py) | `BaseStrategy` ABC |
+| [lib/signals/base_strategy.py](../lib/signals/base_strategy.py) | `BaseTradingStrategy` ABC |
 | [lib/signals/indicators.py](../lib/signals/indicators.py) | `add_indicators(df)`, `generate_signals(df)` |
 | [lib/signals/signals_RSI.py](../lib/signals/signals_RSI.py) | `RSI_TradingStrategy` |
 | [lib/signals/signals_BB.py](../lib/signals/signals_BB.py) | `BB_TradingStrategy` (Bollinger Bands) |
@@ -44,6 +47,11 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | [lib/signals/signals_SMA.py](../lib/signals/signals_SMA.py) | `SMA_TradingStrategy` |
 | [lib/signals/signals_CCI.py](../lib/signals/signals_CCI.py) | `CCI_TradingStrategy` |
 | [lib/signals/signals_VWAP.py](../lib/signals/signals_VWAP.py) | `VWAP_TradingStrategy` |
+| [lib/signals/signals_ADX.py](../lib/signals/signals_ADX.py) | `ADX_TradingStrategy` — trend/range regime filter |
+| [lib/signals/signals_ATR.py](../lib/signals/signals_ATR.py) | `ATR_TradingStrategy` — volatility regime + ATR risk sizing |
+| [lib/signals/signals_OBV.py](../lib/signals/signals_OBV.py) | `OBV_TradingStrategy` — volume confirmation |
+
+ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.yaml` (trend-gated and mean-reversion-gated bundles). Guarded by `test_signals_regime.py`.
 
 ### Optimisation
 | File | Key Functions |
@@ -98,7 +106,7 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | `sample_universe_cmd` | `sample-universe` |
 | `instructions_cmd` | `instructions` |
 
-### Dashboard (Dash/Plotly)
+### Dashboard (Dash + TradingView Lightweight Charts)
 | File | Purpose |
 |------|---------|
 | [lib/dash/integrated_dashboard.py](../lib/dash/integrated_dashboard.py) | App init, server boot, `register_callbacks(app)`, `_schedule_browser_open` (lands on `/ticker/<DEFAULT_TICKER>`), `/flow_report.html` route |
@@ -115,7 +123,13 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | [lib/dash/execution_glossary.py](../lib/dash/execution_glossary.py) | Execution Type copy — `MODE_SPECS`, `MECHANICS_ROWS`, `PREDICT_QUESTIONS` (pure data) |
 | [lib/dash/execution_sim.py](../lib/dash/execution_sim.py) | `simulate()`, `first_entry_summary()` — runs the real `backtest()` on a fixed tape so explainer figures cannot drift |
 | [lib/dash/execution_view.py](../lib/dash/execution_view.py) | Pure render — `render_execution_learn_content()`, `render_mechanics_matrix()`, `render_fingerprint()` |
-| [lib/dash/ticker_search.py](../lib/dash/ticker_search.py) | Ticker autocomplete options |
+| [lib/dash/ticker_search.py](../lib/dash/ticker_search.py) | Ticker autocomplete + symbol-search query/filter resolution |
+| [lib/dash/watchlist_storage.py](../lib/dash/watchlist_storage.py) | `config/watchlists.json` read/write — disk is the source of truth, `watchlists-store` mirrors it |
+| [lib/dash/overlay_registry.py](../lib/dash/overlay_registry.py) | Shared overlay metadata — `get_tv_overlay_specs()`, `build_overlay_visibility()` |
+| [lib/dash/components.py](../lib/dash/components.py) | Reusable component builders shared across `layout/` regions |
+| [lib/dash/helpers.py](../lib/dash/helpers.py) | Callback-side data prep and optimisation utilities |
+| [lib/dash/styles.py](../lib/dash/styles.py) | `get_styles(theme)` — theme-derived inline style dicts |
+| [lib/dash/preset_storage.py](../lib/dash/preset_storage.py) | `config/ui_presets.json` atomic load/save |
 
 **Layout** (`lib/dash/layout/` — one file per UI region):
 | File | Region |
@@ -125,28 +139,37 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | `sidebar.py` | Left sidebar (ticker, date range, toggles) |
 | `chart_area.py` | Main chart + controls |
 | `right_panel.py` | Right panel (metrics, backtest results) |
-| `overlays.py` | Fundamentals + Flow Scanner overlays |
-| `command_palette.py` | Cmd+K command palette |
+| `overlays.py` | Fundamentals + Flow Scanner overlays (incl. Flow learn modal) |
+| `command_palette.py` | Ctrl+K command palette |
+| `symbol_search.py` | Ctrl+/ (or bare `/`) symbol-search modal — search, sector/asset filters, watchlists |
 
-**Callbacks** (`lib/dash/callbacks/` — 14 registered modules via `register_callbacks()`):
+The Execution Type explainer modal (`execution-learn-modal`) is emitted by `right_panel.py`, not by `shell.py`.
+
+**Callbacks** (`lib/dash/callbacks/` — 19 registered modules via `register_callbacks()`):
 | File | Concern |
 |------|---------|
 | `startup.py` | Initial load, bootstrap wiring |
+| `presets.py` | UI preset save/load |
 | `data_loading.py` | Ticker fetch (always max history), indicator compute |
 | `test_window.py` | Evaluated period — window defaults/presets, chart focus sync |
+| `data_table.py` | Data tab — row/column-group filters, date slice, CSV export |
 | `strategy_ui.py` | Strategy mode / param controls |
+| `execution_help.py` | Execution Type explainer — mode previews, sandbox, predict-then-reveal modal |
 | `signals.py` | Signal toggle callbacks |
-| `chart_plotly.py` | Plotly chart updates |
+| `chart.py` | Sole `chart-payload-store` writer + the clientside renderer |
 | `backtest.py` | Run backtest from UI |
-| `optimization.py` | In-dashboard optimisation |
+| `optimization.py` | In-dashboard optimisation (thread pool, cost estimate) |
+| `routing.py` | URL-based page routing |
 | `fundamentals.py` | Fundamentals overlay |
 | `flow.py` | Flow Scanner overlay — rescan subprocess, JSON load, native `#flow-content` render |
-| `routing.py` | URL-based page routing |
-| `presets.py` | UI preset save/load |
-| `layout.py` | Panel collapse, theme |
-| `misc_ui.py` | Miscellaneous UI hooks |
+| `misc_ui.py` | Keyboard shortcuts, palette dispatch bridge, misc UI hooks |
+| `layout.py` | Panel collapse, splitter, theme |
 | `command_palette.py` | Command palette actions |
-| `shared.py` | Shared callback helpers (not registered) |
+| `symbol_search.py` | Symbol-search modal — query, sector/asset options, watchlist mutations |
+| `status.py` | Status-bar activity indicator (WORKING…/READY/ERROR) |
+| `shared.py` | Shared callback helpers incl. data-table column classification + styling (not registered) |
+
+**Data tab column groups** — `DATA_COLUMN_GROUPS` in `dash_config.py`: `ohlcv`, `indicators`, `signals`, `portfolio`. Classification and the conditional styling rules (signal triggers, portfolio outliers) live in `callbacks/shared.py`; `test_data_table.py` guards both.
 
 ### Visualisation (static)
 | File | Purpose |
@@ -160,7 +183,9 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 |------|---------|
 | [config/strategy_config.yaml](../config/strategy_config.yaml) | Default indicator params, `live_params`, `search_space` |
 | [config/ui_presets.json](../config/ui_presets.json) | Saved dashboard UI presets |
-| [config/tickers_universe.csv](../config/tickers_universe.csv) | Ticker universe for search / sweeps |
+| [config/tickers_universe.csv](../config/tickers_universe.csv) | Ticker universe for search / sweeps (~13k rows: symbol, name, sector, industry, asset class) |
+| [config/tickers_curated.csv](../config/tickers_curated.csv) | Hand-maintained non-equities (FX, futures, crypto, indices) merged into the universe |
+| [config/watchlists.json](../config/watchlists.json) | Named watchlists for the symbol-search modal |
 | [config/param_history.yaml](../config/param_history.yaml) | Promotion history (YAML fallback) |
 | [config/agent.yaml](../config/agent.yaml) | OpenClaw agent config |
 
@@ -172,21 +197,24 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | [scripts/run_dashboard_latest.ps1](../scripts/run_dashboard_latest.ps1) | Windows dashboard launcher (port cleanup) |
 | [scripts/flow_scanner.py](../scripts/flow_scanner.py) | Flow Scanner — yfinance options scan, `write_html_report()`, `write_json_report()` |
 | [scripts/flow_runner.py](../scripts/flow_runner.py) | Subprocess wrapper — `run_flow_scan()` writes HTML + JSON for Dash |
-| [scripts/generate_ticker_universe.py](../scripts/generate_ticker_universe.py) | Rebuild `config/tickers_universe.csv` |
+| [scripts/build_universe.py](../scripts/build_universe.py) | Rebuild `config/tickers_universe.csv` — current builder (equities + `tickers_curated.csv`, sector/industry/asset class) |
+| [scripts/generate_ticker_universe.py](../scripts/generate_ticker_universe.py) | Legacy S&P500/NASDAQ-only builder, superseded by `build_universe.py` |
 
 ---
 
-## Tests (29 files)
+## Tests (46 files)
 | Area | Files |
 |------|-------|
-| Strategy & signals | `test_strategy`, `test_indicators`, `test_signal_combination`, `test_param_propagation`, `test_determinism` |
+| Strategy & signals | `test_strategy`, `test_strategy_engine`, `test_strategy_snapshot`, `test_indicators`, `test_signals_regime`, `test_atr_risk`, `test_signal_combination`, `test_param_propagation`, `test_determinism` |
 | Backtest & optimisation | `test_bayesian_optimizer`, `test_bayes_holdout`, `test_walkforward`, `test_promotion_gate` |
 | CLI contracts | `test_cli_contracts` |
 | Live runner | `test_runner_safety`, `test_guards`, `test_broker_mock` |
-| Dashboard | `test_dashboard`, `test_dashboard_startup`, `test_bootstrap`, `test_data_loading`, `test_dash_routing`, `test_dash_no_writeback`, `test_dash_enriched_cache`, `test_command_palette`, `test_ticker_search` |
+| Dashboard | `test_dashboard`, `test_dashboard_startup`, `test_bootstrap`, `test_data_loading`, `test_data_table`, `test_test_window`, `test_layout`, `test_dash_routing`, `test_dash_no_writeback`, `test_dash_enriched_cache`, `test_command_palette`, `test_ticker_search`, `test_symbol_search`, `test_watchlist_storage`, `test_radio_seg_css` |
+| Chart (Lightweight Charts) | `test_chart_payload`, `test_chart_meta`, `test_chart_assets`, `test_chart_regime_panes` |
+| Execution explainer | `test_execution_sim`, `test_execution_view` |
 | Flow Scanner | `test_flow_scanner_json`, `test_flow_view` |
 | Fundamentals | `test_fundamentals`, `test_fundamentals_explainability`, `test_fundamentals_formula_rendering` |
-| Data | `test_data_processing`, `test_ticker_universe` |
+| Data | `test_data_processing`, `test_ticker_universe`, `test_timeframes` |
 
 Run: `rtk python -m pytest lib/tests/ -q`
 

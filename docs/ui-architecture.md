@@ -19,6 +19,7 @@ graph TD
     APP --> FOV[".sfa-fundamentals-overlay"]
     APP --> FLOW[".sfa-flow-overlay"]
     APP --> PALETTE["#command-palette (modal)"]
+    APP --> SYMSEARCH["#symbol-search-modal"]
 
     SHELL --> HEADER[".bbg-header — header.py"]
     SHELL --> MAIN["main_container (Div)"]
@@ -36,6 +37,7 @@ graph TD
     RIGHT --> BT["#panel-backtest → #backtest-results"]
     RIGHT --> OPT["#panel-optimizer → #optimization-results"]
     RIGHT --> DATA["#panel-data → #data-table-container"]
+    RIGHT --> EXEC["#execution-learn-modal"]
 
     STATUS --> ACT["#status-activity-label / #status-activity-dot"]
     STATUS --> DS["#data-status · #strategy-order-status"]
@@ -59,9 +61,10 @@ All under [`lib/dash/layout/`](../lib/dash/layout/):
 | `header.py` | The Bloomberg-style header tape **and** the dense bottom status bar (`_create_header`, `_create_status_bar`). |
 | `sidebar.py` | Left sidebar: Market Data, Saved Configurations, Chart Settings. |
 | `chart_area.py` | Center chart region: toolbar (title, bar-count, interval, chart type, price scale, fit/export/fullscreen) + the `#financial-chart` render target. |
-| `right_panel.py` | Right panel: Backtest / Optimizer / Data tabs and their controls + results. |
-| `overlays.py` | Fundamentals workspace and Flow scanner workspace (both hidden until opened). |
+| `right_panel.py` | Right panel: Backtest / Optimizer / Data tabs and their controls + results. Also emits the Execution Type explainer modal (`execution-learn-modal`). |
+| `overlays.py` | Fundamentals workspace and Flow scanner workspace (both hidden until opened), plus the Flow learn modal. |
 | `command_palette.py` | The Ctrl+K command-palette modal. |
+| `symbol_search.py` | The Ctrl+/ symbol-search modal: query box, sector / asset-class filters, watchlist rail. |
 
 ### The price chart
 
@@ -90,10 +93,13 @@ Two consequences worth knowing before changing anything here:
 
 Callbacks are one file per concern in [`lib/dash/callbacks/`](../lib/dash/callbacks/),
 each exposing `register_*_callbacks(app)` and wired together in
-`callbacks/__init__.py`. Notable ones: `data_loading`, `chart` (the sole
-`chart-payload-store` writer plus the clientside renderer), `backtest`,
-`optimization`, `status` (Phase 7 activity indicator), `command_palette`,
-`misc_ui` (keyboard shortcuts), `layout` (collapsible panels + splitter).
+`callbacks/__init__.py` (19 registered modules). Notable ones: `data_loading`,
+`chart` (the sole `chart-payload-store` writer plus the clientside renderer),
+`test_window` (evaluated period + chart focus sync), `data_table` (Data tab
+filters and CSV export), `backtest`, `optimization`, `execution_help` (the
+Execution Type explainer), `symbol_search`, `status` (Phase 7 activity
+indicator), `command_palette`, `misc_ui` (keyboard shortcuts),
+`layout` (collapsible panels + splitter).
 
 ### Chart-collapse invariant (do not regress)
 
@@ -167,13 +173,18 @@ Registered clientside in
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl/Cmd + K` | Open the command palette |
+| `Ctrl/Cmd + /` or bare `/` | Open the symbol search modal |
 | `Ctrl + Enter` | Load / refresh market data |
 | `Ctrl + B` | Run backtest |
 | `G` then `F` | Open Fundamentals for the current ticker |
-| `Esc` | Close the palette / dismiss alerts & overlays |
-| `↑` / `↓` | Move selection within the command palette |
-| `Enter` | Run the highlighted palette command |
+| `Esc` | Close the palette / symbol search / dismiss alerts & overlays |
+| `↑` / `↓` | Move selection within the palette or symbol search |
+| `Enter` | Run the highlighted palette command / pick the highlighted symbol |
 | `Tab` | Cycle focus within the open palette |
+
+Bare `/` only opens symbol search when focus is not in a text field, and the
+binding is deliberately **not** `Ctrl+K` — the palette and symbol search must
+never fight over one key.
 
 The header `?` button and the status-bar **COMMANDS** button both open the same
 palette; every palette action maps to a DOM side-effect via the dispatch bridge

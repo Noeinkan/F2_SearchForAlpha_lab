@@ -19,7 +19,7 @@ Buy: `{INDICATOR}_{CONDITION}_Buy` · Sell: `{INDICATOR}_{CONDITION}_Sell`
 Aggregator in `lib/signals/indicators.py` collects columns matching these patterns.
 
 ## New indicator checklist
-1. Create `lib/signals/signals_MYINDICATOR.py` inheriting `BaseStrategy`
+1. Create `lib/signals/signals_MYINDICATOR.py` inheriting `BaseTradingStrategy`
 2. Implement `generate_signals(df)` → `_Buy` / `_Sell` columns
 3. Register in `lib/signals/indicators.py` (`add_indicators`, `generate_signals`)
 4. Add defaults to `config/strategy_config.yaml`

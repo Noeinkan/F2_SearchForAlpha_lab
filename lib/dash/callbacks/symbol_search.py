@@ -80,29 +80,29 @@ def register_symbol_search_callbacks(app) -> None:
 
     # Sector options depend on the active asset-class tab, so "Technology"
     # only appears while stocks are in scope and the ETF categories only while
-    # ETFs are. This listens to the tab clicks rather than the filter store:
-    # the store is downstream of `symbol-search-sector.value`, so reading it as
-    # an Input here would close a dependency cycle.
+    # ETFs are. Do not read `symbol-search-filters` here — even as State.
+    # That store is written from `symbol-search-sector.value`, and Dash 4's
+    # client cycle detector still treats State as a graph edge, which would
+    # close filters.data ↔ sector.value.
     @app.callback(
         [Output('symbol-search-sector', 'options'),
          Output('symbol-search-sector', 'value')],
         Input({'type': 'sym-class', 'index': ALL}, 'n_clicks'),
-        [State('symbol-search-sector', 'value'),
-         State('symbol-search-filters', 'data')],
+        State('symbol-search-sector', 'value'),
     )
-    def _sector_options(_class_clicks, current, filters):
+    def _sector_options(_class_clicks, current):
         ctx = callback_context
         index = _triggered_index(ctx.triggered[0]['prop_id']) if ctx.triggered else None
-        if index:
-            # Take the class straight off the click; the store has not been
-            # updated by `_update_filters` yet.
-            asset_class = None if index == 'all' else index
-        else:
-            asset_class, _, _ = _filters(filters)
+        # Class comes from the click itself — `_update_filters` may not have
+        # written the store yet. Initial load (no useful trigger) matches the
+        # default "all" tab.
+        asset_class = None if (not index or index == 'all') else index
         values = sectors(asset_class)
         options = [{'label': value, 'value': value} for value in values]
-        # Drop a selection that the new asset class does not offer.
-        return options, (current if current in values else None)
+        # Drop a selection that the new asset class does not offer. Skip the
+        # value Output when unchanged so we do not re-fire `_update_filters`.
+        new_value = current if current in values else None
+        return options, (no_update if new_value == current else new_value)
 
     # ------------------------------------------------------------------
     # Open / close.
