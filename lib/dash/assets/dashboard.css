@@ -331,20 +331,36 @@ html, body {
     justify-content: center;
 }
 
-/* Test-window shortcuts — five segments have to fit the right panel at its
-   240px minimum, so they share the width evenly and shed the horizontal
-   padding the wider toolbar segments can afford. */
+/* Test-window shortcuts — eight options (MAX…YTD) wrap into two rows of four
+   so each label keeps usable padding inside the right panel's narrow column. */
 .sfa-test-window-seg.bbg-radio-seg {
-    display: flex;
-    width: 100%;
+    display: flex !important;
+    flex-wrap: wrap;
+    width: 100% !important;
 }
 .sfa-test-window-seg.bbg-radio-seg > label,
 .sfa-test-window-seg.bbg-radio-seg > .dash-options-list-option {
-    flex: 1 1 0;
+    flex: 1 1 25%;
+    box-sizing: border-box;
     min-width: 0;
-    padding: 4px 2px !important;
+    padding: 5px 6px !important;
     justify-content: center;
     text-align: center;
+    letter-spacing: 0.4px;
+    border-right: 1px solid var(--border-primary) !important;
+    border-bottom: 1px solid var(--border-primary) !important;
+}
+.sfa-test-window-seg.bbg-radio-seg > label:nth-child(4n),
+.sfa-test-window-seg.bbg-radio-seg > .dash-options-list-option:nth-child(4n) {
+    border-right: none !important;
+}
+.sfa-test-window-seg.bbg-radio-seg > label:nth-last-child(-n+4),
+.sfa-test-window-seg.bbg-radio-seg > .dash-options-list-option:nth-last-child(-n+4) {
+    border-bottom: none !important;
+}
+.sfa-test-window-seg.bbg-radio-seg > label:last-child,
+.sfa-test-window-seg.bbg-radio-seg > .dash-options-list-option:last-child {
+    border-right: none !important;
 }
 
 /* =============================================================================
@@ -1330,7 +1346,8 @@ input[type="radio"] {
 
 /* ---- Floating OHLC + indicator readout.
    Parks top-left when idle; .sfa-chart-legend--follow is positioned from the
-   crosshair by 10-sfa-chart.js. pointer-events:none so it never eats a drag. */
+   crosshair by 10-sfa-chart.js. pointer-events:none so it never eats a drag.
+   Sized to content (narrow column) so it doesn't veil the price pane. */
 .sfa-chart-legend {
     position: absolute;
     top: 8px;
@@ -1339,15 +1356,16 @@ input[type="radio"] {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 4px;
-    max-width: min(340px, 72%);
-    padding: 6px 10px;
+    gap: 2px;
+    width: max-content;
+    max-width: min(168px, 38%);
+    padding: 4px 6px;
     background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
     border: 1px solid var(--border-primary);
     border-radius: 2px;
-    box-shadow: 0 4px 18px color-mix(in srgb, #000 35%, transparent);
-    font-size: 11px;
-    line-height: 1.3;
+    box-shadow: 0 2px 10px color-mix(in srgb, #000 28%, transparent);
+    font-size: 10px;
+    line-height: 1.25;
     pointer-events: none;
     user-select: none;
 }
@@ -1358,21 +1376,21 @@ input[type="radio"] {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 8px 10px;
+    gap: 2px 6px;
 }
 
 .sfa-chart-legend-symbol {
     font-weight: 600;
-    font-size: 12px;
-    letter-spacing: 1px;
+    font-size: 10px;
+    letter-spacing: 0.6px;
     text-transform: uppercase;
     color: var(--text-primary);
 }
 
 .sfa-chart-legend-interval {
-    font-size: 10px;
-    letter-spacing: 0.8px;
-    padding: 1px 5px;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    padding: 0 3px;
     border: 1px solid var(--border-primary);
     border-radius: 2px;
     color: var(--text-secondary);
@@ -1381,24 +1399,24 @@ input[type="radio"] {
 .sfa-chart-legend-cell {
     display: inline-flex;
     align-items: baseline;
-    gap: 3px;
+    gap: 2px;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
 }
 
 .sfa-chart-legend-cell i {
     font-style: normal;
-    font-size: 10px;
+    font-size: 9px;
     color: var(--text-tertiary);
 }
 
-.sfa-chart-legend-cell b { font-weight: 600; }
+.sfa-chart-legend-cell b { font-weight: 600; font-size: 10px; }
 
 .sfa-chart-legend-inds {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding-top: 4px;
+    gap: 1px;
+    padding-top: 3px;
     border-top: 1px solid var(--border-primary);
 }
 
@@ -1406,21 +1424,26 @@ input[type="radio"] {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    gap: 16px;
+    gap: 8px;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
 }
 
 .sfa-chart-legend-ind i {
     font-style: normal;
-    font-size: 10px;
-    letter-spacing: 0.3px;
-    opacity: 0.92;
+    font-size: 9px;
+    letter-spacing: 0.2px;
+    opacity: 0.9;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .sfa-chart-legend-ind b {
     font-weight: 600;
-    font-size: 11px;
+    font-size: 10px;
+    flex-shrink: 0;
 }
 
 /* ---- Chart toolbar controls ---- */
@@ -1468,6 +1491,18 @@ input[type="radio"] {
 }
 
 .sfa-flow-overlay.sfa-flow-route {
+    inset: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.sfa-optimize-overlay {
+    background: #0A0A0A;
+    display: flex;
+    flex-direction: column;
+}
+
+.sfa-optimize-overlay.sfa-optimize-route {
     inset: 0 !important;
     border: none !important;
     box-shadow: none !important;

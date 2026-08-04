@@ -18,6 +18,7 @@ graph TD
     APP --> SHELL["#terminal-shell (Div)"]
     APP --> FOV[".sfa-fundamentals-overlay"]
     APP --> FLOW[".sfa-flow-overlay"]
+    APP --> OPTWS[".sfa-optimize-overlay"]
     APP --> PALETTE["#command-palette (modal)"]
     APP --> SYMSEARCH["#symbol-search-modal"]
 
@@ -35,9 +36,12 @@ graph TD
 
     RIGHT --> TABS["Backtest · Optimizer · Data tabs"]
     RIGHT --> BT["#panel-backtest → #backtest-results"]
-    RIGHT --> OPT["#panel-optimizer → #optimization-results"]
+    RIGHT --> OPT["#panel-optimizer teaser → /optimize"]
     RIGHT --> DATA["#panel-data → #data-table-container"]
     RIGHT --> EXEC["#execution-learn-modal"]
+
+    OPTWS --> OPTCFG["config rail + Run/Stop"]
+    OPTWS --> OPTRES["#optimization-results"]
 
     STATUS --> ACT["#status-activity-label / #status-activity-dot"]
     STATUS --> DS["#data-status · #strategy-order-status"]
@@ -61,7 +65,10 @@ All under [`lib/dash/layout/`](../lib/dash/layout/):
 | `header.py` | The Bloomberg-style header tape **and** the dense bottom status bar (`_create_header`, `_create_status_bar`). |
 | `sidebar.py` | Left sidebar: Market Data, Saved Configurations, Chart Settings. |
 | `chart_area.py` | Center chart region: toolbar (title, bar-count, interval, chart type, price scale, fit/export/fullscreen) + the `#financial-chart` render target. |
-| `right_panel.py` | Right panel: Backtest / Optimizer / Data tabs and their controls + results. Also emits the Execution Type explainer modal (`execution-learn-modal`). |
+| `right_panel.py` | Right panel shell: Backtest / Optimizer / Data tabs. |
+| `backtest_panel.py` | Backtest tab accordion + execution-mode cards; emits `execution-learn-modal`; **OPEN OPTIMIZER** CTA. |
+| `optimizer_panel.py` | Optimizer tab teaser — deep-links to the full-screen workspace. |
+| `optimizer_workspace.py` | Full-screen `/optimize/<ticker>` overlay: config rail, Run/Stop, results. |
 | `overlays.py` | Fundamentals workspace and Flow scanner workspace (both hidden until opened), plus the Flow learn modal. |
 | `command_palette.py` | The Ctrl+K command-palette modal. |
 | `symbol_search.py` | The Ctrl+/ symbol-search modal: query box, sector / asset-class filters, watchlist rail. |

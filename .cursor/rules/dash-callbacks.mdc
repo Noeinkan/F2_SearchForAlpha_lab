@@ -15,8 +15,8 @@ alwaysApply: false
 - **State:** `lib/dash/state.py` — in-memory session cache
 
 ## Large files (read in chunks)
-- `layout/right_panel.py`, `callbacks/fundamentals.py`, `callbacks/shared.py`
-  (`integrated_dashboard.py` is thin now — safe to read whole)
+- `layout/backtest_panel.py`, `callbacks/fundamentals_formulas.py`, `callbacks/shared_data_display.py`
+  (`integrated_dashboard.py`, `layout/right_panel.py`, `callbacks/fundamentals.py`, `callbacks/shared.py` are thin — safe to read whole)
 
 ## Charts
 The price chart is **TradingView Lightweight Charts, not Plotly**. Plotly is

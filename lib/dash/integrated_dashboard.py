@@ -270,6 +270,9 @@ def run_dashboard(dev_mode: bool = False) -> None:
         "/flow",
         "/flow/",
         "/flow/<ticker>",
+        "/optimize",
+        "/optimize/",
+        "/optimize/<ticker>",
         "/ticker/<ticker>",
     )
     for idx, route in enumerate(_shell_routes):

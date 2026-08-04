@@ -13,6 +13,7 @@ from .signals import register_signal_callbacks
 from .chart import register_chart_callbacks
 from .backtest import register_backtest_callbacks
 from .optimization import register_optimization_callbacks
+from .optimize_workspace import register_optimize_workspace_callbacks
 from .fundamentals import register_fundamentals_callbacks
 from .flow import register_flow_callbacks
 from .routing import register_routing_callbacks
@@ -36,6 +37,7 @@ def register_callbacks(app) -> None:
     register_chart_callbacks(app)
     register_backtest_callbacks(app)
     register_optimization_callbacks(app)
+    register_optimize_workspace_callbacks(app)
     register_routing_callbacks(app)
     register_fundamentals_callbacks(app)
     register_flow_callbacks(app)

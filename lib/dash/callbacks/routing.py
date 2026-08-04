@@ -13,6 +13,7 @@ from lib.dash.routes import (
     extract_path_ticker,
     is_fundamentals_route,
     is_flow_route,
+    is_optimize_route,
     normalize_pathname,
 )
 
@@ -58,13 +59,17 @@ def register_routing_callbacks(app) -> None:
     def sync_dropdown_to_url(ticker, pathname):
         """Reflect the sidebar ticker pick in the browser URL (/ticker/<sym>).
 
-        Skipped on the fundamentals/flow overlays so picking a ticker there
-        doesn't navigate away, and when the path already matches so we don't
-        loop against apply_route_ticker_to_dropdown (URL -> dropdown sync).
+        Skipped on the fundamentals/flow/optimize overlays so picking a ticker
+        there doesn't navigate away, and when the path already matches so we
+        don't loop against apply_route_ticker_to_dropdown (URL -> dropdown sync).
         """
         if not ticker:
             raise PreventUpdate
-        if is_fundamentals_route(pathname) or is_flow_route(pathname):
+        if (
+            is_fundamentals_route(pathname)
+            or is_flow_route(pathname)
+            or is_optimize_route(pathname)
+        ):
             raise PreventUpdate
         new_path = build_ticker_terminal_path(ticker)
         if normalize_pathname(pathname) == normalize_pathname(new_path):
@@ -105,7 +110,11 @@ def register_routing_callbacks(app) -> None:
     def apply_route_layout(pathname, theme_name, overlay_style, overlay_class):
         theme = get_theme(theme_name or DEFAULT_THEME)
         on_fundamentals = is_fundamentals_route(pathname)
-        on_alt_page = on_fundamentals or is_flow_route(pathname)
+        on_alt_page = (
+            on_fundamentals
+            or is_flow_route(pathname)
+            or is_optimize_route(pathname)
+        )
 
         terminal_style = {'display': 'none'} if on_alt_page else {}
 

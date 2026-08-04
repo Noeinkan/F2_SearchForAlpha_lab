@@ -802,14 +802,22 @@ def register_optimization_callbacks(app) -> None:
     @app.callback(
         [Output('optimizer-apply-store', 'data'),
          Output('tab-backtest', 'n_clicks', allow_duplicate=True),
-         Output('backtest-origin-note', 'children')],
+         Output('backtest-origin-note', 'children'),
+         Output('app-url', 'pathname', allow_duplicate=True)],
         [Input('apply-strategy-btn', 'n_clicks')],
         [State('optimization-results-store', 'data'),
          State('sort-metric-dropdown', 'value'),
-         State('tab-backtest', 'n_clicks')],
+         State('tab-backtest', 'n_clicks'),
+         State('ticker-dropdown', 'value')],
         prevent_initial_call=True
     )
-    def apply_best_strategy(n_clicks, results_data, sort_by, current_backtest_clicks):
+    def apply_best_strategy(
+        n_clicks,
+        results_data,
+        sort_by,
+        current_backtest_clicks,
+        ticker,
+    ):
         """Apply the best strategy from optimization to the backtest panel.
 
         Signals are routed through ``optimizer-apply-store`` (consumed by
@@ -820,9 +828,14 @@ def register_optimization_callbacks(app) -> None:
         also fires the Backtest auto-run once the signals are committed, so the
         user lands on the honest scorecard (real costs/Trade Setup applied). The
         note reconciles that figure against the Optimizer's idealized leaderboard.
+
+        Also returns to the terminal (/ticker/<sym>) so Apply from the full-screen
+        workspace closes the overlay.
         """
         if not n_clicks or not results_data:
             raise PreventUpdate
+
+        from lib.dash.routes import build_ticker_terminal_path
 
         theme = get_theme()
         results_df = pd.DataFrame(results_data)
@@ -852,6 +865,7 @@ def register_optimization_callbacks(app) -> None:
             apply_payload,
             (current_backtest_clicks or 0) + 1,
             note,
+            build_ticker_terminal_path(ticker),
         )
 
     # Clientside: when ``optimizer-autorun`` changes (set by sync_signal_selection

@@ -44,7 +44,7 @@ def _loaded_bounds() -> tuple[str, str] | None:
 
 
 def resolve_preset(preset: str | None, first: str, last: str) -> tuple[str, str]:
-    """Turn a MAX/5Y/2Y/1Y/YTD shortcut into concrete dates.
+    """Turn a MAX/5Y/…/1M/YTD shortcut into concrete dates.
 
     Anchored to the loaded frame's *last bar* rather than today, so the window
     is the same whether it is resolved on a Monday morning or after a long
@@ -56,7 +56,9 @@ def resolve_preset(preset: str | None, first: str, last: str) -> tuple[str, str]
     if preset == 'ytd':
         start_ts = pd.Timestamp(year=last_ts.year, month=1, day=1)
     elif preset in ('1y', '2y', '5y'):
-        start_ts = last_ts - pd.DateOffset(years=int(preset[0]))
+        start_ts = last_ts - pd.DateOffset(years=int(preset[:-1]))
+    elif preset in ('1m', '3m', '6m'):
+        start_ts = last_ts - pd.DateOffset(months=int(preset[:-1]))
     else:  # 'max' and anything unrecognised
         return first, last
 

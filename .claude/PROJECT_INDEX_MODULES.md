@@ -31,7 +31,7 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 - `accumulation` — fixed `amount_per_buy`; sell signals discarded, trailing stop pinned to `inf`
 - `rebalancing` — `position_size_pct` of **portfolio value** on both sides (not of cash / units held)
 
-(Swing/Position/Trend are separate UI quick-presets — `strategy-preset` values `swing`/`position`/`trend` in `right_panel.py`, not engine modes.)
+(Swing/Position/Trend are separate UI quick-presets — `strategy-preset` values `swing`/`position`/`trend` in `backtest_panel.py`, not engine modes.)
 
 **Execution Type explainer** — user-facing copy in [lib/dash/execution_glossary.py](../lib/dash/execution_glossary.py); every number it shows is produced by [lib/dash/execution_sim.py](../lib/dash/execution_sim.py), which runs the real `backtest()` over a fixed 24-bar tape. Explanatory UI must never recompute sizing itself.
 
@@ -138,12 +138,15 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | `header.py` | Header bar + status bar |
 | `sidebar.py` | Left sidebar (ticker, date range, toggles) |
 | `chart_area.py` | Main chart + controls |
-| `right_panel.py` | Right panel (metrics, backtest results) |
+| `right_panel.py` | Right panel shell (Backtest / Optimizer / Data tabs) |
+| `backtest_panel.py` | Backtest tab accordion + execution-mode cards + learn modal |
+| `optimizer_panel.py` | Optimizer tab teaser → full-screen `/optimize` |
+| `optimizer_workspace.py` | Full-screen Optimizer overlay (config rail + results) |
 | `overlays.py` | Fundamentals + Flow Scanner overlays (incl. Flow learn modal) |
 | `command_palette.py` | Ctrl+K command palette |
 | `symbol_search.py` | Ctrl+/ (or bare `/`) symbol-search modal — search, sector/asset filters, watchlists |
 
-The Execution Type explainer modal (`execution-learn-modal`) is emitted by `right_panel.py`, not by `shell.py`.
+The Execution Type explainer modal (`execution-learn-modal`) is emitted by `backtest_panel.py`, not by `shell.py`.
 
 **Callbacks** (`lib/dash/callbacks/` — 19 registered modules via `register_callbacks()`):
 | File | Concern |
@@ -160,16 +163,23 @@ The Execution Type explainer modal (`execution-learn-modal`) is emitted by `righ
 | `backtest.py` | Run backtest from UI |
 | `optimization.py` | In-dashboard optimisation (thread pool, cost estimate) |
 | `routing.py` | URL-based page routing |
-| `fundamentals.py` | Fundamentals overlay |
+| `fundamentals.py` | Fundamentals overlay — register + re-exports |
+| `fundamentals_formulas.py` | Valuation formulas + explainability helpers |
+| `fundamentals_render.py` | Fundamentals tables / charts / `_render_payload` |
 | `flow.py` | Flow Scanner overlay — rescan subprocess, JSON load, native `#flow-content` render |
 | `misc_ui.py` | Keyboard shortcuts, palette dispatch bridge, misc UI hooks |
 | `layout.py` | Panel collapse, splitter, theme |
 | `command_palette.py` | Command palette actions |
 | `symbol_search.py` | Symbol-search modal — query, sector/asset options, watchlist mutations |
 | `status.py` | Status-bar activity indicator (WORKING…/READY/ERROR) |
-| `shared.py` | Shared callback helpers incl. data-table column classification + styling (not registered) |
+| `shared.py` | Re-export hub for shared helpers (not registered) |
+| `shared_enrichment.py` | Test-window slice + indicator enrichment cache |
+| `shared_signals.py` | Signal labels / option rows / plot toggles |
+| `shared_data_display.py` | Data-tab classify / filter / style / table builders |
+| `shared_presets.py` | UI preset payload helpers |
+| `shared_optimization_ui.py` | Optimizer result tables + best-strategy card |
 
-**Data tab column groups** — `DATA_COLUMN_GROUPS` in `dash_config.py`: `ohlcv`, `indicators`, `signals`, `portfolio`. Classification and the conditional styling rules (signal triggers, portfolio outliers) live in `callbacks/shared.py`; `test_data_table.py` guards both.
+**Data tab column groups** — `DATA_COLUMN_GROUPS` in `dash_config.py`: `ohlcv`, `indicators`, `signals`, `portfolio`. Classification and the conditional styling rules (signal triggers, portfolio outliers) live in `callbacks/shared_data_display.py`; `test_data_table.py` guards both.
 
 ### Visualisation (static)
 | File | Purpose |

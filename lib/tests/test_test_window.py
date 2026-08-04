@@ -120,6 +120,14 @@ def test_year_presets_count_back_from_the_last_bar(preset, expected_start):
     assert resolve_preset(preset, "2010-06-29", "2026-08-04") == (expected_start, "2026-08-04")
 
 
+@pytest.mark.parametrize(
+    "preset,expected_start",
+    [("1m", "2026-07-04"), ("3m", "2026-05-04"), ("6m", "2026-02-04")],
+)
+def test_month_presets_count_back_from_the_last_bar(preset, expected_start):
+    assert resolve_preset(preset, "2010-06-29", "2026-08-04") == (expected_start, "2026-08-04")
+
+
 def test_ytd_snaps_to_january_first():
     assert resolve_preset("ytd", "2010-06-29", "2026-08-04") == ("2026-01-01", "2026-08-04")
 

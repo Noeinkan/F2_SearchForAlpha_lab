@@ -1,6 +1,7 @@
-# The Optimizer Panel — A Plain-English Guide
+# The Optimizer — A Plain-English Guide
 
-*How to use the **Optimizer** tab on the right-hand panel, why it exists, and what you get out of it.*
+*How to use the full-screen **Optimizer** workspace (`/optimize/<ticker>`), why it exists,
+and what you get out of it.*
 
 > **What is the Optimizer?** The Backtest tab tests **one** idea you picked by hand. The
 > Optimizer tests **hundreds of ideas for you** and ranks them, so instead of guessing
@@ -34,27 +35,36 @@ currently loaded*. No data → it says *"Please load market data first"*.
 
 On the **left sidebar** (Market Data): set **Symbol** — it loads full available history on
 its own. Then, in the **Backtest** tab, set the **Test Window** and **Initial Capital**.
-Once prices are loaded, switch to the **Optimizer** tab at the top of the right-hand panel.
+Once prices are loaded, open the Optimizer via:
+
+- **OPEN OPTIMIZER** on the Backtest tab, or
+- the right-rail **Optimizer** tab teaser → **OPEN FULL OPTIMIZER**, or
+- command palette → **Open optimizer**, or
+- URL `/optimize/<TICKER>`
 
 > The Optimizer ranks combinations over that same Test Window, and prints it while it
 > runs. Backtesting the winner afterwards measures the identical period.
 
 ---
 
-## 3. Tour of the panel (top to bottom)
+## 3. Tour of the full-screen workspace
+
+Layout: **left config rail** + **main results pane**, with Run/Stop in the top bar.
 
 ### A — Signal Preview
-*"What am I working with?"* Three live counters that update as you load data and move the
+*"What am I working with?"* Live counters that update as you load data and move the
 sliders:
 
 - **BUY** — how many buy signals are available on the loaded data.
 - **SELL** — how many sell signals are available.
 - **COMBOS** — the estimated number of combinations that will actually be tested (already capped by your Max Combinations setting).
+- **EST** — rough runtime estimate.
 
-Use this as a sanity check *before* running: if COMBOS says `500`, that's how much work
-you're about to ask for.
+### B — Run Conditions
+Shows interval, capital, test window, and the buy/sell signal names that will enter the
+search (from the loaded frame — not chart overlays).
 
-### B — Max Signals per Side
+### C — Max Signals per Side
 *Slider, 1–5, default `2`.*
 
 How many signals may be **stacked together** on each side (buy and sell).
@@ -65,42 +75,24 @@ How many signals may be **stacked together** on each side (buy and sell).
 
 > Higher = more thorough but slower, and more prone to **overfitting** (see §7). Start at `2`.
 
-### C — Max Combinations
+### D — Max Combinations
 *Number box, 10–1000, default `100`.*
 
-A hard **cap** on how many combinations to actually test, for speed. Even if Max Signals
-per Side would theoretically produce thousands of combos, the Optimizer stops after this
-many.
+A hard **cap** on how many combinations to actually test, for speed.
 
-- Quick scan: `50–100`.
-- Thorough sweep: `300–1000` (slower).
-
-### C2 — Min Trades
+### E — Min Trades
 *Number box, default `10`.*
 
 The reliability floor. Any combination that traded **fewer** times than this is tagged
-**"low sample"** and pushed *below* the credible ones in the ranking — it isn't deleted,
-just deprioritised. A great-looking Sharpe or profit factor built on 3 trades is luck, not
-edge, so this stops flukes from topping the board.
+**"low sample"** and pushed *below* the credible ones in the ranking.
 
-### D — Sort Results By
-*Segmented buttons.* Which metric ranks the leaderboard:
+### F — Sort Results By
+*Segmented buttons.* Which metric ranks the leaderboard (SCORE / RET / SHARPE / CALMAR / DD / TRADES).
+You can change this **after** a run — the table re-ranks without re-testing.
 
-| Button | Ranks by | You want… |
-|---|---|---|
-| **SCORE** | Robustness Score (default) | The best all-round pick — risk-adjusted return with a penalty for too-few trades |
-| **RET** | Total Return % | Biggest raw gain |
-| **SHARPE** | Sharpe Ratio | Best *risk-adjusted* return (smoothest ride) |
-| **CALMAR** | Calmar Ratio | Best return relative to worst-case drawdown |
-| **DD** | Max Drawdown % | Smallest worst-case loss (sorted so least-bad is on top) |
-| **TRADES** | Number of trades | Most (or fewest) trades |
-
-> 💡 You can change this **after** a run — the table re-ranks instantly without re-testing
-> anything. So run once, then flip between SCORE / RET / SHARPE / CALMAR / DD to see the
-> picture from different angles. Low-sample combos always stay grouped below credible ones.
-
-### The button — RUN OPTIMIZER
-Press it. A progress bar appears and the search begins.
+### The button — RUN OPTIMIZER / STOP OPTIMIZER
+Press **RUN** to start. While running the button becomes **STOP** (click to cancel and keep
+partial results). Close returns to the terminal chart.
 
 ---
 
@@ -110,24 +102,20 @@ Press it. A progress bar appears and the search begins.
 - A **progress bar** shows *"Testing 120/500 combinations…"*.
 - A running count of *"valid strategies found so far"*.
 - Once at least 5 valid results exist, a live **"Top strategies so far"** mini-table previews the current leaders.
-- The RUN OPTIMIZER button is disabled until it finishes (the search runs in the background in small batches, so the app stays responsive).
 
 **When it finishes:**
 - A green *"✓ Completed! Tested N combinations"* message, followed by a one-line honesty
   caption reminding you that testing many combos makes the top result more likely to be luck.
-- A **Best Strategy highlight** card — the winner by your chosen metric. It shows Total
-  Return, Sharpe, Max Drawdown, **Sortino, Calmar, Win Rate, Profit Factor**, trade count,
-  and a **"vs Buy & Hold" alpha** line so you can instantly see whether the strategy actually
-  beat simply holding the stock. A **"LOW SAMPLE"** chip appears if the winner traded too few times.
-- A **top-10 table** with the same metrics (plus Alpha %). Low-sample rows are greyed out.
-- An **Apply Best Strategy** button appears at the bottom.
+- A **Best Strategy highlight** card and **top-10 table**.
+- An **Apply Best Strategy** button appears.
 
 ### Apply Best Strategy
 Click it and the Optimizer will:
-1. Copy the winning **buy** and **sell** signals into the Backtest tab's Signals section, and
-2. Switch you over to the **Backtest** tab automatically.
+1. Copy the winning **buy** and **sell** signals into the Backtest tab's Signals section,
+2. Close the full-screen workspace and return to the terminal, and
+3. Switch you to the **Backtest** tab (and auto-run the honest scorecard).
 
-From there you can run a **full** backtest on the winner — with your real Trade Setup
+From there you see a **full** backtest on the winner — with your real Trade Setup
 knobs and Transaction Costs applied (see §7 for why that second step matters).
 
 ---
@@ -136,10 +124,10 @@ knobs and Transaction Costs applied (see §7 for why that second step matters).
 
 ### Workflow 1 — "I have no idea where to start" (beginner)
 1. Pick a symbol on the left, then set a **Test Window** in the Backtest tab.
-2. Optimizer tab → leave **Max Signals per Side** = `2`, **Max Combinations** = `100`.
+2. Click **OPEN OPTIMIZER** → leave **Max Signals per Side** = `2`, **Max Combinations** = `100`.
 3. Sort by **RET**. Click **RUN OPTIMIZER**.
 4. Read the Best Strategy card and top-10 table.
-5. Click **Apply Best Strategy**, then **RUN BACKTEST** on the Backtest tab for the full scorecard.
+5. Click **Apply Best Strategy** for the full scorecard on the Backtest tab.
 
 ### Workflow 2 — "I care about a smooth ride, not just raw return" (risk-aware)
 1. Run the Optimizer as above.

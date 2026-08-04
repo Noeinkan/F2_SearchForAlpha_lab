@@ -5,15 +5,17 @@ import unittest
 from lib.dash.routes import (
     build_fundamentals_path,
     build_flow_path,
+    build_optimize_path,
     extract_path_ticker,
     is_flow_route,
     is_fundamentals_route,
+    is_optimize_route,
     is_ticker_terminal_route,
     normalize_pathname,
     parse_path,
     ticker_from_search,
 )
-from lib.dash.dash_config import ROUTE_FUNDAMENTALS, ROUTE_TERMINAL
+from lib.dash.dash_config import ROUTE_FUNDAMENTALS, ROUTE_OPTIMIZE, ROUTE_TERMINAL
 
 
 class TestDashRouting(unittest.TestCase):
@@ -39,6 +41,14 @@ class TestDashRouting(unittest.TestCase):
         self.assertTrue(is_flow_route('/flow/'))
         self.assertTrue(is_flow_route('/flow/AAPL'))
 
+    def test_is_optimize_route(self):
+        self.assertFalse(is_optimize_route('/'))
+        self.assertFalse(is_optimize_route('/flow/AAPL'))
+        self.assertTrue(is_optimize_route('/optimize'))
+        self.assertTrue(is_optimize_route('/optimize/'))
+        self.assertTrue(is_optimize_route('/optimize/TSLA'))
+        self.assertTrue(is_optimize_route('/optimize/tsla'))
+
     def test_is_ticker_terminal_route(self):
         self.assertFalse(is_ticker_terminal_route('/'))
         self.assertFalse(is_ticker_terminal_route('/fundamentals/TSLA'))
@@ -49,6 +59,7 @@ class TestDashRouting(unittest.TestCase):
         self.assertEqual(parse_path('/fundamentals'), ('fundamentals', None))
         self.assertEqual(parse_path('/fundamentals/TSLA'), ('fundamentals', 'TSLA'))
         self.assertEqual(parse_path('/flow/AAPL'), ('flow', 'AAPL'))
+        self.assertEqual(parse_path('/optimize/TSLA'), ('optimize', 'TSLA'))
         self.assertEqual(parse_path('/ticker/MSFT'), ('ticker_terminal', 'MSFT'))
         self.assertEqual(parse_path('/unknown/foo'), ('unknown', None))
 
@@ -57,6 +68,7 @@ class TestDashRouting(unittest.TestCase):
         self.assertIsNone(extract_path_ticker('/fundamentals'))
         self.assertEqual(extract_path_ticker('/fundamentals/TSLA'), 'TSLA')
         self.assertEqual(extract_path_ticker('/flow/AAPL'), 'AAPL')
+        self.assertEqual(extract_path_ticker('/optimize/MSFT'), 'MSFT')
 
     def test_ticker_from_search(self):
         self.assertIsNone(ticker_from_search(None))
@@ -68,6 +80,8 @@ class TestDashRouting(unittest.TestCase):
         self.assertEqual(build_fundamentals_path(), ROUTE_FUNDAMENTALS)
         self.assertEqual(build_fundamentals_path('TSLA'), '/fundamentals/TSLA')
         self.assertEqual(build_flow_path('AAPL'), '/flow/AAPL')
+        self.assertEqual(build_optimize_path(), ROUTE_OPTIMIZE)
+        self.assertEqual(build_optimize_path('TSLA'), '/optimize/TSLA')
 
 
 class TestDashShellRoutes(unittest.TestCase):
@@ -105,3 +119,19 @@ class TestDashShellRoutes(unittest.TestCase):
         self.assertIn(b"react-entry-point", base)
         self.assertIn(b'"/fundamentals/TSLA"', ticker)
         self.assertIn(b"__SFA_BOOT_URL__", ticker)
+
+    def test_optimize_route_layout_includes_overlay(self):
+        import dash
+        import dash_bootstrap_components as dbc
+
+        from lib.dash.integrated_dashboard import create_dashboard_layout
+        from lib.dash.dash_config import DEFAULT_THEME, get_theme
+
+        theme = get_theme(DEFAULT_THEME)
+        app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+        app.layout = create_dashboard_layout(theme)
+        layout_str = str(app.layout)
+        self.assertIn('optimize-overlay', layout_str)
+        self.assertIn('open-optimizer-button', layout_str)
+        self.assertIn('open-optimizer-from-teaser', layout_str)
+        self.assertIn('run-optimization-btn', layout_str)

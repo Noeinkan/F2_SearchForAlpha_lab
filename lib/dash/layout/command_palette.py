@@ -46,6 +46,8 @@ COMMANDS = [
      "group": "Navigate", "hint": "Jump to fundamentals workspace for the current ticker"},
     {"id": "go-flow",          "label": "Open flow scanner",        "shortcut": "G O",
      "group": "Navigate", "hint": "Jump to options flow workspace"},
+    {"id": "go-optimize",      "label": "Open optimizer",           "shortcut": "G P",
+     "group": "Navigate", "hint": "Jump to full-screen signal optimizer"},
     {"id": "go-terminal",      "label": "Back to terminal",         "shortcut": "G T",
      "group": "Navigate", "hint": "Return to the main chart view"},
 

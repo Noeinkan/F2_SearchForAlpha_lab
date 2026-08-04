@@ -5,12 +5,14 @@ from __future__ import annotations
 from lib.dash.dash_config import (
     ROUTE_FUNDAMENTALS,
     ROUTE_FLOW,
+    ROUTE_OPTIMIZE,
     ROUTE_TERMINAL,
     ROUTE_TICKER_TERMINAL,
 )
 
 _FUNDAMENTALS_PATH = ROUTE_FUNDAMENTALS.rstrip('/')
 _FLOW_PATH = ROUTE_FLOW.rstrip('/')
+_OPTIMIZE_PATH = ROUTE_OPTIMIZE.rstrip('/')
 _TICKER_TERMINAL_PATH = ROUTE_TICKER_TERMINAL.rstrip('/')
 
 
@@ -34,7 +36,8 @@ def _split_path(pathname: str | None) -> list[str]:
 def parse_path(pathname: str | None) -> tuple[str, str | None]:
     """Parse pathname into (route_name, ticker).
 
-    route_name is one of: terminal, fundamentals, flow, ticker_terminal, unknown.
+    route_name is one of: terminal, fundamentals, flow, optimize,
+    ticker_terminal, unknown.
     """
     segments = _split_path(pathname)
     if not segments:
@@ -46,6 +49,9 @@ def parse_path(pathname: str | None) -> tuple[str, str | None]:
     if head == _FLOW_PATH.lstrip('/'):
         ticker = segments[1].strip().upper() if len(segments) > 1 else None
         return 'flow', ticker or None
+    if head == _OPTIMIZE_PATH.lstrip('/'):
+        ticker = segments[1].strip().upper() if len(segments) > 1 else None
+        return 'optimize', ticker or None
     if head == _TICKER_TERMINAL_PATH.lstrip('/'):
         ticker = segments[1].strip().upper() if len(segments) > 1 else None
         return 'ticker_terminal', ticker or None
@@ -81,6 +87,12 @@ def is_flow_route(pathname: str | None) -> bool:
     return route == 'flow'
 
 
+def is_optimize_route(pathname: str | None) -> bool:
+    """True when the browser URL targets the full-screen optimizer workspace."""
+    route, _ = parse_path(pathname)
+    return route == 'optimize'
+
+
 def is_ticker_terminal_route(pathname: str | None) -> bool:
     """True when the browser URL is /ticker/<symbol> (terminal deep-link)."""
     route, _ = parse_path(pathname)
@@ -109,3 +121,11 @@ def build_flow_path(ticker: str | None = None) -> str:
     if symbol:
         return f'{ROUTE_FLOW}/{symbol}'
     return ROUTE_FLOW
+
+
+def build_optimize_path(ticker: str | None = None) -> str:
+    """Build a full-screen optimizer URL, optionally including a ticker segment."""
+    symbol = str(ticker or '').strip().upper()
+    if symbol:
+        return f'{ROUTE_OPTIMIZE}/{symbol}'
+    return ROUTE_OPTIMIZE

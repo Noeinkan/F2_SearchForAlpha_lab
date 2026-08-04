@@ -8,7 +8,12 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.dash.dash_config import DEFAULT_TICKER, PRESET_FILE_PATH
-from lib.dash.routes import is_flow_route, is_fundamentals_route, is_ticker_terminal_route
+from lib.dash.routes import (
+    is_flow_route,
+    is_fundamentals_route,
+    is_optimize_route,
+    is_ticker_terminal_route,
+)
 from lib.dash.preset_storage import load_presets
 from lib.dash.ticker_search import dmc_ticker_select_data, ensure_ticker_options_loaded
 from lib.dash.callbacks.shared import _format_preset_options
@@ -100,13 +105,14 @@ def register_startup_callbacks(app) -> None:
         prevent_initial_call='initial_duplicate',
     )
     def apply_route_ticker_to_dropdown(path_ticker, pathname):
-        """Sync sidebar dropdown from /ticker|/fundamentals|/flow/<sym> deep-links."""
+        """Sync sidebar dropdown from /ticker|/fundamentals|/flow|/optimize/<sym> deep-links."""
         if not path_ticker:
             raise PreventUpdate
         on_deep_link = (
             is_ticker_terminal_route(pathname)
             or is_fundamentals_route(pathname)
             or is_flow_route(pathname)
+            or is_optimize_route(pathname)
         )
         if not on_deep_link:
             raise PreventUpdate

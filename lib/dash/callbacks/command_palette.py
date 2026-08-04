@@ -231,6 +231,8 @@ def register_command_palette_callbacks(app) -> None:
             return f'/fundamentals/{ticker}'
         if action == 'go-flow':
             return f'/flow/{ticker}'
+        if action == 'go-optimize':
+            return f'/optimize/{ticker}'
         if action == 'go-terminal':
             return '/'
         raise PreventUpdate

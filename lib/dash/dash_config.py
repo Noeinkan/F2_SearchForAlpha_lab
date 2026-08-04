@@ -285,13 +285,17 @@ INITIAL_CAPITAL = 10000
 DEFAULT_SIGNAL_WINDOW = 4
 
 # Backtest panel test-window shortcuts. ``max`` means the whole loaded frame;
-# the numeric values are years back from the frame's last bar, and ``ytd``
-# snaps to January 1st of that bar's year. Resolved in callbacks/test_window.py.
+# ``Ny`` / ``Nm`` count years / months back from the frame's last bar, and
+# ``ytd`` snaps to January 1st of that bar's year. Resolved in
+# callbacks/test_window.py.
 TEST_WINDOW_PRESETS = [
     {'label': 'MAX', 'value': 'max'},
     {'label': '5Y', 'value': '5y'},
     {'label': '2Y', 'value': '2y'},
     {'label': '1Y', 'value': '1y'},
+    {'label': '6M', 'value': '6m'},
+    {'label': '3M', 'value': '3m'},
+    {'label': '1M', 'value': '1m'},
     {'label': 'YTD', 'value': 'ytd'},
 ]
 
@@ -325,6 +329,7 @@ DEFAULT_BAR_INTERVAL = "1d"
 ROUTE_TERMINAL = '/'
 ROUTE_FUNDAMENTALS = '/fundamentals'
 ROUTE_FLOW = '/flow'
+ROUTE_OPTIMIZE = '/optimize'
 ROUTE_TICKER_TERMINAL = '/ticker'
 
 # =============================================================================
