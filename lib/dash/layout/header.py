@@ -48,6 +48,21 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
             html.Span('CONNECTED', className='bbg-header-status-label'),
             html.Span('│', className='bbg-header-divider'),
             html.Div(id='header-status', className='num bbg-header-clock'),
+            # Manual re-fetch. Symbol and bar-interval changes load on their own
+            # and the test window needs no fetch at all, so this is only for
+            # pulling bars that appeared since the page loaded — hence an icon
+            # rather than the full-width sidebar button it used to be. The id is
+            # load-data-button because Ctrl+Enter (callbacks/misc_ui.py), the
+            # command palette's load-data action, and the status activity
+            # indicator all click it by that name.
+            html.Button(
+                id='load-data-button',
+                children=[html.Span('⟳', id='load-data-label')],
+                className='bbg-icon-button',
+                n_clicks=0,
+                title='Re-fetch the current symbol (Ctrl+Enter)',
+                **{'aria-label': 'Refresh market data'},
+            ),
             # Donate link — warm CTA distinct from neutral header icon buttons.
             html.A(
                 'Donate',

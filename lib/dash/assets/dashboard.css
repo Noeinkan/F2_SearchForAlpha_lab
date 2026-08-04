@@ -331,6 +331,22 @@ html, body {
     justify-content: center;
 }
 
+/* Test-window shortcuts — five segments have to fit the right panel at its
+   240px minimum, so they share the width evenly and shed the horizontal
+   padding the wider toolbar segments can afford. */
+.sfa-test-window-seg.bbg-radio-seg {
+    display: flex;
+    width: 100%;
+}
+.sfa-test-window-seg.bbg-radio-seg > label,
+.sfa-test-window-seg.bbg-radio-seg > .dash-options-list-option {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 4px 2px !important;
+    justify-content: center;
+    text-align: center;
+}
+
 /* =============================================================================
    Section primitives (sidebar / right panel)
    ========================================================================== */
@@ -2054,7 +2070,11 @@ body.theme-light {
 }
 
 /* =============================================================================
-   Strategy mode radio cards (left sidebar)
+   Strategy mode radio cards (right panel > Execution Type)
+
+   These are styled here and ONLY here. right_panel.py used to pass an inline
+   style dict as well, which won the cascade and silently disabled the :hover
+   and :checked rules below.
    ========================================================================== */
 
 .strategy-mode-radio {
@@ -2075,7 +2095,7 @@ body.theme-light {
 .strategy-mode-card {
     border: 1px solid var(--border-primary);
     border-radius: 2px;
-    padding: 6px 8px;
+    padding: 8px 10px;
     background: var(--bg-tertiary);
     transition: background 80ms ease, border-color 80ms ease;
     cursor: pointer;
@@ -2091,6 +2111,324 @@ body.theme-light {
 .strategy-mode-radio label:has(input:checked) .strategy-mode-card {
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+}
+
+/* =============================================================================
+   Execution Type explainer — mode fingerprints, matrix, sandbox
+
+   Every number these styles wrap is produced by lib/dash/execution_sim.py,
+   which runs the real backtest engine. See that module's docstring.
+   ========================================================================== */
+
+/* --- Fingerprint sparkline on each mode card --- */
+.sfa-exec-spark {
+    margin-top: 5px;
+    height: 22px;
+    opacity: 0.55;
+    transition: opacity 120ms ease;
+}
+
+.strategy-mode-card:hover .sfa-exec-spark,
+.strategy-mode-radio label:has(input:checked) .sfa-exec-spark {
+    opacity: 1;
+}
+
+.sfa-exec-spark-img {
+    display: block;
+    width: 100%;
+    height: 22px;
+}
+
+/* --- Inline dollar preview under each caption --- */
+.sfa-exec-preview {
+    letter-spacing: -0.01em;
+}
+
+/* --- "HOW EXECUTION WORKS" trigger --- */
+.sfa-exec-learn-btn {
+    width: 100%;
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px dashed var(--border-secondary);
+    border-radius: 2px;
+    color: var(--text-tertiary);
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: color 80ms ease, border-color 80ms ease;
+}
+
+.sfa-exec-learn-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--border-focus);
+    border-style: solid;
+}
+
+/* --- Dead-config warning (sell signals in Accumulation) --- */
+.sfa-exec-warning {
+    margin: -4px 0 12px;
+    padding: 7px 9px;
+    border: 1px solid;
+    border-radius: 3px;
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    font-family: var(--font-sans);
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+/* --- Modal shell --- */
+.sfa-exec-learn-modal .modal-content { max-height: min(88vh, 780px); }
+.sfa-exec-learn-modal-body { padding-top: 6px; }
+
+/* --- Mechanics matrix --- */
+.sfa-exec-matrix-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+}
+
+.sfa-exec-matrix th:first-child,
+.sfa-exec-matrix td:first-child {
+    background: var(--bg-secondary);
+    position: sticky;
+    left: 0;
+}
+
+.sfa-exec-matrix tbody tr:last-child td { border-bottom: none; }
+.sfa-exec-matrix tbody tr:hover td { background: var(--bg-hover); }
+
+/* --- Try-it header + progress dots --- */
+.sfa-exec-tryit-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.sfa-exec-kicker {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+}
+
+.sfa-exec-dots { display: flex; gap: 5px; align-items: center; }
+
+.sfa-exec-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    border: 1px solid;
+    display: inline-block;
+    transition: background 160ms ease;
+}
+
+/* --- Mode tabs inside the modal --- */
+.sfa-exec-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+
+.sfa-exec-tab {
+    flex: 1;
+    padding: 6px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid transparent;
+    border-radius: 2px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 80ms ease, background 80ms ease;
+}
+
+.sfa-exec-tab:hover { opacity: 0.9; }
+.sfa-exec-tab.is-active { opacity: 1; background: var(--bg-hover); }
+.sfa-exec-tab-tick { margin-left: 5px; font-size: 10px; }
+
+/* --- Sandbox --- */
+.sfa-exec-mode-intro {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.45;
+    margin-bottom: 10px;
+}
+
+.sfa-exec-predict {
+    padding: 10px;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    background: var(--bg-secondary);
+}
+
+.sfa-exec-predict-q {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.sfa-exec-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.sfa-exec-option {
+    flex: 1 1 auto;
+    min-width: 96px;
+    padding: 7px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+    transition: border-color 80ms ease, background 80ms ease, color 80ms ease;
+}
+
+.sfa-exec-option:hover:not(:disabled) {
+    border-color: var(--border-focus);
+    color: var(--text-primary);
+}
+
+.sfa-exec-option.is-picked {
+    border-color: var(--border-focus);
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+/* The whole point of the mechanic: a wrong guess is marked as clearly as a
+   right one, because that contrast is what makes the behaviour stick.
+   --up/--down (not raw green/red) so the CVD theme remaps these too. */
+.sfa-exec-option.is-correct {
+    border-color: var(--up);
+    color: var(--up);
+    background: color-mix(in srgb, var(--up) 12%, transparent);
+}
+
+.sfa-exec-option.is-wrong {
+    border-color: var(--down);
+    color: var(--down);
+    background: color-mix(in srgb, var(--down) 10%, transparent);
+    text-decoration: line-through;
+}
+
+.sfa-exec-option:disabled { cursor: default; }
+
+.sfa-exec-reveal {
+    padding: 6px 16px;
+    background: transparent;
+    border: 1px solid;
+    border-radius: 2px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+}
+
+.sfa-exec-reveal:hover { background: var(--bg-hover); }
+
+.sfa-exec-sting {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.sfa-exec-tape-note {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    margin: 10px 0 6px;
+}
+
+/* --- Sandbox sliders --- */
+.sfa-exec-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 4px 16px;
+    margin-bottom: 10px;
+}
+
+.sfa-exec-control { padding-bottom: 14px; }
+
+.sfa-exec-control-label {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    margin-bottom: 2px;
+}
+
+/* --- Stat row --- */
+.sfa-exec-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.sfa-exec-stat {
+    flex: 1 1 auto;
+    min-width: 72px;
+    padding: 5px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+}
+
+.sfa-exec-stat-label {
+    font-family: var(--font-sans);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.sfa-exec-stat-value {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* --- Ledger --- */
+.sfa-exec-ledger-wrap {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+}
+
+/* Bars where nothing happened recede so the eye lands on the fills. */
+.sfa-exec-row.is-quiet td { opacity: 0.42; }
+.sfa-exec-row:hover td { background: var(--bg-hover); opacity: 1; }
+
+.sfa-exec-chip {
+    display: inline-block;
+    min-width: 34px;
+    padding: 0 4px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    font-family: var(--font-sans);
+    font-size: 9px;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: 0.06em;
+}
+
+.sfa-exec-chip.is-empty { border-color: transparent; }
+
+.sfa-exec-inert {
+    margin-top: 8px;
+    font-family: var(--font-sans);
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sfa-exec-spark,
+    .sfa-exec-option,
+    .sfa-exec-tab { transition: none; }
 }
 
 /* Signal logic OR / AND radio toggle */
@@ -2741,5 +3079,349 @@ body.theme-light .sfa-palette-kbd-key {
     background: var(--bg-tertiary);
     border-color: var(--border-primary);
     color: var(--text-secondary);
+}
+
+/* =============================================================================
+   Symbol search — the TradingView-style universe browser.
+
+   Shares the command palette's modal chrome deliberately, so the two overlays
+   read as one system. Everything is expressed in theme custom properties, so
+   bloomberg / cvd / light all follow without per-theme duplication; only the
+   few places that hard-code a shadow or a translucent wash need an override
+   at the bottom of this block.
+   ========================================================================== */
+
+/* --- Sidebar trigger (replaces the old visible ticker Select) ------------- */
+
+.sfa-symbol-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 80ms ease, background 80ms ease;
+    min-width: 0;
+}
+.sfa-symbol-trigger:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+}
+.sfa-symbol-trigger-sym {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+    flex: 0 0 auto;
+}
+.sfa-symbol-trigger-name {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.sfa-symbol-trigger-kbd {
+    flex: 0 0 auto;
+    opacity: 0.7;
+}
+
+/* --- Modal shell --------------------------------------------------------- */
+
+.sfa-symsearch-modal .modal-dialog {
+    max-width: 900px;
+    width: 92vw;
+}
+
+.sfa-symsearch-modal .modal-content,
+.sfa-symsearch-content {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+    color: var(--text-primary);
+    overflow: hidden;
+}
+
+.sfa-symsearch-backdrop {
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+}
+
+.sfa-symsearch-body {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    min-height: 0;
+}
+
+/* --- Search field -------------------------------------------------------- */
+
+.sfa-symsearch-search-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.sfa-symsearch-input {
+    width: 100%;
+    height: 52px !important;
+    font-size: 16px !important;
+    font-family: var(--font-sans) !important;
+    background: var(--bg-secondary) !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 64px 0 18px !important;
+    color: var(--text-primary) !important;
+    letter-spacing: 0.3px;
+    box-shadow: none !important;
+}
+.sfa-symsearch-input::placeholder {
+    color: var(--text-tertiary);
+    opacity: 0.85;
+}
+.sfa-symsearch-input:focus,
+.sfa-symsearch-input:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+}
+.sfa-symsearch-esc {
+    position: absolute;
+    right: 14px;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    pointer-events: none;
+}
+
+/* --- Asset-class tabs ---------------------------------------------------- */
+
+.sfa-symsearch-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    overflow-x: auto;
+}
+
+.sfa-symsearch-tab {
+    flex: 0 0 auto;
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 80ms ease, border-color 80ms ease, background 80ms ease;
+}
+.sfa-symsearch-tab:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+.sfa-symsearch-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+/* --- Filter row ---------------------------------------------------------- */
+
+.sfa-symsearch-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border-primary);
+    flex-wrap: wrap;
+}
+
+.sfa-symsearch-sector { flex: 1 1 240px; min-width: 180px; }
+.sfa-symsearch-list   { flex: 0 1 170px; min-width: 130px; }
+
+.sfa-symsearch-sector .Select-control,
+.sfa-symsearch-list .Select-control {
+    font-size: 11px;
+}
+
+.sfa-symsearch-favtoggle {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    cursor: pointer;
+    transition: color 80ms ease, border-color 80ms ease, background 80ms ease;
+}
+.sfa-symsearch-favtoggle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.sfa-symsearch-favtoggle.on {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--bg-hover);
+}
+.sfa-symsearch-star-glyph { font-size: 12px; line-height: 1; }
+
+.sfa-symsearch-count {
+    flex: 0 0 auto;
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+}
+
+/* --- Results ------------------------------------------------------------- */
+
+.sfa-symsearch-results {
+    max-height: 52vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 0;
+}
+
+.sfa-symsearch-row {
+    display: grid;
+    /* star | symbol | name | badge | category | exchange */
+    grid-template-columns: 28px 78px minmax(0, 1.6fr) 62px minmax(0, 1.4fr) 92px;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background 60ms ease, border-color 60ms ease;
+    min-width: 0;
+}
+.sfa-symsearch-row:hover,
+.sfa-symsearch-row.active {
+    background: var(--bg-hover);
+    border-left-color: var(--accent);
+}
+.sfa-symsearch-row.current {
+    background: var(--bg-tertiary);
+}
+.sfa-symsearch-row.current .sfa-symsearch-sym {
+    color: var(--accent);
+}
+
+.sfa-symsearch-star {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: color 80ms ease, transform 80ms ease;
+}
+.sfa-symsearch-star:hover { color: var(--accent); transform: scale(1.2); }
+.sfa-symsearch-star.on    { color: var(--accent); }
+
+.sfa-symsearch-sym {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sfa-symsearch-name,
+.sfa-symsearch-cat,
+.sfa-symsearch-exch {
+    font-family: var(--font-sans);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.sfa-symsearch-name { font-size: 11px; color: var(--text-primary); }
+.sfa-symsearch-cat  { font-size: 10px; color: var(--text-secondary); }
+.sfa-symsearch-exch {
+    font-size: 9px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.5px;
+    text-align: right;
+}
+
+/* Asset-class badge — colour carries the class so the list is scannable. */
+.sfa-symsearch-badge {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-align: center;
+    padding: 2px 0;
+    border-radius: 2px;
+    border: 1px solid currentColor;
+    opacity: 0.9;
+    white-space: nowrap;
+}
+.sfa-symsearch-badge-stock  { color: var(--text-tertiary); }
+.sfa-symsearch-badge-etf    { color: var(--accent); }
+.sfa-symsearch-badge-index  { color: var(--info); }
+.sfa-symsearch-badge-fx     { color: var(--up); }
+.sfa-symsearch-badge-future { color: var(--down); }
+
+.sfa-symsearch-empty {
+    padding: 24px 18px;
+    text-align: center;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+
+.sfa-symsearch-foot {
+    border-top: 1px solid var(--border-primary);
+}
+
+/* --- Narrow viewports ---------------------------------------------------- */
+
+@media (max-width: 820px) {
+    /* Drop the two lowest-value columns rather than letting the grid squash
+       the symbol and name into ellipses. */
+    .sfa-symsearch-row {
+        grid-template-columns: 28px 70px minmax(0, 1fr) 58px;
+    }
+    .sfa-symsearch-cat,
+    .sfa-symsearch-exch {
+        display: none;
+    }
+    .sfa-symsearch-results { max-height: 60vh; }
+}
+
+/* --- Light theme --------------------------------------------------------- */
+
+body.theme-light .sfa-symsearch-content {
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+}
+body.theme-light .sfa-symsearch-backdrop {
+    background: rgba(15, 23, 42, 0.35);
+}
+body.theme-light .sfa-symsearch-badge {
+    opacity: 1;
 }
 

@@ -42,6 +42,7 @@ def fetch_data_with_cache(
     start_date: str,
     end_date: str,
     interval: str = "1d",
+    force: bool = False,
 ) -> pd.DataFrame:
     """
     Fetch data with caching support via shared ``fetch_data``.
@@ -51,6 +52,11 @@ def fetch_data_with_cache(
         start_date: Start date string
         end_date: End date string
         interval: Bar size ``1d`` / ``1h`` / ``4h``
+        force: Skip the cache read and overwrite the entry. The cache is a plain
+            LRU with no TTL, and the window is now derived from the interval
+            rather than typed by the user, so the key is stable for a whole
+            trading day — without this a manual refresh would serve the same
+            bars back and never pick up today's new ones.
 
     Returns:
         DataFrame with OHLCV data
@@ -63,7 +69,7 @@ def fetch_data_with_cache(
 
     canon = normalize_interval(interval)
     cache_key = f"{ticker}_{canon}_{start_date}_{end_date}"
-    cached = dashboard_state.get_cached_data(cache_key)
+    cached = None if force else dashboard_state.get_cached_data(cache_key)
 
     if cached is not None:
         logger.debug(f"Cache hit for {cache_key}")

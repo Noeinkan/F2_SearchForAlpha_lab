@@ -14,10 +14,59 @@ from dash import dcc, html
 from lib.dash.dash_config import (
     FONT_SIZES, FONT_FAMILY, BORDER_RADIUS, DEFAULT_SIGNAL_WINDOW,
     DATA_ROW_OPTIONS, DATA_COLUMN_GROUPS, DEFAULT_OFF_SIGNAL_CATEGORIES,
+    INITIAL_CAPITAL, TEST_WINDOW_PRESETS,
 )
 from lib.dash.components import dense_input, ticker_pill
 from lib.dash.bootstrap import BootstrapSnapshot
+from lib.dash.execution_glossary import MODE_ORDER, MODE_SPECS
+from lib.dash.execution_view import mode_accent, render_fingerprint, render_mode_preview
 from lib.signals.indicators import get_signal_categories
+
+
+def _strategy_mode_options(theme: dict, help_icon_style: dict) -> list[dict]:
+    """Build the three execution-mode cards from the glossary + live engine runs.
+
+    Every card carries: the mode's honest caption, a sparkline "fingerprint" of
+    how it behaves on the shared demo tape, and a preview line stating what the
+    first buy signal actually does in dollars. The preview is re-rendered by
+    ``callbacks/execution_help.py`` whenever capital or the sizing knobs change —
+    the id here is what that callback targets.
+    """
+    options = []
+    for mode in MODE_ORDER:
+        spec = MODE_SPECS[mode]
+        accent = mode_accent(theme, mode)
+        options.append({
+            'label': html.Div([
+                html.Div([
+                    html.Div([
+                        html.Span(spec['name'], style={
+                            'fontWeight': '600',
+                            'fontSize': FONT_SIZES['sm'],
+                            'color': accent,
+                        }),
+                        html.Span(f" - {spec['suffix']}", style={
+                            'fontSize': FONT_SIZES['xs'],
+                            'color': theme['text_secondary'],
+                            'marginLeft': '4px',
+                        }),
+                    ], style={'display': 'flex', 'alignItems': 'center', 'flexWrap': 'wrap'}),
+                    html.Span("?", id=f'help-strategy-{mode}', n_clicks=0,
+                              style=help_icon_style,
+                              title=f"How {spec['name']} works"),
+                ], style={'display': 'flex', 'alignItems': 'center',
+                          'justifyContent': 'space-between'}),
+                html.Div(spec['caption'], style={
+                    'fontSize': '10px',
+                    'color': theme['text_tertiary'],
+                    'marginTop': '2px',
+                }),
+                html.Div(render_mode_preview(theme, mode), id=f'preview-mode-{mode}'),
+                render_fingerprint(theme, mode),
+            ], className='strategy-mode-card'),
+            'value': mode,
+        })
+    return options
 
 
 def _create_right_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Aside:
@@ -139,17 +188,13 @@ def _create_right_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapshot 
 def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Div:
     """Create the backtest panel content."""
 
-    # Strategy mode card style
-    mode_card_base = {
-        'padding': '8px 10px',
-        'borderRadius': BORDER_RADIUS['sm'],
-        'border': f'1px solid {theme["border_primary"]}',
-        'backgroundColor': theme['bg_secondary'],
-        'cursor': 'pointer',
-        'transition': 'all 0.1s ease',
-        'marginBottom': '4px',
-    }
+    # Strategy mode cards are styled entirely by `.strategy-mode-card` in
+    # dashboard.css. They used to carry an inline style dict too, which silently
+    # beat the stylesheet and killed the :hover and :checked rules.
     help_icon_style = styles['help_icon']
+    # The mode "?" glyphs open the Execution Type explainer, so they must be
+    # clickable Inputs rather than the hover-only cursor:'help' the others use.
+    mode_help_style = {**help_icon_style, 'cursor': 'pointer'}
 
     signal_categories = get_signal_categories()
     # Filter/regime categories are selectable but start unticked — see
@@ -166,12 +211,106 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                     [
                         html.Div([
                             html.Div([
+                                html.Span("Test Window", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_secondary'],
+                                    'fontWeight': '600',
+                                }),
+                                html.Span("?", id='help-test-window', style=help_icon_style),
+                            ], style={
+                                'display': 'flex',
+                                'alignItems': 'center',
+                                'justifyContent': 'space-between',
+                                'marginBottom': '6px',
+                            }),
+                            dcc.RadioItems(
+                                id='test-window-preset',
+                                options=TEST_WINDOW_PRESETS,
+                                value='max',
+                                inline=True,
+                                className='bbg-radio-seg sfa-test-window-seg',
+                            ),
+                            html.Div([
+                                html.Div([
+                                    html.Label("From", style={
+                                        'fontSize': FONT_SIZES['xs'],
+                                        'color': theme['text_secondary'],
+                                        'marginBottom': '4px',
+                                        'display': 'block',
+                                    }),
+                                    dcc.DatePickerSingle(
+                                        id='test-window-start',
+                                        display_format='YYYY-MM-DD',
+                                        className='dark-datepicker',
+                                        style={'width': '100%'},
+                                    ),
+                                ], style={'flex': 1}),
+                                html.Div([
+                                    html.Label("To", style={
+                                        'fontSize': FONT_SIZES['xs'],
+                                        'color': theme['text_secondary'],
+                                        'marginBottom': '4px',
+                                        'display': 'block',
+                                    }),
+                                    dcc.DatePickerSingle(
+                                        id='test-window-end',
+                                        display_format='YYYY-MM-DD',
+                                        className='dark-datepicker date-picker-end',
+                                        style={'width': '100%'},
+                                    ),
+                                ], style={'flex': 1}),
+                            ], style={
+                                'display': 'flex',
+                                'gap': '8px',
+                                'marginTop': '8px',
+                                'marginBottom': '12px',
+                            }),
+
+                            html.Div([
+                                html.Label("Initial Capital", style={
+                                    'fontSize': FONT_SIZES['xs'],
+                                    'color': theme['text_secondary'],
+                                    'marginBottom': '4px',
+                                    'display': 'block',
+                                }),
+                                dense_input(
+                                    id='initial-capital',
+                                    type='number',
+                                    value=INITIAL_CAPITAL,
+                                    style={**styles['input'], 'textAlign': 'right'},
+                                ),
+                            ]),
+                            dbc.Tooltip(
+                                "The period the backtest and optimizer evaluate. Data is always "
+                                "fetched in full — this narrows what gets measured, and scrolls "
+                                "the chart to match. Changing it needs no re-fetch.",
+                                target='help-test-window',
+                                placement='left',
+                                trigger='hover focus',
+                            ),
+                        ])
+                    ],
+                    title=html.Div([
+                        html.Span("Test Window"),
+                        html.Span(
+                            id='summary-test-window',
+                            className='accordion-title-summary'
+                        )
+                    ], className='accordion-title-row'),
+                    item_id='backtest-window',
+                ),
+                dbc.AccordionItem(
+                    [
+                        html.Div([
+                            html.Div([
                                 html.Span("Execution Type", style={
                                     'fontSize': FONT_SIZES['xs'],
                                     'color': theme['text_secondary'],
                                     'fontWeight': '600',
                                 }),
-                                html.Span("?", id='help-strategy-mode', style=help_icon_style),
+                                html.Span("?", id='help-strategy-mode', n_clicks=0,
+                                          style=mode_help_style,
+                                          title='How the execution modes work'),
                             ], style={
                                 'display': 'flex',
                                 'alignItems': 'center',
@@ -180,111 +319,35 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                             }),
                             dcc.RadioItems(
                                 id='strategy-mode',
-                                options=[
-                                    {
-                                        'label': html.Div([
-                                            html.Div([
-                                                html.Div([
-                                                    html.Span("Trading", style={
-                                                        'fontWeight': '600',
-                                                        'fontSize': FONT_SIZES['sm'],
-                                                        'color': theme['text_primary'],
-                                                    }),
-                                                    html.Span(" - Full Buy/Sell", style={
-                                                        'fontSize': FONT_SIZES['xs'],
-                                                        'color': theme['text_secondary'],
-                                                        'marginLeft': '4px',
-                                                    }),
-                                                ], style={'display': 'flex', 'alignItems': 'center', 'flexWrap': 'wrap'}),
-                                                html.Span("?", id='help-strategy-trading', style=help_icon_style),
-                                            ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between'}),
-                                            html.Div("Buy 100%, then sell 100%", style={
-                                                'fontSize': '10px',
-                                                'color': theme['text_tertiary'],
-                                                'marginTop': '2px',
-                                            }),
-                                        ], className='strategy-mode-card', style=mode_card_base),
-                                        'value': 'trading'
-                                    },
-                                    {
-                                        'label': html.Div([
-                                            html.Div([
-                                                html.Div([
-                                                    html.Span("Accumulation", style={
-                                                        'fontWeight': '600',
-                                                        'fontSize': FONT_SIZES['sm'],
-                                                        'color': theme['accent_green'],
-                                                    }),
-                                                    html.Span(" - DCA", style={
-                                                        'fontSize': FONT_SIZES['xs'],
-                                                        'color': theme['text_secondary'],
-                                                        'marginLeft': '4px',
-                                                    }),
-                                                ], style={'display': 'flex', 'alignItems': 'center', 'flexWrap': 'wrap'}),
-                                                html.Span("?", id='help-strategy-accumulation', style=help_icon_style),
-                                            ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between'}),
-                                            html.Div("Fixed $ amount per buy signal", style={
-                                                'fontSize': '10px',
-                                                'color': theme['text_tertiary'],
-                                                'marginTop': '2px',
-                                            }),
-                                        ], className='strategy-mode-card', style=mode_card_base),
-                                        'value': 'accumulation'
-                                    },
-                                    {
-                                        'label': html.Div([
-                                            html.Div([
-                                                html.Div([
-                                                    html.Span("Rebalancing", style={
-                                                        'fontWeight': '600',
-                                                        'fontSize': FONT_SIZES['sm'],
-                                                        'color': theme['accent_blue'],
-                                                    }),
-                                                    html.Span(" - Partial", style={
-                                                        'fontSize': FONT_SIZES['xs'],
-                                                        'color': theme['text_secondary'],
-                                                        'marginLeft': '4px',
-                                                    }),
-                                                ], style={'display': 'flex', 'alignItems': 'center', 'flexWrap': 'wrap'}),
-                                                html.Span("?", id='help-strategy-rebalancing', style=help_icon_style),
-                                            ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between'}),
-                                            html.Div("Trade % of portfolio per signal", style={
-                                                'fontSize': '10px',
-                                                'color': theme['text_tertiary'],
-                                                'marginTop': '2px',
-                                            }),
-                                        ], className='strategy-mode-card', style=mode_card_base),
-                                        'value': 'rebalancing'
-                                    },
-                                ],
+                                options=_strategy_mode_options(theme, mode_help_style),
                                 value='trading',
                                 className='strategy-mode-radio',
                                 inputStyle={'display': 'none'},
                                 labelStyle={'display': 'block', 'margin': 0, 'padding': 0},
                             ),
+                            # Hover gives one true sentence; clicking opens the
+                            # explorable. Both come from execution_glossary, so
+                            # they cannot drift apart from each other.
                             dbc.Tooltip(
-                                "Choose how signals are executed in the backtest.",
+                                "How signals become orders. Click for the full breakdown.",
                                 target='help-strategy-mode',
                                 placement='left',
                                 trigger='hover focus',
                             ),
-                            dbc.Tooltip(
-                                "Full buy on signal, full sell on exit.",
-                                target='help-strategy-trading',
-                                placement='left',
-                                trigger='hover focus',
-                            ),
-                            dbc.Tooltip(
-                                "Fixed dollar-cost averaging on each buy signal.",
-                                target='help-strategy-accumulation',
-                                placement='left',
-                                trigger='hover focus',
-                            ),
-                            dbc.Tooltip(
-                                "Trade a percentage of portfolio each signal.",
-                                target='help-strategy-rebalancing',
-                                placement='left',
-                                trigger='hover focus',
+                            *[
+                                dbc.Tooltip(
+                                    MODE_SPECS[mode]['one_liner'] + " Click for details.",
+                                    target=f'help-strategy-{mode}',
+                                    placement='left',
+                                    trigger='hover focus',
+                                )
+                                for mode in MODE_ORDER
+                            ],
+                            html.Button(
+                                "HOW EXECUTION WORKS",
+                                id='execution-learn-button',
+                                n_clicks=0,
+                                className='sfa-exec-learn-btn',
                             ),
                         ])
                     ],
@@ -453,7 +516,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                         ),
                         html.Div(id='position-scaling-options', children=[
                             html.Div([
-                                html.Span("Position Scaling", style={
+                                html.Span("Scale-in", style={
                                     'fontSize': FONT_SIZES['sm'],
                                     'fontWeight': '600',
                                     'color': theme['accent_cyan'],
@@ -463,14 +526,17 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                     'color': theme['text_primary'],
                                 }),
                             ], style={'marginBottom': '6px'}),
+                            # 100% = one signal buys the whole Kelly-sized entry.
+                            # This defaulted to 25 while the UI claimed the mode
+                            # bought "100%", so every entry was silently quartered.
                             dcc.Input(
                                 id='position-scaling-pct',
                                 type='number',
-                                value=25,
+                                value=100,
                                 min=0,
                                 max=100,
                                 step=1,
-                                placeholder='% scale per signal',
+                                placeholder='% of target size per signal',
                                 style={
                                     **styles['input'],
                                     'width': '100%',
@@ -489,7 +555,10 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                             'border': f'1px solid {theme["accent_cyan"]}40',
                         }),
                         dbc.Tooltip(
-                            "Increase position size by this % on repeated buys.",
+                            "Fraction of the Kelly-sized target each signal buys. "
+                            "100% = full size on the first signal. Lower values ramp "
+                            "in over consecutive signals — and keep stacking, they do "
+                            "not stop at 100% of target.",
                             target='position-scaling-pct',
                             placement='right',
                             trigger='hover focus',
@@ -647,6 +716,23 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                     'borderColor': theme['accent_green'],
                                 }
                             ),
+                            # Accumulation silently discards sell signals and never
+                            # sets a stop. Stating it here is the difference between
+                            # a deliberate choice and a confusing result.
+                            html.Div([
+                                html.Div("This mode only ever buys.",
+                                         style={'fontWeight': '600',
+                                                'color': theme['accent_green']}),
+                                html.Div(
+                                    "Sell signals, trailing stop, take profit and min "
+                                    "holding period are all inactive. Win rate and "
+                                    "profit factor stay blank because the position is "
+                                    "never closed.",
+                                    style={'color': theme['text_tertiary'],
+                                           'marginTop': '2px'},
+                                ),
+                            ], style={'fontSize': '10px', 'marginTop': '8px',
+                                      'lineHeight': '1.4'}),
                         ], style={
                             'marginBottom': '12px',
                             'display': 'none',
@@ -656,14 +742,17 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                             'border': f'1px solid {theme["accent_green"]}40',
                         }),
                         dbc.Tooltip(
-                            "Dollar amount used for each buy signal in Accumulation mode.",
+                            "Dollar amount spent on each buy signal, until cash runs out.",
                             target='amount-per-buy',
                             placement='right',
                             trigger='hover focus',
                         ),
+                        # Selecting sell signals in Accumulation is dead config —
+                        # populated by callbacks/execution_help.py.
+                        html.Div(id='accumulation-sell-warning'),
                         html.Div(id='rebalancing-options', children=[
                             html.Div([
-                                html.Span("Position Size", style={
+                                html.Span("Portfolio Weight", style={
                                     'fontSize': FONT_SIZES['sm'],
                                     'fontWeight': '600',
                                     'color': theme['accent_blue'],
@@ -698,7 +787,10 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                             'border': f'1px solid {theme["accent_blue"]}40',
                         }),
                         dbc.Tooltip(
-                            "Percentage of portfolio to trade per signal in Rebalancing mode.",
+                            "Percentage of total portfolio value traded on each signal — "
+                            "the same weight in on a buy and out on a sell, so the third "
+                            "buy is the same size as the first. A stop or take-profit hit "
+                            "still exits the whole position.",
                             target='position-size-pct',
                             placement='right',
                             trigger='hover focus',
@@ -1019,7 +1111,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
             ],
             className='compact-accordion',
             always_open=True,
-            active_item=['backtest-strategy', 'backtest-signals'],
+            active_item=['backtest-window', 'backtest-strategy', 'backtest-signals'],
             flush=True,
         ),
 
@@ -1038,6 +1130,33 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
             color=theme['accent_blue'],
             delay_show=200,
             children=html.Div(id='backtest-results', style={'marginTop': '10px'}),
+        ),
+
+        # --- Execution Type explainer -----------------------------------------
+        # Sandbox UI state is ephemeral (which mode tab, the pending guess, the
+        # live slider values); only `explored` persists, so a returning user
+        # keeps their progress dots.
+        dcc.Store(id='execution-learn-state', data={'mode': 'trading', 'guess': None,
+                                                    'revealed': False, 'params': {}}),
+        dcc.Store(id='execution-explored-store', storage_type='local', data=[]),
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("How Execution Type works"), close_button=True),
+                dbc.ModalBody(id='execution-learn-modal-body',
+                              className='sfa-exec-learn-modal-body'),
+                dbc.ModalFooter(
+                    html.Button("Close", id='execution-learn-close', n_clicks=0,
+                                style={**styles['button_outline'], 'padding': '6px 14px'})
+                ),
+            ],
+            id='execution-learn-modal',
+            is_open=False,
+            centered=True,
+            size='lg',
+            backdrop=True,
+            keyboard=True,
+            scrollable=True,
+            className='sfa-exec-learn-modal',
         ),
     ])
 

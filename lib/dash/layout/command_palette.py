@@ -40,6 +40,8 @@ COMMANDS = [
      "group": "Data",   "hint": "Forget the current dataset"},
 
     # Navigate
+    {"id": "open-symbol-search", "label": "Search symbols",         "shortcut": "Ctrl+/",
+     "group": "Navigate", "hint": "Browse the full universe by name, category or watchlist"},
     {"id": "go-fundamentals",  "label": "Open fundamentals",        "shortcut": "G F",
      "group": "Navigate", "hint": "Jump to fundamentals workspace for the current ticker"},
     {"id": "go-flow",          "label": "Open flow scanner",        "shortcut": "G O",

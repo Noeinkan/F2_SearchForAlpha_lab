@@ -424,8 +424,11 @@ def _execute_buy(
         buy_amount = min(float(buy_amount), state.cash)
         qty = ctx.round_units(buy_amount / close_price)
     elif ctx.strategy_mode == 'rebalancing':
+        # Target weight: trade ``pct`` of *portfolio value*, so repeated buys stay
+        # equal-weight instead of decaying against a shrinking cash balance. The
+        # affordability clamp below caps an over-weight request at available cash.
         pct = (ctx.position_size_pct or 100) / 100.0
-        qty = ctx.round_units((state.cash * pct) / close_price)
+        qty = ctx.round_units((prev_portfolio_value * pct) / close_price)
     else:
         state.position_size = min(state.position_size + ctx.position_scaling, 1)
         raw = ctx.size_position(prev_portfolio_value, close_price, bar)
@@ -484,9 +487,15 @@ def _execute_sell(
     close_price = ctx.close_prices[bar]
     prev_units = state.units
 
+    if not np.isfinite(close_price) or close_price <= 0:
+        _hold(ctx, state, bar)
+        return
+
     if ctx.strategy_mode == 'rebalancing':
+        # Mirror of the buy side: shed ``pct`` of portfolio value, capped at what
+        # is actually held so a large target weight liquidates rather than errors.
         pct = (ctx.position_size_pct or 100) / 100.0
-        qty = ctx.round_units(prev_units * pct)
+        qty = min(ctx.round_units((prev_portfolio_value * pct) / close_price), prev_units)
     else:
         state.position_size = max(state.position_size - ctx.position_scaling, 0)
         raw = ctx.size_position(prev_portfolio_value, close_price, bar)

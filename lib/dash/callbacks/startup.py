@@ -40,20 +40,25 @@ def register_startup_callbacks(app) -> None:
         prevent_initial_call='initial_duplicate',
     )
     def populate_tickers(_n_intervals, current_value, route_ticker):
-        """Populate the dmc.Select once on startup; restore value after data refresh."""
+        """Seed the hidden ticker-dropdown; restore value after data refresh.
+
+        The Select is no longer user-facing (the symbol-search modal replaced
+        it), so it carries a bounded popular-symbol list rather than the whole
+        universe. Validation therefore runs against the universe itself —
+        otherwise a deep link to any symbol outside the popular set would be
+        rewritten to the default.
+        """
         if _n_intervals is None:
             raise PreventUpdate
-        data = dmc_ticker_select_data()
-        known = {str(row.get("value", "")).upper() for row in data}
         if route_ticker:
             value = str(route_ticker).strip().upper()
         else:
             # Preserve an in-flight user pick; only fall back to the page default
             # when the dropdown is still empty on first populate.
             value = str(current_value or DEFAULT_TICKER).strip().upper()
-        if value not in known:
-            value = DEFAULT_TICKER if DEFAULT_TICKER in known else data[0]["value"]
-        return data, value
+        if not value:
+            value = DEFAULT_TICKER
+        return dmc_ticker_select_data(value), value
 
     @app.callback(
         [Output('presets-store', 'data'),

@@ -10,7 +10,12 @@ the same output in one layer, and every control in the app then goes inert:
 
   chart-payload-store.data   <- update_chart_payload   (this file, only writer)
   chart-render-sync.children <- render_chart           (this file, only writer)
-  chart-focus-store.data     <- focus_chart_from_row   (data_table.py, only writer)
+  chart-focus-store.data     <- focus_chart_from_row        (data_table.py)
+                              + focus_chart_on_test_window  (test_window.py)
+
+Two writers on chart-focus-store is fine — they are different triggers in
+different dispatch layers, and the second one carries allow_duplicate=True.
+What Dash 4 rejects is two writers reached in the *same* layer.
 """
 
 from __future__ import annotations

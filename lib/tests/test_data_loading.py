@@ -47,6 +47,13 @@ def test_load_data_listens_to_ticker_dropdown():
     assert input_ids == ["load-data-button", "autoload-interval", "ticker-dropdown", "bar-interval"]
     assert "ticker-dropdown" not in state_ids
     assert "user-ticker-store" not in input_ids
+    # The window is derived from the interval by `full_history_window`, never
+    # read from the UI. Taking it from a control again is what allowed the
+    # displayed dates and the loaded data to drift apart.
+    assert "start-date" not in state_ids
+    assert "end-date" not in state_ids
+    assert "test-window-start" not in state_ids
+    assert "test-window-end" not in state_ids
     # The chart is owned by callbacks.chart.update_chart_payload, reached via
     # data-loaded-store. load_data writing any chart output would put two
     # writers in one dispatch layer, which Dash 4 rejects outright — that is

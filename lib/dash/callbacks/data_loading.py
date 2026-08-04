@@ -8,53 +8,34 @@ from dash import callback_context, html, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from datetime import date
-
 from lib.dash.dash_config import (
     DEFAULT_BAR_INTERVAL,
     DEFAULT_INDICATOR_SETTINGS,
     DEFAULT_TICKER,
-    START_DATE,
     get_theme,
 )
 from lib.dash.state import dashboard_state
-from lib.timeframes import IntervalError, clamp_window, normalize_interval
+from lib.timeframes import full_history_window, normalize_interval
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_preset_end_date(saved_value) -> str:
-    """
-    Roll a stale preset end_date forward to today.
-
-    Presets snapshot the picker's literal date at save time. Without this,
-    loading a preset months later clamps yfinance to the save-day boundary
-    and the chart appears to "freeze" in the past. Treat any missing value,
-    the explicit "today" sentinel, or a date strictly before today as a
-    rolling anchor. Future-dated values are preserved verbatim so a user
-    can still freeze a preset to a chosen window by setting end_date ahead
-    of today.
-    """
-    today_iso = date.today().isoformat()
-    if not saved_value or saved_value == "today":
-        return today_iso
-    try:
-        return today_iso if date.fromisoformat(str(saved_value)[:10]) < date.today() else saved_value
-    except ValueError:
-        return today_iso
 
 
 def register_data_loading_callbacks(app) -> None:
     @app.callback(
         [Output('ticker-dropdown', 'value'),
-         Output('start-date', 'date'),
-         Output('end-date', 'date'),
          Output('initial-capital', 'value'),
          Output('bar-interval', 'value')],
         [Input('preset-apply-store', 'data')],
         prevent_initial_call=True
     )
     def apply_market_preset(preset_data):
+        """Restore the symbol/capital/interval a preset captured.
+
+        Presets no longer carry a fetch window — there is nothing to restore,
+        since the fetch always takes the maximum. The test window is restored
+        separately in callbacks/test_window.py, after the data it has to be
+        validated against has actually loaded.
+        """
         if not preset_data:
             raise PreventUpdate
 
@@ -65,8 +46,6 @@ def register_data_loading_callbacks(app) -> None:
             interval = DEFAULT_BAR_INTERVAL
         return (
             market.get("ticker"),
-            market.get("start_date"),
-            _resolve_preset_end_date(market.get("end_date")),
             market.get("initial_capital"),
             interval,
         )
@@ -82,38 +61,11 @@ def register_data_loading_callbacks(app) -> None:
         except Exception:
             return DEFAULT_BAR_INTERVAL
 
-    @app.callback(
-        [Output('start-date', 'date', allow_duplicate=True),
-         Output('end-date', 'date', allow_duplicate=True)],
-        Input('bar-interval', 'value'),
-        State('start-date', 'date'),
-        State('end-date', 'date'),
-        prevent_initial_call=True,
-    )
-    def adjust_dates_for_interval(interval, start_date, end_date):
-        """Fit date pickers into Yahoo's rolling lookback when switching to 1h/4h."""
-        if not start_date or not end_date:
-            raise PreventUpdate
-        try:
-            canon = normalize_interval(interval or DEFAULT_BAR_INTERVAL)
-        except Exception:
-            raise PreventUpdate
-        if canon == "1d":
-            raise PreventUpdate
-        try:
-            new_start, new_end = clamp_window(
-                str(start_date)[:10],
-                str(end_date)[:10],
-                canon,
-                relocate=True,
-            )
-        except IntervalError:
-            raise PreventUpdate
-        start_out = new_start if new_start != str(start_date)[:10] else no_update
-        end_out = new_end if new_end != str(end_date)[:10] else no_update
-        if start_out is no_update and end_out is no_update:
-            raise PreventUpdate
-        return start_out, end_out
+    # `adjust_dates_for_interval` used to live here, nudging the sidebar date
+    # pickers back inside Yahoo's 728-day intraday lookback whenever the user
+    # switched D→1H with an old window selected. `full_history_window` now
+    # derives the fetch window from the interval in the first place, so there is
+    # no stale user input left to correct.
 
     @app.callback(
         [Output('data-status', 'children'),
@@ -132,9 +84,7 @@ def register_data_loading_callbacks(app) -> None:
          Input('autoload-interval', 'n_intervals'),
          Input('ticker-dropdown', 'value'),
          Input('bar-interval', 'value')],
-        [State('start-date', 'date'),
-         State('end-date', 'date'),
-         State('indicator-settings-store', 'data'),
+        [State('indicator-settings-store', 'data'),
          State('data-loaded-store', 'data')],
         # Dash 4: the chart payload is owned solely by
         # callbacks.chart.update_chart_payload, reached via data-loaded-store.
@@ -146,12 +96,15 @@ def register_data_loading_callbacks(app) -> None:
         n_intervals,
         ticker,
         bar_interval,
-        start_date,
-        end_date,
         indicator_settings,
         load_generation,
     ):
         """Load market data on startup, manual refresh, ticker, or interval change.
+
+        The window is never taken from the UI: it is derived from the interval
+        by ``full_history_window``, so the loaded frame is always the widest
+        Yahoo will serve. Narrowing is the backtest panel's test window, applied
+        downstream on this frame without re-fetching.
 
         Writes ``data-loaded-store`` and nothing chart-related;
         ``callbacks.chart.update_chart_payload`` owns the payload and picks the
@@ -170,51 +123,34 @@ def register_data_loading_callbacks(app) -> None:
         except Exception:
             canon = DEFAULT_BAR_INTERVAL
 
+        # Only an explicit click means "go and see if there are new bars"; the
+        # other triggers are happy with a cache hit for a window they have
+        # already pulled. Without this the stable max-history cache key would
+        # make the refresh button a no-op for the rest of the trading day.
+        force = False
+
         if trigger_id == 'autoload-interval':
             if n_intervals is None or n_intervals < 1:
                 raise PreventUpdate
             if dashboard_state.df is not None:
                 raise PreventUpdate
             ticker = ticker or DEFAULT_TICKER
-            start_date = start_date or START_DATE
-            end_date = end_date or date.today().isoformat()
         elif trigger_id == 'load-data-button':
             if not n_clicks:
                 raise PreventUpdate
             ticker = str(ticker or DEFAULT_TICKER).strip().upper()
-        elif trigger_id == 'ticker-dropdown':
+            force = True
+        elif trigger_id in ('ticker-dropdown', 'bar-interval'):
             if not ticker:
                 raise PreventUpdate
             ticker = str(ticker).strip().upper()
-        elif trigger_id == 'bar-interval':
-            if not ticker:
-                raise PreventUpdate
-            ticker = str(ticker).strip().upper()
-            start_date = start_date or START_DATE
-            end_date = end_date or date.today().isoformat()
         else:
             raise PreventUpdate
 
         theme = get_theme()
-        orig_start = str(start_date)[:10] if start_date else None
-        orig_end = str(end_date)[:10] if end_date else None
-        window_adjusted = False
+        start_date, end_date = full_history_window(canon)
 
         try:
-            if start_date and end_date:
-                # UI relocates stale windows into Yahoo's rolling lookback so
-                # switching D→1H/4H with an old End Date still refreshes the chart.
-                start_date, end_date = clamp_window(
-                    str(start_date)[:10],
-                    str(end_date)[:10],
-                    canon,
-                    relocate=True,
-                )
-                window_adjusted = (
-                    canon != "1d"
-                    and (start_date != orig_start or end_date != orig_end)
-                )
-
             # Lazy import avoids bootstrap ↔ callbacks circular import on startup.
             from lib.dash.bootstrap import load_market_session
 
@@ -224,12 +160,11 @@ def register_data_loading_callbacks(app) -> None:
                 end_date,
                 indicator_settings or DEFAULT_INDICATOR_SETTINGS,
                 interval=canon,
+                force=force,
             )
             status = snapshot.data_status
             if canon != "1d":
                 status = f"{status} · {canon.upper()}"
-            if window_adjusted:
-                status = f"{status} · WINDOW ADJUSTED (YAHOO INTRADAY LIMIT)"
 
             return (
                 status,

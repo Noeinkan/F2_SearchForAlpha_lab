@@ -33,11 +33,18 @@ of 12% over the last 3 years."
 **Load data first.** The Backtest panel tests *whatever chart is currently loaded*. If no
 price data is loaded, the panel will tell you *"Please load market data first."*
 
-On the **left sidebar** (Market Data section):
-1. **Symbol** — type a ticker or company name (e.g. `AAPL`, `Tesla`).
-2. **Start Date / End Date** — the historical window to test over.
-3. **Initial Capital** — your pretend starting cash (e.g. `10000`).
-4. Press **REFRESH** (or `Ctrl+Enter`). Changing the symbol loads automatically.
+On the **left sidebar** (Market Data section) there is only one thing to set:
+
+1. **Symbol** — type a ticker or company name (e.g. `AAPL`, `Tesla`). It loads
+   automatically; there is no date range to fill in.
+
+The app always downloads the **full available history** for that symbol — back to its
+listing date for daily bars, or the last 728 days for 1H/4H (Yahoo's limit). Picking the
+period you actually want to *measure* happens in the Backtest panel, under **Test Window**.
+
+> The **⟳** button in the header re-downloads the current symbol, for when new bars have
+> printed since you opened the page. You don't need it to change the test period —
+> that never re-downloads anything.
 
 Now the chart shows prices, and the Backtest panel on the right is ready.
 
@@ -46,22 +53,55 @@ Now the chart shows prices, and the Backtest panel on the right is ready.
 ## 3. Tour of the toolbar (top to bottom)
 
 The panel has three tabs at the top — **Backtest**, **Optimizer**, **Data**. This guide
-is about the **Backtest** tab (the default). It's made of four collapsible sections plus
+is about the **Backtest** tab (the default). It's made of five collapsible sections plus
 the big orange **RUN BACKTEST** button.
 
 > 💡 See a small **`?`** next to a label? Hover it for a plain-language tooltip. Every
 > control in the panel has one.
 
+### Section 0 — Test Window
+*"Which slice of history am I measuring, and with how much money?"*
+
+- **MAX / 5Y / 2Y / 1Y / YTD** — shortcuts. They count back from the last bar in the
+  data, not from today, and stop at the listing date (asking for 5Y of a two-year-old
+  listing gives you two years).
+- **From / To** — set any period by hand.
+- **Initial Capital** — your pretend starting cash (e.g. `10000`).
+
+Two things worth knowing:
+
+- Changing the window **scrolls the chart to match**, so what you see is what you measure.
+- Both **RUN BACKTEST** and **RUN OPTIMIZER** evaluate this exact window, and both print
+  it above their results. If those two ever disagree, that's a bug — they read the same
+  control.
+
 ### Section A — Execution Type
 *"How should the app spend and cash out my money?"*
 
-This is the single most important choice. Pick one of three styles:
+This is the single most important choice — your indicators decide *when* to trade, but
+Execution Type decides *how much*, and whether a sell signal or a stop is even listened to.
 
-| Mode | Plain meaning | Best for |
+| Mode | What it actually does | Best for |
 |---|---|---|
-| **Trading — Full Buy/Sell** | Go all-in on a buy signal, then fully cash out on a sell signal. | Classic in-and-out trading. |
-| **Accumulation — DCA** | Put a **fixed dollar amount** in on every buy signal and keep building a position (dollar-cost averaging). No selling required. | Long-term "keep buying the dip" investing. |
-| **Rebalancing — Partial** | Trade only a **percentage** of your portfolio per signal, scaling in and out gradually. | Smoother, less all-or-nothing exposure. |
+| **Trading — Signal In/Out** | Each buy signal opens or adds a **Kelly-sized** slice; each sell signal, trailing stop or take-profit closes it. Every risk control is active. | Classic in-and-out trading. |
+| **Accumulation — DCA** | Spend a **fixed dollar amount** on every buy signal until the cash runs out. **Sell signals are discarded**, and there is never a stop or take-profit. | Long-term "keep buying the dip" investing. |
+| **Rebalancing — Target Weight** | Every signal trades the same **percentage of portfolio value** — in on a buy, out on a sell. A stop or take-profit hit still exits 100%. | Smoother, less all-or-nothing exposure. |
+
+Three things that surprise people, all confirmed by the engine tests:
+
+- **Trading does not buy 100%.** Kelly sizing at the default 0.50 win rate and 1.50
+  win/loss ratio asks for about **16.7%** of the account, and the Scale-in slider
+  multiplies that. The card shows the real dollar figure before you run anything.
+- **Scale-in is a ramp, not a target.** At 25% consecutive buys are sized 0.25, 0.50,
+  0.75, 1.00 × Kelly and they *stack* — holdings pass one Kelly size on the third buy and
+  keep going. Leave it at 100% unless you specifically want that ramp.
+- **Accumulation has no exits at all.** If you have sell indicators selected, they do
+  nothing (the panel warns you). Win rate and profit factor stay blank because the
+  position is never closed — that's not a bug, there is simply no completed trade.
+
+> 💡 Click any **`?`** on a mode card, or the **HOW EXECUTION WORKS** button, to open the
+> explainer: a side-by-side mechanics table plus a sandbox that runs the real engine over
+> a fixed 24-bar tape so you can watch each mode trade bar by bar.
 
 Your choice here changes which options appear in the next section.
 
@@ -73,14 +113,22 @@ Your choice here changes which options appear in the next section.
 - **Min Holding Period (bars)** — force the trade to stay open at least N bars before it's allowed to sell. Stops jittery in-and-out churn.
 - **Trailing Stop (%)** — auto-sell if price falls this % from its peak. Your safety net.
 - **Take Profit (%)** — auto-sell once you're up this %. Locks in gains. (`0` = off.)
-- **Position Scaling (%)** — add this % more to your position on repeated buy signals.
-- **Kelly Criterion (Win Rate + Win/Loss Ratio)** — an advanced bet-sizing formula. Leave at defaults (0.50 / 1.50) unless you know it.
+- **Scale-in (%)** — what fraction of the Kelly-sized target each signal buys. `100`
+  (the default) means one signal buys the full entry. Lower it to ramp in over
+  consecutive signals — but note those orders keep stacking rather than stopping at
+  full size.
+- **Kelly Criterion (Win Rate + Win/Loss Ratio)** — the bet-sizing formula that sets the
+  target entry size: `win_rate − (1 − win_rate) / win_loss_ratio` of the portfolio.
+  At the defaults (0.50 / 1.50) that's **16.7%**. Leave it alone unless you know it.
 
 **Shown in Accumulation mode:**
 - **Amount Per Buy ($)** — how many dollars to invest on each buy signal (e.g. `1000`).
+  Nothing else applies: this mode has no sells, no stop and no take-profit.
 
 **Shown in Rebalancing mode:**
-- **Position Size (%)** — what slice of the portfolio to trade per signal (e.g. `25`).
+- **Portfolio Weight (%)** — what slice of **total portfolio value** to trade per signal
+  (e.g. `25`). Same weight in on a buy and out on a sell, so the third buy is the same
+  size as the first.
 - Plus Min Holding Period, Trailing Stop, and Take Profit.
 
 **Always shown — Consecutive Signals:** controls what happens when the same signal fires
@@ -147,7 +195,8 @@ cost you, in both % and dollars. This is the honesty check: a strategy that only
 ## 5. Example workflows
 
 ### Workflow 1 — "Does buying oversold RSI dips work on Apple?" (beginner)
-1. Left sidebar: Symbol `AAPL`, dates last 3 years, capital `10000`, **REFRESH**.
+1. Left sidebar: Symbol `AAPL`. Then in the Backtest panel: **Test Window** → set From/To
+   to the last 3 years, capital `10000`.
 2. Execution Type → **Trading**.
 3. Signals → tick an **RSI oversold** signal for **buy**, an **RSI overbought** signal for **sell**. Logic = **OR**.
 4. Transaction Costs → leave defaults (honest).
@@ -191,7 +240,7 @@ time from the **Preset** dropdown — no need to re-tick everything.
 
 | You see… | It means… | Fix |
 |---|---|---|
-| *"Please load market data first"* | No prices loaded. | Set a symbol + dates on the left, press REFRESH. |
+| *"Please load market data first"* | No prices loaded. | Pick a symbol on the left; it loads on its own. If it doesn't, press **⟳** in the header. |
 | *"Select at least one buy signal"* | No buy trigger chosen. | Tick a buy signal in the Signals section. |
 | *"Trading mode requires at least one sell signal"* | Trading mode needs an exit rule. | Tick a sell signal, or switch to Accumulation mode. |
 | Zero or very few trades | Your AND rules are too strict. | Loosen to **OR**, or widen the **AND Window**. |

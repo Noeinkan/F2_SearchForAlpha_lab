@@ -32,9 +32,12 @@ top-10 list.** It's a search engine for trading ideas.
 **Load data first.** Like the Backtest tab, the Optimizer works on *whatever chart is
 currently loaded*. No data → it says *"Please load market data first"*.
 
-On the **left sidebar** (Market Data): set **Symbol**, **Start / End Date**, **Initial
-Capital**, then press **REFRESH**. Once prices are loaded, switch to the **Optimizer** tab
-at the top of the right-hand panel.
+On the **left sidebar** (Market Data): set **Symbol** — it loads full available history on
+its own. Then, in the **Backtest** tab, set the **Test Window** and **Initial Capital**.
+Once prices are loaded, switch to the **Optimizer** tab at the top of the right-hand panel.
+
+> The Optimizer ranks combinations over that same Test Window, and prints it while it
+> runs. Backtesting the winner afterwards measures the identical period.
 
 ---
 
@@ -132,7 +135,7 @@ knobs and Transaction Costs applied (see §7 for why that second step matters).
 ## 5. Example workflows
 
 ### Workflow 1 — "I have no idea where to start" (beginner)
-1. Load a symbol and dates on the left, **REFRESH**.
+1. Pick a symbol on the left, then set a **Test Window** in the Backtest tab.
 2. Optimizer tab → leave **Max Signals per Side** = `2`, **Max Combinations** = `100`.
 3. Sort by **RET**. Click **RUN OPTIMIZER**.
 4. Read the Best Strategy card and top-10 table.

@@ -34,11 +34,18 @@ win rate del 58% e una perdita nel caso peggiore del 12% negli ultimi 3 anni".
 caricato*. Se non ci sono dati di prezzo caricati, il pannello ti avviserà con
 *"Please load market data first"*.
 
-Nella **sidebar a sinistra** (sezione Market Data):
-1. **Symbol** — digita un ticker o il nome di un'azienda (es. `AAPL`, `Tesla`).
-2. **Start Date / End Date** — la finestra storica su cui testare.
-3. **Initial Capital** — il tuo capitale iniziale simulato (es. `10000`).
-4. Premi **REFRESH** (o `Ctrl+Enter`). Cambiare il symbol carica automaticamente.
+Nella **sidebar a sinistra** (sezione Market Data) c'è una sola cosa da impostare:
+
+1. **Symbol** — digita un ticker o il nome di un'azienda (es. `AAPL`, `Tesla`). Si carica
+   automaticamente; non c'è nessun intervallo di date da compilare.
+
+L'app scarica sempre **tutto lo storico disponibile** per quel symbol — fino alla data di
+quotazione per le barre daily, o gli ultimi 728 giorni per 1H/4H (limite di Yahoo).
+La scelta del periodo da *misurare* avviene nel pannello Backtest, sotto **Test Window**.
+
+> Il pulsante **⟳** nell'header riscarica il symbol corrente, per quando sono uscite nuove
+> barre da quando hai aperto la pagina. Non serve per cambiare il periodo di test —
+> quello non riscarica mai nulla.
 
 Ora il grafico mostra i prezzi e il pannello Backtest a destra è pronto.
 
@@ -47,22 +54,58 @@ Ora il grafico mostra i prezzi e il pannello Backtest a destra è pronto.
 ## 3. Tour della barra (dall'alto verso il basso)
 
 Il pannello ha tre tab in alto — **Backtest**, **Optimizer**, **Data**. Questa guida
-riguarda il tab **Backtest** (quello predefinito). È composto da quattro sezioni
+riguarda il tab **Backtest** (quello predefinito). È composto da cinque sezioni
 richiudibili più il grande pulsante arancione **RUN BACKTEST**.
 
 > 💡 Vedi un piccolo **`?`** accanto a un'etichetta? Passaci sopra il mouse per un
 > tooltip in linguaggio semplice. Ogni controllo del pannello ne ha uno.
 
+### Sezione 0 — Test Window
+*"Quale fetta di storico sto misurando, e con quanti soldi?"*
+
+- **MAX / 5Y / 2Y / 1Y / YTD** — scorciatoie. Contano all'indietro dall'ultima barra dei
+  dati, non da oggi, e si fermano alla data di quotazione (chiedere 5Y di un titolo
+  quotato da due anni dà due anni).
+- **From / To** — imposta a mano qualsiasi periodo.
+- **Initial Capital** — il tuo capitale iniziale simulato (es. `10000`).
+
+Due cose da sapere:
+
+- Cambiare la finestra **sposta il grafico di conseguenza**: quello che vedi è quello che misuri.
+- Sia **RUN BACKTEST** che **RUN OPTIMIZER** valutano esattamente questa finestra, e la
+  stampano sopra i risultati. Se i due non coincidono, è un bug — leggono lo stesso controllo.
+
 ### Sezione A — Execution Type
 *"Come deve investire e disinvestire il mio denaro l'app?"*
 
-Questa è la scelta più importante. Seleziona uno dei tre stili:
+Questa è la scelta più importante: i tuoi indicatori decidono *quando* operare, ma
+l'Execution Type decide *quanto*, e se un segnale di sell o uno stop venga perfino
+ascoltato.
 
-| Modalità | Significato in parole semplici | Ideale per |
+| Modalità | Che cosa fa davvero | Ideale per |
 |---|---|---|
-| **Trading — Full Buy/Sell** | Investe tutto su un segnale di buy, poi liquida tutto su un segnale di sell. | Trading classico dentro/fuori. |
-| **Accumulation — DCA** | Investe un **importo fisso in dollari** a ogni segnale di buy, costruendo la posizione (dollar-cost averaging). Non serve vendere. | Investimento di lungo termine "continua a comprare sui ribassi". |
-| **Rebalancing — Partial** | Scambia solo una **percentuale** del portafoglio per segnale, entrando e uscendo gradualmente. | Esposizione più graduale, meno tutto-o-niente. |
+| **Trading — Signal In/Out** | Ogni segnale di buy apre o incrementa una fetta dimensionata con **Kelly**; ogni segnale di sell, trailing stop o take-profit la chiude. Tutti i controlli di rischio sono attivi. | Trading classico dentro/fuori. |
+| **Accumulation — DCA** | Investe un **importo fisso in dollari** a ogni segnale di buy finché la liquidità si esaurisce. **I segnali di sell vengono ignorati** e non esistono stop né take-profit. | Investimento di lungo termine "continua a comprare sui ribassi". |
+| **Rebalancing — Target Weight** | Ogni segnale scambia la stessa **percentuale del valore del portafoglio** — dentro su un buy, fuori su un sell. Uno stop o un take-profit liquida comunque il 100%. | Esposizione più graduale, meno tutto-o-niente. |
+
+Tre cose che sorprendono quasi tutti, tutte verificate dai test del motore:
+
+- **Trading non investe il 100%.** Il dimensionamento Kelly, con i valori predefiniti
+  (win rate 0.50, rapporto win/loss 1.50), chiede circa il **16,7%** del capitale, e il
+  cursore Scale-in lo moltiplica. La card mostra la cifra reale in dollari prima ancora
+  di lanciare il backtest.
+- **Scale-in è una rampa, non un obiettivo.** Al 25% i buy consecutivi valgono 0,25 /
+  0,50 / 0,75 / 1,00 × Kelly e si *sommano*: al terzo acquisto la posizione ha già
+  superato una dimensione Kelly e continua a crescere. Lascialo a 100% se non vuoi
+  esplicitamente quella rampa.
+- **Accumulation non ha alcuna uscita.** Se hai selezionato indicatori di sell, non fanno
+  nulla (il pannello ti avvisa). Win rate e profit factor restano vuoti perché la
+  posizione non viene mai chiusa: non è un bug, semplicemente non esiste un trade concluso.
+
+> 💡 Clicca una **`?`** su una card di modalità, oppure il pulsante **HOW EXECUTION
+> WORKS**, per aprire la spiegazione: una tabella comparativa delle meccaniche più una
+> sandbox che esegue il motore reale su un tracciato fisso di 24 barre, così puoi vedere
+> ogni modalità operare barra per barra.
 
 La tua scelta qui cambia quali opzioni appaiono nella sezione successiva.
 
@@ -75,14 +118,22 @@ Execution Type:
 - **Min Holding Period (bars)** — obbliga la posizione a restare aperta per almeno N barre prima di poter vendere. Evita l'entra-ed-esci nervoso.
 - **Trailing Stop (%)** — vende automaticamente se il prezzo scende di questa % dal suo picco. La tua rete di sicurezza.
 - **Take Profit (%)** — vende automaticamente quando sei in guadagno di questa %. Blocca i profitti. (`0` = disattivato.)
-- **Position Scaling (%)** — aggiunge questa % alla posizione sui segnali di buy ripetuti.
-- **Kelly Criterion (Win Rate + Win/Loss Ratio)** — una formula avanzata di dimensionamento delle scommesse. Lascia i valori predefiniti (0.50 / 1.50) a meno che tu non la conosca.
+- **Scale-in (%)** — quale frazione della dimensione-obiettivo calcolata da Kelly viene
+  acquistata a ogni segnale. `100` (predefinito) significa che un solo segnale compra
+  l'intera entrata. Abbassalo per entrare in modo graduale — ma ricorda che quegli
+  ordini continuano a sommarsi invece di fermarsi alla dimensione piena.
+- **Kelly Criterion (Win Rate + Win/Loss Ratio)** — la formula che fissa la dimensione
+  obiettivo dell'entrata: `win_rate − (1 − win_rate) / win_loss_ratio` del portafoglio.
+  Con i valori predefiniti (0.50 / 1.50) è il **16,7%**. Non toccarlo se non la conosci.
 
 **Mostrate in modalità Accumulation:**
 - **Amount Per Buy ($)** — quanti dollari investire a ogni segnale di buy (es. `1000`).
+  Non si applica nient'altro: questa modalità non ha vendite, né stop, né take-profit.
 
 **Mostrate in modalità Rebalancing:**
-- **Position Size (%)** — quale fetta del portafoglio scambiare per segnale (es. `25`).
+- **Portfolio Weight (%)** — quale fetta del **valore totale del portafoglio** scambiare
+  per segnale (es. `25`). Stesso peso in entrata su un buy e in uscita su un sell, quindi
+  il terzo acquisto ha la stessa dimensione del primo.
 - Più Min Holding Period, Trailing Stop e Take Profit.
 
 **Sempre mostrata — Consecutive Signals:** controlla cosa succede quando lo stesso
@@ -152,7 +203,8 @@ strategia che vince solo *prima* dei costi non è una strategia reale.
 ## 5. Esempi di workflow
 
 ### Workflow 1 — "Comprare i ribassi su RSI ipervenduto funziona su Apple?" (principiante)
-1. Sidebar sinistra: Symbol `AAPL`, date ultimi 3 anni, capitale `10000`, **REFRESH**.
+1. Sidebar sinistra: Symbol `AAPL`. Poi nel pannello Backtest: **Test Window** → imposta
+   From/To agli ultimi 3 anni, capitale `10000`.
 2. Execution Type → **Trading**.
 3. Signals → spunta un segnale **RSI oversold** per il **buy**, un segnale **RSI overbought** per il **sell**. Logica = **OR**.
 4. Transaction Costs → lascia i predefiniti (onesto).
@@ -198,7 +250,7 @@ della barra viene memorizzata. Ricaricala in qualsiasi momento dal menu a tendin
 
 | Se vedi… | Significa che… | Soluzione |
 |---|---|---|
-| *"Please load market data first"* | Nessun prezzo caricato. | Imposta symbol + date a sinistra, premi REFRESH. |
+| *"Please load market data first"* | Nessun prezzo caricato. | Scegli un symbol a sinistra; si carica da solo. Se non succede, premi **⟳** nell'header. |
 | *"Select at least one buy signal"* | Nessun trigger di buy scelto. | Spunta un segnale di buy nella sezione Signals. |
 | *"Trading mode requires at least one sell signal"* | La modalità Trading richiede una regola di uscita. | Spunta un segnale di sell, o passa alla modalità Accumulation. |
 | Zero o pochissime operazioni | Le tue regole AND sono troppo severe. | Allenta su **OR**, o allarga l'**AND Window**. |

@@ -23,6 +23,9 @@ iniconfig==2.3.0
 itsdangerous==2.2.0
 Jinja2==3.1.6
 locket==1.0.0
+# pandas.read_html needs a parser backend; without it every Wikipedia-backed
+# ticker source in lib/data_processing.py silently returns None.
+lxml==6.0.2
 MarkupSafe==3.0.3
 msgpack==1.1.2
 multitasking==0.0.12

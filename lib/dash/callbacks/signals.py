@@ -221,11 +221,11 @@ def register_signal_callbacks(app) -> None:
                                         buy_signals, sell_signals, signal_logic, signal_window):
         """Update accordion titles with selected options when collapsed."""
         strategy_labels = {
-            'trading': 'Trading (Full)',
+            'trading': 'Trading (Signal In/Out)',
             'accumulation': 'Accumulation (DCA)',
-            'rebalancing': 'Rebalancing (Partial)',
+            'rebalancing': 'Rebalancing (Target Weight)',
         }
-        strategy_summary = strategy_labels.get(strategy_mode, 'Trading (Full)')
+        strategy_summary = strategy_labels.get(strategy_mode, strategy_labels['trading'])
 
         if strategy_mode == 'trading' and strategy_preset and strategy_preset != 'custom':
             strategy_summary = f"{strategy_summary} ({strategy_preset.title()})"
@@ -239,9 +239,9 @@ def register_signal_callbacks(app) -> None:
             sizing_parts = []
             if strategy_mode == 'rebalancing':
                 if position_size_pct is None:
-                    sizing_parts.append('% per trade')
+                    sizing_parts.append('% weight')
                 else:
-                    sizing_parts.append(f'{position_size_pct:.0f}% per trade')
+                    sizing_parts.append(f'{position_size_pct:.0f}% weight')
 
             if strategy_mode == 'trading':
                 kelly_win_rate = 0.5 if kelly_win_rate is None else kelly_win_rate
@@ -255,7 +255,7 @@ def register_signal_callbacks(app) -> None:
             if trailing_stop_pct is not None and trailing_stop_pct > 0:
                 sizing_parts.append(f'TS {trailing_stop_pct:.1f}%')
             if strategy_mode == 'trading' and position_scaling_pct is not None:
-                sizing_parts.append(f'Scale {position_scaling_pct:.0f}%')
+                sizing_parts.append(f'Scale-in {position_scaling_pct:.0f}%')
             if take_profit_pct is not None and take_profit_pct > 0:
                 sizing_parts.append(f'TP {take_profit_pct:.1f}%')
 

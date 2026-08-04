@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date
 from typing import Any
 
 from dash import html
@@ -18,13 +17,12 @@ from dash import html
 from lib.dash.dash_config import (
     DEFAULT_INDICATOR_SETTINGS,
     DEFAULT_TICKER,
-    START_DATE,
     get_theme,
     merge_indicator_settings,
 )
 from lib.dash.helpers import fetch_data_with_cache
 from lib.dash.state import dashboard_state
-from lib.timeframes import normalize_interval
+from lib.timeframes import full_history_window, normalize_interval
 from lib.signals.indicators import (
     add_indicators,
     classify_signal_columns,
@@ -81,13 +79,22 @@ class BootstrapSnapshot:
 
 def load_market_session(
     ticker: str,
-    start_date: str,
-    end_date: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
     indicator_settings: dict | None = None,
     interval: str = "1d",
+    force: bool = False,
 ) -> BootstrapSnapshot:
     """
     Fetch OHLCV, compute indicators/signals, and populate dashboard_state.
+
+    Omitting ``start_date``/``end_date`` fetches the widest window Yahoo will
+    serve for ``interval`` — the dashboard's normal mode, since narrowing is a
+    downstream concern (the backtest panel's test window) rather than a fetch
+    parameter. Explicit dates remain supported for callers that do want a
+    bounded pull.
+
+    ``force`` bypasses the data cache; see ``fetch_data_with_cache``.
 
     Raises on fetch/processing failure. Used by server bootstrap and the
     Load Data callback.
@@ -103,7 +110,12 @@ def load_market_session(
     theme = get_theme()
     effective_settings = merge_indicator_settings(indicator_settings or DEFAULT_INDICATOR_SETTINGS)
 
-    df = fetch_data_with_cache(ticker, start_date, end_date, interval=interval)
+    if start_date is None or end_date is None:
+        default_start, default_end = full_history_window(interval)
+        start_date = start_date or default_start
+        end_date = end_date or default_end
+
+    df = fetch_data_with_cache(ticker, start_date, end_date, interval=interval, force=force)
     if df.empty:
         raise ValueError(f"No data available for {ticker}")
 
@@ -160,11 +172,7 @@ def load_market_session(
 def try_bootstrap_default_session() -> BootstrapSnapshot | None:
     """Preload DEFAULT_TICKER (TSLA) at process start; None on failure."""
     try:
-        snapshot = load_market_session(
-            DEFAULT_TICKER,
-            START_DATE,
-            date.today().isoformat(),
-        )
+        snapshot = load_market_session(DEFAULT_TICKER)
         logger.info(
             "Bootstrapped default session: %s (%s)",
             snapshot.header_symbol,

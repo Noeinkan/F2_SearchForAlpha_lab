@@ -226,7 +226,86 @@ def register_misc_callbacks(app) -> None:
                 }
             }
 
+            function isSymbolSearchOpen() {
+                var modal = document.getElementById('symbol-search-modal');
+                return !!(modal && modal.classList.contains('show'));
+            }
+
+            function openSymbolSearch() {
+                var btn = document.getElementById('symbol-search-trigger');
+                if (btn) {
+                    btn.click();
+                }
+            }
+
+            // True while the user is typing into a form control, so bare-key
+            // shortcuts don't hijack ordinary text entry.
+            function inTextField(e) {
+                var el = e.target;
+                if (!el) {
+                    return false;
+                }
+                var tag = (el.tagName || '').toUpperCase();
+                return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+                    || el.isContentEditable === true;
+            }
+
             document.addEventListener('keydown', function(e) {
+                // --- Symbol search (Ctrl+/ anywhere, or bare / outside a field) ---
+                // Deliberately not Ctrl+K: that is the command palette, and
+                // the two overlays must never fight over one binding.
+                if (!isSymbolSearchOpen()
+                    && ((e.ctrlKey || e.metaKey) && e.key === '/'
+                        || (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey
+                            && !inTextField(e)))) {
+                    e.preventDefault();
+                    openSymbolSearch();
+                    return;
+                }
+
+                // Inside symbol search: arrow nav + Enter, mirroring the
+                // palette's handling below. Enter inside the query input is
+                // left alone — dcc.Input's n_submit drives free-text loading.
+                if (isSymbolSearchOpen()) {
+                    var symModal = document.getElementById('symbol-search-modal');
+                    var symRows = symModal.querySelectorAll('.sfa-symsearch-row');
+                    var symActive = symModal.querySelector('.sfa-symsearch-row.active');
+
+                    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        if (symRows.length === 0) {
+                            return;
+                        }
+                        var symIdx = -1;
+                        for (var s = 0; s < symRows.length; s++) {
+                            if (symRows[s] === symActive) { symIdx = s; break; }
+                        }
+                        var step = (e.key === 'ArrowDown') ? 1 : -1;
+                        var nextIdx = (symIdx + step + symRows.length) % symRows.length;
+                        var symNext = symRows[nextIdx];
+                        symRows.forEach(function(r) { r.classList.remove('active'); });
+                        symNext.classList.add('active');
+                        symNext.scrollIntoView({ block: 'nearest' });
+                        return;
+                    }
+                    if (e.key === 'Enter') {
+                        // Only intercept when a row is highlighted; otherwise
+                        // let the input submit the typed text.
+                        if (symActive) {
+                            e.preventDefault();
+                            symActive.click();
+                        }
+                        return;
+                    }
+                    if (e.key === 'Escape') {
+                        symRows.forEach(function(r) { r.classList.remove('active'); });
+                        return;
+                    }
+                    // Swallow the rest so app shortcuts don't fire while the
+                    // user is typing a symbol.
+                    return;
+                }
+
                 // --- Command palette (Ctrl+K / Cmd+K) ---
                 // Open the palette from anywhere except an input/textarea
                 // so we don't hijack typing in other controls. The palette
@@ -384,7 +463,12 @@ def register_misc_callbacks(app) -> None:
                 if (el) { el.click(); }
             }
 
-            if (action === 'load-data')           { clickById('load-data-button'); }
+            if (action === 'open-symbol-search') {
+                // The palette closes itself on dispatch; defer so the two
+                // modals don't overlap during Bootstrap's close transition.
+                setTimeout(function() { clickById('symbol-search-trigger'); }, 180);
+            }
+            else if (action === 'load-data')      { clickById('load-data-button'); }
             else if (action === 'run-backtest')   { clickById('run-backtest-btn'); }
             else if (action === 'export-csv')     { clickById('export-csv-btn'); }
             else if (action === 'export-png')     { clickById('export-img-btn'); }

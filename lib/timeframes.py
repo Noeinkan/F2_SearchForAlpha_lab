@@ -33,6 +33,10 @@ PERIODS_PER_YEAR = {"1d": 252, "1h": 1638, "4h": 410}
 # 728, not 730: a request spanning the full 730 days comes back empty.
 MAX_LOOKBACK_DAYS: dict[str, Optional[int]] = {"1d": None, "1h": 728, "4h": 728}
 
+# Floor for "give me everything" daily requests. Predates every listed equity,
+# so yfinance simply returns from the listing date.
+EARLIEST_HISTORY = "1900-01-01"
+
 _ALIASES = {
     "d": "1d",
     "day": "1d",
@@ -176,6 +180,32 @@ def clamp_window(
         )
 
     return _fmt_date(start_dt), _fmt_date(end_dt)
+
+
+def full_history_window(
+    interval: str | None,
+    *,
+    as_of: datetime | None = None,
+) -> tuple[str, str]:
+    """Widest window Yahoo will serve for ``interval``, as ``(start, end)``.
+
+    The dashboard no longer asks the user how much history to fetch — it always
+    takes the maximum, and narrowing happens downstream on the already-loaded
+    frame. Daily has no cap, so it reaches back to ``EARLIEST_HISTORY`` and
+    yfinance returns from the listing date. Intraday reuses ``MAX_LOOKBACK_DAYS``
+    so this and ``clamp_window`` can never disagree about where the cap is.
+
+    ``as_of`` is for tests; production uses ``datetime.now()``.
+    """
+    canon = normalize_interval(interval)
+    now = as_of or datetime.now()
+    if isinstance(now, pd.Timestamp):
+        now = now.to_pydatetime()
+    now = now.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
+
+    max_days = MAX_LOOKBACK_DAYS[canon]
+    start = EARLIEST_HISTORY if max_days is None else _fmt_date(now - timedelta(days=max_days))
+    return start, _fmt_date(now)
 
 
 _OHLCV_AGG = {

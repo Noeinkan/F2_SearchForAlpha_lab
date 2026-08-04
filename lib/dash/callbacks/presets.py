@@ -52,8 +52,8 @@ def register_preset_callbacks(app) -> None:
          State('preset-selector', 'value'),
          State('preset-name-input', 'value'),
          State('ticker-dropdown', 'value'),
-         State('start-date', 'date'),
-         State('end-date', 'date'),
+         State('test-window-start', 'date'),
+         State('test-window-end', 'date'),
          State('initial-capital', 'value'),
          State('bar-interval', 'value'),
          State({'type': 'plot-toggle', 'indicator': ALL}, 'value'),
@@ -83,7 +83,7 @@ def register_preset_callbacks(app) -> None:
     )
     def manage_presets(save_clicks, save_as_clicks, rename_clicks, delete_clicks,
                        presets_data, preset_selected, preset_name_input,
-                       ticker, start_date, end_date, initial_capital, bar_interval,
+                       ticker, test_window_start, test_window_end, initial_capital, bar_interval,
                        plot_values, chart_elements, signal_checklist,
                        indicator_settings,
                        strategy_mode, strategy_preset, min_holding_period,
@@ -119,7 +119,7 @@ def register_preset_callbacks(app) -> None:
                     "Enter a preset name or select one to save.", "error"
                 )
             presets[target_name] = _build_preset_payload(
-                ticker, start_date, end_date, initial_capital,
+                ticker, test_window_start, test_window_end, initial_capital,
                 plot_values, chart_elements, signal_checklist,
                 indicator_settings, 'plotly',
                 strategy_mode, strategy_preset, min_holding_period,
@@ -149,7 +149,7 @@ def register_preset_callbacks(app) -> None:
                     f"Preset '{target_name}' already exists.", "warning"
                 )
             presets[target_name] = _build_preset_payload(
-                ticker, start_date, end_date, initial_capital,
+                ticker, test_window_start, test_window_end, initial_capital,
                 plot_values, chart_elements, signal_checklist,
                 indicator_settings, 'plotly',
                 strategy_mode, strategy_preset, min_holding_period,

@@ -30,6 +30,60 @@ from lib.signals.indicators import add_indicators, generate_signals
 logger = logging.getLogger(__name__)
 
 
+def parse_date_bound(value, *, default: str | None = None) -> pd.Timestamp | None:
+    """Parse a dcc.DatePickerSingle value into a tz-naive Timestamp.
+
+    Returns ``default`` (parsed) when ``value`` is missing, ``None`` when the
+    caller explicitly wants an open-ended bound (default ``None``).
+    """
+    if value is None or value == "":
+        return pd.Timestamp(default) if default else None
+    try:
+        return pd.Timestamp(str(value)[:10])
+    except (TypeError, ValueError):
+        return pd.Timestamp(default) if default else None
+
+
+def slice_df_to_window(
+    df: pd.DataFrame, start_date: str | None, end_date: str | None
+) -> tuple[pd.DataFrame, str]:
+    """Return ``df`` clipped to the backtest panel's test window [start, end].
+
+    The single definition of "what period am I evaluating". Both the backtest
+    and the optimizer go through here, which is the point: the optimizer used
+    to slice and the backtest did not, so a narrowed window ranked combinations
+    over one period and then reported metrics for another.
+
+    Non-datetime indexes (e.g. unit tests using a synthetic int index) are
+    passed through untouched. The returned label summarises the effective
+    window for the results/progress UI.
+    """
+    if df.empty or not isinstance(df.index, pd.DatetimeIndex):
+        return df, "full history (no date index)"
+
+    start = parse_date_bound(start_date)
+    end = parse_date_bound(end_date)
+    # `.loc[a:b]` on a DatetimeIndex is closed at *both* ends. A bare midnight
+    # `end` would drop every intraday bar later that same day; `end + 1 day`
+    # (what this used to do) instead reaches past it and swallows the next
+    # day's 00:00 bar. Land on the last instant of the end date so daily and
+    # intraday frames both stop exactly where the user said.
+    end_inclusive = (
+        end + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+        if end is not None else None
+    )
+
+    sliced = df.loc[start:end_inclusive] if start is not None or end_inclusive is not None else df
+    if sliced.empty:
+        # Fall back to the full df so the user sees an error instead of a
+        # silent zero-row "no combinations" run.
+        return df, f"{df.index.min().date()} → {df.index.max().date()} (test window empty)"
+
+    start_label = sliced.index.min().date().isoformat()
+    end_label = sliced.index.max().date().isoformat()
+    return sliced, f"{start_label} → {end_label}"
+
+
 SIGNAL_DESCRIPTIONS: Dict[str, str] = {
     # Bollinger Bands
     "BB_Breakout_Buy": "Price breaks above upper Bollinger Band (momentum breakout).",
@@ -752,8 +806,8 @@ def _build_plot_toggle_values(selected: List[str]) -> List[List[str]]:
 
 def _build_preset_payload(
     ticker: str,
-    start_date: str,
-    end_date: str,
+    test_window_start: str,
+    test_window_end: str,
     initial_capital: Any,
     plot_values: List[List[str]],
     chart_elements: List[str],
@@ -784,8 +838,17 @@ def _build_preset_payload(
     payload = {
         "market_data": {
             "ticker": ticker,
-            "start_date": start_date,
-            "end_date": end_date,
+            # No fetch window is saved: the fetch always takes maximum history,
+            # so there is nothing about it worth restoring. `test_window` is the
+            # period the preset evaluates, re-clamped to whatever data actually
+            # loads (callbacks/test_window.py). Presets written before this
+            # change carry start_date/end_date instead; those keys are simply
+            # ignored on load rather than migrated, since they described a fetch
+            # bound that no longer exists.
+            "test_window": {
+                "start": test_window_start,
+                "end": test_window_end,
+            },
             "initial_capital": initial_capital,
             "interval": interval or "1d",
         },

@@ -31,6 +31,7 @@ from lib.dash.callbacks.shared import (
     _create_best_strategy_highlight,
     _create_optimization_table,
     _create_optimization_table_mini,
+    slice_df_to_window,
 )
 
 logger = logging.getLogger(__name__)
@@ -108,54 +109,6 @@ def _shutdown_executor() -> None:
             _EXECUTOR.shutdown(wait=False, cancel_futures=True)
             _EXECUTOR = None
             logger.info("Optimizer thread-pool shut down")
-
-
-def _parse_date_bound(value, *, default: str | None) -> pd.Timestamp | None:
-    """Parse a dcc.DatePickerSingle value into a tz-naive Timestamp.
-
-    Returns ``default`` (parsed) when ``value`` is missing, ``None`` when the
-    caller explicitly wants an open-ended bound (default ``None``).
-    """
-    if value is None or value == "":
-        return pd.Timestamp(default) if default else None
-    try:
-        return pd.Timestamp(str(value)[:10])
-    except (TypeError, ValueError):
-        return pd.Timestamp(default) if default else None
-
-
-def _slice_df_to_sidebar_range(
-    df: pd.DataFrame, start_date: str | None, end_date: str | None
-) -> tuple[pd.DataFrame, str]:
-    """Return ``df`` clipped to the sidebar [start, end] window.
-
-    The chart's Plotly 1M/3M/1Y range-selector only zooms the viewport — it
-    does not filter the underlying DataFrame. The optimizer previously saw
-    the full history that the sidebar had fetched, which silently
-    contradicted the chart's visible window. Slicing here makes the
-    optimizer's ranking match the window the user is looking at.
-
-    Non-datetime indexes (e.g. unit tests using a synthetic int index) are
-    passed through untouched. The returned label summarises the effective
-    window for the progress UI.
-    """
-    if df.empty or not isinstance(df.index, pd.DatetimeIndex):
-        return df, "full history (no date index)"
-
-    start = _parse_date_bound(start_date, default=None)
-    end = _parse_date_bound(end_date, default=None)
-    # end is inclusive — bump by one day so the slice keeps the end date itself.
-    end_exclusive = (end + pd.Timedelta(days=1)) if end is not None else None
-
-    sliced = df.loc[start:end_exclusive] if start is not None or end_exclusive is not None else df
-    if sliced.empty:
-        # Fall back to the full df so the user sees an error instead of a
-        # silent zero-row "no combinations" run.
-        return df, f"{df.index.min().date()} → {df.index.max().date()} (sidebar window empty)"
-
-    start_label = sliced.index.min().date().isoformat()
-    end_label = sliced.index.max().date().isoformat()
-    return sliced, f"{start_label} → {end_label}"
 
 
 def _format_duration(seconds: float) -> str:
@@ -300,8 +253,8 @@ def register_optimization_callbacks(app) -> None:
          State('max-signals-slider', 'value'),
          State('max-combos-input', 'value'),
          State('min-trades-input', 'value'),
-         State('start-date', 'date'),
-         State('end-date', 'date'),
+         State('test-window-start', 'date'),
+         State('test-window-end', 'date'),
          State('optimization-state', 'data')],
         prevent_initial_call=True
     )
@@ -339,7 +292,7 @@ def register_optimization_callbacks(app) -> None:
                 {'display': 'none'}
             )
 
-        df, window_label = _slice_df_to_sidebar_range(full_df, start_date, end_date)
+        df, window_label = slice_df_to_window(full_df, start_date, end_date)
 
         buy_signals, sell_signals = extract_signals(df)
         combinations = generate_signal_combinations(buy_signals, sell_signals, max_signals)
@@ -411,8 +364,8 @@ def register_optimization_callbacks(app) -> None:
          Output('optimization-results-store', 'data')],
         [Input('optimization-interval', 'n_intervals')],
         [State('optimization-state', 'data'),
-         State('start-date', 'date'),
-         State('end-date', 'date')],
+         State('test-window-start', 'date'),
+         State('test-window-end', 'date')],
         prevent_initial_call=True
     )
     def process_optimization_batch(n_intervals, state, start_date, end_date):
@@ -433,7 +386,7 @@ def register_optimization_callbacks(app) -> None:
         if full_df is None:
             raise PreventUpdate
 
-        df, _window_label = _slice_df_to_sidebar_range(full_df, start_date, end_date)
+        df, _window_label = slice_df_to_window(full_df, start_date, end_date)
 
         opt_state = dashboard_state.optimization_state
         current_idx = opt_state.get('current_index', 0)

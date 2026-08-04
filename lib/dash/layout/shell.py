@@ -23,6 +23,7 @@ from .sidebar import _create_sidebar
 from .chart_area import _create_chart_area
 from .right_panel import _create_right_panel
 from .command_palette import _create_command_palette
+from .symbol_search import _create_symbol_search_modal
 from lib.dash.bootstrap import BootstrapSnapshot
 
 
@@ -36,6 +37,12 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Store(id='data-loaded-store', data=1 if bootstrap is not None else 0),
         dcc.Store(id='data-display-store', data=bootstrap.data_display if bootstrap else None),
         dcc.Store(id='chart-focus-store', data=None),
+        # Test window bookkeeping (callbacks/test_window.py). The series key is
+        # "<ticker>|<interval>" — the window resets only when that changes, so a
+        # refresh of the same series keeps a hand-narrowed window. The pending
+        # store parks a preset's saved window until its data has loaded.
+        dcc.Store(id='test-window-series-store', data=None),
+        dcc.Store(id='test-window-pending-store', data=None),
         dcc.Store(id='layout-store', data={}),
         dcc.Store(id='presets-store', data={'presets': {}}),
         dcc.Store(id='active-preset-name', data=None),
@@ -130,6 +137,21 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Store(id='command-palette-dispatch', data=None),
         dcc.Store(id='command-palette-bridge', data=None),
         dcc.Store(id='sfa-palette-esc-trigger', data=None),
+
+        # Symbol search. `watchlists-store` mirrors config/watchlists.json —
+        # memory storage on purpose, because disk is the source of truth and a
+        # stale localStorage copy would silently fight it. `symbol-search-open`
+        # is memory-backed for the same reason the palette's is: so the modal
+        # never springs open on a page load.
+        dcc.Store(id='symbol-search-open', data=False),
+        dcc.Store(id='symbol-search-filters', data={
+            'asset_class': 'all',
+            'sector': None,
+            'fav_only': False,
+        }),
+        dcc.Store(id='watchlists-store', data=None),
+        html.Div(id='symbol-search-focus-sync', style={'display': 'none'}),
+        html.Div(id='symbol-search-guard-sync', style={'display': 'none'}),
         html.Div(id='command-palette-search-sync', style={'display': 'none'}),
         html.Div(id='command-palette-after-sync', style={'display': 'none'}),
         html.Div(id='command-palette-focus-sync', style={'display': 'none'}),
@@ -163,6 +185,7 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         # Phase 5 — command palette modal (must be the LAST child so it
         # stacks above every overlay).
         _create_command_palette(styles, theme),
+        _create_symbol_search_modal(styles, theme),
 
         # Hidden elements
         html.Div(id='hidden-output', style={'display': 'none'}),
@@ -261,5 +284,55 @@ def wire_command_palette_is_open(app):
         }
         """,
         Output('command-palette-guard-sync', 'children'),
+        Input('startup-interval', 'n_intervals'),
+    )
+
+    # --- Symbol search modal: same three bindings as the palette above. ---
+
+    @app.callback(
+        Output('symbol-search-modal', 'is_open'),
+        Input('symbol-search-open', 'data'),
+        prevent_initial_call=True,
+    )
+    def _sync_symbol_search_is_open(open_state):
+        return bool(open_state)
+
+    app.clientside_callback(
+        """
+        function(openState) {
+            if (!openState) {
+                return window.dash_clientside.no_update;
+            }
+            setTimeout(function() {
+                var input = document.getElementById('symbol-search-query');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }, 50);
+            return '';
+        }
+        """,
+        Output('symbol-search-focus-sync', 'children'),
+        Input('symbol-search-open', 'data'),
+        prevent_initial_call=True,
+    )
+
+    app.clientside_callback(
+        """
+        function(_n) {
+            // Same cold-boot guard the palette needs: dbc.Modal can hydrate
+            // with a leftover `show` class and its backdrop then swallows
+            // every click in the app.
+            var modal = document.getElementById('symbol-search-modal');
+            if (modal) {
+                modal.classList.remove('show');
+                modal.style.display = 'none';
+                modal.setAttribute('aria-hidden', 'true');
+            }
+            return '';
+        }
+        """,
+        Output('symbol-search-guard-sync', 'children'),
         Input('startup-interval', 'n_intervals'),
     )

@@ -1,23 +1,25 @@
 """
 Left sidebar with three collapsible Bloomberg-style sections:
-- Market Data (ticker, dates, capital, load + overlay entry buttons)
+- Market Data (ticker + fundamentals/flow entry buttons)
 - Saved Configurations (presets CRUD)
 - Chart Settings (indicator toggles + gear icons, overlays, signal kinds)
-"""
 
-from datetime import date
+"Market Data" is deliberately thin: symbol picks the instrument, the chart
+toolbar picks the bar size, and everything else about *which period* is being
+studied belongs to the backtest panel's test window.
+"""
 
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 
 from lib.dash.dash_config import (
-    DEFAULT_TICKER, INITIAL_CAPITAL, START_DATE,
+    DEFAULT_TICKER,
     FONT_SIZES,
     PLOT_INDICATOR_OPTIONS, CHART_ELEMENT_OPTIONS, SIGNAL_OPTIONS,
     INDICATOR_SETTING_SCHEMA,
 )
-from lib.dash.components import bloomberg_section, dense_input
+from lib.dash.components import bloomberg_section
 
 
 def _default_ticker_option() -> list[dict[str, str]]:
@@ -32,66 +34,48 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
     market_section = html.Div([
         html.Div([
                 html.Label("Symbol", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '4px', 'display': 'block'}),
-                dmc.Select(
-                    id='ticker-dropdown',
-                    value=DEFAULT_TICKER,
-                    placeholder="Type to search ticker or company...",
-                    searchable=True,
-                    clearable=False,
-                    nothingFoundMessage="No matches",
-                    limit=50,
-                    comboboxProps={"withinPortal": True, "shadow": "md"},
-                    size="xs",
-                    data=_default_ticker_option(),
-                    style={'fontSize': FONT_SIZES['sm']},
+                # Opens the symbol-search modal (see layout/symbol_search.py).
+                # The modal is the whole search experience — asset-class tabs,
+                # sector filter, watchlists — so this is just a display of the
+                # current pick plus its shortcut hint.
+                html.Button(
+                    id='symbol-search-trigger',
+                    className='sfa-symbol-trigger',
+                    n_clicks=0,
+                    title='Search symbols (Ctrl+/)',
+                    **{'aria-label': 'Search symbols'},
+                    children=[
+                        html.Span(DEFAULT_TICKER, id='symbol-trigger-symbol',
+                                  className='sfa-symbol-trigger-sym num'),
+                        html.Span('', id='symbol-trigger-name',
+                                  className='sfa-symbol-trigger-name'),
+                        html.Span('Ctrl+/', className='sfa-status-kbd sfa-symbol-trigger-kbd'),
+                    ],
+                ),
+                # Hidden state carrier. Fifteen callbacks read or write
+                # `ticker-dropdown.value` as the current symbol; keeping the
+                # component mounted (just not visible) means the new search UI
+                # is purely additive and none of them had to change. Its `data`
+                # is a bounded popular-symbol list, not the full universe —
+                # see ticker_search.dmc_ticker_select_data.
+                html.Div(
+                    dmc.Select(
+                        id='ticker-dropdown',
+                        value=DEFAULT_TICKER,
+                        searchable=True,
+                        clearable=False,
+                        comboboxProps={"withinPortal": True, "shadow": "md"},
+                        size="xs",
+                        data=_default_ticker_option(),
+                    ),
+                    style={'display': 'none'},
                 ),
             ], style={'marginBottom': '12px'}),
 
-            html.Div([
-                html.Div([
-                    html.Label("Start Date", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '4px', 'display': 'block'}),
-                    dcc.DatePickerSingle(
-                        id='start-date',
-                        date=START_DATE,
-                        display_format='YYYY-MM-DD',
-                        className='dark-datepicker',
-                        style={'width': '100%'}
-                    ),
-                ], style={'flex': 1}),
-                html.Div([
-                    html.Label("End Date", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '4px', 'display': 'block'}),
-                    dcc.DatePickerSingle(
-                        id='end-date',
-                        date=date.today().isoformat(),
-                        display_format='YYYY-MM-DD',
-                        className='dark-datepicker date-picker-end',
-                        style={'width': '100%'}
-                    ),
-                ], style={'flex': 1}),
-            ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '12px'}),
-
-            html.Div([
-                html.Label("Initial Capital", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': '4px', 'display': 'block'}),
-                dense_input(
-                    id='initial-capital',
-                    type='number',
-                    value=INITIAL_CAPITAL,
-                    style={**styles['input'], 'textAlign': 'right'}
-                ),
-            ], style={'marginBottom': '12px'}),
-
-            html.Button(
-                [html.Span("REFRESH"), html.Span(" ENTER", style={'opacity': '0.65', 'marginLeft': '8px', 'fontSize': '10px'})],
-                id='load-data-button',
-                style={**styles['button_outline'], 'width': '100%', 'marginTop': '4px'},
-                n_clicks=0
-            ),
-            dbc.Tooltip(
-                "Re-fetch with the current symbol and date range (Ctrl+Enter). "
-                "Symbol changes load automatically.",
-                target='load-data-button',
-                placement='right',
-            ),
+            # No date range and no capital here any more. Both were backtest
+            # inputs wearing a market-data hat: the fetch now always pulls the
+            # widest window Yahoo will serve, and the period under test lives
+            # with the rest of the backtest parameters in the right panel.
             html.Button(
                 "OPEN FUNDAMENTALS",
                 id='open-fundamentals-button',

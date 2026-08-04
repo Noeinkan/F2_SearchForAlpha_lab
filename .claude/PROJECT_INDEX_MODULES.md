@@ -23,7 +23,14 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | [lib/strategy.py](../lib/strategy.py) | `backtest()`, `run_backtest()` — 3 strategy modes |
 | [lib/backtest_result.py](../lib/backtest_result.py) | `BacktestMetrics`, `BacktestResult`, `run_backtest_result()`, Sortino/Calmar |
 
-**Strategy modes** (`strategy_mode`): `trading`, `accumulation`, `rebalancing`. (Swing/Position/Trend are separate UI quick-presets — `strategy-preset` values `swing`/`position`/`trend` in `right_panel.py`, not engine modes.)
+**Strategy modes** (`strategy_mode`), sized in `_execute_buy` / `_execute_sell`:
+- `trading` — Kelly size × `position_scaling`; scaling ramps each *order* and stacks, with no target cap
+- `accumulation` — fixed `amount_per_buy`; sell signals discarded, trailing stop pinned to `inf`
+- `rebalancing` — `position_size_pct` of **portfolio value** on both sides (not of cash / units held)
+
+(Swing/Position/Trend are separate UI quick-presets — `strategy-preset` values `swing`/`position`/`trend` in `right_panel.py`, not engine modes.)
+
+**Execution Type explainer** — user-facing copy in [lib/dash/execution_glossary.py](../lib/dash/execution_glossary.py); every number it shows is produced by [lib/dash/execution_sim.py](../lib/dash/execution_sim.py), which runs the real `backtest()` over a fixed 24-bar tape. Explanatory UI must never recompute sizing itself.
 
 ### Signals & Indicators
 | File | Class / Function |
@@ -105,6 +112,9 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | [lib/dash/routes.py](../lib/dash/routes.py) | URL route parsing — terminal, fundamentals, flow, ticker_terminal |
 | [lib/dash/flow_glossary.py](../lib/dash/flow_glossary.py) | Shared term/flag definitions, `score_breakdown()`, `interpretive_banner()` for Flow Scanner |
 | [lib/dash/flow_view.py](../lib/dash/flow_view.py) | Pure render — `render_flow_reports()`, `render_ticker_card()`, native Dash DataTable |
+| [lib/dash/execution_glossary.py](../lib/dash/execution_glossary.py) | Execution Type copy — `MODE_SPECS`, `MECHANICS_ROWS`, `PREDICT_QUESTIONS` (pure data) |
+| [lib/dash/execution_sim.py](../lib/dash/execution_sim.py) | `simulate()`, `first_entry_summary()` — runs the real `backtest()` on a fixed tape so explainer figures cannot drift |
+| [lib/dash/execution_view.py](../lib/dash/execution_view.py) | Pure render — `render_execution_learn_content()`, `render_mechanics_matrix()`, `render_fingerprint()` |
 | [lib/dash/ticker_search.py](../lib/dash/ticker_search.py) | Ticker autocomplete options |
 
 **Layout** (`lib/dash/layout/` — one file per UI region):
@@ -122,7 +132,8 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | File | Concern |
 |------|---------|
 | `startup.py` | Initial load, bootstrap wiring |
-| `data_loading.py` | Ticker fetch, indicator compute |
+| `data_loading.py` | Ticker fetch (always max history), indicator compute |
+| `test_window.py` | Evaluated period — window defaults/presets, chart focus sync |
 | `strategy_ui.py` | Strategy mode / param controls |
 | `signals.py` | Signal toggle callbacks |
 | `chart_plotly.py` | Plotly chart updates |

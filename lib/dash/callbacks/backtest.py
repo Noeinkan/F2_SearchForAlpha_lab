@@ -9,6 +9,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.data_processing import create_backtest_results
+from lib.dash.callbacks.shared import slice_df_to_window
 from lib.dash.components import build_alert, kpi_cell
 from lib.dash.dash_config import get_theme
 from lib.dash.state import dashboard_state
@@ -23,6 +24,8 @@ def register_backtest_callbacks(app) -> None:
         [Input('run-backtest-btn', 'n_clicks')],
         [State('ticker-dropdown', 'value'),
          State('initial-capital', 'value'),
+         State('test-window-start', 'date'),
+         State('test-window-end', 'date'),
          State('buy-signals', 'value'),
          State('sell-signals', 'value'),
          State('strategy-mode', 'value'),
@@ -43,7 +46,9 @@ def register_backtest_callbacks(app) -> None:
          State('slippage-pct', 'value'),
          State('commission-pct', 'value')]
     )
-    def run_backtest_callback(n_clicks, ticker, initial_capital, buy_signals, sell_signals,
+    def run_backtest_callback(n_clicks, ticker, initial_capital,
+                              test_window_start, test_window_end,
+                              buy_signals, sell_signals,
                               strategy_mode, amount_per_buy, position_size_pct,
                               kelly_win_rate, kelly_win_loss_ratio,
                               min_holding_period, trailing_stop_pct, stop_mode, position_scaling_pct,
@@ -55,9 +60,14 @@ def register_backtest_callbacks(app) -> None:
 
         theme = get_theme()
 
-        df = dashboard_state.df
-        if df is None:
+        full_df = dashboard_state.df
+        if full_df is None:
             return build_alert("Please load market data first", "warning", theme=theme)
+
+        # Same slice the optimizer takes, from the same helper. Skipping this is
+        # what let the optimizer rank combinations over the test window while
+        # the backtest reported metrics for the entire fetched history.
+        df, window_label = slice_df_to_window(full_df, test_window_start, test_window_end)
 
         # Validation based on strategy mode
         if not buy_signals:
@@ -168,6 +178,28 @@ def register_backtest_callbacks(app) -> None:
 
             return html.Div([
                 build_alert("Backtest completed successfully!", "success", dismissable=False, theme=theme),
+                # State the evaluated window explicitly. The metrics below mean
+                # nothing without it, and it is what the optimizer prints too —
+                # if the two ever disagree again it is now visible on screen.
+                html.Div(
+                    [
+                        html.Span("WINDOW", style={'color': theme['text_secondary'], 'letterSpacing': '1.5px'}),
+                        html.Span(
+                            f"{window_label} · {len(df):,} bars",
+                            className='num',
+                            style={'color': theme['text_primary']},
+                        ),
+                    ],
+                    id='backtest-window-label',
+                    style={
+                        'display': 'flex',
+                        'justifyContent': 'space-between',
+                        'alignItems': 'center',
+                        'gap': '8px',
+                        'fontSize': '10px',
+                        'marginBottom': '8px',
+                    },
+                ),
                 html.Div([
                     html.Span("PORTFOLIO", style={'color': theme['text_secondary'], 'letterSpacing': '1.5px'}),
                     html.Span(

@@ -71,7 +71,25 @@ EXPECTED_SHELL_IDS = {
     "run-optimization-btn",
     "optimization-results",
     "command-palette",
+    # Test window — the backtest panel owns the evaluated period.
+    "test-window-start",
+    "test-window-end",
+    "test-window-preset",
+    "initial-capital",
+    # Symbol search. `ticker-dropdown` above is now hidden but MUST stay
+    # mounted — fifteen callbacks read it as the current symbol.
+    "symbol-search-modal",
+    "symbol-search-trigger",
+    "symbol-search-query",
+    "symbol-search-results",
 }
+
+
+def test_symbol_search_stores_present(ids):
+    """Stores the symbol-search modal reads and writes."""
+    assert "watchlists-store" in ids
+    assert "symbol-search-open" in ids
+    assert "symbol-search-filters" in ids
 
 
 @pytest.mark.parametrize("component_id", sorted(EXPECTED_SHELL_IDS))
@@ -103,6 +121,18 @@ def test_no_plotly_zoom_store(ids):
     dispatch layer.
     """
     assert "chart-view-range-store" not in ids
+
+
+def test_no_sidebar_fetch_window(ids):
+    """The fetch window is gone, not merely relocated.
+
+    ``start-date``/``end-date`` meant two things at once — the yfinance pull and
+    (in the optimizer only) the evaluated period. The fetch now always takes
+    maximum history and the evaluated period is ``test-window-*``. Reintroducing
+    these ids would resurrect the ambiguity.
+    """
+    assert "start-date" not in ids
+    assert "end-date" not in ids
 
 
 def test_region_classes_present(class_names):

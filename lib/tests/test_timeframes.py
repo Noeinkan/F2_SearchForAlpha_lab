@@ -11,13 +11,45 @@ import pytest
 from lib.backtest_result import metrics_from_result_df
 from lib.data_processing import DataFetchError, fetch_data
 from lib.timeframes import (
+    EARLIEST_HISTORY,
     IntervalError,
     clamp_window,
+    full_history_window,
     normalize_interval,
     periods_per_year,
     resample_ohlcv,
 )
 from datetime import datetime
+
+
+# --- full_history_window ------------------------------------------------------
+
+_AS_OF = datetime(2026, 8, 4)
+
+
+def test_full_history_window_daily_is_unbounded():
+    """Daily has no Yahoo cap, so "everything" really means everything."""
+    start, end = full_history_window("1d", as_of=_AS_OF)
+    assert start == EARLIEST_HISTORY
+    assert end == "2026-08-04"
+
+
+@pytest.mark.parametrize("interval", ["1h", "4h"])
+def test_full_history_window_intraday_uses_the_lookback_cap(interval):
+    start, end = full_history_window(interval, as_of=_AS_OF)
+    assert (pd.Timestamp(end) - pd.Timestamp(start)).days == 728
+
+
+@pytest.mark.parametrize("interval", ["1d", "1h", "4h"])
+def test_full_history_window_survives_clamp_unchanged(interval):
+    """The two must agree about where the cap is.
+
+    `clamp_window` is applied again inside `fetch_data`. If it disagreed with
+    `full_history_window` the fetch would silently narrow, or log a spurious
+    "clamping start" warning on every single load.
+    """
+    window = full_history_window(interval, as_of=_AS_OF)
+    assert clamp_window(*window, interval, as_of=_AS_OF) == window
 
 
 def test_normalize_interval_aliases():

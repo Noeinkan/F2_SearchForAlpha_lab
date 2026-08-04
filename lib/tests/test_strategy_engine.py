@@ -621,6 +621,159 @@ class TestAccumulationMode:
         assert np.isinf(result['Trailing_Stop']).all()
 
 
+class TestRebalancingMode:
+    """Rebalancing is a *target weight* mode: both sides size off portfolio value.
+
+    Sizing off cash (buys) or off units held (sells) was the old behaviour; it
+    made repeated buys decay geometrically and contradicted the mode's own name,
+    its UI label and its docstring.
+    """
+
+    def test_buy_sizes_off_portfolio_value_not_cash(self):
+        close = np.full(10, 100.0)
+        buy = np.zeros(10, dtype=int)
+        buy[0] = 1
+        result = _run(
+            _frame(close, buy=buy),
+            strategy_mode='rebalancing', position_size_pct=25.0,
+            initial_capital=10_000.0, trailing_stop_loss=0.9,
+        )
+        # 25% of the $10,000 portfolio at $100 = 25 units. Identical to 25% of
+        # cash here only because no position is open yet — the next test is the
+        # one that actually separates the two rules.
+        assert result['Units_to_buy'].iloc[1] == pytest.approx(25.0)
+
+    def test_repeated_buys_stay_equal_weight_instead_of_decaying(self):
+        """Three buys in a flat market must each be the same size.
+
+        Under the old ``pct * cash`` rule these were 25 / 18.75 / 14.06 units.
+        """
+        close = np.full(12, 100.0)
+        buy = np.zeros(12, dtype=int)
+        buy[0] = buy[2] = buy[4] = 1
+        result = _run(
+            _frame(close, buy=buy),
+            strategy_mode='rebalancing', position_size_pct=25.0,
+            initial_capital=10_000.0, trailing_stop_loss=0.9,
+        )
+        filled = result['Units_to_buy'].to_numpy()
+        assert filled[filled > 0].tolist() == pytest.approx([25.0, 25.0, 25.0])
+
+    def test_sell_sizes_off_portfolio_value_not_units_held(self):
+        close = np.full(12, 100.0)
+        buy = np.zeros(12, dtype=int)
+        sell = np.zeros(12, dtype=int)
+        buy[0] = 1          # -> 25 units held
+        sell[2] = 1
+        result = _run(
+            _frame(close, buy=buy, sell=sell),
+            strategy_mode='rebalancing', position_size_pct=25.0,
+            initial_capital=10_000.0, trailing_stop_loss=0.9,
+        )
+        # 25% of the $10,000 portfolio = 25 units, and 25 units are held, so the
+        # whole position goes. The old ``pct * units`` rule sold 6.25 units.
+        assert result['Units_to_sell'].iloc[3] == pytest.approx(25.0)
+        assert result['Units'].iloc[3] == pytest.approx(0.0)
+
+    def test_sell_is_capped_at_units_actually_held(self):
+        """A target weight above the open position liquidates, never goes short."""
+        close = np.full(12, 100.0)
+        buy = np.zeros(12, dtype=int)
+        sell = np.zeros(12, dtype=int)
+        buy[0] = 1
+        sell[2] = 1
+        result = _run(
+            _frame(close, buy=buy, sell=sell),
+            strategy_mode='rebalancing', position_size_pct=10.0,
+            initial_capital=10_000.0, trailing_stop_loss=0.9,
+        )
+        held = result['Units'].iloc[2]
+        assert result['Units_to_sell'].iloc[3] == pytest.approx(held)
+        assert (result['Units'] >= -1e-9).all()
+
+    def test_buy_still_clamps_to_available_cash(self):
+        """An over-weight request degrades to 'spend what's left', not an error."""
+        close = np.full(10, 100.0)
+        buy = np.ones(10, dtype=int)
+        result = _run(
+            _frame(close, buy=buy),
+            strategy_mode='rebalancing', position_size_pct=100.0,
+            initial_capital=10_000.0, trailing_stop_loss=0.9,
+            commission_per_trade=FEE, fx_fee_pct=FX, slippage_pct=SLIP,
+        )
+        assert (result['Cash_Value'] >= -1e-9).all()
+
+
+KELLY_PARAMS = {'win_rate': 0.5, 'win_loss_ratio': 1.5}
+KELLY_FRACTION = 0.5 - (0.5 / 1.5)          # 0.16666...
+
+
+class TestTradingModeScaling:
+    """``position_scaling`` ramps *each order*, it is not a target weight.
+
+    Pinning this down matters because the UI describes the mode to the user: the
+    first entry is ``kelly x position_scaling`` of portfolio value, and repeated
+    buys keep stacking without converging on any cap.
+    """
+
+    def test_full_scaling_buys_the_whole_kelly_size_on_the_first_signal(self):
+        close = np.full(10, 100.0)
+        buy = np.zeros(10, dtype=int)
+        buy[0] = 1
+        result = _run(
+            _frame(close, buy=buy), allow_fractional=True,
+            position_sizing_strategy='kelly_criterion',
+            position_sizing_params=KELLY_PARAMS,
+            position_scaling=1.0, initial_capital=10_000.0,
+            trailing_stop_loss=0.9,
+        )
+        expected_units = (KELLY_FRACTION * 10_000.0) / 100.0
+        assert result['Units_to_buy'].iloc[1] == pytest.approx(expected_units)
+
+    def test_quarter_scaling_quarters_the_first_entry(self):
+        """The old dashboard default: a 16.7% Kelly size became a 4.2% entry."""
+        close = np.full(14, 100.0)
+        buy = np.zeros(14, dtype=int)
+        buy[0] = 1
+        result = _run(
+            _frame(close, buy=buy), allow_fractional=True,
+            position_sizing_strategy='kelly_criterion',
+            position_sizing_params=KELLY_PARAMS,
+            position_scaling=0.25, initial_capital=10_000.0,
+            trailing_stop_loss=0.9,
+        )
+        kelly_units = (KELLY_FRACTION * 10_000.0) / 100.0
+        assert result['Units_to_buy'].iloc[1] == pytest.approx(kelly_units * 0.25)
+        # 4.17 units at $100 out of a $10,000 account.
+        assert result['Units'].iloc[1] * 100.0 / 10_000.0 == pytest.approx(0.0417, abs=1e-4)
+
+    def test_scale_in_ramps_order_size_and_never_caps(self):
+        """Consecutive buys are sized 0.25, 0.50, 0.75, 1.00 x Kelly and stack.
+
+        There is no target weight the position converges to — by the 3rd buy the
+        holding is already 1.5x one Kelly size. Any UI copy that calls this
+        'scaling up to full size' would be wrong.
+        """
+        close = np.full(14, 100.0)
+        buy = np.ones(14, dtype=int)
+        result = _run(
+            _frame(close, buy=buy), allow_fractional=True,
+            position_sizing_strategy='kelly_criterion',
+            position_sizing_params=KELLY_PARAMS,
+            position_scaling=0.25, initial_capital=10_000.0,
+            trailing_stop_loss=0.9,
+        )
+        kelly_units = (KELLY_FRACTION * 10_000.0) / 100.0
+        filled = result['Units_to_buy'].to_numpy()
+        first_four = filled[filled > 0][:4] / kelly_units
+        assert first_four == pytest.approx([0.25, 0.50, 0.75, 1.00], rel=1e-3)
+        # Cumulative, not convergent (buys land one bar after their signal):
+        # 0.25 Kelly held, then 0.75, then straight past 1.0 to 1.5.
+        assert result['Units'].iloc[1] / kelly_units == pytest.approx(0.25, rel=1e-3)
+        assert result['Units'].iloc[2] / kelly_units == pytest.approx(0.75, rel=1e-3)
+        assert result['Units'].iloc[3] / kelly_units == pytest.approx(1.50, rel=1e-3)
+
+
 # --------------------------------------------------------------------------- #
 # ATR fallback
 # --------------------------------------------------------------------------- #

@@ -282,14 +282,28 @@ FUNDAMENTALS_PERIOD_OPTIONS = [
 ]
 DEFAULT_FUNDAMENTALS_PERIOD = 'annual'
 INITIAL_CAPITAL = 10000
-START_DATE = '2018-01-01'
 DEFAULT_SIGNAL_WINDOW = 4
+
+# Backtest panel test-window shortcuts. ``max`` means the whole loaded frame;
+# the numeric values are years back from the frame's last bar, and ``ytd``
+# snaps to January 1st of that bar's year. Resolved in callbacks/test_window.py.
+TEST_WINDOW_PRESETS = [
+    {'label': 'MAX', 'value': 'max'},
+    {'label': '5Y', 'value': '5y'},
+    {'label': '2Y', 'value': '2y'},
+    {'label': '1Y', 'value': '1y'},
+    {'label': 'YTD', 'value': 'ytd'},
+]
 
 # =============================================================================
 # PRESET STORAGE
 # =============================================================================
 
 PRESET_FILE_PATH = os.path.join('config', 'ui_presets.json')
+
+# Named symbol watchlists starred from the symbol-search modal. Disk is the
+# source of truth; the browser store is a mirror. See lib/dash/watchlist_storage.py.
+WATCHLIST_FILE_PATH = os.path.join('config', 'watchlists.json')
 
 # =============================================================================
 # SERVER CONFIG
@@ -299,7 +313,10 @@ START_PORT = 8050
 MAX_PORT_TRIES = 100
 
 # Bump when persisted dcc.Store shape changes (clears stale dash-* browser storage).
-UI_STORAGE_VERSION = "3"
+# 4: sidebar start-date/end-date replaced by the backtest panel's test window.
+# 5: added execution-explored-store (Execution Type explainer progress).
+# 6: added symbol-search modal stores (watchlists, filters).
+UI_STORAGE_VERSION = "6"
 
 # Default OHLCV bar interval for the dashboard (1d / 1h / 4h).
 DEFAULT_BAR_INTERVAL = "1d"

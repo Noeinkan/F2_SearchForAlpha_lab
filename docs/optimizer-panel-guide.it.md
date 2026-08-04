@@ -32,9 +32,13 @@ top-10 ordinata.** È un motore di ricerca per idee di trading.
 **Carica prima i dati.** Come il tab Backtest, l'Optimizer lavora su *qualsiasi grafico
 sia attualmente caricato*. Nessun dato → mostra *"Please load market data first"*.
 
-Nella **sidebar a sinistra** (Market Data): imposta **Symbol**, **Start / End Date**,
-**Initial Capital**, poi premi **REFRESH**. Una volta caricati i prezzi, passa al tab
-**Optimizer** in cima al pannello di destra.
+Nella **sidebar a sinistra** (Market Data): imposta il **Symbol** — carica da solo tutto
+lo storico disponibile. Poi, nel tab **Backtest**, imposta **Test Window** e **Initial
+Capital**. Una volta caricati i prezzi, passa al tab **Optimizer** in cima al pannello di
+destra.
+
+> L'Optimizer classifica le combinazioni sulla stessa Test Window, e la stampa mentre gira.
+> Fare poi il backtest del vincitore misura esattamente lo stesso periodo.
 
 ---
 
@@ -137,7 +141,7 @@ passaggio è importante).
 ## 5. Esempi di workflow
 
 ### Workflow 1 — "Non ho idea da dove iniziare" (principiante)
-1. Carica un symbol e le date a sinistra, **REFRESH**.
+1. Scegli un symbol a sinistra, poi imposta una **Test Window** nel tab Backtest.
 2. Tab Optimizer → lascia **Max Signals per Side** = `2`, **Max Combinations** = `100`.
 3. Ordina per **RET**. Clicca **RUN OPTIMIZER**.
 4. Leggi la card Best Strategy e la tabella top-10.

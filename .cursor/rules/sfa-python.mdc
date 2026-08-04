@@ -25,8 +25,16 @@ Aggregator in `lib/signals/indicators.py` collects columns matching these patter
 4. Add defaults to `config/strategy_config.yaml`
 
 ## Strategy modes (`lib/strategy.py`, `strategy_mode`)
-`trading` · `accumulation` · `rebalancing`
+Sizing rules live in `_execute_buy` / `_execute_sell`:
+- `trading` — Kelly size × `position_scaling`; scaling ramps each *order* and stacks (no target cap)
+- `accumulation` — fixed `amount_per_buy`; sell signals discarded, stop pinned to `inf`
+- `rebalancing` — `position_size_pct` of **portfolio value**, both sides (not of cash/units)
+
 (Swing/Position/Trend are UI quick-presets, not engine modes.)
+
+User-facing copy for these modes lives in `lib/dash/execution_glossary.py`; all numbers
+shown come from `lib/dash/execution_sim.py`, which runs the real engine. Never hardcode
+sizing arithmetic into explanatory UI — that is how the old captions went stale.
 
 ## Config
 Read params via `lib/config_loader.py` — never hardcode indicator windows.
