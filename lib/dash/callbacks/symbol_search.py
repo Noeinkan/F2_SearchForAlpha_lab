@@ -80,15 +80,25 @@ def register_symbol_search_callbacks(app) -> None:
 
     # Sector options depend on the active asset-class tab, so "Technology"
     # only appears while stocks are in scope and the ETF categories only while
-    # ETFs are.
+    # ETFs are. This listens to the tab clicks rather than the filter store:
+    # the store is downstream of `symbol-search-sector.value`, so reading it as
+    # an Input here would close a dependency cycle.
     @app.callback(
         [Output('symbol-search-sector', 'options'),
          Output('symbol-search-sector', 'value')],
-        Input('symbol-search-filters', 'data'),
-        State('symbol-search-sector', 'value'),
+        Input({'type': 'sym-class', 'index': ALL}, 'n_clicks'),
+        [State('symbol-search-sector', 'value'),
+         State('symbol-search-filters', 'data')],
     )
-    def _sector_options(filters, current):
-        asset_class, _, _ = _filters(filters)
+    def _sector_options(_class_clicks, current, filters):
+        ctx = callback_context
+        index = _triggered_index(ctx.triggered[0]['prop_id']) if ctx.triggered else None
+        if index:
+            # Take the class straight off the click; the store has not been
+            # updated by `_update_filters` yet.
+            asset_class = None if index == 'all' else index
+        else:
+            asset_class, _, _ = _filters(filters)
         values = sectors(asset_class)
         options = [{'label': value, 'value': value} for value in values]
         # Drop a selection that the new asset class does not offer.
