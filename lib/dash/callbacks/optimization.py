@@ -30,6 +30,7 @@ from lib.dash.helpers import (
     apply_optimizer_constraints,
 )
 from lib.dash.layout.optimizer_workspace import _optimizer_empty_state
+from lib.dash.optimizer_history import append_history, summarize_run
 from lib.dash.state import dashboard_state
 from lib.dash.styles import get_styles
 from lib.dash.callbacks.shared import (
@@ -775,14 +776,20 @@ def register_optimization_callbacks(app) -> None:
          Output('run-optimization-btn', 'children', allow_duplicate=True),
          Output('run-optimization-btn', 'style', allow_duplicate=True),
          Output('apply-strategy-container', 'style', allow_duplicate=True),
-         Output('optimization-results-store', 'data')],
+         Output('optimization-results-store', 'data'),
+         Output('optimizer-run-history-store', 'data', allow_duplicate=True)],
         [Input('optimization-interval', 'n_intervals')],
         [State('optimization-state', 'data'),
          State('test-window-start', 'date'),
-         State('test-window-end', 'date')],
+         State('test-window-end', 'date'),
+         State('ticker-dropdown', 'value'),
+         State('max-signals-slider', 'value'),
+         State('optimizer-run-history-store', 'data')],
         prevent_initial_call=True
     )
-    def process_optimization_batch(n_intervals, state, start_date, end_date):
+    def process_optimization_batch(
+        n_intervals, state, start_date, end_date, ticker, max_signals, history,
+    ):
         """Process a batch of combinations on each interval tick.
 
         Uses a thread pool so multiple backtests run in parallel. Each worker
@@ -884,6 +891,7 @@ def register_optimization_callbacks(app) -> None:
                     idle_style,
                     {'display': 'none'},
                     [],
+                    no_update,
                 )
 
             state['running'] = False
@@ -904,6 +912,17 @@ def register_optimization_callbacks(app) -> None:
                 ),
             ])
 
+            records = results_df.to_dict('records')
+            history_entry = summarize_run(
+                ticker=str(ticker or ''),
+                results=records,
+                total_combos=total,
+                sort_by=state.get('sort_by'),
+                realistic=bool(state.get('realistic')),
+                max_signals=max_signals,
+            )
+            new_history = append_history(history, history_entry)
+
             return (
                 state,
                 final_progress,
@@ -913,7 +932,8 @@ def register_optimization_callbacks(app) -> None:
                 _RUN_LABEL,
                 idle_style,
                 {'display': 'block'},
-                results_df.to_dict('records'),
+                records,
+                new_history,
             )
 
         state['current_index'] = end_idx
@@ -956,6 +976,7 @@ def register_optimization_callbacks(app) -> None:
             run_style,
             {'display': 'none'},
             [],
+            no_update,
         )
 
     @app.callback(

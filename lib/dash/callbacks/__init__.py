@@ -15,6 +15,7 @@ from .backtest import register_backtest_callbacks
 from .optimization import register_optimization_callbacks
 from .optimize_workspace import register_optimize_workspace_callbacks
 from .optimizer_sync import register_optimizer_sync_callbacks
+from .optimizer_phase3 import register_optimizer_phase3_callbacks
 from .fundamentals import register_fundamentals_callbacks
 from .flow import register_flow_callbacks
 from .routing import register_routing_callbacks
@@ -40,6 +41,7 @@ def register_callbacks(app) -> None:
     register_optimization_callbacks(app)
     register_optimize_workspace_callbacks(app)
     register_optimizer_sync_callbacks(app)
+    register_optimizer_phase3_callbacks(app)
     register_routing_callbacks(app)
     register_fundamentals_callbacks(app)
     register_flow_callbacks(app)

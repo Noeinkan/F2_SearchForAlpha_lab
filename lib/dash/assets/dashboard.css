@@ -1545,6 +1545,21 @@ input[type="radio"] {
     pointer-events: none;
 }
 
+.sfa-optimize-landscape,
+.sfa-optimize-oos,
+.sfa-optimize-history {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--sfa-border, #2a2a2a);
+    border-radius: 4px;
+    background: var(--sfa-bg-secondary, #111);
+}
+
+.sfa-optimize-history {
+    max-height: 180px;
+    overflow-y: auto;
+}
+
 .sfa-flow-iframe {
     background: #0A0A0A;
 }
@@ -2714,6 +2729,17 @@ label,
     align-items: center;
     justify-content: center;
     justify-self: center;
+}
+
+/* Placeholder when a signal has no buy or sell variant (keeps the grid). */
+.signal-toggle--na {
+    width: 14px;
+    height: 14px;
+    border: 1px dashed var(--border-secondary);
+    border-radius: 2px;
+    opacity: 0.35;
+    cursor: default;
+    box-sizing: border-box;
 }
 
 .signal-toggle .form-check {

@@ -128,6 +128,9 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | [lib/dash/overlay_registry.py](../lib/dash/overlay_registry.py) | Shared overlay metadata — `get_tv_overlay_specs()`, `build_overlay_visibility()` |
 | [lib/dash/components.py](../lib/dash/components.py) | Reusable component builders shared across `layout/` regions |
 | [lib/dash/helpers.py](../lib/dash/helpers.py) | Callback-side data prep and optimisation utilities |
+| [lib/dash/combo_walkforward.py](../lib/dash/combo_walkforward.py) | `ComboSpec`, `run_combo_walkforward()` — signal-combo walk-forward for Optimizer OOS |
+| [lib/dash/optimizer_history.py](../lib/dash/optimizer_history.py) | `summarize_run`, `append_history`, `history_for_ticker` — compact run history |
+| [lib/dash/optimizer_landscape.py](../lib/dash/optimizer_landscape.py) | `build_return_sharpe_figure()` — Return vs Sharpe scatter |
 | [lib/dash/styles.py](../lib/dash/styles.py) | `get_styles(theme)` — theme-derived inline style dicts |
 | [lib/dash/preset_storage.py](../lib/dash/preset_storage.py) | `config/ui_presets.json` atomic load/save |
 
@@ -148,7 +151,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 
 The Execution Type explainer modal (`execution-learn-modal`) is emitted by `backtest_panel.py`, not by `shell.py`.
 
-**Callbacks** (`lib/dash/callbacks/` — 19 registered modules via `register_callbacks()`):
+**Callbacks** (`lib/dash/callbacks/` — 20 registered modules via `register_callbacks()`):
 | File | Concern |
 |------|---------|
 | `startup.py` | Initial load, bootstrap wiring |
@@ -162,6 +165,7 @@ The Execution Type explainer modal (`execution-learn-modal`) is emitted by `back
 | `chart.py` | Sole `chart-payload-store` writer + the clientside renderer |
 | `backtest.py` | Run backtest from UI |
 | `optimization.py` | In-dashboard optimisation (thread pool, cost estimate) |
+| `optimizer_phase3.py` | Landscape, run history, OOS validation, Bayesian sweep (Optimizer Phase 3) |
 | `optimizer_sync.py` | Bidirectional sync of `opt-*` mirrors ↔ Backtest SoT controls |
 | `optimize_workspace.py` | `/optimize` navigate, overlay visibility, chart reparent |
 | `routing.py` | URL-based page routing |

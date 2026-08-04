@@ -59,6 +59,9 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
             'sort_ascending': False
         }),
         dcc.Store(id='optimization-results-store', data=[]),
+        dcc.Store(id='optimizer-run-history-store', data=[], storage_type='local'),
+        dcc.Store(id='optimizer-oos-store', data=None),
+        dcc.Store(id='bayesian-results-store', data=None),
         dcc.Store(id='optimizer-apply-store', data=None),
         dcc.Store(id='optimizer-autorun', data=None),
         dcc.Store(id='optimizer-autorun-sink', data=None),
@@ -84,6 +87,7 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         # max_intervals) so the timestamp keeps ticking every second.
         dcc.Interval(id='clock-interval', interval=1000),
         dcc.Interval(id='optimization-interval', interval=500, disabled=True, n_intervals=0),
+        dcc.Interval(id='bayesian-interval', interval=500, disabled=True, n_intervals=0),
         dcc.Store(id='flow-state-store', data={'last_scan_at': None, 'tickers': []}, storage_type='session'),
         dcc.Store(id='flow-data-store', data=None, storage_type='session'),
         dcc.Interval(id='flow-rescan-interval', interval=2000, max_intervals=1, disabled=True),

@@ -101,6 +101,12 @@ partial results). Close restores the chart to the terminal and returns to `/tick
   caption reminding you that testing many combos makes the top result more likely to be luck.
 - A **Best Strategy highlight** card and **top-10 table**.
 - An **Apply Best Strategy** button appears.
+- A **Return vs Sharpe** scatter chart plots every valid combo; the current
+  winner is starred.
+- **Run history** (persisted in the browser) lists recent combinatorial searches
+  for this ticker — timestamp, combo count, top return/Sharpe, truncated signals.
+- **VALIDATE OOS** runs a 5-window rolling walk-forward on the sorted winner and
+  shows IS/OOS Sharpe means, degradation, and a robust yes/no verdict.
 
 ### Apply Best Strategy
 Click it and the Optimizer will:
@@ -110,6 +116,22 @@ Click it and the Optimizer will:
 
 From there you see a **full** backtest on the winner — with your real Trade Setup
 knobs and Transaction Costs applied (see §7 for why that second step matters).
+
+### Validate OOS (walk-forward)
+After a combinatorial run finishes, click **VALIDATE OOS** next to Apply. The app
+re-tests the current leaderboard winner across five rolling 12-month train / 3-month
+test windows (same geometry as the CLI walk-forward runner). The strip shows mean
+in-sample vs out-of-sample Sharpe, degradation, and whether the combo passes the
+robustness gate (≥80% of windows with OOS Sharpe > 1.0 and mean degradation < 0.4).
+This uses the same signal columns as the winner; when **Realistic ranking** was on,
+costs/stops from that run are applied.
+
+### Bayesian Sweep (agent bundles)
+The **Bayesian Sweep** accordion runs Optuna TPE on a named **agent strategy**
+bundle from `config/strategy_config.yaml` (search_space required). Set trials,
+objective metric (sortino/sharpe/calmar/composite), and held-out months; the search
+window is your test-window dates minus the held-out tail. Results show best params
+and metrics when the background study completes — this can take several minutes.
 
 ---
 

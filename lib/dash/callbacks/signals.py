@@ -77,17 +77,28 @@ def register_signal_callbacks(app) -> None:
 
             buy_signal = row.get('buy')
             sell_signal = row.get('sell')
-            buy_toggle = dcc.Checklist(
-                id={'type': 'signal-toggle', 'side': 'buy', 'value': buy_signal or ''},
-                options=[{'label': '', 'value': buy_signal or ''}],
-                value=[buy_signal] if buy_signal in selected_buy else [],
-                className='signal-toggle buy-toggle signal-toggle--buy'
+            # One-sided strategies (RSI Overbought → sell only, BB DoubleBottom
+            # → buy only, …) must not expose a ghost checkbox on the missing
+            # side — that let users "select" Overbought as a buy signal.
+            buy_toggle = (
+                dcc.Checklist(
+                    id={'type': 'signal-toggle', 'side': 'buy', 'value': buy_signal},
+                    options=[{'label': '', 'value': buy_signal}],
+                    value=[buy_signal] if buy_signal in selected_buy else [],
+                    className='signal-toggle buy-toggle signal-toggle--buy'
+                )
+                if buy_signal else
+                html.Span(className='signal-toggle signal-toggle--na', title='No buy variant')
             )
-            sell_toggle = dcc.Checklist(
-                id={'type': 'signal-toggle', 'side': 'sell', 'value': sell_signal or ''},
-                options=[{'label': '', 'value': sell_signal or ''}],
-                value=[sell_signal] if sell_signal in selected_sell else [],
-                className='signal-toggle sell-toggle signal-toggle--sell'
+            sell_toggle = (
+                dcc.Checklist(
+                    id={'type': 'signal-toggle', 'side': 'sell', 'value': sell_signal},
+                    options=[{'label': '', 'value': sell_signal}],
+                    value=[sell_signal] if sell_signal in selected_sell else [],
+                    className='signal-toggle sell-toggle signal-toggle--sell'
+                )
+                if sell_signal else
+                html.Span(className='signal-toggle signal-toggle--na', title='No sell variant')
             )
 
             rows.append(
@@ -186,12 +197,12 @@ def register_signal_callbacks(app) -> None:
         selected_buy = [
             item_id['value']
             for item_id, value in zip(buy_ids, buy_values)
-            if value
+            if value and item_id.get('value')
         ]
         selected_sell = [
             item_id['value']
             for item_id, value in zip(sell_ids, sell_values)
-            if value
+            if value and item_id.get('value')
         ]
 
         return selected_buy, selected_sell, no_update

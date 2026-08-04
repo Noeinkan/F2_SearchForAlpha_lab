@@ -435,6 +435,69 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                     title="Realistic Ranking",
                     item_id='opt-realistic',
                 ),
+                dbc.AccordionItem(
+                    [
+                        html.Div([
+                            html.Label("Strategy bundle", style=label_style),
+                            dcc.Dropdown(
+                                id='bayesian-strategy-dropdown',
+                                options=[],
+                                value=None,
+                                placeholder='Select agent strategy…',
+                                className='dark-dropdown',
+                                style={'fontSize': FONT_SIZES['xs'], 'marginBottom': '10px'},
+                            ),
+                            html.Div([
+                                html.Div([
+                                    html.Label("Trials", style=label_style),
+                                    dense_input(
+                                        id='bayesian-trials-input',
+                                        type='number',
+                                        value=30,
+                                        min=5,
+                                        max=200,
+                                        style=styles['input'],
+                                    ),
+                                ], style={'flex': 1}),
+                                html.Div([
+                                    html.Label("Held-out (mo)", style=label_style),
+                                    dense_input(
+                                        id='bayesian-held-out-input',
+                                        type='number',
+                                        value=6,
+                                        min=1,
+                                        max=24,
+                                        style=styles['input'],
+                                    ),
+                                ], style={'flex': 1}),
+                            ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '10px'}),
+                            html.Label("Objective metric", style=label_style),
+                            dcc.Dropdown(
+                                id='bayesian-metric-dropdown',
+                                options=[
+                                    {'label': 'Sortino', 'value': 'sortino'},
+                                    {'label': 'Sharpe', 'value': 'sharpe'},
+                                    {'label': 'Calmar', 'value': 'calmar'},
+                                    {'label': 'Composite', 'value': 'composite'},
+                                ],
+                                value='sortino',
+                                clearable=False,
+                                className='dark-dropdown',
+                                style={'fontSize': FONT_SIZES['xs'], 'marginBottom': '12px'},
+                            ),
+                            html.Button(
+                                "RUN BAYESIAN",
+                                id='run-bayesian-btn',
+                                style={**styles['button_primary'], 'width': '100%'},
+                                n_clicks=0,
+                            ),
+                            html.Div(id='bayesian-progress', style={'marginTop': '10px'}),
+                            html.Div(id='bayesian-results', style={'marginTop': '8px'}),
+                        ]),
+                    ],
+                    title="Bayesian Sweep",
+                    item_id='opt-bayesian',
+                ),
             ],
             id='optimize-config-accordion',
             start_collapsed=False,
@@ -500,21 +563,53 @@ def _create_optimize_results_pane(styles: dict, theme: dict) -> html.Div:
             children=_optimizer_empty_state(theme),
             style={'flex': '1 1 auto', 'minHeight': 0, 'overflowY': 'auto'},
         ),
-        html.Div(id='apply-strategy-container', children=[
-            html.Button(
-                "Apply Best Strategy",
-                id='apply-strategy-btn',
-                style={
-                    **styles['button_primary'],
-                    'width': '100%',
-                    'marginTop': '12px',
-                    'backgroundColor': theme['accent_green'],
-                },
-                n_clicks=0,
+        html.Div([
+            _section_label("Return vs Sharpe", None, styles['help_icon'], theme),
+            dcc.Graph(
+                id='optimizer-landscape-graph',
+                figure={},
+                config={'displayModeBar': False},
+                style={'height': '220px'},
             ),
+        ], className='sfa-optimize-landscape', style=_card_style(theme)),
+        html.Div(id='optimizer-oos-panel', className='sfa-optimize-oos'),
+        html.Div(id='optimizer-history-panel', className='sfa-optimize-history'),
+        html.Div(id='apply-strategy-container', children=[
+            html.Div([
+                html.Button(
+                    "Apply Best Strategy",
+                    id='apply-strategy-btn',
+                    style={
+                        **styles['button_primary'],
+                        'flex': '1 1 auto',
+                        'backgroundColor': theme['accent_green'],
+                    },
+                    n_clicks=0,
+                ),
+                html.Button(
+                    "VALIDATE OOS",
+                    id='validate-oos-btn',
+                    style={
+                        **styles['button_outline'],
+                        'flex': '1 1 auto',
+                        'marginLeft': '8px',
+                    },
+                    n_clicks=0,
+                ),
+            ], style={
+                'display': 'flex',
+                'flexDirection': 'row',
+                'gap': '8px',
+                'marginTop': '12px',
+            }),
             dbc.Tooltip(
                 "Copy the winner into the Backtest panel and return to the terminal.",
                 target='apply-strategy-btn',
+                placement='top',
+            ),
+            dbc.Tooltip(
+                "Rolling walk-forward on the current leaderboard winner (5 windows).",
+                target='validate-oos-btn',
                 placement='top',
             ),
         ], style={'display': 'none', 'flex': '0 0 auto'}),

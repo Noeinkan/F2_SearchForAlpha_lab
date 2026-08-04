@@ -174,6 +174,11 @@ Themes are palette dicts in `THEMES` in
 
 When you change the shape of any persisted `dcc.Store`, bump
 `UI_STORAGE_VERSION` in `dash_config.py` so stale browser storage is discarded.
+Phase 3 adds `optimizer-run-history-store` (localStorage, capped summaries).
+
+The full-screen Optimizer (`/optimize`) adds a Plotly **Return vs Sharpe**
+landscape (`optimizer-landscape-graph`), OOS validation strip, run-history list,
+and a **Bayesian Sweep** rail section — callbacks in `optimizer_phase3.py`.
 
 ---
 

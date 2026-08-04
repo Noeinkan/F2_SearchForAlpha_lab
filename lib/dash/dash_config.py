@@ -320,7 +320,8 @@ MAX_PORT_TRIES = 100
 # 4: sidebar start-date/end-date replaced by the backtest panel's test window.
 # 5: added execution-explored-store (Execution Type explainer progress).
 # 6: added symbol-search modal stores (watchlists, filters).
-UI_STORAGE_VERSION = "6"
+# 7: optimizer run-history store (localStorage).
+UI_STORAGE_VERSION = "7"
 
 # Default OHLCV bar interval for the dashboard (1d / 1h / 4h).
 DEFAULT_BAR_INTERVAL = "1d"
