@@ -91,6 +91,7 @@ def test_learn_sections_cover_beginner_topics():
     assert any("volume" in t or "open interest" in t for t in titles)
     assert any("score" in t for t in titles)
     assert any("inventory" in t for t in titles)
+    assert any("call resistance" in t for t in titles)
     assert all(s["body"] for s in LEARN_SECTIONS)
 
 

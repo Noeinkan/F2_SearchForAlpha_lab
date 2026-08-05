@@ -38,6 +38,7 @@ from lib.dash.flow_glossary import (
     score_breakdown,
     ticker_sentiment,
 )
+from lib.options.greeks import build_gex_ladders, build_vanna_model
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +119,13 @@ class TickerReport:
     top_put_strikes: list[tuple[float, int]] = field(default_factory=list)
     # Per-expiry strike ladders for inventory chart: { "YYYY-MM-DD": [row, ...] }
     strike_ladders: dict[str, list[dict]] = field(default_factory=dict)
-    # Per-expiry walls / max pain: { "YYYY-MM-DD": {max_pain, call_wall, put_wall} }
+    # Per-expiry levels: { "YYYY-MM-DD": {max_pain, call_wall, put_wall, hvl} }
     inventory_meta: dict[str, dict] = field(default_factory=dict)
+    # Estimated GEX/DEX ladders (BS from IV×OI): includes "__all__" merged key
+    gex_ladders: dict[str, list[dict]] = field(default_factory=dict)
+    gex_meta: dict[str, dict] = field(default_factory=dict)
+    # Per-expiry OI Vanna Model: { "YYYY-MM-DD": { strikes, delta_notional } }
+    vanna_model: dict[str, dict] = field(default_factory=dict)
     error: str | None = None
 
 
@@ -356,14 +362,27 @@ def call_put_walls(ladder: list[dict]) -> tuple[float | None, float | None]:
     return cw, pw
 
 
+def hvl_strike(ladder: list[dict]) -> float | None:
+    """High Volume Level — strike with max combined call+put volume today."""
+    if not ladder:
+        return None
+    best = max(
+        ladder,
+        key=lambda r: int(r.get("call_vol") or 0) + int(r.get("put_vol") or 0),
+    )
+    total = int(best.get("call_vol") or 0) + int(best.get("put_vol") or 0)
+    return float(best["strike"]) if total > 0 else None
+
+
 def inventory_meta_for_ladder(ladder: list[dict]) -> dict:
-    """Build max_pain / call_wall / put_wall for one expiry ladder."""
+    """Build max_pain / call_wall / put_wall / hvl for one expiry ladder."""
     cw, pw = call_put_walls(ladder)
     mp = max_pain_strike(ladder)
     return {
         "max_pain": mp,
         "call_wall": cw,
         "put_wall": pw,
+        "hvl": hvl_strike(ladder),
     }
 
 
@@ -412,6 +431,11 @@ def compute_metrics(report: TickerReport) -> None:
     )[:10]
 
     report.strike_ladders, report.inventory_meta = build_strike_ladders(report.contracts)
+    report.gex_ladders, report.gex_meta = build_gex_ladders(
+        report.contracts,
+        report.spot,
+    )
+    report.vanna_model = build_vanna_model(report.contracts, report.spot)
 
     hu = sum(1 for f in report.flags if f.kind == "high_unusual")
     bp = sum(1 for f in report.flags if f.kind == "block_premium")
@@ -743,6 +767,9 @@ def _report_to_dict(report: TickerReport, today: date | None = None) -> dict:
         "top_put_strikes": report.top_put_strikes,
         "strike_ladders": report.strike_ladders,
         "inventory_meta": report.inventory_meta,
+        "gex_ladders": report.gex_ladders,
+        "gex_meta": report.gex_meta,
+        "vanna_model": report.vanna_model,
         "flags": [{"kind": f.kind, "message": f.message} for f in report.flags],
         "contracts": flagged_contracts,
     }

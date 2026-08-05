@@ -54,16 +54,23 @@ TERM_DEFINITIONS: dict[str, str] = {
         "Short-dated IV can spike (especially into 0DTE) while longer tenors stay calmer."
     ),
     "inventory": (
-        "Open interest (or volume) stacked by strike price — a snapshot of where options positions sit. "
-        "Puts are drawn left, calls right. This is positioning, not buy/sell flow."
+        "Open interest (or volume) by strike — a snapshot of where options positions sit. "
+        "Green bars up are calls; red bars down are puts. Vertical lines mark Spot, Call Resistance, "
+        "Put Support, and HVL. This is positioning, not buy/sell flow."
+    ),
+    "spot": (
+        "Spot — the current price of the underlying. The dashed Spot line is the reference for "
+        "ITM vs OTM and for reading walls relative to where price sits now."
     ),
     "call_wall": (
-        "The strike with the most call open interest. Traders often watch it as a possible resistance "
-        "or magnet near expiry — educational only, not a forecast."
+        "Call Resistance (call wall) — the strike with the most call open interest. "
+        "Traders often watch it as possible upside resistance or a magnet near expiry — "
+        "educational only, not a forecast."
     ),
     "put_wall": (
-        "The strike with the most put open interest. Often watched as possible support or a downside "
-        "magnet near expiry — educational only, not a forecast."
+        "Put Support (put wall) — the strike with the most put open interest. "
+        "Often watched as possible downside support or a magnet near expiry — "
+        "educational only, not a forecast."
     ),
     "max_pain": (
         "The strike where total intrinsic value of all open calls and puts is smallest — "
@@ -72,7 +79,66 @@ TERM_DEFINITIONS: dict[str, str] = {
     ),
     "oi_vs_volume": (
         "Open interest = contracts still open from prior sessions (positioning). "
-        "Volume = contracts traded today (activity). Toggle the inventory chart between them."
+        "Volume = contracts traded today (activity). Toggle the inventory chart between them. "
+        "Call/Put walls use OI; HVL uses volume."
+    ),
+    "gex": (
+        "Gamma exposure (GEX) — estimated dealer gamma at each strike from Black-Scholes "
+        "gamma × open interest. Positive (green) often means dealers are long gamma; "
+        "negative (red) short gamma. Educational estimate, not a vendor GEX feed."
+    ),
+    "net_gex": (
+        "Net GEX at a strike = call GEX + put GEX. Calls add positive GEX; puts add negative "
+        "(common retail dealer-sign convention). Bars show net at each strike."
+    ),
+    "dex": (
+        "Delta exposure (DEX) — estimated dealer delta at each strike from Black-Scholes "
+        "delta × open interest, with the same call+/put− sign convention as GEX."
+    ),
+    "gex_profile": (
+        "GEX profile — cumulative net GEX from low strike to high. Shows how gamma builds "
+        "across the ladder, not just the bar at one strike."
+    ),
+    "dex_profile": (
+        "DEX profile — cumulative net DEX from low strike to high. Often tracks the GEX "
+        "shape but reflects directional (delta) exposure instead of gamma."
+    ),
+    "call_resistance": (
+        "Call resistance — strike at/above spot with the largest estimated call GEX. "
+        "Often watched as a possible ceiling or magnet near expiry — heuristic only."
+    ),
+    "put_support": (
+        "Put support — strike at/below spot with the largest |put GEX|. "
+        "Often watched as a possible floor or magnet — heuristic only."
+    ),
+    "hvl": (
+        "HVL (High Volume Level) — the strike with the most combined call + put volume today. "
+        "It highlights where the tape was busiest, which can differ from open-interest walls "
+        "(positioning from prior sessions). A liquidity / attention marker, not a forecast."
+    ),
+    "estimated_greeks": (
+        "Greeks here are Black-Scholes estimates from Yahoo implied volatility and open "
+        "interest — not SpotGamma or another paid feed. Labels say estimated for a reason. "
+        + DISCLAIMER
+    ),
+    "vanna": (
+        "Vanna measures how an option's delta changes when implied volatility changes "
+        "(and how vega changes when the underlying moves). Large open interest with "
+        "high vanna can force dealers to adjust hedges as IV or spot shifts."
+    ),
+    "delta_notional": (
+        "Delta notional — estimated dollar delta exposure: delta × open interest × 100 × spot. "
+        "The Vanna Model chart evaluates this at each hypothetical strike level."
+    ),
+    "vanna_flow": (
+        "OI Vanna Flow / Vanna Model — a curve of estimated dealer delta notional across "
+        "strikes, built from Black-Scholes deltas × open interest. The U-shape often "
+        "reflects how hedging pressure changes as spot moves through the OI distribution."
+    ),
+    "dealer_hedging": (
+        "Dealer-hedging convention used here: assume dealers are short customer open interest, "
+        "so customer delta is flipped (multiplied by −1) before summing notional. "
+        "A common retail heuristic — not confirmed positioning."
     ),
 }
 
@@ -194,11 +260,24 @@ LEARN_SECTIONS: list[dict[str, str]] = [
         "title": "How to read the inventory chart",
         "body": (
             "The inventory chart shows open interest (or today's volume) at each strike for a chosen expiry. "
-            "Green bars to the right are calls; red bars to the left are puts. "
-            "A dashed yellow line marks the current stock price; a dotted cyan line marks max pain when available. "
-            "Call wall / put wall label the strikes with the largest call and put open interest. "
+            "Green bars above zero are calls; red bars below zero are puts. "
+            "Vertical dashed lines mark Spot (current price), Call Resistance (largest call OI), "
+            "Put Support (largest put OI), and HVL (busiest volume strike). "
+            "A dotted cyan Max Pain line appears when available. "
             "Yahoo Finance does not report whether trades were bought or sold, so this is positioning — "
-            "not a GEXstream-style bought/sold flow tape. Educational/research use only."
+            "not a dealer GEX/Vanna or bought/sold flow tape. Educational/research use only."
+        ),
+    },
+    {
+        "title": "Call Resistance, Put Support, and HVL",
+        "body": (
+            "Call Resistance is the strike with the most call open interest; Put Support is the strike "
+            "with the most put open interest. Near expiry, heavy OI at those strikes is often watched "
+            "as a support/resistance heuristic or possible pin — not a guaranteed barrier. "
+            "HVL (High Volume Level) is different: it is today's busiest strike by combined call+put volume, "
+            "so it can sit away from the OI walls when new activity clusters elsewhere. "
+            "These levels are descriptive aggregates from the Yahoo option chain. They are not dealer "
+            "gamma (GEX), vanna, or a price forecast. Educational/research use only — not financial advice."
         ),
     },
     {
@@ -212,7 +291,77 @@ LEARN_SECTIONS: list[dict[str, str]] = [
             "signal. The Flow page chart is illustrative only. Educational/research use only."
         ),
     },
+    {
+        "title": "How to read Net GEX",
+        "body": (
+            "Net GEX bars show estimated dealer gamma at each strike: green to the right (positive), "
+            "red to the left (negative). Yellow and orange curves are cumulative GEX and DEX profiles. "
+            "Dashed lines mark spot, call resistance (heavy call gamma above spot), put support "
+            "(heavy put gamma below spot), and HVL (highest volume strike). "
+            "Values are Black-Scholes estimates from Yahoo IV × open interest with a call+/put− "
+            "dealer-sign convention — not a SpotGamma product. "
+            + DISCLAIMER
+        ),
+    },
+    {
+        "title": "How to read the vanna flow chart",
+        "body": (
+            "The Vanna Model plots estimated dealer delta notional against strike (treated as a "
+            "hypothetical spot). At each level, Black-Scholes deltas are recomputed, multiplied by "
+            "open interest × 100 × spot, and flipped under a short-customer dealer convention. "
+            "A U-shaped trough near the money often means hedging pressure changes as price walks "
+            "through the OI stack; wings show where notional rebuilds. Toggle expiries to overlay "
+            "near-term vs further-dated curves. This is an OI-based estimate from Yahoo IV — not "
+            "trade direction, not a paid vanna feed, and not a buy/sell signal. "
+            + DISCLAIMER
+        ),
+    },
 ]
+
+# Caption / panel chrome for the Net GEX chart (Flow page).
+GEX_PANEL: dict[str, str] = {
+    "title": "Net gamma exposure",
+    "caption": (
+        "Estimated GEX by strike from Yahoo IV × OI (Black-Scholes). "
+        "Green = positive net GEX; red = negative. Profiles are cumulative. "
+        + DISCLAIMER
+    ),
+}
+
+# OI Vanna Model panel on the Flow page (live estimate from chain IV × OI).
+VANNA_PANEL: dict[str, Any] = {
+    "title": "OI Vanna Model",
+    "subtitle": "Estimated dealer delta notional across strikes (open-interest weighted)",
+    "caption": (
+        "Each point asks: if the underlying were at this strike, how much dealer delta "
+        "notional would the open-interest book imply? Built from Black-Scholes deltas × "
+        "OI × 100 × spot, with dealers assumed short customer OI."
+    ),
+    "bullets": (
+        "Trough near the money: hedging pressure often lightest where ATM deltas cancel.",
+        "Wings: as spot walks into ITM calls or puts, dealer delta notional rebuilds.",
+        "Expiry toggles: overlay near-dated vs further curves from the same scan.",
+    ),
+    "footer": (
+        "OI-based estimate from Yahoo IV — no trade direction. "
+        "Not a vendor Vanna/GEX product. " + DISCLAIMER
+    ),
+}
+
+VANNA_REGION_TIPS: dict[str, str] = {
+    "trough": (
+        "Near-spot trough: estimated dealer delta notional often dips where opposing "
+        "call/put deltas offset — educational shape, not a pin forecast."
+    ),
+    "left_wing": (
+        "Lower strikes: puts move deeper ITM as spot falls; dealer short-OI delta "
+        "notional typically rises in magnitude."
+    ),
+    "right_wing": (
+        "Higher strikes: calls move deeper ITM as spot rises; dealer hedge notional "
+        "often rebuilds on the upside wing."
+    ),
+}
 
 # Illustrative theta-decay panel on the Flow page (not LEARN modal copy).
 THETA_PANEL: dict[str, Any] = {

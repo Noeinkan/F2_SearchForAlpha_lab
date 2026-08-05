@@ -96,6 +96,14 @@ def test_max_pain_and_walls():
     assert mp in {r["strike"] for r in ladder}
 
 
+def test_hvl_strike_from_volume():
+    from scripts.flow_scanner import hvl_strike
+
+    ladder = aggregate_strike_ladder(_contracts_for_ladder())
+    # 95P vol 200 + 95C vol 10 = 210; 105C 150 + 105P 20 = 170 → HVL at 95
+    assert hvl_strike(ladder) == 95.0
+
+
 def test_compute_metrics_fills_strike_ladders():
     contracts = _contracts_for_ladder()
     report = TickerReport(
@@ -115,6 +123,7 @@ def test_compute_metrics_fills_strike_ladders():
     meta = report.inventory_meta["2026-06-20"]
     assert meta["call_wall"] == 105.0
     assert meta["put_wall"] == 95.0
+    assert meta["hvl"] == 95.0
     assert meta["max_pain"] is not None
 
 
@@ -137,6 +146,7 @@ def test_reports_to_json_includes_strike_ladders():
     assert "strike_ladders" in row
     assert "inventory_meta" in row
     assert "2026-06-20" in row["strike_ladders"]
+    assert row["inventory_meta"]["2026-06-20"]["hvl"] == 95.0
 
 
 def test_filter_ladder_window():
@@ -157,20 +167,35 @@ def test_nearest_expiry():
     assert nearest_expiry({}) is None
 
 
-def test_build_inventory_figure_has_call_put_traces():
+def test_build_inventory_figure_vertical_with_levels():
     theme = get_theme(DEFAULT_THEME)
     ladder = aggregate_strike_ladder(_contracts_for_ladder())
     fig = build_inventory_figure(
         ladder,
         spot=100.0,
-        meta={"max_pain": 100.0, "call_wall": 105.0, "put_wall": 95.0},
+        meta={"max_pain": 100.0, "call_wall": 105.0, "put_wall": 95.0, "hvl": 95.0},
         metric="oi",
         theme=theme,
     )
-    assert len(fig.data) == 2
+    assert len(fig.data) >= 2
     assert fig.data[0].name == "Puts"
     assert fig.data[1].name == "Calls"
-    assert all(x <= 0 for x in fig.data[0].x)
+    # Vertical orientation: strikes on x, puts below zero on y
+    assert list(fig.data[0].x) == list(fig.data[1].x)
+    assert all(y <= 0 for y in fig.data[0].y)
+    assert all(y >= 0 for y in fig.data[1].y)
+    legend_names = {t.name for t in fig.data}
+    assert "Call Resistance" in legend_names
+    assert "Put Support" in legend_names
+    assert "HVL" in legend_names
+    assert "Spot" in legend_names
+    shape_xs = set()
+    for s in fig.layout.shapes or []:
+        x0 = s["x0"] if isinstance(s, dict) else getattr(s, "x0", None)
+        shape_xs.add(x0)
+    assert 100.0 in shape_xs  # spot
+    assert 105.0 in shape_xs  # call wall
+    assert 95.0 in shape_xs   # put wall / HVL
 
 
 def test_render_inventory_panel_and_ticker_card():
@@ -196,7 +221,12 @@ def test_render_inventory_panel_and_ticker_card():
         "contracts": [],
         "strike_ladders": {"2026-06-20": ladder},
         "inventory_meta": {
-            "2026-06-20": {"max_pain": 100.0, "call_wall": 105.0, "put_wall": 95.0},
+            "2026-06-20": {
+                "max_pain": 100.0,
+                "call_wall": 105.0,
+                "put_wall": 95.0,
+                "hvl": 95.0,
+            },
         },
     }
     panel = render_inventory_panel(report, theme)
@@ -204,15 +234,31 @@ def test_render_inventory_panel_and_ticker_card():
     card = render_ticker_card(report, theme, index=0)
     blob = str(card)
     assert "flow-inv-graph" in blob or "Options inventory" in blob
+    assert "Call Resistance" in blob
 
     fig, caption = figure_from_report(report, expiry="2026-06-20", metric="vol", theme=theme)
-    assert len(fig.data) == 2
+    assert len(fig.data) >= 2
     assert "volume" in caption.lower() or "Today" in caption
+    assert "Call Resistance" in caption
+    assert "Put Support" in caption
+    assert "HVL" in caption
 
 
 def test_glossary_inventory_terms_and_learn():
-    for key in ("inventory", "call_wall", "put_wall", "max_pain", "oi_vs_volume"):
+    for key in (
+        "inventory",
+        "call_wall",
+        "put_wall",
+        "max_pain",
+        "oi_vs_volume",
+        "hvl",
+        "spot",
+    ):
         assert key in TERM_DEFINITIONS
         assert TERM_DEFINITIONS[key]
+    assert "Call Resistance" in TERM_DEFINITIONS["call_wall"]
+    assert "Put Support" in TERM_DEFINITIONS["put_wall"]
+    assert "calls up" in TERM_DEFINITIONS["inventory"].lower() or "bars up" in TERM_DEFINITIONS["inventory"].lower()
     titles = {s["title"].lower() for s in LEARN_SECTIONS}
     assert any("inventory" in t for t in titles)
+    assert any("call resistance" in t and "hvl" in t for t in titles)

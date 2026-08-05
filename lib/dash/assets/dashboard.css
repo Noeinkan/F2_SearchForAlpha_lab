@@ -1837,6 +1837,69 @@ input[type="radio"] {
     max-width: 72ch;
 }
 
+.sfa-flow-gex {
+    margin: 6px 0 10px;
+}
+
+.sfa-flow-gex-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.sfa-flow-gex-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.sfa-flow-gex-expiry .Select-control,
+.sfa-flow-gex-expiry .Select__control {
+    min-height: 28px !important;
+}
+
+.sfa-flow-gex-graph .js-plotly-plot,
+.sfa-flow-gex-graph .plotly {
+    width: 100% !important;
+}
+
+.sfa-flow-gex-caption {
+    max-width: 72ch;
+}
+
+.sfa-flow-vanna {
+    margin: 6px 0 10px;
+}
+
+.sfa-flow-vanna-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.sfa-flow-vanna-expiry {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.sfa-flow-vanna-graph .js-plotly-plot,
+.sfa-flow-vanna-graph .plotly {
+    width: 100% !important;
+}
+
+.sfa-flow-vanna-caption {
+    max-width: 72ch;
+}
+
 .sfa-flow-learn-modal .modal-content {
     max-height: min(85vh, 720px);
 }

@@ -12,6 +12,8 @@ from dash.exceptions import PreventUpdate
 
 from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_TERMINAL, get_theme
 from lib.dash.flow_inventory import figure_from_report
+from lib.dash.flow_gex import figure_from_gex_report
+from lib.dash.flow_vanna import figure_from_vanna_report
 from lib.dash.flow_view import (
     render_flow_placeholder,
     render_flow_reports,
@@ -285,6 +287,66 @@ def register_flow_callbacks(app) -> None:
             report,
             expiry=expiry,
             metric=metric or "oi",
+            theme=theme,
+        )
+
+    @app.callback(
+        Output({"type": "flow-gex-graph", "index": MATCH}, "figure"),
+        Output({"type": "flow-gex-caption", "index": MATCH}, "children"),
+        Input({"type": "flow-gex-expiry", "index": MATCH}, "value"),
+        State({"type": "flow-gex-expiry", "index": MATCH}, "id"),
+        State("flow-data-store", "data"),
+        State("theme-store", "data"),
+        prevent_initial_call=True,
+    )
+    def update_gex_chart(expiry, id_dict, flow_data, theme_name):
+        if not flow_data:
+            raise PreventUpdate
+        ticker = str((id_dict or {}).get("index") or "").upper()
+        report = next(
+            (
+                r
+                for r in (flow_data.get("reports") or [])
+                if str(r.get("ticker", "")).upper() == ticker
+            ),
+            None,
+        )
+        if not report:
+            raise PreventUpdate
+        theme = get_theme(theme_name or DEFAULT_THEME)
+        return figure_from_gex_report(
+            report,
+            expiry=expiry,
+            theme=theme,
+        )
+
+    @app.callback(
+        Output({"type": "flow-vanna-graph", "index": MATCH}, "figure"),
+        Output({"type": "flow-vanna-caption", "index": MATCH}, "children"),
+        Input({"type": "flow-vanna-expiry", "index": MATCH}, "value"),
+        State({"type": "flow-vanna-expiry", "index": MATCH}, "id"),
+        State("flow-data-store", "data"),
+        State("theme-store", "data"),
+        prevent_initial_call=True,
+    )
+    def update_vanna_chart(active_expiries, id_dict, flow_data, theme_name):
+        if not flow_data:
+            raise PreventUpdate
+        ticker = str((id_dict or {}).get("index") or "").upper()
+        report = next(
+            (
+                r
+                for r in (flow_data.get("reports") or [])
+                if str(r.get("ticker", "")).upper() == ticker
+            ),
+            None,
+        )
+        if not report:
+            raise PreventUpdate
+        theme = get_theme(theme_name or DEFAULT_THEME)
+        return figure_from_vanna_report(
+            report,
+            active_expiries=active_expiries or [],
             theme=theme,
         )
 

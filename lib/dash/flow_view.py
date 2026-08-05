@@ -32,6 +32,8 @@ from lib.dash.flow_glossary import (
     ticker_sentiment,
 )
 from lib.dash.flow_inventory import render_inventory_panel
+from lib.dash.flow_gex import render_gex_panel
+from lib.dash.flow_vanna import render_vanna_panel
 
 _TABLE_COLUMNS = [
     ("Strike", "strike"),
@@ -1342,7 +1344,9 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
 
     insight_block = _insight_list(insights, theme)
     score_chips = _score_chip_row(report, theme)
+    gex_panel = render_gex_panel(report, theme)
     inventory_panel = render_inventory_panel(report, theme)
+    vanna_panel = render_vanna_panel(report, theme)
     # Fallback to the lightweight strike-dot map when ladder data is absent
     # (older flow_report.json without strike_ladders).
     strike_map = None if inventory_panel is not None else _strike_map(report, theme)
@@ -1403,10 +1407,14 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
     ]
     if score_chips is not None:
         card_children.append(score_chips)
+    if gex_panel is not None:
+        card_children.append(gex_panel)
     if inventory_panel is not None:
         card_children.append(inventory_panel)
     elif strike_map is not None:
         card_children.append(strike_map)
+    if vanna_panel is not None:
+        card_children.append(vanna_panel)
     card_children.extend([
         html.Div([
             html.Span(f"Calls {call_pct:.1f}%", style={"fontSize": FONT_SIZES["xs"], "color": theme["text_secondary"]}),

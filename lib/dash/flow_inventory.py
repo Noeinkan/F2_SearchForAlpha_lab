@@ -14,7 +14,7 @@ from lib.dash.flow_glossary import DISCLAIMER, TERM_DEFINITIONS
 STRIKE_WINDOW_PCT = 0.12
 
 INVENTORY_CAPTION = (
-    "Open interest by strike — puts left, calls right. "
+    "Open interest by strike — calls up, puts down. "
     "Not buy/sell flow (Yahoo has no trade direction). " + DISCLAIMER
 )
 
@@ -51,6 +51,18 @@ def filter_ladder_window(
     return filtered if filtered else rows
 
 
+def hvl_from_ladder(ladder: Sequence[Mapping[str, Any]]) -> float | None:
+    """Strike with max combined call+put volume; None if no volume."""
+    if not ladder:
+        return None
+    best = max(
+        ladder,
+        key=lambda r: int(r.get("call_vol") or 0) + int(r.get("put_vol") or 0),
+    )
+    total = int(best.get("call_vol") or 0) + int(best.get("put_vol") or 0)
+    return float(best["strike"]) if total > 0 else None
+
+
 def _empty_figure(theme: dict, message: str) -> go.Figure:
     fig = go.Figure()
     fig.update_layout(
@@ -69,10 +81,50 @@ def _empty_figure(theme: dict, message: str) -> go.Figure:
         }],
         xaxis={"visible": False},
         yaxis={"visible": False},
-        height=280,
+        height=320,
         showlegend=False,
     )
     return fig
+
+
+def _level_shape(x: float, color: str, *, dash: str = "dash", width: float = 1.5) -> dict:
+    return {
+        "type": "line",
+        "xref": "x",
+        "x0": x,
+        "x1": x,
+        "yref": "paper",
+        "y0": 0,
+        "y1": 1,
+        "line": {"color": color, "width": width, "dash": dash},
+    }
+
+
+def _level_annotation(x: float, text: str, color: str) -> dict:
+    return {
+        "xref": "x",
+        "x": x,
+        "yref": "paper",
+        "y": 1.02,
+        "text": text,
+        "showarrow": False,
+        "font": {"size": 9, "color": color, "family": FONT_FAMILY},
+        "xanchor": "center",
+        "yanchor": "bottom",
+    }
+
+
+def _legend_line_trace(name: str, color: str, *, dash: str = "dash") -> go.Scatter:
+    """Invisible trace so level lines appear in the Plotly legend."""
+    return go.Scatter(
+        x=[None],
+        y=[None],
+        mode="lines",
+        name=name,
+        line={"color": color, "width": 1.5, "dash": dash},
+        hoverinfo="skip",
+        showlegend=True,
+    )
 
 
 def build_inventory_figure(
@@ -83,7 +135,7 @@ def build_inventory_figure(
     metric: str = "oi",
     theme: dict | None = None,
 ) -> go.Figure:
-    """Horizontal bars: puts left (negative), calls right (positive)."""
+    """Vertical bars: calls up (positive), puts down (negative); level lines on x."""
     theme = theme or {}
     rows = filter_ladder_window(list(ladder or []), float(spot or 0))
     if not rows:
@@ -92,16 +144,17 @@ def build_inventory_figure(
     use_vol = str(metric).lower() in {"vol", "volume"}
     call_key = "call_vol" if use_vol else "call_oi"
     put_key = "put_vol" if use_vol else "put_oi"
-    x_label = "Contract volume" if use_vol else "Open interest (contracts)"
+    y_label = "Contract volume" if use_vol else "Open interest (contracts)"
 
     strikes = [r["strike"] for r in rows]
     call_vals = [float(r[call_key]) for r in rows]
-    put_vals = [-float(r[put_key]) for r in rows]  # left of zero
+    put_vals = [-float(r[put_key]) for r in rows]  # below zero
 
     green = theme.get("accent_green", "#3fb950")
     red = theme.get("accent_red", "#f85149")
     cyan = theme.get("accent_cyan", "#58a6ff")
     yellow = theme.get("accent_yellow", "#f0c674")
+    white = theme.get("text_primary", "#e6edf3")
     text_sec = theme.get("text_secondary", "#8b949e")
     text_ter = theme.get("text_tertiary", "#6e7681")
     border = theme.get("border_primary", "#30363d")
@@ -109,7 +162,7 @@ def build_inventory_figure(
     bg_paper = theme.get("bg_tertiary") or theme.get("bg_panel", "#161b22")
 
     hover_calls = [
-        f"Strike ${s:,.2f}<br>Calls {('vol' if use_vol else 'OI')}: {abs(v):,.0f}"
+        f"Strike ${s:,.2f}<br>Calls {('vol' if use_vol else 'OI')}: {v:,.0f}"
         for s, v in zip(strikes, call_vals)
     ]
     hover_puts = [
@@ -119,102 +172,116 @@ def build_inventory_figure(
 
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        y=strikes,
-        x=put_vals,
-        orientation="h",
+        x=strikes,
+        y=put_vals,
         name="Puts",
         marker_color=red,
         hovertext=hover_puts,
         hoverinfo="text",
-        width=0.7,
+        width=None,
     ))
     fig.add_trace(go.Bar(
-        y=strikes,
-        x=call_vals,
-        orientation="h",
+        x=strikes,
+        y=call_vals,
         name="Calls",
         marker_color=green,
         hovertext=hover_calls,
         hoverinfo="text",
-        width=0.7,
+        width=None,
     ))
 
-    # Spot as horizontal line across the chart (y = price on category... use shape)
+    meta = dict(meta or {})
+    hvl = meta.get("hvl")
+    if hvl is None:
+        hvl = hvl_from_ladder(rows)
+        if hvl is not None:
+            meta["hvl"] = hvl
+
     shapes: list[dict] = []
     annotations: list[dict] = []
-    if spot and spot > 0:
-        shapes.append({
-            "type": "line",
-            "xref": "paper",
-            "x0": 0,
-            "x1": 1,
-            "yref": "y",
-            "y0": spot,
-            "y1": spot,
-            "line": {"color": yellow, "width": 1.5, "dash": "dash"},
-        })
-        annotations.append({
-            "xref": "paper",
-            "x": 1.01,
-            "y": spot,
-            "yref": "y",
-            "text": f"{spot:,.2f}",
-            "showarrow": False,
-            "font": {"size": 10, "color": yellow, "family": FONT_FAMILY},
-            "xanchor": "left",
-        })
 
-    meta = meta or {}
-    max_pain = meta.get("max_pain")
-    if max_pain is not None:
+    def _add_level(
+        value: Any,
+        *,
+        color: str,
+        short: str,
+        legend_name: str,
+        dash: str = "dash",
+        width: float = 1.5,
+    ) -> None:
         try:
-            mp = float(max_pain)
-            shapes.append({
-                "type": "line",
-                "xref": "paper",
-                "x0": 0,
-                "x1": 1,
-                "yref": "y",
-                "y0": mp,
-                "y1": mp,
-                "line": {"color": cyan, "width": 1, "dash": "dot"},
-            })
-            annotations.append({
-                "xref": "paper",
-                "x": 1.01,
-                "y": mp,
-                "yref": "y",
-                "text": f"MP {mp:,.0f}",
-                "showarrow": False,
-                "font": {"size": 9, "color": cyan, "family": FONT_FAMILY},
-                "xanchor": "left",
-            })
+            x = float(value)
         except (TypeError, ValueError):
-            pass
+            return
+        shapes.append(_level_shape(x, color, dash=dash, width=width))
+        annotations.append(_level_annotation(x, short, color))
+        fig.add_trace(_legend_line_trace(legend_name, color, dash=dash))
 
-    n = len(strikes)
-    height = max(280, min(560, 48 + n * 14))
+    if spot and spot > 0:
+        _add_level(spot, color=yellow, short=f"{spot:,.0f}", legend_name="Spot", dash="dash")
+
+    if meta.get("call_wall") is not None:
+        _add_level(
+            meta["call_wall"],
+            color=red,
+            short="CR",
+            legend_name="Call Resistance",
+            dash="dash",
+        )
+    if meta.get("put_wall") is not None:
+        _add_level(
+            meta["put_wall"],
+            color=green,
+            short="PS",
+            legend_name="Put Support",
+            dash="dash",
+        )
+    if meta.get("hvl") is not None:
+        _add_level(
+            meta["hvl"],
+            color=white,
+            short="HVL",
+            legend_name="HVL",
+            dash="dot",
+            width=1.25,
+        )
+    if meta.get("max_pain") is not None:
+        _add_level(
+            meta["max_pain"],
+            color=cyan,
+            short="MP",
+            legend_name="Max pain",
+            dash="dot",
+            width=1,
+        )
 
     fig.update_layout(
-        barmode="overlay",
+        barmode="relative",
         paper_bgcolor=bg_paper,
         plot_bgcolor=bg_plot,
-        margin={"l": 56, "r": 72, "t": 36, "b": 44},
+        margin={"l": 56, "r": 24, "t": 52, "b": 48},
         font={"family": FONT_FAMILY, "size": 11, "color": text_sec},
         legend={
             "orientation": "h",
             "yanchor": "bottom",
-            "y": 1.02,
+            "y": 1.08,
             "xanchor": "right",
             "x": 1,
             "font": {"size": 10},
         },
         shapes=shapes,
         annotations=annotations,
-        height=height,
+        height=360,
         bargap=0.15,
         xaxis={
-            "title": {"text": x_label, "font": {"size": 11, "color": text_ter}},
+            "title": {"text": "Strike", "font": {"size": 11, "color": text_ter}},
+            "gridcolor": border,
+            "tickfont": {"size": 10},
+            "tickformat": ",.0f",
+            "type": "linear",
+        },
+        yaxis={
+            "title": {"text": y_label, "font": {"size": 11, "color": text_ter}},
             "zeroline": True,
             "zerolinecolor": border,
             "zerolinewidth": 1,
@@ -222,34 +289,30 @@ def build_inventory_figure(
             "tickfont": {"size": 10},
             "tickformat": ",.0f",
         },
-        yaxis={
-            "title": {"text": "Strike", "font": {"size": 11, "color": text_ter}},
-            "gridcolor": border,
-            "tickfont": {"size": 10},
-            "tickformat": ",.2f",
-            "type": "linear",
-        },
         hovermode="closest",
     )
 
-    # Axis subtitle for sold/bought honesty — use annotation at top
     fig.add_annotation(
         xref="paper",
         yref="paper",
-        x=0.15,
-        y=1.08,
-        text="PUTS",
+        x=0.02,
+        y=0.98,
+        text="CALLS",
         showarrow=False,
-        font={"size": 10, "color": red, "family": FONT_FAMILY},
+        font={"size": 10, "color": green, "family": FONT_FAMILY},
+        xanchor="left",
+        yanchor="top",
     )
     fig.add_annotation(
         xref="paper",
         yref="paper",
-        x=0.85,
-        y=1.08,
-        text="CALLS",
+        x=0.02,
+        y=0.02,
+        text="PUTS",
         showarrow=False,
-        font={"size": 10, "color": green, "family": FONT_FAMILY},
+        font={"size": 10, "color": red, "family": FONT_FAMILY},
+        xanchor="left",
+        yanchor="bottom",
     )
 
     return fig
@@ -260,23 +323,35 @@ def inventory_caption_for_meta(
     spot: float,
     *,
     metric: str = "oi",
+    ladder: Sequence[Mapping[str, Any]] | None = None,
 ) -> str:
     """One-line layman status under the chart."""
     parts: list[str] = []
     use_vol = str(metric).lower() in {"vol", "volume"}
     parts.append("Today's volume by strike." if use_vol else "Open interest by strike.")
-    meta = meta or {}
+    meta = dict(meta or {})
+    if meta.get("hvl") is None and ladder is not None:
+        hvl = hvl_from_ladder(ladder)
+        if hvl is not None:
+            meta["hvl"] = hvl
+
     cw = meta.get("call_wall")
     pw = meta.get("put_wall")
+    hvl = meta.get("hvl")
     mp = meta.get("max_pain")
     if cw is not None:
         try:
-            parts.append(f"Call wall ${float(cw):,.0f}.")
+            parts.append(f"Call Resistance ${float(cw):,.0f}.")
         except (TypeError, ValueError):
             pass
     if pw is not None:
         try:
-            parts.append(f"Put wall ${float(pw):,.0f}.")
+            parts.append(f"Put Support ${float(pw):,.0f}.")
+        except (TypeError, ValueError):
+            pass
+    if hvl is not None:
+        try:
+            parts.append(f"HVL ${float(hvl):,.0f}.")
         except (TypeError, ValueError):
             pass
     if mp is not None:
@@ -306,7 +381,7 @@ def render_inventory_panel(report: Mapping[str, Any], theme: dict) -> html.Div |
     ladder = ladders.get(expiry) or []
     meta = meta_all.get(expiry) or {}
     figure = build_inventory_figure(ladder, spot, meta, metric="oi", theme=theme)
-    caption = inventory_caption_for_meta(meta, spot, metric="oi")
+    caption = inventory_caption_for_meta(meta, spot, metric="oi", ladder=ladder)
 
     expiry_options = [{"label": k, "value": k} for k in sorted(ladders.keys())]
 
@@ -354,9 +429,45 @@ def render_inventory_panel(report: Mapping[str, Any], theme: dict) -> html.Div |
                             ),
                         ],
                         className="sfa-flow-inv-controls",
+                        title=TERM_DEFINITIONS.get("oi_vs_volume", ""),
                     ),
                 ],
                 className="sfa-flow-inv-header",
+            ),
+            html.Div(
+                [
+                    html.Span(
+                        "Spot",
+                        title=TERM_DEFINITIONS.get("spot", ""),
+                        className="sfa-flow-inv-level-tip",
+                        style={"marginRight": "10px", "cursor": "help"},
+                    ),
+                    html.Span(
+                        "Call Resistance",
+                        title=TERM_DEFINITIONS.get("call_wall", ""),
+                        className="sfa-flow-inv-level-tip",
+                        style={"marginRight": "10px", "cursor": "help"},
+                    ),
+                    html.Span(
+                        "Put Support",
+                        title=TERM_DEFINITIONS.get("put_wall", ""),
+                        className="sfa-flow-inv-level-tip",
+                        style={"marginRight": "10px", "cursor": "help"},
+                    ),
+                    html.Span(
+                        "HVL",
+                        title=TERM_DEFINITIONS.get("hvl", ""),
+                        className="sfa-flow-inv-level-tip",
+                        style={"cursor": "help"},
+                    ),
+                ],
+                className="sfa-flow-inv-level-tips",
+                style={
+                    "fontFamily": FONT_FAMILY,
+                    "fontSize": FONT_SIZES["xs"],
+                    "color": theme["text_tertiary"],
+                    "marginBottom": "4px",
+                },
             ),
             dcc.Graph(
                 id={"type": "flow-inv-graph", "index": ticker},
@@ -408,6 +519,7 @@ def figure_from_report(
     if not key or key not in ladders:
         return _empty_figure(theme, "No strike inventory"), "No inventory data."
     meta = meta_all.get(key) or {}
-    fig = build_inventory_figure(ladders[key], spot, meta, metric=metric, theme=theme)
-    caption = inventory_caption_for_meta(meta, spot, metric=metric)
+    ladder = ladders[key]
+    fig = build_inventory_figure(ladder, spot, meta, metric=metric, theme=theme)
+    caption = inventory_caption_for_meta(meta, spot, metric=metric, ladder=ladder)
     return fig, caption
