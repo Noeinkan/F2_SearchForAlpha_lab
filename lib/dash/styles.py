@@ -195,6 +195,7 @@ def get_styles(theme: dict) -> dict:
         'chart_container': {
             'flex': '1 1 0',
             'minWidth': 0,
+            'minHeight': 0,
             'width': '100%',
             'display': 'flex',
             'flexDirection': 'column',

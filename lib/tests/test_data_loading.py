@@ -100,3 +100,7 @@ def test_chart_glue_clicks_the_boot_button():
             / "dash" / "assets" / "10-sfa-chart.js").read_text(encoding="utf-8")
     assert "chart-boot-btn" in glue
     assert "requestFirstPayload" in glue
+    # Empty placeholder payloads must not stop the boot loop after one click —
+    # that race left a black chart frame with DATA rows still in the footer.
+    assert "setTimeout(tick" in glue
+    assert "payload.candles.length" in glue

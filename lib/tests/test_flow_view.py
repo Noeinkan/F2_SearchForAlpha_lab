@@ -6,12 +6,19 @@ from lib.dash.dash_config import DEFAULT_THEME, get_theme
 from lib.dash.flow_glossary import (
     FLAG_DEFINITIONS,
     FLAG_KINDS,
+    IV_SURFACE_PANEL,
+    IV_SURFACE_REGION_TIPS,
     LEARN_SECTIONS,
+    TERM_DEFINITIONS,
+    THETA_PANEL,
+    THETA_SEGMENT_TIPS,
     contract_signal,
     interpretive_banner,
     interpretive_insights,
+    iv_surface_series,
     score_breakdown,
     score_parts,
+    theta_decay_series,
     ticker_sentiment,
 )
 from lib.dash.flow_view import (
@@ -19,8 +26,10 @@ from lib.dash.flow_view import (
     render_flow_guide,
     render_flow_reports,
     render_glossary_panel,
+    render_iv_surface_panel,
     render_learn_modal_content,
     render_summary_cards,
+    render_theta_decay_panel,
     render_ticker_card,
 )
 from lib.dash.layout.overlays import _create_flow_overlay
@@ -81,6 +90,7 @@ def test_learn_sections_cover_beginner_topics():
     assert any("call" in t for t in titles)
     assert any("volume" in t or "open interest" in t for t in titles)
     assert any("score" in t for t in titles)
+    assert any("inventory" in t for t in titles)
     assert all(s["body"] for s in LEARN_SECTIONS)
 
 
@@ -261,6 +271,91 @@ def test_render_flow_guide_has_diagram_and_legend():
     assert "OTM puts" in serialized or "OTM" in serialized
 
 
+def test_theta_decay_series_convex_toward_expiry():
+    days, tv = theta_decay_series()
+    assert len(days) == len(tv) >= 2
+    assert days[0] == 90
+    assert days[-1] == 0
+    assert tv[-1] == 0.0
+    assert tv[0] == 1.0
+    # Monotonic non-increasing time value as days fall.
+    for i in range(1, len(tv)):
+        assert tv[i] <= tv[i - 1] + 1e-12
+    # Last 30-day segment drops more than the first 30-day segment.
+    def _at(target: float) -> float:
+        best_i = min(range(len(days)), key=lambda i: abs(days[i] - target))
+        return tv[best_i]
+
+    drop_early = _at(90) - _at(60)
+    drop_late = _at(30) - _at(0)
+    assert drop_late > drop_early
+
+
+def test_theta_panel_copy_and_terms():
+    assert TERM_DEFINITIONS["theta"]
+    assert TERM_DEFINITIONS["0dte"]
+    assert "Implied volatility" in TERM_DEFINITIONS["iv"]
+    assert THETA_PANEL["title"] == "Theta Decay"
+    assert len(THETA_PANEL["bullets"]) == 3
+    assert "90_60" in THETA_SEGMENT_TIPS and "30_0" in THETA_SEGMENT_TIPS
+    assert "0DTE" in THETA_SEGMENT_TIPS["30_0"]
+
+
+def test_render_theta_decay_panel_has_chart_and_captions():
+    theme = get_theme(DEFAULT_THEME)
+    panel = render_theta_decay_panel(theme)
+    assert panel.__class__.__name__ == "Details"
+    assert panel.open is True
+    assert "sfa-flow-theta-panel" in panel.className
+    serialized = str(panel)
+    assert "Theta Decay" in serialized
+    assert "flow-theta-decay-graph" in serialized
+    assert "0DTE" in serialized
+    assert TERM_DEFINITIONS["theta"][:20] in serialized or "time decay" in serialized.lower()
+
+
+def test_iv_surface_series_peak_at_short_low_moneyness():
+    moneyness, time_years, iv_grid = iv_surface_series()
+    assert len(moneyness) == 25
+    assert len(time_years) == 20
+    assert len(iv_grid) == len(time_years)
+    assert all(len(row) == len(moneyness) for row in iv_grid)
+    assert moneyness[0] < 1.0 < moneyness[-1]
+    assert time_years[0] < time_years[-1]
+    flat = [v for row in iv_grid for v in row]
+    assert all(v > 0 for v in flat)
+    assert max(flat) <= 0.72 + 1e-9
+    # Peak near short T + low moneyness wing.
+    short_i = 0
+    long_i = len(time_years) - 1
+    low_m = 0
+    atm_i = min(range(len(moneyness)), key=lambda i: abs(moneyness[i] - 1.0))
+    assert iv_grid[short_i][low_m] > iv_grid[short_i][atm_i]
+    assert iv_grid[short_i][low_m] > iv_grid[long_i][low_m]
+
+
+def test_iv_surface_panel_copy_and_terms():
+    for key in ("iv_surface", "moneyness", "vol_smile", "term_structure", "0dte", "iv"):
+        assert TERM_DEFINITIONS[key]
+    assert IV_SURFACE_PANEL["title"] == "Implied Volatility Surface"
+    assert len(IV_SURFACE_PANEL["bullets"]) == 3
+    assert "short_wing" in IV_SURFACE_REGION_TIPS and "atm" in IV_SURFACE_REGION_TIPS
+    assert any(s["title"] == "Implied volatility surface" for s in LEARN_SECTIONS)
+
+
+def test_render_iv_surface_panel_has_chart_and_captions():
+    theme = get_theme(DEFAULT_THEME)
+    panel = render_iv_surface_panel(theme)
+    assert panel.__class__.__name__ == "Details"
+    assert panel.open is True
+    assert "sfa-flow-iv-surface-panel" in panel.className
+    serialized = str(panel)
+    assert "Implied Volatility Surface" in serialized
+    assert "flow-iv-surface-graph" in serialized
+    assert "moneyness" in serialized
+    assert "0DTE" in serialized
+
+
 def test_render_learn_modal_content_has_sections():
     theme = get_theme(DEFAULT_THEME)
     body = render_learn_modal_content(theme)
@@ -268,7 +363,9 @@ def test_render_learn_modal_content_has_sections():
     assert "sfa-flow-learn-body" in serialized
     assert "Calls vs puts" in serialized
     assert "score" in serialized.lower()
-
+    # LEARN modal must stay free of the on-page theta panel.
+    assert "flow-theta-decay-graph" not in serialized
+    assert "sfa-flow-theta-panel" not in serialized
 
 def test_render_ticker_card_returns_collapsible_panel_with_table():
     theme = get_theme(DEFAULT_THEME)
@@ -344,6 +441,12 @@ def test_render_flow_reports_composes_summary_and_cards():
     assert "Educational/research use only" in serialized
     assert "sfa-flow-guide" in serialized
     assert "How to read this page" in serialized
+    assert "sfa-flow-theta-panel" in serialized
+    assert "Theta Decay" in serialized
+    assert "flow-theta-decay-graph" in serialized
+    assert "sfa-flow-iv-surface-panel" in serialized
+    assert "Implied Volatility Surface" in serialized
+    assert "flow-iv-surface-graph" in serialized
 
 
 def test_flow_overlay_has_learn_modal_ids():

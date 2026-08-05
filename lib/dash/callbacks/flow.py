@@ -6,11 +6,12 @@ import json
 import os
 from datetime import datetime
 
-from dash import callback_context, no_update
+from dash import MATCH, callback_context, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_TERMINAL, get_theme
+from lib.dash.flow_inventory import figure_from_report
 from lib.dash.flow_view import (
     render_flow_placeholder,
     render_flow_reports,
@@ -254,6 +255,38 @@ def register_flow_callbacks(app) -> None:
             raise PreventUpdate
         theme = get_theme(theme_name or DEFAULT_THEME)
         return _render_from_payload(flow_data, theme)
+
+    @app.callback(
+        Output({"type": "flow-inv-graph", "index": MATCH}, "figure"),
+        Output({"type": "flow-inv-caption", "index": MATCH}, "children"),
+        Input({"type": "flow-inv-expiry", "index": MATCH}, "value"),
+        Input({"type": "flow-inv-metric", "index": MATCH}, "value"),
+        State({"type": "flow-inv-expiry", "index": MATCH}, "id"),
+        State("flow-data-store", "data"),
+        State("theme-store", "data"),
+        prevent_initial_call=True,
+    )
+    def update_inventory_chart(expiry, metric, id_dict, flow_data, theme_name):
+        if not flow_data:
+            raise PreventUpdate
+        ticker = str((id_dict or {}).get("index") or "").upper()
+        report = next(
+            (
+                r
+                for r in (flow_data.get("reports") or [])
+                if str(r.get("ticker", "")).upper() == ticker
+            ),
+            None,
+        )
+        if not report:
+            raise PreventUpdate
+        theme = get_theme(theme_name or DEFAULT_THEME)
+        return figure_from_report(
+            report,
+            expiry=expiry,
+            metric=metric or "oi",
+            theme=theme,
+        )
 
     @app.callback(
         [

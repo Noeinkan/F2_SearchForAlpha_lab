@@ -116,6 +116,10 @@ class TickerReport:
     unusual_score: int = 0
     top_call_strikes: list[tuple[float, int]] = field(default_factory=list)
     top_put_strikes: list[tuple[float, int]] = field(default_factory=list)
+    # Per-expiry strike ladders for inventory chart: { "YYYY-MM-DD": [row, ...] }
+    strike_ladders: dict[str, list[dict]] = field(default_factory=dict)
+    # Per-expiry walls / max pain: { "YYYY-MM-DD": {max_pain, call_wall, put_wall} }
+    inventory_meta: dict[str, dict] = field(default_factory=dict)
     error: str | None = None
 
 
@@ -287,6 +291,100 @@ def detect_flags(
     return flags
 
 
+def aggregate_strike_ladder(contracts: list[Contract]) -> list[dict]:
+    """Aggregate call/put OI and volume by strike for one expiry's contracts."""
+    by_strike: dict[float, dict[str, int | float]] = {}
+    for c in contracts:
+        row = by_strike.setdefault(
+            c.strike,
+            {"strike": c.strike, "call_oi": 0, "put_oi": 0, "call_vol": 0, "put_vol": 0},
+        )
+        if c.cp == "C":
+            row["call_oi"] = int(row["call_oi"]) + int(c.open_interest or 0)
+            row["call_vol"] = int(row["call_vol"]) + int(c.volume or 0)
+        else:
+            row["put_oi"] = int(row["put_oi"]) + int(c.open_interest or 0)
+            row["put_vol"] = int(row["put_vol"]) + int(c.volume or 0)
+    return sorted(
+        (
+            {
+                "strike": float(r["strike"]),
+                "call_oi": int(r["call_oi"]),
+                "put_oi": int(r["put_oi"]),
+                "call_vol": int(r["call_vol"]),
+                "put_vol": int(r["put_vol"]),
+            }
+            for r in by_strike.values()
+        ),
+        key=lambda r: r["strike"],
+    )
+
+
+def max_pain_strike(ladder: list[dict]) -> float | None:
+    """Strike that minimises total intrinsic value of open calls + puts (max pain)."""
+    if not ladder:
+        return None
+    strikes = [float(r["strike"]) for r in ladder]
+    call_oi = {float(r["strike"]): int(r.get("call_oi") or 0) for r in ladder}
+    put_oi = {float(r["strike"]): int(r.get("put_oi") or 0) for r in ladder}
+
+    best_strike: float | None = None
+    best_loss = float("inf")
+    for settlement in strikes:
+        total_loss = 0.0
+        for s in strikes:
+            coi = call_oi.get(s, 0)
+            poi = put_oi.get(s, 0)
+            if s > settlement:
+                total_loss += (s - settlement) * coi
+            elif s < settlement:
+                total_loss += (settlement - s) * poi
+        if total_loss < best_loss:
+            best_loss = total_loss
+            best_strike = settlement
+    return best_strike
+
+
+def call_put_walls(ladder: list[dict]) -> tuple[float | None, float | None]:
+    """Return (call_wall, put_wall) — strikes with max call OI and max put OI."""
+    if not ladder:
+        return None, None
+    call_wall = max(ladder, key=lambda r: int(r.get("call_oi") or 0))
+    put_wall = max(ladder, key=lambda r: int(r.get("put_oi") or 0))
+    cw = float(call_wall["strike"]) if int(call_wall.get("call_oi") or 0) > 0 else None
+    pw = float(put_wall["strike"]) if int(put_wall.get("put_oi") or 0) > 0 else None
+    return cw, pw
+
+
+def inventory_meta_for_ladder(ladder: list[dict]) -> dict:
+    """Build max_pain / call_wall / put_wall for one expiry ladder."""
+    cw, pw = call_put_walls(ladder)
+    mp = max_pain_strike(ladder)
+    return {
+        "max_pain": mp,
+        "call_wall": cw,
+        "put_wall": pw,
+    }
+
+
+def build_strike_ladders(
+    contracts: list[Contract],
+) -> tuple[dict[str, list[dict]], dict[str, dict]]:
+    """Group contracts by expiry → strike ladders + inventory meta."""
+    by_expiry: dict[date, list[Contract]] = defaultdict(list)
+    for c in contracts:
+        by_expiry[c.expiry].append(c)
+
+    ladders: dict[str, list[dict]] = {}
+    meta: dict[str, dict] = {}
+    for expiry in sorted(by_expiry):
+        key = expiry.isoformat()
+        ladder = aggregate_strike_ladder(by_expiry[expiry])
+        ladders[key] = ladder
+        meta[key] = inventory_meta_for_ladder(ladder)
+    return ladders, meta
+
+
 def compute_metrics(report: TickerReport) -> None:
     calls = [c for c in report.contracts if c.cp == "C"]
     puts = [c for c in report.contracts if c.cp == "P"]
@@ -312,6 +410,8 @@ def compute_metrics(report: TickerReport) -> None:
         key=lambda x: x[1],
         reverse=True,
     )[:10]
+
+    report.strike_ladders, report.inventory_meta = build_strike_ladders(report.contracts)
 
     hu = sum(1 for f in report.flags if f.kind == "high_unusual")
     bp = sum(1 for f in report.flags if f.kind == "block_premium")
@@ -641,6 +741,8 @@ def _report_to_dict(report: TickerReport, today: date | None = None) -> dict:
         "error": report.error,
         "top_call_strikes": report.top_call_strikes,
         "top_put_strikes": report.top_put_strikes,
+        "strike_ladders": report.strike_ladders,
+        "inventory_meta": report.inventory_meta,
         "flags": [{"kind": f.kind, "message": f.message} for f in report.flags],
         "contracts": flagged_contracts,
     }

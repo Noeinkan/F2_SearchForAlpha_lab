@@ -1297,31 +1297,27 @@ input[type="radio"] {
     min-height: 320px;
     position: relative;
     min-width: 0;
+    /* Flex column so #financial-chart gets a definite used height without
+       relying on percentage resolution against a flex item (which collapses
+       to 0×0 in some Chromium layouts and leaves a black void). */
+    display: flex;
+    flex-direction: column;
 }
 
 #financial-chart {
+    flex: 1 1 0;
     width: 100% !important;
-    height: 100% !important;
     min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
     position: relative;   /* anchors the floating OHLC legend */
 }
 
-/* Phase 7: the dcc.Loading wrapper (and any intermediate div it renders)
-   must be full-height so the chart's height:100% resolves against the
-   flex-sized frame instead of collapsing.
-
-   The `:not()` is load-bearing. The chart glue appends the floating OHLC
-   legend straight into #financial-chart (buildLegend, 10-sfa-chart.js), so it
-   matches `#chart-frame > div > div` too. Stretching it to 100%/100% turned
-   its translucent background into an opaque grey veil over the whole canvas —
-   invisible to clicks (pointer-events:none), so it read as a rendering bug.
-   Overlay children size themselves; only the chart container gets stretched. */
-#chart-frame > div,
-#chart-frame > div > div:not(.sfa-chart-legend) {
-    width: 100%;
-    height: 100%;
-    min-width: 0;
-}
+/* Loading overlay is position:absolute (see .sfa-chart-loading) — do not
+   stretch #chart-frame descendants with height:100%. That rule used to target
+   a Loading wrapper around the canvas; it now also hit Lightweight Charts'
+   internal wrappers and the floating legend (grey veil). Legend sizes itself;
+   the canvas sizes via the flex rule on #financial-chart above. */
 
 /* Keep the spinner centered over the chart/panel without stealing layout
    height, and tint it with the loading colour we pass from Python. */
@@ -1745,6 +1741,20 @@ input[type="radio"] {
     width: 100%;
 }
 
+.sfa-flow-theta-panel .sfa-flow-theta-body {
+    margin-top: 8px;
+}
+
+.sfa-flow-theta-panel .sfa-flow-theta-chart,
+.sfa-flow-theta-panel .sfa-flow-theta-chart .js-plotly-plot,
+.sfa-flow-theta-panel .sfa-flow-theta-chart .plot-container {
+    width: 100% !important;
+}
+
+.sfa-flow-theta-panel .sfa-flow-theta-chart .js-plotly-plot {
+    min-height: 260px;
+}
+
 .sfa-flow-legend-chip {
     display: inline-block;
     vertical-align: middle;
@@ -1791,6 +1801,40 @@ input[type="radio"] {
     height: 12px;
     border-radius: 2px;
     z-index: 2;
+}
+
+.sfa-flow-inventory {
+    margin: 6px 0 10px;
+}
+
+.sfa-flow-inv-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.sfa-flow-inv-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.sfa-flow-inv-expiry .Select-control,
+.sfa-flow-inv-expiry .Select__control {
+    min-height: 28px !important;
+}
+
+.sfa-flow-inv-graph .js-plotly-plot,
+.sfa-flow-inv-graph .plotly {
+    width: 100% !important;
+}
+
+.sfa-flow-inv-caption {
+    max-width: 72ch;
 }
 
 .sfa-flow-learn-modal .modal-content {

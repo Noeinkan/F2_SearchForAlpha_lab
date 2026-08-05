@@ -14,7 +14,10 @@ TERM_DEFINITIONS: dict[str, str] = {
     "ask": "Lowest price a seller will accept right now.",
     "vol": "Number of contracts traded today.",
     "oi": "Open interest — contracts outstanding before today. New activity often shows vol > OI.",
-    "iv": "Implied volatility — the market's expected annualized price swing, as a percentage.",
+    "iv": (
+        "Implied volatility (IV) — the market's priced-in size of future moves, "
+        "shown as a percentage. Higher IV = options cost more; not a direction forecast."
+    ),
     "premium": "Total dollars paid for today's volume: volume × last price × 100.",
     "pc_vol": "Put volume divided by call volume. Above 1.0 means more puts traded; below 1.0 means more calls.",
     "pc_oi": "Put open interest divided by call open interest.",
@@ -25,6 +28,52 @@ TERM_DEFINITIONS: dict[str, str] = {
     "weekly": "Expires within 7 days — often used for short-term directional bets.",
     "signal": "Plain-language read of what this contract's flow may indicate — educational only.",
     "flags": "Activity flags: U = unusual volume, HU = high unusual OTM weekly, B = block premium, RC = repeat calls.",
+    "theta": (
+        "Theta is time decay — how much an option's extra 'waiting time' value "
+        "melts away each day as expiration gets closer."
+    ),
+    "0dte": (
+        "0DTE means zero days to expiration — the option expires today. "
+        "Almost all remaining time value is gone by the close."
+    ),
+    "iv_surface": (
+        "Implied volatility surface — a 3D map of IV across strike (moneyness) "
+        "and time to expiry. Shows how the market prices move size, not direction."
+    ),
+    "moneyness": (
+        "Moneyness is how far a strike sits from the current stock price — "
+        "often spot ÷ strike. Near 1.0 is at-the-money (ATM); below 1.0 is "
+        "deeper in-the-money for calls / out-of-the-money for puts depending on context."
+    ),
+    "vol_smile": (
+        "Volatility smile (or skew) — IV is not the same at every strike. "
+        "Wings and downside puts often trade richer than ATM options."
+    ),
+    "term_structure": (
+        "Volatility term structure — how IV changes across expiration dates. "
+        "Short-dated IV can spike (especially into 0DTE) while longer tenors stay calmer."
+    ),
+    "inventory": (
+        "Open interest (or volume) stacked by strike price — a snapshot of where options positions sit. "
+        "Puts are drawn left, calls right. This is positioning, not buy/sell flow."
+    ),
+    "call_wall": (
+        "The strike with the most call open interest. Traders often watch it as a possible resistance "
+        "or magnet near expiry — educational only, not a forecast."
+    ),
+    "put_wall": (
+        "The strike with the most put open interest. Often watched as possible support or a downside "
+        "magnet near expiry — educational only, not a forecast."
+    ),
+    "max_pain": (
+        "The strike where total intrinsic value of all open calls and puts is smallest — "
+        "theoretically where option holders as a group lose the most if price expires there. "
+        "A heuristic, not a prediction."
+    ),
+    "oi_vs_volume": (
+        "Open interest = contracts still open from prior sessions (positioning). "
+        "Volume = contracts traded today (activity). Toggle the inventory chart between them."
+    ),
 }
 
 COLUMN_HEADERS: dict[str, str] = {
@@ -141,7 +190,150 @@ LEARN_SECTIONS: list[dict[str, str]] = [
             "Educational/research use only — not financial advice."
         ),
     },
+    {
+        "title": "How to read the inventory chart",
+        "body": (
+            "The inventory chart shows open interest (or today's volume) at each strike for a chosen expiry. "
+            "Green bars to the right are calls; red bars to the left are puts. "
+            "A dashed yellow line marks the current stock price; a dotted cyan line marks max pain when available. "
+            "Call wall / put wall label the strikes with the largest call and put open interest. "
+            "Yahoo Finance does not report whether trades were bought or sold, so this is positioning — "
+            "not a GEXstream-style bought/sold flow tape. Educational/research use only."
+        ),
+    },
+    {
+        "title": "Implied volatility surface",
+        "body": (
+            "An IV surface plots implied volatility (height) against moneyness (strike vs spot) "
+            "and time to expiry. Along strikes you see the smile or skew — wings often cost more "
+            "than ATM. Along time you see the term structure — short-dated IV (including 0DTE) "
+            "can spike while longer expiries stay flatter. Traders use the surface to compare "
+            "whether one strike/expiry looks rich or cheap relative to others — not as a buy/sell "
+            "signal. The Flow page chart is illustrative only. Educational/research use only."
+        ),
+    },
 ]
+
+# Illustrative theta-decay panel on the Flow page (not LEARN modal copy).
+THETA_PANEL: dict[str, Any] = {
+    "title": "Theta Decay",
+    "subtitle": "Why short-dated options (especially 0DTE) lose value so fast",
+    "caption": (
+        "An option's price is partly 'time value' — what you pay for the chance "
+        "the stock moves before expiry. That time value does not melt evenly: "
+        "it starts slow, then falls steeply into the final weeks and the last day."
+    ),
+    "bullets": (
+        "Left side (90→60 days): time value is still high; daily melt is modest.",
+        "Middle (60→30 days): decay speeds up — sellers feel it more each week.",
+        "Right side (30→0 / 0DTE): most remaining time value vanishes. By expiry day, "
+        "price is mostly about whether the stock moves today — and how much move "
+        "the market has priced in (IV).",
+    ),
+    "footer": (
+        "Illustrative curve only — not live IV or a trade signal. " + DISCLAIMER
+    ),
+}
+
+THETA_SEGMENT_TIPS: dict[str, str] = {
+    "90_60": "90–60 days: time value is high; theta is relatively gentle.",
+    "60_30": "60–30 days: decay accelerates — more of the premium melts each week.",
+    "30_0": (
+        "30–0 days (0DTE zone): steepest theta. On expiry day, leftover time value "
+        "goes to zero; IV is what prices today's expected move size."
+    ),
+}
+
+THETA_BREAKPOINTS: tuple[int, ...] = (90, 60, 30, 0)
+
+# Illustrative IV-surface panel on the Flow page (not LEARN modal copy).
+IV_SURFACE_PANEL: dict[str, Any] = {
+    "title": "Implied Volatility Surface",
+    "subtitle": "How the market prices move size across strikes and expiries",
+    "caption": (
+        "Height is implied volatility (IV). One horizontal axis is moneyness "
+        "(spot relative to strike — near 1.0 is at-the-money). The other is time "
+        "to expiry in years. The surface is rarely flat: smile/skew across strikes, "
+        "term structure across expiries. Short-dated wing strikes (including 0DTE) "
+        "often sit highest."
+    ),
+    "bullets": (
+        "Along moneyness: the smile/skew — wing strikes usually carry higher IV than ATM.",
+        "Along time: the term structure — near-expiry IV can spike; longer tenors often calm down.",
+        "Peak zone (short T + low moneyness): where short-dated downside/wing risk is priced richest — "
+        "compare relative richness, not a direction forecast.",
+    ),
+    "footer": (
+        "Illustrative surface only — not live IV or a trade signal. " + DISCLAIMER
+    ),
+}
+
+IV_SURFACE_REGION_TIPS: dict[str, str] = {
+    "short_wing": (
+        "Short-dated wing (low moneyness, near 0DTE): highest illustrative IV — "
+        "market pricing a large near-term move size."
+    ),
+    "atm": "Near ATM (moneyness ≈ 1): typically the calmest part of the smile.",
+    "long_dated": (
+        "Longer-dated tenors: term structure usually flattens — less spike than 0DTE."
+    ),
+    "far_wing": (
+        "Far OTM/ITM wings at longer T: still elevated vs ATM, but less extreme than short T."
+    ),
+}
+
+# Grid bounds for the teaching surface (moneyness = spot/strike style).
+IV_SURFACE_MONEYNESS_RANGE: tuple[float, float] = (0.4, 1.6)
+IV_SURFACE_TIME_RANGE: tuple[float, float] = (0.02, 0.5)  # years; floor avoids /0
+
+
+def theta_decay_series(*, n_points: int = 91) -> tuple[list[float], list[float]]:
+    """Return illustrative (days_to_expiry, time_value) for a convex theta curve.
+
+    Pure math — not live option prices. Time value ≈ sqrt(T) shape so decay
+    accelerates toward expiry (matches the teaching chart in the Flow panel).
+    """
+    if n_points < 2:
+        raise ValueError("n_points must be >= 2")
+    max_days = float(THETA_BREAKPOINTS[0])
+    days = [max_days * i / (n_points - 1) for i in range(n_points - 1, -1, -1)]
+    # Scale so day-90 ≈ 1.0 and day-0 ≈ 0.0.
+    time_value = [(d / max_days) ** 0.5 for d in days]
+    return days, time_value
+
+
+def iv_surface_series(
+    *,
+    n_m: int = 25,
+    n_t: int = 20,
+) -> tuple[list[float], list[float], list[list[float]]]:
+    """Return illustrative (moneyness, time_years, iv_grid) for a teaching surface.
+
+    Pure parametric math — not calibrated to any ticker or live option chain.
+    Shape: elevated IV at low moneyness + short T (wing/0DTE peak), mild smile
+    away from ATM, and softer levels at longer tenors.
+    """
+    if n_m < 2 or n_t < 2:
+        raise ValueError("n_m and n_t must be >= 2")
+    m_lo, m_hi = IV_SURFACE_MONEYNESS_RANGE
+    t_lo, t_hi = IV_SURFACE_TIME_RANGE
+    moneyness = [m_lo + (m_hi - m_lo) * i / (n_m - 1) for i in range(n_m)]
+    time_years = [t_lo + (t_hi - t_lo) * j / (n_t - 1) for j in range(n_t)]
+
+    iv_grid: list[list[float]] = []
+    for t in time_years:
+        row: list[float] = []
+        # Near-expiry weight: spikes as T → short end (0DTE zone).
+        near_weight = (t_hi / t) ** 0.55
+        for m in moneyness:
+            # Skew toward low moneyness + quadratic smile around ATM.
+            low_m_skew = max(0.0, 1.05 - m) ** 1.6
+            smile = (m - 1.0) ** 2
+            iv = 0.14 + 0.22 * low_m_skew * near_weight + 0.08 * smile * (0.6 + 0.4 * near_weight)
+            # Soft floor/ceiling for a readable teaching chart.
+            row.append(max(0.08, min(0.72, iv)))
+        iv_grid.append(row)
+    return moneyness, time_years, iv_grid
 
 
 def _flag_counts(flags: Sequence[Mapping[str, Any]]) -> dict[str, int]:

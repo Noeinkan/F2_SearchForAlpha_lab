@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-from dash import dash_table, html
+import plotly.graph_objects as go
+from dash import dcc, dash_table, html
 
 from lib.dash.dash_config import FONT_FAMILY, FONT_SIZES
 from lib.dash.flow_glossary import (
@@ -12,17 +13,25 @@ from lib.dash.flow_glossary import (
     DISCLAIMER,
     FLAG_DEFINITIONS,
     INSIGHT_CATEGORY_COLORS,
+    IV_SURFACE_PANEL,
+    IV_SURFACE_REGION_TIPS,
     LEARN_SECTIONS,
     TERM_DEFINITIONS,
+    THETA_BREAKPOINTS,
+    THETA_PANEL,
+    THETA_SEGMENT_TIPS,
     contract_signal,
     contract_signal_weight,
     fmt_premium,
     fmt_strike,
     interpretive_insights,
+    iv_surface_series,
     score_breakdown,
     score_parts,
+    theta_decay_series,
     ticker_sentiment,
 )
+from lib.dash.flow_inventory import render_inventory_panel
 
 _TABLE_COLUMNS = [
     ("Strike", "strike"),
@@ -416,6 +425,444 @@ def _otm_itm_diagram(theme: dict) -> html.Div:
             ),
         ],
         className="sfa-flow-diagram",
+    )
+
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Convert #RRGGBB (or #RGB) to rgba() for Plotly fills."""
+    h = hex_color.lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _theta_decay_figure(theme: dict) -> go.Figure:
+    """Illustrative theta-decay curve (days-to-expiry → relative time value)."""
+    days, time_value = theta_decay_series()
+    green = theme.get("accent_green", "#26C281")
+    fig = go.Figure()
+
+    # Segment fills (light → heavy toward 0DTE), then the main curve on top.
+    segment_specs = (
+        (90.0, 60.0, 0.12, THETA_SEGMENT_TIPS["90_60"]),
+        (60.0, 30.0, 0.22, THETA_SEGMENT_TIPS["60_30"]),
+        (30.0, 0.0, 0.45, THETA_SEGMENT_TIPS["30_0"]),
+    )
+    for hi, lo, alpha, tip in segment_specs:
+        xs: list[float] = []
+        ys: list[float] = []
+        for d, tv in zip(days, time_value):
+            if lo <= d <= hi:
+                xs.append(d)
+                ys.append(tv)
+        if len(xs) < 2:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="lines",
+                line={"width": 0},
+                fill="tozeroy",
+                fillcolor=_hex_to_rgba(green, alpha),
+                hoverinfo="text",
+                hovertext=tip,
+                showlegend=False,
+            )
+        )
+
+    fig.add_trace(
+        go.Scatter(
+            x=days,
+            y=time_value,
+            mode="lines",
+            line={"color": green, "width": 2.5},
+            hovertemplate=(
+                "%{x:.0f} days to expiry<br>Relative time value %{y:.2f}<extra></extra>"
+            ),
+            showlegend=False,
+        )
+    )
+
+    for x in (60, 30):
+        fig.add_vline(
+            x=x,
+            line_dash="dash",
+            line_color=theme.get("border_primary", "#333"),
+            line_width=1,
+            opacity=0.7,
+        )
+
+    fig.add_annotation(
+        x=15,
+        y=0.35,
+        text="Theta Decay",
+        showarrow=False,
+        font={"family": FONT_FAMILY, "size": 12, "color": theme["text_primary"]},
+        bgcolor=_hex_to_rgba(green, 0.25),
+        borderpad=4,
+    )
+
+    fig.update_layout(
+        title={
+            "text": THETA_PANEL["title"],
+            "font": {"family": FONT_FAMILY, "size": 14, "color": theme["text_primary"]},
+            "x": 0.02,
+            "xanchor": "left",
+        },
+        paper_bgcolor=theme.get("bg_tertiary", theme.get("bg_panel", "#161616")),
+        plot_bgcolor=theme.get("bg_primary", "#0A0A0A"),
+        margin={"l": 48, "r": 16, "t": 40, "b": 44},
+        height=280,
+        showlegend=False,
+        font={"family": FONT_FAMILY, "size": 11, "color": theme["text_secondary"]},
+        xaxis={
+            "title": {
+                "text": "Time Until Expiration",
+                "font": {"size": 11, "color": theme["text_secondary"]},
+            },
+            "tickmode": "array",
+            "tickvals": list(THETA_BREAKPOINTS),
+            "ticktext": [f"{d} days" if d else "0" for d in THETA_BREAKPOINTS],
+            "gridcolor": theme.get("border_primary", "#333"),
+            "zeroline": False,
+            "range": [92, -2],
+        },
+        yaxis={
+            "title": {
+                "text": "Time Value",
+                "font": {"size": 11, "color": theme["text_secondary"]},
+            },
+            "showticklabels": False,
+            "gridcolor": theme.get("border_primary", "#333"),
+            "zeroline": False,
+            "range": [0, 1.08],
+        },
+    )
+    return fig
+
+
+def render_theta_decay_panel(theme: dict, *, open: bool = True) -> html.Details:
+    """Collapsible on-page theta decay chart with layman captions and hover tips."""
+    term_style = {
+        "cursor": "help",
+        "textDecoration": "underline dotted",
+        "textUnderlineOffset": "2px",
+        "color": theme["text_primary"],
+        "fontWeight": "600",
+    }
+    bullets = [
+        html.Li(
+            bullet,
+            style={
+                "marginBottom": "4px",
+                "fontSize": FONT_SIZES["xs"],
+                "lineHeight": "1.45",
+                "color": theme["text_secondary"],
+                "fontFamily": FONT_FAMILY,
+            },
+        )
+        for bullet in THETA_PANEL["bullets"]
+    ]
+    return html.Details(
+        [
+            html.Summary(
+                [
+                    html.Span(
+                        THETA_PANEL["title"],
+                        title=TERM_DEFINITIONS["theta"],
+                        style=term_style,
+                    ),
+                    html.Span(
+                        " — illustrative · ",
+                        style={
+                            "fontWeight": "400",
+                            "color": theme["text_tertiary"],
+                            "fontSize": FONT_SIZES["xs"],
+                        },
+                    ),
+                    html.Span(
+                        "0DTE",
+                        title=TERM_DEFINITIONS["0dte"],
+                        style={**term_style, "fontSize": FONT_SIZES["xs"]},
+                    ),
+                    html.Span(" / ", style={"color": theme["text_tertiary"], "fontWeight": "400"}),
+                    html.Span(
+                        "IV",
+                        title=TERM_DEFINITIONS["iv"],
+                        style={**term_style, "fontSize": FONT_SIZES["xs"]},
+                    ),
+                ],
+                style=_panel_summary_style(theme),
+            ),
+            html.Div(
+                [
+                    html.P(
+                        THETA_PANEL["subtitle"],
+                        style={
+                            "margin": "0 0 8px",
+                            "fontSize": FONT_SIZES["xs"],
+                            "color": theme["text_secondary"],
+                            "fontFamily": FONT_FAMILY,
+                        },
+                    ),
+                    dcc.Graph(
+                        id="flow-theta-decay-graph",
+                        figure=_theta_decay_figure(theme),
+                        config={"displayModeBar": False, "responsive": True},
+                        className="sfa-flow-theta-chart",
+                        style={"height": "280px"},
+                    ),
+                    html.P(
+                        THETA_PANEL["caption"],
+                        style={
+                            "margin": "8px 0 6px",
+                            "fontSize": FONT_SIZES["xs"],
+                            "lineHeight": "1.45",
+                            "color": theme["text_secondary"],
+                            "fontFamily": FONT_FAMILY,
+                        },
+                    ),
+                    html.Ul(bullets, style={"margin": "0 0 8px", "paddingLeft": "18px"}),
+                    html.P(
+                        THETA_PANEL["footer"],
+                        style={
+                            "margin": "0",
+                            "fontSize": FONT_SIZES["xs"],
+                            "color": theme["text_tertiary"],
+                            "fontFamily": FONT_FAMILY,
+                        },
+                    ),
+                ],
+                className="sfa-flow-theta-body",
+            ),
+        ],
+        open=open,
+        className="sfa-flow-panel sfa-flow-theta-panel",
+        style=_panel_style(theme),
+    )
+
+
+def _iv_surface_figure(theme: dict) -> go.Figure:
+    """Illustrative IV surface (moneyness × time → implied vol)."""
+    moneyness, time_years, iv_grid = iv_surface_series()
+    fig = go.Figure(
+        data=[
+            go.Surface(
+                x=moneyness,
+                y=time_years,
+                z=iv_grid,
+                colorscale=[
+                    [0.0, "#1a3a6b"],
+                    [0.25, "#2a9d8f"],
+                    [0.5, "#e9c46a"],
+                    [0.75, "#f4a261"],
+                    [1.0, "#e76f51"],
+                ],
+                showscale=True,
+                colorbar={
+                    "title": {
+                        "text": "IV",
+                        "font": {"size": 11, "color": theme["text_secondary"]},
+                    },
+                    "tickfont": {"size": 10, "color": theme["text_secondary"]},
+                    "len": 0.7,
+                    "thickness": 12,
+                },
+                hovertemplate=(
+                    "Moneyness %{x:.2f}<br>"
+                    "Time %{y:.2f} yr<br>"
+                    "IV %{z:.2f}<extra></extra>"
+                ),
+            )
+        ]
+    )
+    fig.update_layout(
+        title={
+            "text": IV_SURFACE_PANEL["title"],
+            "font": {"family": FONT_FAMILY, "size": 14, "color": theme["text_primary"]},
+            "x": 0.02,
+            "xanchor": "left",
+        },
+        paper_bgcolor=theme.get("bg_tertiary", theme.get("bg_panel", "#161616")),
+        margin={"l": 8, "r": 8, "t": 40, "b": 8},
+        height=360,
+        font={"family": FONT_FAMILY, "size": 11, "color": theme["text_secondary"]},
+        scene={
+            "xaxis": {
+                "title": {
+                    "text": "Moneyness",
+                    "font": {"size": 11, "color": theme["text_secondary"]},
+                },
+                "gridcolor": theme.get("border_primary", "#333"),
+                "backgroundcolor": theme.get("bg_primary", "#0A0A0A"),
+                "color": theme["text_secondary"],
+            },
+            "yaxis": {
+                "title": {
+                    "text": "Time (years)",
+                    "font": {"size": 11, "color": theme["text_secondary"]},
+                },
+                "gridcolor": theme.get("border_primary", "#333"),
+                "backgroundcolor": theme.get("bg_primary", "#0A0A0A"),
+                "color": theme["text_secondary"],
+            },
+            "zaxis": {
+                "title": {
+                    "text": "Volatility",
+                    "font": {"size": 11, "color": theme["text_secondary"]},
+                },
+                "gridcolor": theme.get("border_primary", "#333"),
+                "backgroundcolor": theme.get("bg_primary", "#0A0A0A"),
+                "color": theme["text_secondary"],
+                "range": [0, 0.8],
+            },
+            "bgcolor": theme.get("bg_primary", "#0A0A0A"),
+            "camera": {"eye": {"x": 1.55, "y": 1.45, "z": 0.85}},
+            "annotations": [
+                {
+                    "x": 0.5,
+                    "y": 0.05,
+                    "z": 0.55,
+                    "text": "0DTE wing",
+                    "showarrow": False,
+                    "font": {"size": 10, "color": theme["text_primary"]},
+                    "xanchor": "left",
+                },
+            ],
+        },
+        meta={"region_tips": IV_SURFACE_REGION_TIPS},
+    )
+    return fig
+
+
+def render_iv_surface_panel(theme: dict, *, open: bool = True) -> html.Details:
+    """Collapsible on-page IV surface chart with layman captions."""
+    term_style = {
+        "cursor": "help",
+        "textDecoration": "underline dotted",
+        "textUnderlineOffset": "2px",
+        "color": theme["text_primary"],
+        "fontWeight": "600",
+    }
+    bullets = [
+        html.Li(
+            bullet,
+            style={
+                "marginBottom": "4px",
+                "fontSize": FONT_SIZES["xs"],
+                "lineHeight": "1.45",
+                "color": theme["text_secondary"],
+                "fontFamily": FONT_FAMILY,
+            },
+        )
+        for bullet in IV_SURFACE_PANEL["bullets"]
+    ]
+    return html.Details(
+        [
+            html.Summary(
+                [
+                    html.Span(
+                        IV_SURFACE_PANEL["title"],
+                        title=TERM_DEFINITIONS["iv_surface"],
+                        style=term_style,
+                    ),
+                    html.Span(
+                        " — illustrative · ",
+                        style={
+                            "fontWeight": "400",
+                            "color": theme["text_tertiary"],
+                            "fontSize": FONT_SIZES["xs"],
+                        },
+                    ),
+                    html.Span(
+                        "moneyness",
+                        title=TERM_DEFINITIONS["moneyness"],
+                        style={**term_style, "fontSize": FONT_SIZES["xs"]},
+                    ),
+                    html.Span(" / ", style={"color": theme["text_tertiary"], "fontWeight": "400"}),
+                    html.Span(
+                        "0DTE",
+                        title=TERM_DEFINITIONS["0dte"],
+                        style={**term_style, "fontSize": FONT_SIZES["xs"]},
+                    ),
+                ],
+                style=_panel_summary_style(theme),
+            ),
+            html.Div(
+                [
+                    html.P(
+                        IV_SURFACE_PANEL["subtitle"],
+                        style={
+                            "margin": "0 0 8px",
+                            "fontSize": FONT_SIZES["xs"],
+                            "color": theme["text_secondary"],
+                            "fontFamily": FONT_FAMILY,
+                        },
+                    ),
+                    dcc.Graph(
+                        id="flow-iv-surface-graph",
+                        figure=_iv_surface_figure(theme),
+                        config={"displayModeBar": False, "responsive": True},
+                        className="sfa-flow-iv-surface-chart",
+                        style={"height": "360px"},
+                    ),
+                    html.P(
+                        IV_SURFACE_PANEL["caption"],
+                        style={
+                            "margin": "8px 0 6px",
+                            "fontSize": FONT_SIZES["xs"],
+                            "lineHeight": "1.45",
+                            "color": theme["text_secondary"],
+                            "fontFamily": FONT_FAMILY,
+                        },
+                    ),
+                    html.Ul(bullets, style={"margin": "0 0 8px", "paddingLeft": "18px"}),
+                    html.P(
+                        [
+                            html.Span(
+                                "Smile / skew: ",
+                                title=TERM_DEFINITIONS["vol_smile"],
+                                style=term_style,
+                            ),
+                            html.Span(
+                                IV_SURFACE_REGION_TIPS["atm"] + " ",
+                                style={"color": theme["text_secondary"]},
+                            ),
+                            html.Span(
+                                "Term structure: ",
+                                title=TERM_DEFINITIONS["term_structure"],
+                                style=term_style,
+                            ),
+                            html.Span(
+                                IV_SURFACE_REGION_TIPS["long_dated"],
+                                style={"color": theme["text_secondary"]},
+                            ),
+                        ],
+                        style={
+                            "margin": "0 0 8px",
+                            "fontSize": FONT_SIZES["xs"],
+                            "lineHeight": "1.45",
+                            "fontFamily": FONT_FAMILY,
+                        },
+                    ),
+                    html.P(
+                        IV_SURFACE_PANEL["footer"],
+                        style={
+                            "margin": "0",
+                            "fontSize": FONT_SIZES["xs"],
+                            "color": theme["text_tertiary"],
+                            "fontFamily": FONT_FAMILY,
+                        },
+                    ),
+                ],
+                className="sfa-flow-iv-surface-body",
+            ),
+        ],
+        open=open,
+        className="sfa-flow-panel sfa-flow-iv-surface-panel",
+        style=_panel_style(theme),
     )
 
 
@@ -895,7 +1342,10 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
 
     insight_block = _insight_list(insights, theme)
     score_chips = _score_chip_row(report, theme)
-    strike_map = _strike_map(report, theme)
+    inventory_panel = render_inventory_panel(report, theme)
+    # Fallback to the lightweight strike-dot map when ladder data is absent
+    # (older flow_report.json without strike_ladders).
+    strike_map = None if inventory_panel is not None else _strike_map(report, theme)
 
     # Score stays visible on the summary row so a collapsed card is still rankable.
     header_children.append(html.Span(
@@ -953,7 +1403,9 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
     ]
     if score_chips is not None:
         card_children.append(score_chips)
-    if strike_map is not None:
+    if inventory_panel is not None:
+        card_children.append(inventory_panel)
+    elif strike_map is not None:
         card_children.append(strike_map)
     card_children.extend([
         html.Div([
@@ -1020,6 +1472,8 @@ def render_flow_reports(payload: Mapping[str, Any], theme: dict, *, show_glossar
     if show_glossary:
         children.append(render_glossary_panel(theme))
     children.append(render_flow_guide(theme))
+    children.append(render_theta_decay_panel(theme))
+    children.append(render_iv_surface_panel(theme))
     children.append(render_summary_cards(sorted_reports, theme))
     for idx, report in enumerate(sorted_reports):
         children.append(render_ticker_card(report, theme, index=idx))
