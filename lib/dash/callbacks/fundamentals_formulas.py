@@ -6,7 +6,7 @@ from typing import Any
 
 from dash import html
 
-from lib.dash.dash_config import FONT_SIZES
+from lib.dash.dash_config import FONT_FAMILY, FONT_SIZES
 
 _METRIC_ALIASES = {
     'Current Price': 'Year-end Close',

@@ -16,6 +16,7 @@ from lib.agent_strategy import load_bundle
 from lib.config_loader import get_agent_strategies
 from lib.dash.components import build_alert
 from lib.dash.dash_config import FONT_SIZES, get_theme
+from lib.dash.optimizer_glossary import GRID_RUN_LABEL, GRID_STOP_LABEL
 from lib.dash.optimizer_bayesian_apply import merge_indicator_settings_from_params
 from lib.dash.optimizer_space_viz import (
     build_combo_estimate_card,
@@ -299,12 +300,12 @@ def register_optimizer_grid_callbacks(app) -> None:
                     theme,
                     stopping=True,
                 )
-                return no_update, 'STOP GRID', False, progress, hidden_actions
+                return no_update, GRID_STOP_LABEL, False, progress, hidden_actions
 
         if not strategy_name:
             return (
                 True,
-                'RUN GRID',
+                GRID_RUN_LABEL,
                 False,
                 build_alert("Select a strategy bundle first.", "warning", theme=theme),
                 hidden_actions,
@@ -312,7 +313,7 @@ def register_optimizer_grid_callbacks(app) -> None:
         if not selected_keys:
             return (
                 True,
-                'RUN GRID',
+                GRID_RUN_LABEL,
                 False,
                 build_alert("Select at least one parameter.", "warning", theme=theme),
                 hidden_actions,
@@ -320,7 +321,7 @@ def register_optimizer_grid_callbacks(app) -> None:
         if not window_from or not window_to:
             return (
                 True,
-                'RUN GRID',
+                GRID_RUN_LABEL,
                 False,
                 build_alert("Set a test window before running Grid Search.", "warning", theme=theme),
                 hidden_actions,
@@ -343,7 +344,7 @@ def register_optimizer_grid_callbacks(app) -> None:
         except Exception as exc:
             return (
                 True,
-                'RUN GRID',
+                GRID_RUN_LABEL,
                 False,
                 build_alert(str(exc), "danger", theme=theme),
                 hidden_actions,
@@ -351,7 +352,7 @@ def register_optimizer_grid_callbacks(app) -> None:
         if total > cap:
             return (
                 True,
-                'RUN GRID',
+                GRID_RUN_LABEL,
                 False,
                 build_alert(
                     f"Grid has {total} combinations (cap={cap}). "
@@ -392,7 +393,7 @@ def register_optimizer_grid_callbacks(app) -> None:
         thread.start()
 
         progress = build_grid_progress(0, total, theme)
-        return False, 'STOP GRID', False, progress, hidden_actions
+        return False, GRID_STOP_LABEL, False, progress, hidden_actions
 
     @app.callback(
         [Output('grid-results-store', 'data'),
@@ -426,7 +427,7 @@ def register_optimizer_grid_callbacks(app) -> None:
                 no_update,
                 build_grid_progress(done, total, theme, stopping=cancelled),
                 False,
-                'STOP GRID',
+                GRID_STOP_LABEL,
                 False,
                 hidden_actions,
                 no_update,
@@ -441,7 +442,7 @@ def register_optimizer_grid_callbacks(app) -> None:
                 build_alert(f"Grid search failed: {error}", "danger", theme=theme),
                 html.Div(),
                 True,
-                'RUN GRID',
+                GRID_RUN_LABEL,
                 False,
                 hidden_actions,
                 empty_fig,
@@ -456,7 +457,7 @@ def register_optimizer_grid_callbacks(app) -> None:
                 build_alert("Grid search cancelled.", "warning", theme=theme),
                 html.Div(),
                 True,
-                'RUN GRID',
+                GRID_RUN_LABEL,
                 False,
                 hidden_actions,
                 empty_fig,
@@ -483,7 +484,7 @@ def register_optimizer_grid_callbacks(app) -> None:
                 'color': theme['accent_green'],
             }),
             True,
-            'RUN GRID',
+            GRID_RUN_LABEL,
             False,
             visible_actions,
             fig,

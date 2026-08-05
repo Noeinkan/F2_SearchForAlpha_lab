@@ -21,7 +21,14 @@ from lib.dash.dash_config import (
     TEST_WINDOW_PRESETS,
 )
 from lib.dash.components import dense_input, ticker_pill
-from lib.dash.optimizer_glossary import CONTROL_HINTS, SECTION_BLURBS
+from lib.dash.optimizer_glossary import (
+    BAYESIAN_RUN_LABEL,
+    COMBOS_RUN_LABEL,
+    CONTROL_HINTS,
+    GRID_RUN_LABEL,
+    SECTION_BLURBS,
+    WORKFLOW_STEPS,
+)
 from lib.dash.optimizer_view import (
     render_optimizer_empty_state,
     render_optimizer_learn_content,
@@ -67,6 +74,32 @@ def _section_blurb(key: str, theme: dict) -> html.Div:
             'lineHeight': '1.4',
             'marginBottom': '10px',
         },
+    )
+
+
+def _workflow_steps(theme: dict) -> html.Div:
+    """Decorative Combos → Tune → Validate strip in the overlay header."""
+    children: list = []
+    for i, step in enumerate(WORKFLOW_STEPS):
+        if i:
+            children.append(html.Span(
+                " → ",
+                style={'color': theme['border_primary'], 'fontWeight': '400', 'padding': '0 2px'},
+            ))
+        children.append(html.Span(
+            step,
+            style={
+                'fontSize': FONT_SIZES['xs'],
+                'color': theme['text_secondary'] if i == 0 else theme['text_tertiary'],
+                'fontWeight': '600' if i == 0 else '500',
+                'letterSpacing': '0.02em',
+                'whiteSpace': 'nowrap',
+            },
+        ))
+    return html.Div(
+        children,
+        id='optimizer-workflow-steps',
+        style={'display': 'flex', 'alignItems': 'center', 'marginRight': '4px'},
     )
 
 
@@ -322,6 +355,23 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                                 placeholder='e.g. 0.5',
                                 style=styles['input'],
                             ),
+                            html.Button(
+                                COMBOS_RUN_LABEL,
+                                id='run-optimization-rail-btn',
+                                style={
+                                    **styles['button_primary'],
+                                    'width': '100%',
+                                    'marginTop': '14px',
+                                },
+                                n_clicks=0,
+                            ),
+                            dbc.Tooltip(
+                                "Primary action: test many buy/sell signal stacks on "
+                                "the current window. Same control as the header button. "
+                                "While running, click again to STOP.",
+                                target='run-optimization-rail-btn',
+                                placement='top',
+                            ),
                         ]),
                     ],
                     title="Grid Search & Constraints",
@@ -493,14 +543,14 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                                 style={'fontSize': FONT_SIZES['xs'], 'marginBottom': '12px'},
                             ),
                             html.Button(
-                                "RUN BAYESIAN",
+                                BAYESIAN_RUN_LABEL,
                                 id='run-bayesian-btn',
-                                style={**styles['button_primary'], 'width': '100%'},
+                                style={**styles['button_outline'], 'width': '100%'},
                                 n_clicks=0,
                             ),
                             dbc.Tooltip(
-                                "Tune numeric params of the selected bundle (Optuna). "
-                                "Not the same as RUN OPTIMIZER signal-combo grid search.",
+                                "Step 2 · Tune numeric params of the selected bundle "
+                                "(Optuna). Not the same as SEARCH SIGNAL COMBOS.",
                                 target='run-bayesian-btn',
                                 placement='top',
                             ),
@@ -541,7 +591,7 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                             ),
                         ]),
                     ],
-                    title="Bayesian Sweep",
+                    title="Tune this bundle · Bayesian",
                     item_id='opt-bayesian',
                 ),
                 dbc.AccordionItem(
@@ -621,10 +671,20 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                                 className='sfa-grid-ranges-graph',
                             ),
                             html.Button(
-                                "RUN GRID",
+                                GRID_RUN_LABEL,
                                 id='run-grid-btn',
-                                style={**styles['button_primary'], 'width': '100%', 'marginTop': '10px'},
+                                style={
+                                    **styles['button_outline'],
+                                    'width': '100%',
+                                    'marginTop': '10px',
+                                },
                                 n_clicks=0,
+                            ),
+                            dbc.Tooltip(
+                                "Step 2 · Exhaustive capped param grid for one bundle. "
+                                "Prefer TUNE BUNDLE when the space is large.",
+                                target='run-grid-btn',
+                                placement='top',
                             ),
                             html.Div(id='grid-progress', style={'marginTop': '10px'}),
                             html.Div(id='grid-results', style={'marginTop': '8px'}),
@@ -650,7 +710,7 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                             ),
                         ]),
                     ],
-                    title="Param Grid Search",
+                    title="Tune this bundle · Param grid",
                     item_id='opt-grid',
                 ),
             ],
@@ -855,6 +915,7 @@ def _create_optimize_overlay(styles: dict, theme: dict) -> html.Div:
                 ),
             ], style={'minWidth': 0, 'flex': '1 1 auto'}),
             html.Div([
+                _workflow_steps(theme),
                 html.Button(
                     "LEARN",
                     id='optimizer-learn-button',
@@ -867,14 +928,15 @@ def _create_optimize_overlay(styles: dict, theme: dict) -> html.Div:
                     placement='bottom',
                 ),
                 html.Button(
-                    "RUN OPTIMIZER",
+                    COMBOS_RUN_LABEL,
                     id='run-optimization-btn',
                     style={**styles['button_primary'], 'padding': '6px 14px'},
                     n_clicks=0,
                 ),
                 dbc.Tooltip(
-                    "Signal-combo grid search: test many buy/sell stacks on the "
-                    "current window. While running, click again to STOP.",
+                    "Step 1 · Signal-combo search: test many buy/sell stacks on the "
+                    "current window. Same control as SEARCH SIGNAL COMBOS on the left "
+                    "rail. While running, click again to STOP.",
                     target='run-optimization-btn',
                     placement='bottom',
                 ),

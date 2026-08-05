@@ -83,9 +83,13 @@ Narrow the list to focus the search (bundles-lite).
 Off by default (fast idealized engine defaults). Turn on to rank each combo with your
 synced **mode / min hold / trailing stop / FX / slippage / commission**.
 
-### The button — RUN OPTIMIZER / STOP OPTIMIZER
-Press **RUN** to start. While running the button becomes **STOP** (click to cancel and keep
+### The button — SEARCH SIGNAL COMBOS / STOP COMBOS
+Press **SEARCH SIGNAL COMBOS** (header or left rail under Grid Search & Constraints)
+to start. While running the button becomes **STOP COMBOS** (click to cancel and keep
 partial results). Close restores the chart to the terminal and returns to `/ticker/<sym>`.
+
+**Tune this bundle** (sidebar): outline actions **TUNE BUNDLE** (Bayesian) and
+**SCAN PARAM GRID** are step-2 param tools for one named strategy — not the combo search.
 
 ---
 
@@ -133,7 +137,7 @@ objective metric (sortino/sharpe/calmar/composite), and held-out months; the sea
 window is your test-window dates minus the held-out tail. Results show best params
 and metrics when the background study completes — this can take several minutes.
 
-While running, the button reads **STOP BAYESIAN** (click to cancel; partial
+While running, the button reads **STOP TUNE** (click to cancel; partial
 trials are kept). Progress shows `Trial N/M`. When finished:
 
 - **APPLY PARAMS** copies the best flat params into indicator settings and the
@@ -148,7 +152,7 @@ trials are kept). Progress shows `Trial N/M`. When finished:
 ### Workflow 1 — "I have no idea where to start" (beginner)
 1. Pick a symbol on the left so prices load.
 2. Click **OPEN OPTIMIZER** → set Capital & Window on the rail if needed; leave **Max Signals** = `2`, **Max Combinations** = `100`.
-3. Sort by **RET**. Click **RUN OPTIMIZER**.
+3. Sort by **RET**. Click **SEARCH SIGNAL COMBOS**.
 4. Read the Best Strategy card and top-10 table.
 5. Click **Apply Best Strategy** for the full scorecard on the Backtest tab.
 
@@ -161,7 +165,7 @@ trials are kept). Progress shows `Trial N/M`. When finished:
 ### Workflow 3 — "Thorough overnight sweep" (advanced)
 1. Set **Max Signals per Side** = `3`, **Max Combinations** = `1000`.
 2. Watch the COMBOS counter to confirm the workload before running.
-3. **RUN OPTIMIZER** and let it grind through.
+3. **SEARCH SIGNAL COMBOS** and let it grind through.
 4. Treat the results with healthy suspicion — the more combos you test, the more likely the "winner" got lucky (§7).
 
 ### Workflow 4 — "Optimizer → Backtest handoff" (the recommended loop)
@@ -205,7 +209,7 @@ Two things to keep in mind so the Optimizer helps rather than misleads:
 ## 8. The 30-second mental model
 
 1. **Load data** (left) → 2. **Set the search size** (Max Signals per Side + Max
-Combinations) → 3. **Pick a ranking metric** (Sort Results By) → 4. **RUN OPTIMIZER** →
+Combinations) → 3. **Pick a ranking metric** (Sort Results By) → 4. **SEARCH SIGNAL COMBOS** →
 5. **Read the leaderboard**, re-sorting to cross-check → 6. **Apply Best Strategy** →
 7. **Re-run it on the Backtest tab** with real costs → 8. **Save** the survivors.
 

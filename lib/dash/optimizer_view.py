@@ -213,8 +213,8 @@ def render_optimizer_empty_state(theme: dict) -> html.Div:
                 },
             ),
             html.Div(
-                "Tip: open LEARN in the header for Bayesian Sweep, Validate OOS, "
-                "and an honesty note on overfitting.",
+                "Tip: workflow is Combos → Tune (bundle) → Validate. Open LEARN "
+                "in the header for Bayesian vs Param Grid and an honesty note.",
                 style={
                     "fontSize": FONT_SIZES["xs"],
                     "color": theme["text_tertiary"],

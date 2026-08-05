@@ -2,9 +2,11 @@
 
 Dash IDs must stay unique, so the Optimizer rail hosts ``opt-*`` mirrors that
 write through to the hidden Backtest components (and mirror values back).
-Test-window *dates* remain owned solely by ``sync_test_window`` — this module
-only syncs the preset radio and mirrors resolved dates onto the opt pickers;
-opt date edits are fed into ``sync_test_window`` as extra Inputs.
+
+Test-window *dates* use one bidirectional callback (same pattern as capital)
+so Dash 4 does not flag a static cycle. Series/preset resets still land via
+``sync_test_window`` in ``test_window.py``; this module mirrors those SoT
+writes onto the opt pickers and pushes opt edits back to SoT.
 """
 
 from __future__ import annotations
@@ -12,8 +14,10 @@ from __future__ import annotations
 from typing import Any
 
 from dash import callback_context, no_update
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output
 from dash.exceptions import PreventUpdate
+
+from lib.dash.callbacks.test_window import _clamp_to_loaded, _loaded_bounds
 
 
 def values_differ(left: Any, right: Any) -> bool:
@@ -82,22 +86,51 @@ def register_optimizer_sync_callbacks(app) -> None:
             trigger, 'opt-test-window-preset', opt_val, 'test-window-preset', sot_val,
         )
 
-    # Dates: SoT → opt mirror only (opt → SoT handled inside sync_test_window).
+    # Dates: one bidirectional callback (avoids the SoT↔opt cycle Dash 4 rejects
+    # when sync_test_window and a one-way mirror are separate callbacks).
     @app.callback(
         [Output('opt-test-window-start', 'date'),
-         Output('opt-test-window-end', 'date')],
-        [Input('test-window-start', 'date'),
+         Output('opt-test-window-end', 'date'),
+         Output('test-window-start', 'date', allow_duplicate=True),
+         Output('test-window-end', 'date', allow_duplicate=True)],
+        [Input('opt-test-window-start', 'date'),
+         Input('opt-test-window-end', 'date'),
+         Input('test-window-start', 'date'),
          Input('test-window-end', 'date')],
-        [State('opt-test-window-start', 'date'),
-         State('opt-test-window-end', 'date')],
-        prevent_initial_call=False,
+        prevent_initial_call='initial_duplicate',
     )
-    def mirror_window_dates(sot_start, sot_end, opt_start, opt_end):
+    def sync_window_dates(opt_start, opt_end, sot_start, sot_end):
+        ctx = callback_context
+        trigger = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
+        if not trigger:
+            raise PreventUpdate
+
+        if trigger in ('opt-test-window-start', 'opt-test-window-end'):
+            if not opt_start or not opt_end:
+                raise PreventUpdate
+            start, end = opt_start, opt_end
+            bounds = _loaded_bounds()
+            if bounds is not None:
+                start, end = _clamp_to_loaded(opt_start, opt_end, bounds[0], bounds[1])
+            opt_start_out = start if values_differ(start, opt_start) else no_update
+            opt_end_out = end if values_differ(end, opt_end) else no_update
+            sot_start_out = start if values_differ(start, sot_start) else no_update
+            sot_end_out = end if values_differ(end, sot_end) else no_update
+            if (
+                opt_start_out is no_update
+                and opt_end_out is no_update
+                and sot_start_out is no_update
+                and sot_end_out is no_update
+            ):
+                raise PreventUpdate
+            return opt_start_out, opt_end_out, sot_start_out, sot_end_out
+
+        # SoT changed (preset / new series / backtest picker) → mirror to opt.
         start_out = sot_start if values_differ(sot_start, opt_start) else no_update
         end_out = sot_end if values_differ(sot_end, opt_end) else no_update
         if start_out is no_update and end_out is no_update:
             raise PreventUpdate
-        return start_out, end_out
+        return start_out, end_out, no_update, no_update
 
     _FRICTION_PAIRS = [
         ('opt-strategy-mode', 'strategy-mode'),

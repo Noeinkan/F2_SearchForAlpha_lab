@@ -10,7 +10,8 @@ The two concerns are now split by module as well as by UI:
 
 Output ownership, which Dash 4 enforces rather than merely prefers:
 
-  test-window-start/end .date   <- sync_test_window   (this file, only writer)
+  test-window-start/end .date   <- sync_test_window (this file) + sync_window_dates
+                                   in optimizer_sync (allow_duplicate; opt↔SoT)
   test-window-series-store.data <- sync_test_window   (this file, only writer)
   test-window-pending-store     <- sync_test_window + stage_preset_test_window
   chart-focus-store.data        <- focus_chart_on_test_window (this file)
@@ -83,24 +84,16 @@ def register_test_window_callbacks(app) -> None:
          Output('test-window-series-store', 'data'),
          Output('test-window-pending-store', 'data')],
         [Input('data-loaded-store', 'data'),
-         Input('test-window-preset', 'value'),
-         Input('opt-test-window-start', 'date'),
-         Input('opt-test-window-end', 'date')],
+         Input('test-window-preset', 'value')],
         [State('test-window-series-store', 'data'),
-         State('test-window-pending-store', 'data'),
-         State('opt-test-window-start', 'date'),
-         State('opt-test-window-end', 'date')],
+         State('test-window-pending-store', 'data')],
         prevent_initial_call=False,
     )
     def sync_test_window(
         _load_generation,
         preset,
-        _opt_start_in,
-        _opt_end_in,
         series_key,
         pending,
-        opt_start,
-        opt_end,
     ):
         """Keep the window valid against whatever data is currently loaded.
 
@@ -109,8 +102,9 @@ def register_test_window_callbacks(app) -> None:
         whether the old viewport still means anything. A plain refresh of the
         same series must not throw away a window the user narrowed by hand.
 
-        Optimizer date mirrors (``opt-test-window-*``) are additional Inputs so
-        this callback remains the sole writer of the SoT pickers.
+        Optimizer date mirrors are synced in ``optimizer_sync`` via a single
+        bidirectional callback (same pattern as capital) so Dash 4 does not see
+        a static cycle between SoT pickers and ``opt-test-window-*``.
         """
         bounds = _loaded_bounds()
         if bounds is None:
@@ -122,12 +116,6 @@ def register_test_window_callbacks(app) -> None:
 
         if trigger == 'test-window-preset':
             start, end = resolve_preset(preset, first, last)
-            return start, end, no_update, no_update
-
-        if trigger in ('opt-test-window-start', 'opt-test-window-end'):
-            if not opt_start or not opt_end:
-                raise PreventUpdate
-            start, end = _clamp_to_loaded(opt_start, opt_end, first, last)
             return start, end, no_update, no_update
 
         current_key = f"{dashboard_state.ticker}|{dashboard_state.interval}"

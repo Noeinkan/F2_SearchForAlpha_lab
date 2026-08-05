@@ -29,6 +29,7 @@ from lib.dash.helpers import (
     filter_signal_universe,
     apply_optimizer_constraints,
 )
+from lib.dash.optimizer_glossary import COMBOS_RUN_LABEL, COMBOS_STOP_LABEL
 from lib.dash.optimizer_history import append_history, summarize_run
 from lib.dash.optimizer_view import render_optimizer_empty_state
 from lib.dash.state import dashboard_state
@@ -43,8 +44,8 @@ from lib.dash.callbacks.shared import (
 
 logger = logging.getLogger(__name__)
 
-_RUN_LABEL = "RUN OPTIMIZER"
-_STOP_LABEL = "STOP OPTIMIZER"
+_RUN_LABEL = COMBOS_RUN_LABEL
+_STOP_LABEL = COMBOS_STOP_LABEL
 
 # Sentinel returned by a worker whose run was cancelled mid-flight (user
 # clicked STOP, which calls ``reset_optimization()``). Treated specially by
@@ -213,13 +214,30 @@ def _calibrate_sec_per_combo(elapsed: float, n_combos: int) -> None:
     )
 
 
-def _optimizer_btn_style(theme: dict, *, stop: bool = False) -> dict:
-    """Primary RUN style, or danger STOP style."""
-    base = {**get_styles(theme)['button_primary'], 'width': '100%'}
+def _optimizer_btn_style(theme: dict, *, stop: bool = False, placement: str = "rail") -> dict:
+    """Primary SEARCH style, or danger STOP style (header compact vs rail full-width)."""
+    styles = get_styles(theme)
+    if placement == "header":
+        base = {**styles['button_primary'], 'padding': '6px 14px'}
+    else:
+        base = {**styles['button_primary'], 'width': '100%', 'marginTop': '14px'}
     if stop:
         base['backgroundColor'] = theme['accent_red']
         base['color'] = '#fff'
     return base
+
+
+def _combo_btn_state(theme: dict, *, stop: bool, disabled: bool = False):
+    """Synced header + rail button props: disabled, children, style × 2."""
+    children = _STOP_LABEL if stop else _RUN_LABEL
+    return (
+        disabled,
+        children,
+        _optimizer_btn_style(theme, stop=stop, placement="header"),
+        disabled,
+        children,
+        _optimizer_btn_style(theme, stop=stop, placement="rail"),
+    )
 
 
 def _interval_display_label(bar_interval: str | None) -> str:
@@ -416,7 +434,8 @@ def _cancel_optimization(theme: dict, client_state: dict | None):
             ),
         ]),
         html.Div(
-            "Partial results kept below when available. Click RUN to start a new search.",
+            "Partial results kept below when available. Click SEARCH SIGNAL COMBOS "
+            "to start a new search.",
             style={
                 'fontSize': FONT_SIZES['xs'],
                 'color': theme['text_secondary'],
@@ -432,15 +451,12 @@ def _cancel_optimization(theme: dict, client_state: dict | None):
         max_dd_pct=max_dd_pct,
         min_sharpe=min_sharpe,
     )
-    run_style = _optimizer_btn_style(theme, stop=False)
     if ranked.empty:
         return (
             idle_state,
             True,  # disable interval
             progress,
-            False,  # button enabled
-            _RUN_LABEL,
-            run_style,
+            *_combo_btn_state(theme, stop=False),
             _empty_results_ui(theme),
             {'display': 'none'},
             [],
@@ -460,9 +476,7 @@ def _cancel_optimization(theme: dict, client_state: dict | None):
         idle_state,
         True,
         progress,
-        False,
-        _RUN_LABEL,
-        run_style,
+        *_combo_btn_state(theme, stop=False),
         _results_ui_from_df(ranked, theme),
         {'display': 'block'},
         records,
@@ -586,10 +600,14 @@ def register_optimization_callbacks(app) -> None:
          Output('run-optimization-btn', 'disabled'),
          Output('run-optimization-btn', 'children'),
          Output('run-optimization-btn', 'style'),
+         Output('run-optimization-rail-btn', 'disabled'),
+         Output('run-optimization-rail-btn', 'children'),
+         Output('run-optimization-rail-btn', 'style'),
          Output('optimization-results', 'children', allow_duplicate=True),
          Output('apply-strategy-container', 'style', allow_duplicate=True),
          Output('optimization-results-store', 'data', allow_duplicate=True)],
-        [Input('run-optimization-btn', 'n_clicks')],
+        [Input('run-optimization-btn', 'n_clicks'),
+         Input('run-optimization-rail-btn', 'n_clicks')],
         [State('initial-capital', 'value'),
          State('max-signals-slider', 'value'),
          State('max-combos-input', 'value'),
@@ -614,7 +632,8 @@ def register_optimization_callbacks(app) -> None:
         prevent_initial_call=True
     )
     def start_optimization(
-        n_clicks,
+        n_clicks_header,
+        n_clicks_rail,
         initial_capital,
         max_signals,
         max_combos,
@@ -637,8 +656,8 @@ def register_optimization_callbacks(app) -> None:
         max_dd_pct,
         min_sharpe,
     ):
-        """Start a run, or cancel when the button currently reads STOP."""
-        if not n_clicks:
+        """Start a run, or cancel when either combo button currently reads STOP."""
+        if not (n_clicks_header or n_clicks_rail):
             raise PreventUpdate
 
         theme = get_theme()
@@ -657,16 +676,13 @@ def register_optimization_callbacks(app) -> None:
             raise PreventUpdate
 
         full_df = dashboard_state.df
-        run_style = _optimizer_btn_style(theme, stop=False)
 
         if full_df is None:
             return (
                 current_state,
                 True,
                 build_alert("Please load market data first", "warning", theme=theme),
-                False,
-                _RUN_LABEL,
-                run_style,
+                *_combo_btn_state(theme, stop=False),
                 _empty_results_ui(theme),
                 {'display': 'none'},
                 [],
@@ -686,9 +702,7 @@ def register_optimization_callbacks(app) -> None:
                 current_state,
                 True,
                 build_alert("No valid signal combinations found", "warning", theme=theme),
-                False,
-                _RUN_LABEL,
-                run_style,
+                *_combo_btn_state(theme, stop=False),
                 _empty_results_ui(theme),
                 {'display': 'none'},
                 [],
@@ -759,9 +773,7 @@ def register_optimization_callbacks(app) -> None:
             new_state,
             False,  # Enable interval
             progress_ui,
-            False,  # Keep button enabled so STOP works
-            _STOP_LABEL,
-            _optimizer_btn_style(theme, stop=True),
+            *_combo_btn_state(theme, stop=True),
             _empty_results_ui(theme),
             {'display': 'none'},
             [],
@@ -775,6 +787,9 @@ def register_optimization_callbacks(app) -> None:
          Output('run-optimization-btn', 'disabled', allow_duplicate=True),
          Output('run-optimization-btn', 'children', allow_duplicate=True),
          Output('run-optimization-btn', 'style', allow_duplicate=True),
+         Output('run-optimization-rail-btn', 'disabled', allow_duplicate=True),
+         Output('run-optimization-rail-btn', 'children', allow_duplicate=True),
+         Output('run-optimization-rail-btn', 'style', allow_duplicate=True),
          Output('apply-strategy-container', 'style', allow_duplicate=True),
          Output('optimization-results-store', 'data'),
          Output('optimizer-run-history-store', 'data', allow_duplicate=True)],
@@ -860,8 +875,6 @@ def register_optimization_callbacks(app) -> None:
         )
 
         progress_pct = int((end_idx / total) * 100)
-        run_style = _optimizer_btn_style(theme, stop=True)
-        idle_style = _optimizer_btn_style(theme, stop=False)
 
         if end_idx >= total:
             dashboard_state.update_optimization_state(running=False, completed=True)
@@ -886,9 +899,7 @@ def register_optimization_callbacks(app) -> None:
                     build_alert(msg, "warning", theme=theme),
                     _empty_results_ui(theme),
                     True,
-                    False,
-                    _RUN_LABEL,
-                    idle_style,
+                    *_combo_btn_state(theme, stop=False),
                     {'display': 'none'},
                     [],
                     no_update,
@@ -928,9 +939,7 @@ def register_optimization_callbacks(app) -> None:
                 final_progress,
                 _results_ui_from_df(results_df, theme),
                 True,
-                False,
-                _RUN_LABEL,
-                idle_style,
+                *_combo_btn_state(theme, stop=False),
                 {'display': 'block'},
                 records,
                 new_history,
@@ -971,9 +980,7 @@ def register_optimization_callbacks(app) -> None:
             progress_ui,
             partial_results,
             False,
-            False,
-            _STOP_LABEL,
-            run_style,
+            *_combo_btn_state(theme, stop=True),
             {'display': 'none'},
             [],
             no_update,

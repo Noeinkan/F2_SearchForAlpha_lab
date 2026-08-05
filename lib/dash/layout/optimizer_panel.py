@@ -46,7 +46,7 @@ def _create_optimizer_panel(styles: dict, theme: dict) -> html.Div:
                 style={**styles['button_primary'], 'width': '100%'},
             ),
             dbc.Tooltip(
-                "Open the full-screen Optimizer. Start with RUN OPTIMIZER "
+                "Open the full-screen Optimizer. Start with SEARCH SIGNAL COMBOS "
                 "(combo grid search); use LEARN if the controls feel opaque.",
                 target='open-optimizer-from-teaser',
                 placement='left',

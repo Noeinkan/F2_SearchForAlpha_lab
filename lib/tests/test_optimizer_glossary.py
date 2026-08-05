@@ -4,10 +4,12 @@ from lib.dash.dash_config import get_theme
 from lib.dash.optimizer_glossary import (
     ANALYSIS_ORDER,
     ANALYSIS_SPECS,
+    COMBOS_RUN_LABEL,
     CONTROL_HINTS,
     LEARN_SECTIONS,
     QUICK_START_STEPS,
     SECTION_BLURBS,
+    WORKFLOW_STEPS,
 )
 from lib.dash.optimizer_view import (
     render_optimizer_empty_state,
@@ -44,6 +46,15 @@ def test_learn_sections_and_control_hints_nonempty():
 
 def test_combinatorial_aka_mentions_grid_search():
     assert "grid" in ANALYSIS_SPECS["combinatorial"]["aka"].lower()
+
+
+def test_button_labels_and_workflow_steps():
+    assert ANALYSIS_SPECS["combinatorial"]["button"] == COMBOS_RUN_LABEL
+    assert "SIGNAL COMBOS" in COMBOS_RUN_LABEL
+    assert ANALYSIS_SPECS["bayesian"]["button"] == "TUNE BUNDLE"
+    assert ANALYSIS_SPECS["param_grid"]["button"] == "SCAN PARAM GRID"
+    assert WORKFLOW_STEPS == ("1 Combos", "2 Tune", "3 Validate")
+    assert any("SEARCH SIGNAL COMBOS" in step for step in QUICK_START_STEPS)
 
 
 def test_render_learn_and_empty_state():

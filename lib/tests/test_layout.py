@@ -69,6 +69,7 @@ EXPECTED_SHELL_IDS = {
     "run-backtest-btn",
     "backtest-results",
     "run-optimization-btn",
+    "run-optimization-rail-btn",
     "optimization-results",
     "command-palette",
     # Test window — the backtest panel owns the evaluated period.

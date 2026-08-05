@@ -12,12 +12,27 @@ DISCLAIMER = (
     "of future results — not financial advice."
 )
 
+# Canonical control labels — layout + callbacks must stay in sync via these.
+COMBOS_RUN_LABEL = "SEARCH SIGNAL COMBOS"
+COMBOS_STOP_LABEL = "STOP COMBOS"
+BAYESIAN_RUN_LABEL = "TUNE BUNDLE"
+BAYESIAN_STOP_LABEL = "STOP TUNE"
+GRID_RUN_LABEL = "SCAN PARAM GRID"
+GRID_STOP_LABEL = "STOP GRID"
+
+# Header workflow strip (decorative; Learn spells out the jobs).
+WORKFLOW_STEPS: tuple[str, ...] = (
+    "1 Combos",
+    "2 Tune",
+    "3 Validate",
+)
+
 # Numbered path shown in the empty state and at the top of LEARN.
 QUICK_START_STEPS: tuple[str, ...] = (
     "Load a symbol so the chart has prices (left sidebar).",
     "Set Capital & Window on the left rail (same values sync to Backtest).",
     "Leave Max Signals = 2 and Max Combinations = 100 for a first pass.",
-    "Click RUN OPTIMIZER — that is the signal-combo grid search.",
+    "Click SEARCH SIGNAL COMBOS — next to Grid Search & Constraints (or the header).",
     "Read the leaderboard, then Apply Best Strategy (or Validate OOS first).",
 )
 
@@ -26,7 +41,7 @@ ANALYSIS_SPECS: dict[str, dict[str, str]] = {
     "combinatorial": {
         "name": "Signal combo search",
         "aka": "Grid search",
-        "button": "RUN OPTIMIZER",
+        "button": COMBOS_RUN_LABEL,
         "one_liner": (
             "Tries many buy/sell signal stacks on the loaded window and ranks "
             "them. Start here if you do not know which signals to pick."
@@ -37,7 +52,7 @@ ANALYSIS_SPECS: dict[str, dict[str, str]] = {
     "bayesian": {
         "name": "Bayesian Sweep",
         "aka": "Param tuning",
-        "button": "RUN BAYESIAN",
+        "button": BAYESIAN_RUN_LABEL,
         "one_liner": (
             "Tunes numeric parameters of one named agent strategy bundle "
             "(Optuna TPE). Needs a bundle with a search_space in config."
@@ -48,7 +63,7 @@ ANALYSIS_SPECS: dict[str, dict[str, str]] = {
     "param_grid": {
         "name": "Param Grid Search",
         "aka": "Cartesian grid",
-        "button": "RUN GRID",
+        "button": GRID_RUN_LABEL,
         "one_liner": (
             "Enumerates a capped floor→ceiling grid of indicator and optional "
             "execution params for one bundle. Use when the space is small; "
@@ -98,17 +113,18 @@ SECTION_BLURBS: dict[str, str] = {
         "Optional filter. Empty means search every buy/sell column on the loaded frame."
     ),
     "search": (
-        "Grid search knobs: how wide the combo space is, how many to test, and how to rank."
+        "Combo-search knobs: how wide the stack space is, how many to test, and how to rank. "
+        "Press SEARCH SIGNAL COMBOS when ready."
     ),
     "realistic": (
         "Off = fast idealized screen. On = rank with costs, stops, and execution mode."
     ),
     "bayesian": (
-        "Different tool: tune parameters of one strategy bundle, not signal combinations."
+        "Step 2 · Tune this bundle: Optuna over one strategy's params — not signal combinations."
     ),
     "param_grid": (
-        "Exhaustive capped grid over selected params (and optional execution space). "
-        "Collapsible visuals show combo count and floor→ceiling ranges before you run."
+        "Step 2 · Tune this bundle: exhaustive capped grid over selected params "
+        "(and optional execution space). Prefer Bayesian when the space is large."
     ),
 }
 
@@ -118,24 +134,19 @@ CONTROL_HINTS: dict[str, str] = {
         "actually be tested (already capped). EST ≈ runtime. Check this before you run."
     ),
     "max_signals": (
-        "How many signals may stack on each side. 1 = singles only (fast). "
-        "2 = pairs (good default). 3–5 explode the search space and overfit more easily."
+        "How many buy (or sell) signals may stack in one combination. 2 is a good first pass."
     ),
     "max_combos": (
-        "Hard cap on combinations tested. 50–100 for a quick scan; 300–1000 for a "
-        "thorough sweep (slower)."
+        "Hard cap on how many stacks to backtest. Higher = slower and more overfitting risk."
     ),
     "min_trades": (
-        "Combos with fewer trades than this are flagged 'low sample' and ranked below "
-        "credible ones — a great ratio on a handful of trades is usually noise."
+        "Drop combos with fewer trades than this before ranking — filters luck from tiny samples."
     ),
     "sort_metric": (
-        "Metric that ranks the leaderboard. SCORE blends risk-adjusted return and "
-        "penalises too-few trades. You can change this after a run without retesting."
+        "How the leaderboard is ordered. Flip after a run — the table reorders without re-search."
     ),
     "max_dd": (
-        "Optional filter: drop combos whose max drawdown is worse than this percent "
-        "before ranking."
+        "Optional filter: drop combos whose max drawdown exceeds this % before ranking."
     ),
     "min_sharpe": (
         "Optional filter: drop combos with Sharpe below this threshold before ranking."
@@ -144,7 +155,7 @@ CONTROL_HINTS: dict[str, str] = {
 
 LEARN_SECTIONS: list[dict[str, str]] = [
     {
-        "title": "What RUN OPTIMIZER actually does (grid search)",
+        "title": "What SEARCH SIGNAL COMBOS actually does",
         "body": (
             "It is a capped combinatorial / grid search over buy and sell signal "
             "stacks. The app builds combinations up to Max Signals per Side, stops "
@@ -158,7 +169,7 @@ LEARN_SECTIONS: list[dict[str, str]] = [
         "body": (
             "Max Signals per Side = 2, Max Combinations = 100, Sort by SCORE or RET, "
             "Realistic Ranking off for the first pass. Watch COMBOS and EST before "
-            "you click Run. After the leaderboard appears, flip Sort Results By "
+            "you click Search. After the leaderboard appears, flip Sort Results By "
             "(SCORE / SHARPE / DD) — the table reorders instantly so you can "
             "cross-check without another search."
         ),
@@ -174,13 +185,12 @@ LEARN_SECTIONS: list[dict[str, str]] = [
         ),
     },
     {
-        "title": "Bayesian Sweep is a different job",
+        "title": "Tune this bundle is a different job",
         "body": (
-            "Use it only when you already have a named agent strategy bundle with a "
-            "search_space. Trials = how many Optuna attempts; Held-out months = a "
-            "tail of the window reserved from the search; Objective = what Optuna "
-            "maximises (Sortino / Sharpe / Calmar / Composite). Apply Params writes "
-            "the best numbers into indicator settings and the bundle's signals."
+            "TUNE BUNDLE (Bayesian) and SCAN PARAM GRID only apply when you already "
+            "have a named agent strategy with a search_space. They adjust numeric "
+            "params of that bundle — they do not pick which signals to combine. "
+            "Use them after combo search (or when you already know the strategy)."
         ),
     },
     {

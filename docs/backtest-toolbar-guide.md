@@ -71,7 +71,7 @@ the big orange **RUN BACKTEST** button.
 Two things worth knowing:
 
 - Changing the window **scrolls the chart to match**, so what you see is what you measure.
-- Both **RUN BACKTEST** and **RUN OPTIMIZER** evaluate this exact window, and both print
+- Both **RUN BACKTEST** and **SEARCH SIGNAL COMBOS** (Optimizer) evaluate this exact window, and both print
   it above their results. If those two ever disagree, that's a bug — they read the same
   control.
 

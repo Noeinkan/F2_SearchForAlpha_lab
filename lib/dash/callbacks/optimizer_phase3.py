@@ -21,6 +21,7 @@ from lib.dash.combo_walkforward import ComboSpec, run_combo_walkforward
 from lib.dash.components import build_alert
 from lib.dash.dash_config import FONT_SIZES, get_theme
 from lib.dash.optimizer_bayesian_apply import merge_indicator_settings_from_params
+from lib.dash.optimizer_glossary import BAYESIAN_RUN_LABEL, BAYESIAN_STOP_LABEL
 from lib.dash.optimizer_history import history_for_ticker
 from lib.dash.optimizer_landscape import build_return_sharpe_figure
 from lib.dash.routes import build_ticker_terminal_path, is_optimize_route
@@ -639,12 +640,12 @@ def register_optimizer_phase3_callbacks(app) -> None:
                     "Stopping Bayesian sweep…",
                     style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary']},
                 )
-                return no_update, 'STOP BAYESIAN', False, progress, hidden_actions
+                return no_update, BAYESIAN_STOP_LABEL, False, progress, hidden_actions
 
         if not strategy_name:
             return (
                 True,
-                'RUN BAYESIAN',
+                BAYESIAN_RUN_LABEL,
                 False,
                 build_alert("Select a strategy bundle first.", "warning", theme=theme),
                 hidden_actions,
@@ -652,7 +653,7 @@ def register_optimizer_phase3_callbacks(app) -> None:
         if not window_from or not window_to:
             return (
                 True,
-                'RUN BAYESIAN',
+                BAYESIAN_RUN_LABEL,
                 False,
                 build_alert("Set a test window before running Bayesian sweep.", "warning", theme=theme),
                 hidden_actions,
@@ -699,7 +700,7 @@ def register_optimizer_phase3_callbacks(app) -> None:
             f"Running {trials} Optuna trials on {strategy_name}…",
             style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary']},
         )
-        return False, 'STOP BAYESIAN', False, progress, hidden_actions
+        return False, BAYESIAN_STOP_LABEL, False, progress, hidden_actions
 
     @app.callback(
         [Output('bayesian-results-store', 'data'),
@@ -734,7 +735,7 @@ def register_optimizer_phase3_callbacks(app) -> None:
                 no_update,
                 progress,
                 no_update,
-                'STOP BAYESIAN',
+                BAYESIAN_STOP_LABEL,
                 False,
                 hidden_actions,
             )
@@ -757,7 +758,7 @@ def register_optimizer_phase3_callbacks(app) -> None:
                 build_alert(msg, level, theme=theme),
                 html.Div(),
                 True,
-                'RUN BAYESIAN',
+                BAYESIAN_RUN_LABEL,
                 False,
                 hidden_actions,
             )
@@ -774,7 +775,7 @@ def register_optimizer_phase3_callbacks(app) -> None:
                 'color': theme['accent_green'],
             }),
             True,
-            'RUN BAYESIAN',
+            BAYESIAN_RUN_LABEL,
             False,
             visible_actions,
         )
