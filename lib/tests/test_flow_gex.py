@@ -163,6 +163,8 @@ def test_render_gex_panel_and_ticker_card():
     assert panel is not None
     blob = str(panel)
     assert "flow-gex-graph" in blob or GEX_PANEL["title"] in blob
+    assert "sfa-flow-diagram-frame" in blob
+    assert "flow-fullscreen-btn" in blob
 
     fig, caption = figure_from_gex_report(report, expiry=ALL_EXPIRIES_KEY, theme=theme)
     assert len(fig.data) >= 4

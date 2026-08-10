@@ -14,7 +14,7 @@ from lib.dash.flow_inventory import (
     nearest_expiry,
     render_inventory_panel,
 )
-from lib.dash.flow_view import render_ticker_card
+from lib.dash.flow_view import render_ticker_detail
 from scripts.flow_scanner import (
     Contract,
     TickerReport,
@@ -231,8 +231,10 @@ def test_render_inventory_panel_and_ticker_card():
     }
     panel = render_inventory_panel(report, theme)
     assert panel is not None
-    card = render_ticker_card(report, theme, index=0)
-    blob = str(card)
+    assert "sfa-flow-diagram-frame" in str(panel)
+    assert "flow-fullscreen-btn" in str(panel)
+    detail = render_ticker_detail(report, theme, section="inventory", index=0)
+    blob = str(detail)
     assert "flow-inv-graph" in blob or "Options inventory" in blob
     assert "Call Resistance" in blob
 

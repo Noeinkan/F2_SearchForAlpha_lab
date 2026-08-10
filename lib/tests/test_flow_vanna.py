@@ -166,6 +166,8 @@ def test_render_vanna_panel_and_ticker_card():
     assert panel is not None
     blob = str(panel)
     assert "flow-vanna-graph" in blob or VANNA_PANEL["title"] in blob
+    assert "sfa-flow-diagram-frame" in blob
+    assert "flow-fullscreen-btn" in blob
 
     fig, caption = figure_from_vanna_report(
         report,

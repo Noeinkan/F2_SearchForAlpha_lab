@@ -24,6 +24,7 @@ from lib.dash.flow_glossary import (
     contract_signal_weight,
     fmt_premium,
     fmt_strike,
+    interpretive_banner,
     interpretive_insights,
     iv_surface_series,
     score_breakdown,
@@ -34,6 +35,17 @@ from lib.dash.flow_glossary import (
 from lib.dash.flow_inventory import render_inventory_panel
 from lib.dash.flow_gex import render_gex_panel
 from lib.dash.flow_vanna import render_vanna_panel
+from lib.dash.flow_chain import render_chain_panel
+
+FLOW_SECTION_OPTIONS = [
+    {"label": "Overview", "value": "overview"},
+    {"label": "Chain", "value": "chain"},
+    {"label": "GEX", "value": "gex"},
+    {"label": "Inventory", "value": "inventory"},
+    {"label": "Vanna", "value": "vanna"},
+    {"label": "Contracts", "value": "contracts"},
+]
+DEFAULT_FLOW_SECTION = "overview"
 
 _TABLE_COLUMNS = [
     ("Strike", "strike"),
@@ -99,6 +111,25 @@ def _panel_summary_style(theme: dict) -> dict[str, Any]:
         "fontFamily": FONT_FAMILY,
         "fontSize": FONT_SIZES["sm"],
     }
+
+
+def wrap_flow_diagram(content: Any, *, index: str, theme: dict) -> html.Div:
+    """Wrap a Flow visual with a fullscreen open/close control."""
+    _ = theme  # reserved for themed button chrome; styling lives in CSS
+    return html.Div(
+        [
+            html.Button(
+                "⛶",
+                id={"type": "flow-fullscreen-btn", "index": index},
+                title="Toggle fullscreen",
+                className="sfa-flow-fullscreen-btn",
+                n_clicks=0,
+                type="button",
+            ),
+            content,
+        ],
+        className="sfa-flow-diagram-frame",
+    )
 
 
 def _table_cell_style(theme: dict) -> dict[str, Any]:
@@ -360,7 +391,7 @@ def render_flag_legend(theme: dict) -> html.Div:
     )
 
 
-def _otm_itm_diagram(theme: dict) -> html.Div:
+def _otm_itm_diagram(theme: dict, *, index: str = "otm-itm") -> html.Div:
     """Pure HTML/CSS spot-line diagram for calls/puts and ITM/OTM."""
     zone = {
         "flex": "1",
@@ -370,63 +401,67 @@ def _otm_itm_diagram(theme: dict) -> html.Div:
         "fontFamily": FONT_FAMILY,
         "borderRadius": "4px",
     }
-    return html.Div(
-        [
-            html.Div(
-                [
-                    html.Div(
-                        "OTM puts",
-                        title=TERM_DEFINITIONS["otm"],
-                        style={**zone, "backgroundColor": f'{theme["accent_red"]}18', "color": theme["accent_red"]},
-                    ),
-                    html.Div(
-                        "ITM puts",
-                        title=TERM_DEFINITIONS["itm"],
-                        style={**zone, "backgroundColor": f'{theme["accent_red"]}33', "color": theme["accent_red"]},
-                    ),
-                    html.Div(
-                        [
-                            html.Div("SPOT", style={"fontWeight": "700", "letterSpacing": "0.08em"}),
-                            html.Div("stock price", style={"opacity": 0.8, "fontSize": "10px"}),
-                        ],
-                        className="sfa-flow-diagram-spot",
-                        style={
-                            "flex": "0 0 auto",
-                            "padding": "6px 10px",
-                            "textAlign": "center",
-                            "backgroundColor": theme["bg_secondary"],
-                            "border": f'2px solid {theme["accent_cyan"]}',
-                            "borderRadius": "6px",
-                            "color": theme["accent_cyan"],
-                            "fontFamily": FONT_FAMILY,
-                            "fontSize": FONT_SIZES["xs"],
-                        },
-                    ),
-                    html.Div(
-                        "ITM calls",
-                        title=TERM_DEFINITIONS["itm"],
-                        style={**zone, "backgroundColor": f'{theme["accent_green"]}33', "color": theme["accent_green"]},
-                    ),
-                    html.Div(
-                        "OTM calls",
-                        title=TERM_DEFINITIONS["otm"],
-                        style={**zone, "backgroundColor": f'{theme["accent_green"]}18', "color": theme["accent_green"]},
-                    ),
-                ],
-                className="sfa-flow-diagram-track",
-                style={"display": "flex", "alignItems": "stretch", "gap": "4px", "marginBottom": "6px"},
-            ),
-            html.P(
-                "Calls = right to buy · Puts = right to sell · ITM has intrinsic value · OTM does not",
-                style={
-                    "margin": 0,
-                    "fontSize": FONT_SIZES["xs"],
-                    "color": theme["text_secondary"],
-                    "fontFamily": FONT_FAMILY,
-                },
-            ),
-        ],
-        className="sfa-flow-diagram",
+    return wrap_flow_diagram(
+        html.Div(
+            [
+                html.Div(
+                    [
+                        html.Div(
+                            "OTM puts",
+                            title=TERM_DEFINITIONS["otm"],
+                            style={**zone, "backgroundColor": f'{theme["accent_red"]}18', "color": theme["accent_red"]},
+                        ),
+                        html.Div(
+                            "ITM puts",
+                            title=TERM_DEFINITIONS["itm"],
+                            style={**zone, "backgroundColor": f'{theme["accent_red"]}33', "color": theme["accent_red"]},
+                        ),
+                        html.Div(
+                            [
+                                html.Div("SPOT", style={"fontWeight": "700", "letterSpacing": "0.08em"}),
+                                html.Div("stock price", style={"opacity": 0.8, "fontSize": "10px"}),
+                            ],
+                            className="sfa-flow-diagram-spot",
+                            style={
+                                "flex": "0 0 auto",
+                                "padding": "6px 10px",
+                                "textAlign": "center",
+                                "backgroundColor": theme["bg_secondary"],
+                                "border": f'2px solid {theme["accent_cyan"]}',
+                                "borderRadius": "6px",
+                                "color": theme["accent_cyan"],
+                                "fontFamily": FONT_FAMILY,
+                                "fontSize": FONT_SIZES["xs"],
+                            },
+                        ),
+                        html.Div(
+                            "ITM calls",
+                            title=TERM_DEFINITIONS["itm"],
+                            style={**zone, "backgroundColor": f'{theme["accent_green"]}33', "color": theme["accent_green"]},
+                        ),
+                        html.Div(
+                            "OTM calls",
+                            title=TERM_DEFINITIONS["otm"],
+                            style={**zone, "backgroundColor": f'{theme["accent_green"]}18', "color": theme["accent_green"]},
+                        ),
+                    ],
+                    className="sfa-flow-diagram-track",
+                    style={"display": "flex", "alignItems": "stretch", "gap": "4px", "marginBottom": "6px"},
+                ),
+                html.P(
+                    "Calls = right to buy · Puts = right to sell · ITM has intrinsic value · OTM does not",
+                    style={
+                        "margin": 0,
+                        "fontSize": FONT_SIZES["xs"],
+                        "color": theme["text_secondary"],
+                        "fontFamily": FONT_FAMILY,
+                    },
+                ),
+            ],
+            className="sfa-flow-diagram",
+        ),
+        index=index,
+        theme=theme,
     )
 
 
@@ -609,12 +644,16 @@ def render_theta_decay_panel(theme: dict, *, open: bool = True) -> html.Details:
                             "fontFamily": FONT_FAMILY,
                         },
                     ),
-                    dcc.Graph(
-                        id="flow-theta-decay-graph",
-                        figure=_theta_decay_figure(theme),
-                        config={"displayModeBar": False, "responsive": True},
-                        className="sfa-flow-theta-chart",
-                        style={"height": "280px"},
+                    wrap_flow_diagram(
+                        dcc.Graph(
+                            id="flow-theta-decay-graph",
+                            figure=_theta_decay_figure(theme),
+                            config={"displayModeBar": False, "responsive": True},
+                            className="sfa-flow-theta-chart",
+                            style={"height": "280px"},
+                        ),
+                        index="theta",
+                        theme=theme,
                     ),
                     html.P(
                         THETA_PANEL["caption"],
@@ -803,12 +842,16 @@ def render_iv_surface_panel(theme: dict, *, open: bool = True) -> html.Details:
                             "fontFamily": FONT_FAMILY,
                         },
                     ),
-                    dcc.Graph(
-                        id="flow-iv-surface-graph",
-                        figure=_iv_surface_figure(theme),
-                        config={"displayModeBar": False, "responsive": True},
-                        className="sfa-flow-iv-surface-chart",
-                        style={"height": "360px"},
+                    wrap_flow_diagram(
+                        dcc.Graph(
+                            id="flow-iv-surface-graph",
+                            figure=_iv_surface_figure(theme),
+                            config={"displayModeBar": False, "responsive": True},
+                            className="sfa-flow-iv-surface-chart",
+                            style={"height": "360px"},
+                        ),
+                        index="iv",
+                        theme=theme,
                     ),
                     html.P(
                         IV_SURFACE_PANEL["caption"],
@@ -960,7 +1003,7 @@ def render_learn_modal_content(theme: dict) -> html.Div:
         )
     )
     return html.Div(
-        [_otm_itm_diagram(theme), html.Hr(style={"borderColor": theme["border_primary"]}), *sections],
+        [_otm_itm_diagram(theme, index="otm-itm-learn"), html.Hr(style={"borderColor": theme["border_primary"]}), *sections],
         className="sfa-flow-learn-body",
     )
 
@@ -1075,6 +1118,7 @@ def _strike_map(report: Mapping[str, Any], theme: dict) -> html.Div | None:
         )
     )
 
+    ticker = str(report.get("ticker") or "UNK").upper()
     return html.Div(
         [
             html.Div(
@@ -1086,15 +1130,19 @@ def _strike_map(report: Mapping[str, Any], theme: dict) -> html.Div | None:
                     "marginBottom": "4px",
                 },
             ),
-            html.Div(
-                [
-                    html.Div(
-                        className="sfa-flow-strike-track-line",
-                        style={"backgroundColor": theme["border_primary"]},
-                    ),
-                    *markers,
-                ],
-                className="sfa-flow-strike-track",
+            wrap_flow_diagram(
+                html.Div(
+                    [
+                        html.Div(
+                            className="sfa-flow-strike-track-line",
+                            style={"backgroundColor": theme["border_primary"]},
+                        ),
+                        *markers,
+                    ],
+                    className="sfa-flow-strike-track",
+                ),
+                index=f"strike-{ticker}",
+                theme=theme,
             ),
             html.Div(
                 [
@@ -1231,7 +1279,42 @@ def render_glossary_panel(theme: dict, *, open: bool = True) -> html.Details:
     ], open=open, className="sfa-flow-panel sfa-flow-glossary", style=_panel_style(theme))
 
 
-def render_summary_cards(reports: Sequence[Mapping[str, Any]], theme: dict) -> html.Details:
+def _empty_section(message: str, theme: dict) -> html.Div:
+    return html.Div(
+        message,
+        className="sfa-flow-section-empty",
+        style={
+            "fontFamily": FONT_FAMILY,
+            "fontSize": FONT_SIZES["sm"],
+            "color": theme["text_secondary"],
+            "padding": "24px 8px",
+            "textAlign": "center",
+        },
+    )
+
+
+def sort_flow_reports(reports: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    return sorted(reports, key=lambda r: r.get("unusual_score", 0), reverse=True)
+
+
+def resolve_selected_report(
+    reports: Sequence[Mapping[str, Any]],
+    selected_ticker: str | None,
+) -> Mapping[str, Any] | None:
+    """Prefer path/UI selection; fall back to highest unusual_score."""
+    sorted_reports = sort_flow_reports(reports)
+    if not sorted_reports:
+        return None
+    want = str(selected_ticker or "").strip().upper()
+    if want:
+        for report in sorted_reports:
+            if str(report.get("ticker", "")).upper() == want:
+                return report
+    return sorted_reports[0]
+
+
+def render_summary_cards(reports: Sequence[Mapping[str, Any]], theme: dict) -> html.Div:
+    """Always-visible scan KPI strip (legacy name kept for callers/tests)."""
     total_unusual = sum(
         1 for r in reports for f in (r.get("flags") or []) if f.get("kind") == "unusual"
     )
@@ -1249,9 +1332,9 @@ def render_summary_cards(reports: Sequence[Mapping[str, Any]], theme: dict) -> h
     ]
 
     def _card(text: str) -> html.Span:
-        return html.Span(text, style={
+        return html.Span(text, className="sfa-flow-summary-chip", style={
             "backgroundColor": theme["bg_tertiary"],
-            "padding": "8px 14px",
+            "padding": "6px 12px",
             "borderRadius": "6px",
             "border": f'1px solid {theme["border_primary"]}',
             "fontFamily": FONT_FAMILY,
@@ -1259,38 +1342,210 @@ def render_summary_cards(reports: Sequence[Mapping[str, Any]], theme: dict) -> h
             "color": theme["text_primary"],
         })
 
-    return html.Details([
-        html.Summary("Scan summary", style=_panel_summary_style(theme)),
-        html.Div([
+    return html.Div(
+        [
+            html.Span(
+                "Scan summary",
+                style={
+                    "fontFamily": FONT_FAMILY,
+                    "fontSize": FONT_SIZES["xs"],
+                    "fontWeight": 600,
+                    "letterSpacing": "0.6px",
+                    "color": theme["text_secondary"],
+                    "textTransform": "uppercase",
+                    "marginRight": "4px",
+                },
+            ),
             _card(f"Tickers: {len(reports)}"),
             _card(f"Unusual contracts: {total_unusual}"),
             _card(f"Block premium flagged: {fmt_premium(total_premium)}"),
             _card(f"Repeat-call tickers: {', '.join(repeat_tickers) or '—'}"),
-        ], style={"display": "flex", "gap": "12px", "flexWrap": "wrap", "marginTop": "10px"}),
-    ], open=True, className="sfa-flow-panel sfa-flow-summary", style=_panel_style(theme))
+        ],
+        className="sfa-flow-summary sfa-flow-summary-strip",
+        style={
+            "display": "flex",
+            "gap": "8px",
+            "flexWrap": "wrap",
+            "alignItems": "center",
+            "padding": "8px 10px",
+            "marginBottom": "8px",
+            "backgroundColor": theme["bg_secondary"],
+            "border": f'1px solid {theme["border_primary"]}',
+            "borderRadius": "8px",
+        },
+    )
 
 
-def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0) -> html.Details:
-    ticker = str(report.get("ticker", ""))
+def render_concepts_drawer(theme: dict, *, open: bool = False) -> html.Details:
+    """Guide + educational charts — deferred so scan data stays above the fold."""
+    return html.Details(
+        [
+            html.Summary(
+                [
+                    html.Span("Concepts", style={"fontWeight": 600}),
+                    html.Span(
+                        " — how to read this page, theta decay, IV surface",
+                        style={
+                            "fontWeight": 400,
+                            "color": theme["text_tertiary"],
+                            "fontSize": FONT_SIZES["xs"],
+                        },
+                    ),
+                ],
+                style=_panel_summary_style(theme),
+            ),
+            html.Div(
+                [
+                    render_flow_guide(theme),
+                    render_theta_decay_panel(theme, open=True),
+                    render_iv_surface_panel(theme, open=True),
+                ],
+                className="sfa-flow-concepts-body",
+            ),
+        ],
+        id="flow-concepts",
+        open=open,
+        className="sfa-flow-panel sfa-flow-concepts",
+        style={**_panel_style(theme), "marginBottom": "8px"},
+    )
+
+
+def render_ticker_list_row(
+    report: Mapping[str, Any],
+    theme: dict,
+    *,
+    selected: bool,
+) -> html.Button:
+    ticker = str(report.get("ticker", "")).upper()
+    score = report.get("unusual_score", 0)
+    insights = [] if report.get("error") else interpretive_insights(report)
+    insight_line = insights[0][1] if insights else ""
     if report.get("error"):
-        return html.Details(
-            [
-                html.Summary(ticker, style={
-                    **_panel_summary_style(theme),
-                    "fontSize": FONT_SIZES["lg"],
-                }),
-                html.P(str(report["error"]), style={"color": theme["accent_red"], "margin": "8px 0 0"}),
-            ],
-            open=True,
-            className="sfa-flow-panel sfa-flow-ticker-card",
-            style=_panel_style(theme),
+        sentiment_label, sentiment_color, sentiment_reason = "Error", theme["accent_red"], str(report["error"])
+        tip = str(report["error"])
+        insight_line = sentiment_reason
+    else:
+        sentiment_label, sentiment_color, sentiment_reason = ticker_sentiment(report)
+        tip = score_breakdown(report)
+        if insight_line:
+            tip = f"{tip} — {insight_line}"
+        else:
+            insight_line = sentiment_reason
+
+    classes = "sfa-flow-ticker-row"
+    if selected:
+        classes += " sfa-flow-ticker-row-selected"
+
+    return html.Button(
+        [
+            html.Span(
+                [
+                    html.Strong(ticker or "—", style={"color": theme["text_primary"]}),
+                    html.Span(
+                        sentiment_label.upper(),
+                        className="sfa-flow-sentiment-badge",
+                        title=sentiment_reason,
+                        style={
+                            "backgroundColor": f"{sentiment_color}33",
+                            "color": sentiment_color,
+                            "padding": "1px 6px",
+                            "borderRadius": "4px",
+                            "fontSize": "10px",
+                            "fontWeight": 600,
+                            "marginLeft": "6px",
+                        },
+                    ),
+                ],
+                style={"display": "flex", "alignItems": "center", "minWidth": 0},
+            ),
+            html.Span(
+                f"Score {score}",
+                title=tip,
+                style={
+                    "fontFamily": FONT_FAMILY,
+                    "fontSize": FONT_SIZES["xs"],
+                    "color": theme["text_secondary"],
+                    "whiteSpace": "nowrap",
+                },
+            ),
+            html.Span(
+                insight_line[:72],
+                className="sfa-flow-ticker-row-insight",
+                style={
+                    "gridColumn": "1 / -1",
+                    "fontSize": "10px",
+                    "color": theme["text_tertiary"],
+                    "textAlign": "left",
+                    "overflow": "hidden",
+                    "textOverflow": "ellipsis",
+                    "whiteSpace": "nowrap",
+                },
+            ),
+        ],
+        id={"type": "flow-ticker-select", "index": ticker},
+        n_clicks=0,
+        title=tip,
+        className=classes,
+        style={
+            "display": "grid",
+            "gridTemplateColumns": "1fr auto",
+            "gap": "2px 8px",
+            "width": "100%",
+            "textAlign": "left",
+            "padding": "8px 10px",
+            "margin": 0,
+            "border": f'1px solid {theme["accent_blue"] if selected else theme["border_primary"]}',
+            "borderRadius": "6px",
+            "backgroundColor": theme["bg_hover"] if selected else theme["bg_tertiary"],
+            "cursor": "pointer",
+            "fontFamily": FONT_FAMILY,
+        },
+    )
+
+
+def render_ticker_list(
+    reports: Sequence[Mapping[str, Any]],
+    theme: dict,
+    *,
+    selected_ticker: str | None,
+) -> html.Div:
+    selected = str(selected_ticker or "").upper()
+    rows = [
+        render_ticker_list_row(
+            report,
+            theme,
+            selected=str(report.get("ticker", "")).upper() == selected,
         )
+        for report in sort_flow_reports(reports)
+    ]
+    return html.Div(
+        [
+            html.Div(
+                "Tickers",
+                style={
+                    "fontFamily": FONT_FAMILY,
+                    "fontSize": FONT_SIZES["xs"],
+                    "fontWeight": 600,
+                    "letterSpacing": "0.6px",
+                    "color": theme["text_secondary"],
+                    "textTransform": "uppercase",
+                    "padding": "4px 2px 8px",
+                },
+            ),
+            html.Div(rows, className="sfa-flow-ticker-list-rows"),
+        ],
+        id="flow-ticker-list",
+        className="sfa-flow-ticker-list",
+    )
 
-    repeat = any(f.get("kind") == "repeat_call" for f in (report.get("flags") or []))
+
+def _overview_section(report: Mapping[str, Any], theme: dict) -> html.Div:
     score_tip = score_breakdown(report)
-    insights = interpretive_insights(report)
-    sentiment_label, sentiment_color, sentiment_reason = ticker_sentiment(report)
-
+    banner = interpretive_banner(report)
+    insight_block = _insight_list(interpretive_insights(report), theme)
+    score_chips = _score_chip_row(report, theme)
+    call_pct = float(report.get("call_pct") or 0)
+    put_pct = float(report.get("put_pct") or 0)
     top_calls = ", ".join(
         f"${s:.0f} ({v:,})" for s, v in (report.get("top_call_strikes") or [])[:5]
     ) or "—"
@@ -1298,124 +1553,49 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
         f"${s:.0f} ({v:,})" for s, v in (report.get("top_put_strikes") or [])[:5]
     ) or "—"
 
-    call_pct = float(report.get("call_pct") or 0)
-    put_pct = float(report.get("put_pct") or 0)
-
-    header_children: list[Any] = [
-        html.H3(
-            f"{ticker} ${float(report.get('spot', 0)):,.2f}",
+    children: list[Any] = []
+    if banner:
+        children.append(html.Div(
+            banner,
+            className="sfa-flow-interpretive-banner",
             style={
-                "margin": 0,
                 "fontFamily": FONT_FAMILY,
-                "fontSize": FONT_SIZES["lg"],
-                "fontWeight": 700,
+                "fontSize": FONT_SIZES["sm"],
                 "color": theme["text_primary"],
-            },
-        ),
-        html.Span(
-            sentiment_label.upper(),
-            className="sfa-flow-sentiment-badge",
-            title=sentiment_reason,
-            style={
-                "backgroundColor": f"{sentiment_color}33",
-                "color": sentiment_color,
-                "padding": "2px 8px",
-                "borderRadius": "4px",
-                "fontSize": FONT_SIZES["xs"],
-                "fontWeight": 600,
-                "marginLeft": "8px",
-                "cursor": "help",
-            },
-        ),
-    ]
-    if repeat:
-        header_children.append(html.Span(
-            "REPEAT CALLS",
-            style={
-                "backgroundColor": f'{FLAG_DEFINITIONS["repeat_call"]["color"]}33',
-                "color": FLAG_DEFINITIONS["repeat_call"]["color"],
-                "padding": "2px 8px",
-                "borderRadius": "4px",
-                "fontSize": FONT_SIZES["xs"],
-                "fontWeight": 600,
-                "marginLeft": "8px",
+                "backgroundColor": theme["bg_tertiary"],
+                "border": f'1px solid {theme["border_primary"]}',
+                "borderLeft": f'3px solid {theme["accent_cyan"]}',
+                "borderRadius": "6px",
+                "padding": "10px 12px",
+                "marginBottom": "10px",
+                "lineHeight": 1.45,
             },
         ))
-
-    insight_block = _insight_list(insights, theme)
-    score_chips = _score_chip_row(report, theme)
-    gex_panel = render_gex_panel(report, theme)
-    inventory_panel = render_inventory_panel(report, theme)
-    vanna_panel = render_vanna_panel(report, theme)
-    # Fallback to the lightweight strike-dot map when ladder data is absent
-    # (older flow_report.json without strike_ladders).
-    strike_map = None if inventory_panel is not None else _strike_map(report, theme)
-
-    # Score stays visible on the summary row so a collapsed card is still rankable.
-    header_children.append(html.Span(
-        f"Score {report.get('unusual_score', 0)}",
-        title=score_tip,
-        style={
-            "marginLeft": "auto",
-            "fontFamily": FONT_FAMILY,
-            "fontSize": FONT_SIZES["xs"],
-            "color": theme["text_secondary"],
-            "cursor": "help",
-        },
-    ))
-
-    card_children: list[Any] = [
-        html.Div(
-            html.A(
-                "Open Fundamentals",
-                href=f"/fundamentals?ticker={ticker}",
-                style={
-                    "color": theme["accent_cyan"],
-                    "fontSize": FONT_SIZES["xs"],
-                    "textDecoration": "none",
-                    "fontFamily": FONT_FAMILY,
-                },
-            ),
-            style={
-                "display": "flex",
-                "justifyContent": "flex-end",
-                "margin": "8px 0",
-            },
+    children.append(html.Div([
+        _kpi_span("Prev", f"${float(report.get('prev_close', 0)):,.2f}", "Previous session close", theme),
+        _kpi_span(
+            "Day",
+            f"{float(report.get('day_low', 0)):,.2f}–{float(report.get('day_high', 0)):,.2f}",
+            "Today's trading range",
+            theme,
         ),
-        html.Div([
-            _kpi_span("Prev", f"${float(report.get('prev_close', 0)):,.2f}", "Previous session close", theme),
-            _kpi_span(
-                "Day",
-                f"{float(report.get('day_low', 0)):,.2f}–{float(report.get('day_high', 0)):,.2f}",
-                "Today's trading range",
-                theme,
-            ),
-            _kpi_span(
-                "52-week",
-                f"{float(report.get('wk52_low', 0)):,.2f}–{float(report.get('wk52_high', 0)):,.2f}",
-                "52-week high and low",
-                theme,
-            ),
-            _kpi_span(
-                "Put/Call vol",
-                f"{float(report.get('pc_vol_ratio', 0)):.2f}",
-                TERM_DEFINITIONS["pc_vol"],
-                theme,
-            ),
-            _kpi_span("Score", str(report.get("unusual_score", 0)), score_tip, theme),
-        ], style={"display": "flex", "flexWrap": "wrap", "gap": "12px", "marginBottom": "8px"}),
-    ]
+        _kpi_span(
+            "52-week",
+            f"{float(report.get('wk52_low', 0)):,.2f}–{float(report.get('wk52_high', 0)):,.2f}",
+            "52-week high and low",
+            theme,
+        ),
+        _kpi_span(
+            "Put/Call vol",
+            f"{float(report.get('pc_vol_ratio', 0)):.2f}",
+            TERM_DEFINITIONS["pc_vol"],
+            theme,
+        ),
+        _kpi_span("Score", str(report.get("unusual_score", 0)), score_tip, theme),
+    ], style={"display": "flex", "flexWrap": "wrap", "gap": "12px", "marginBottom": "8px"}))
     if score_chips is not None:
-        card_children.append(score_chips)
-    if gex_panel is not None:
-        card_children.append(gex_panel)
-    if inventory_panel is not None:
-        card_children.append(inventory_panel)
-    elif strike_map is not None:
-        card_children.append(strike_map)
-    if vanna_panel is not None:
-        card_children.append(vanna_panel)
-    card_children.extend([
+        children.append(score_chips)
+    children.extend([
         html.Div([
             html.Span(f"Calls {call_pct:.1f}%", style={"fontSize": FONT_SIZES["xs"], "color": theme["text_secondary"]}),
             html.Div(
@@ -1439,23 +1619,193 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
             f"Top calls: {top_calls} | Top puts: {top_puts}",
             style={"fontSize": FONT_SIZES["xs"], "color": theme["text_secondary"], "margin": "0 0 8px"},
         ),
-        insight_block,
-        _contracts_table(report.get("contracts") or [], f"flow-table-{index}-{ticker}", theme),
     ])
+    if insight_block is not None:
+        children.append(insight_block)
+    return html.Div(children, className="sfa-flow-section sfa-flow-section-overview")
 
-    return html.Details(
-        [
-            html.Summary(header_children, style={
-                **_panel_summary_style(theme),
+
+def _section_body(report: Mapping[str, Any], theme: dict, section: str, *, index: int = 0) -> html.Div:
+    ticker = str(report.get("ticker", "")).upper()
+    section = (section or DEFAULT_FLOW_SECTION).lower()
+    if section == "overview":
+        return _overview_section(report, theme)
+    if section == "chain":
+        panel = render_chain_panel(report, theme)
+        return panel or _empty_section(
+            "Rescan to load the option chain.",
+            theme,
+        )
+    if section == "gex":
+        panel = render_gex_panel(report, theme)
+        return panel or _empty_section(
+            "No Net GEX ladder in this report yet. Run RESCAN after the scanner writes gex_ladders.",
+            theme,
+        )
+    if section == "inventory":
+        panel = render_inventory_panel(report, theme)
+        if panel is not None:
+            return panel
+        strike_map = _strike_map(report, theme)
+        if strike_map is not None:
+            return html.Div(
+                [
+                    html.P(
+                        "Full inventory ladders unavailable — showing the lightweight strike map.",
+                        style={
+                            "fontSize": FONT_SIZES["xs"],
+                            "color": theme["text_tertiary"],
+                            "margin": "0 0 8px",
+                        },
+                    ),
+                    strike_map,
+                ],
+                className="sfa-flow-section sfa-flow-section-inventory",
+            )
+        return _empty_section("No options inventory or strike map for this ticker.", theme)
+    if section == "vanna":
+        panel = render_vanna_panel(report, theme)
+        return panel or _empty_section(
+            "No vanna / delta-notional model in this report. Rescan to refresh.",
+            theme,
+        )
+    if section == "contracts":
+        return _contracts_table(
+            report.get("contracts") or [],
+            f"flow-table-{index}-{ticker}",
+            theme,
+        )
+    return _empty_section(f"Unknown section: {section}", theme)
+
+
+def render_ticker_detail(
+    report: Mapping[str, Any],
+    theme: dict,
+    *,
+    section: str = DEFAULT_FLOW_SECTION,
+    index: int = 0,
+) -> html.Div:
+    """Selected-ticker pane: sticky header + section tabs + one active section."""
+    ticker = str(report.get("ticker", "")).upper()
+    if report.get("error"):
+        return html.Div(
+            [
+                html.H3(ticker or "Error", style={
+                    "margin": "0 0 8px",
+                    "fontFamily": FONT_FAMILY,
+                    "fontSize": FONT_SIZES["lg"],
+                    "color": theme["text_primary"],
+                }),
+                html.P(str(report["error"]), style={"color": theme["accent_red"], "margin": 0}),
+            ],
+            id="flow-ticker-detail",
+            className="sfa-flow-ticker-detail",
+        )
+
+    repeat = any(f.get("kind") == "repeat_call" for f in (report.get("flags") or []))
+    score_tip = score_breakdown(report)
+    sentiment_label, sentiment_color, sentiment_reason = ticker_sentiment(report)
+    active = (section or DEFAULT_FLOW_SECTION).lower()
+    if active not in {opt["value"] for opt in FLOW_SECTION_OPTIONS}:
+        active = DEFAULT_FLOW_SECTION
+
+    header_left: list[Any] = [
+        html.H3(
+            f"{ticker} ${float(report.get('spot', 0)):,.2f}",
+            style={
+                "margin": 0,
+                "fontFamily": FONT_FAMILY,
                 "fontSize": FONT_SIZES["lg"],
-            }),
-            html.Div(card_children),
+                "fontWeight": 700,
+                "color": theme["text_primary"],
+            },
+        ),
+        html.Span(
+            sentiment_label.upper(),
+            className="sfa-flow-sentiment-badge",
+            title=sentiment_reason,
+            style={
+                "backgroundColor": f"{sentiment_color}33",
+                "color": sentiment_color,
+                "padding": "2px 8px",
+                "borderRadius": "4px",
+                "fontSize": FONT_SIZES["xs"],
+                "fontWeight": 600,
+            },
+        ),
+    ]
+    if repeat:
+        header_left.append(html.Span(
+            "REPEAT CALLS",
+            style={
+                "backgroundColor": f'{FLAG_DEFINITIONS["repeat_call"]["color"]}33',
+                "color": FLAG_DEFINITIONS["repeat_call"]["color"],
+                "padding": "2px 8px",
+                "borderRadius": "4px",
+                "fontSize": FONT_SIZES["xs"],
+                "fontWeight": 600,
+            },
+        ))
+
+    return html.Div(
+        [
+            html.Div(
+                [
+                    html.Div(
+                        header_left,
+                        style={"display": "flex", "alignItems": "center", "flexWrap": "wrap", "gap": "8px", "minWidth": 0},
+                    ),
+                    html.Div(
+                        [
+                            html.Span(
+                                f"Score {report.get('unusual_score', 0)}",
+                                title=score_tip,
+                                style={
+                                    "fontFamily": FONT_FAMILY,
+                                    "fontSize": FONT_SIZES["xs"],
+                                    "color": theme["text_secondary"],
+                                    "cursor": "help",
+                                },
+                            ),
+                            html.A(
+                                "Open Fundamentals",
+                                href=f"/fundamentals?ticker={ticker}",
+                                style={
+                                    "color": theme["accent_cyan"],
+                                    "fontSize": FONT_SIZES["xs"],
+                                    "textDecoration": "none",
+                                    "fontFamily": FONT_FAMILY,
+                                },
+                            ),
+                        ],
+                        style={"display": "flex", "alignItems": "center", "gap": "12px", "flexShrink": 0},
+                    ),
+                ],
+                className="sfa-flow-detail-header",
+            ),
+            dcc.RadioItems(
+                id="flow-section-tabs",
+                options=FLOW_SECTION_OPTIONS,
+                value=active,
+                inline=True,
+                className="bbg-radio-seg sfa-flow-section-tabs",
+                inputClassName="bbg-radio-seg-input",
+                labelClassName="bbg-radio-seg-label",
+            ),
+            html.Div(
+                _section_body(report, theme, active, index=index),
+                className="sfa-flow-detail-body",
+                id="flow-detail-body",
+            ),
         ],
-        # Top-scoring ticker starts expanded; the rest collapse so long scans stay scannable.
-        open=(index == 0),
-        className="sfa-flow-panel sfa-flow-ticker-card",
-        style=_panel_style(theme),
+        id="flow-ticker-detail",
+        className="sfa-flow-ticker-detail sfa-flow-ticker-card",
     )
+
+
+def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0) -> html.Div:
+    """Back-compat: render the selected-ticker detail pane (Overview)."""
+    return render_ticker_detail(report, theme, section=DEFAULT_FLOW_SECTION, index=index)
 
 
 def render_flow_placeholder(theme: dict, message: str = "No report yet. Click RESCAN NOW.") -> html.Div:
@@ -1468,38 +1818,70 @@ def render_flow_placeholder(theme: dict, message: str = "No report yet. Click RE
     })
 
 
-def render_flow_reports(payload: Mapping[str, Any], theme: dict, *, show_glossary: bool = False) -> html.Div:
-    """Compose full flow scanner content from JSON payload."""
+def render_flow_reports(
+    payload: Mapping[str, Any],
+    theme: dict,
+    *,
+    show_glossary: bool = False,
+    selected_ticker: str | None = None,
+    section: str = DEFAULT_FLOW_SECTION,
+    concepts_open: bool = False,
+) -> html.Div:
+    """Compose master–detail flow scanner content from JSON payload."""
     reports = list(payload.get("reports") or [])
     if isinstance(payload, list):
         reports = list(payload)
 
-    sorted_reports = sorted(reports, key=lambda r: r.get("unusual_score", 0), reverse=True)
+    sorted_reports = sort_flow_reports(reports)
+    selected = resolve_selected_report(sorted_reports, selected_ticker)
+    selected_sym = str((selected or {}).get("ticker", "")).upper() or None
 
     children: list[Any] = []
     if show_glossary:
         children.append(render_glossary_panel(theme))
-    children.append(render_flow_guide(theme))
-    children.append(render_theta_decay_panel(theme))
-    children.append(render_iv_surface_panel(theme))
+
+    generated = payload.get("generated_at") if isinstance(payload, Mapping) else None
+    if generated:
+        children.append(html.P(
+            f"Report generated {generated}",
+            className="sfa-flow-generated-at",
+            style={"fontSize": FONT_SIZES["xs"], "color": theme["text_tertiary"], "margin": "0 0 8px"},
+        ))
+
     children.append(render_summary_cards(sorted_reports, theme))
-    for idx, report in enumerate(sorted_reports):
-        children.append(render_ticker_card(report, theme, index=idx))
+    children.append(render_concepts_drawer(theme, open=concepts_open))
+
+    if selected is None:
+        children.append(render_flow_placeholder(theme, "Report file is empty. Click RESCAN NOW."))
+    else:
+        children.append(html.Div(
+            [
+                render_ticker_list(sorted_reports, theme, selected_ticker=selected_sym),
+                render_ticker_detail(
+                    selected,
+                    theme,
+                    section=section,
+                    index=next(
+                        (i for i, r in enumerate(sorted_reports) if str(r.get("ticker", "")).upper() == selected_sym),
+                        0,
+                    ),
+                ),
+            ],
+            id="flow-workspace",
+            className="sfa-flow-workspace",
+        ))
+
     children.append(html.P(
         DISCLAIMER,
+        className="sfa-flow-disclaimer",
         style={
             "fontSize": FONT_SIZES["xs"],
             "color": theme["text_tertiary"],
             "textAlign": "center",
-            "marginTop": "16px",
+            "marginTop": "8px",
+            "marginBottom": 0,
+            "flex": "0 0 auto",
         },
     ))
 
-    generated = payload.get("generated_at") if isinstance(payload, Mapping) else None
-    if generated:
-        children.insert(0, html.P(
-            f"Report generated {generated}",
-            style={"fontSize": FONT_SIZES["xs"], "color": theme["text_tertiary"], "margin": "0 0 8px"},
-        ))
-
-    return html.Div(children, style={"padding": "8px"})
+    return html.Div(children, className="sfa-flow-content-root", style={"padding": "8px", "height": "100%", "boxSizing": "border-box"})

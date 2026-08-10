@@ -367,6 +367,8 @@ def inventory_caption_for_meta(
 
 def render_inventory_panel(report: Mapping[str, Any], theme: dict) -> html.Div | None:
     """Expiry + metric controls + Plotly inventory chart for one ticker report."""
+    from lib.dash.flow_view import wrap_flow_diagram
+
     ladders = report.get("strike_ladders") or {}
     if not ladders:
         return None
@@ -469,11 +471,15 @@ def render_inventory_panel(report: Mapping[str, Any], theme: dict) -> html.Div |
                     "marginBottom": "4px",
                 },
             ),
-            dcc.Graph(
-                id={"type": "flow-inv-graph", "index": ticker},
-                figure=figure,
-                config={"displayModeBar": False, "responsive": True},
-                className="sfa-flow-inv-graph",
+            wrap_flow_diagram(
+                dcc.Graph(
+                    id={"type": "flow-inv-graph", "index": ticker},
+                    figure=figure,
+                    config={"displayModeBar": False, "responsive": True},
+                    className="sfa-flow-inv-graph",
+                ),
+                index=f"inv-{ticker}",
+                theme=theme,
             ),
             html.P(
                 caption,

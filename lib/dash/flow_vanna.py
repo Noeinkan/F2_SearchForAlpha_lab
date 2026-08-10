@@ -223,6 +223,8 @@ def vanna_caption_for_model(
 
 def render_vanna_panel(report: Mapping[str, Any], theme: dict) -> html.Div | None:
     """Expiry checklist + Plotly Vanna Model chart for one ticker report."""
+    from lib.dash.flow_view import wrap_flow_diagram
+
     model = report.get("vanna_model") or {}
     if not model:
         return None
@@ -338,11 +340,15 @@ def render_vanna_panel(report: Mapping[str, Any], theme: dict) -> html.Div | Non
                 },
             ),
             tip_row,
-            dcc.Graph(
-                id={"type": "flow-vanna-graph", "index": ticker},
-                figure=figure,
-                config={"displayModeBar": False, "responsive": True},
-                className="sfa-flow-vanna-graph",
+            wrap_flow_diagram(
+                dcc.Graph(
+                    id={"type": "flow-vanna-graph", "index": ticker},
+                    figure=figure,
+                    config={"displayModeBar": False, "responsive": True},
+                    className="sfa-flow-vanna-graph",
+                ),
+                index=f"vanna-{ticker}",
+                theme=theme,
             ),
             html.Ul(
                 bullets,

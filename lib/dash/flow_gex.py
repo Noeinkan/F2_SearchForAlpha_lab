@@ -307,6 +307,8 @@ def gex_caption_for_meta(
 
 def render_gex_panel(report: Mapping[str, Any], theme: dict) -> html.Div | None:
     """Expiry control + Plotly Net GEX chart for one ticker report."""
+    from lib.dash.flow_view import wrap_flow_diagram
+
     ladders = report.get("gex_ladders") or {}
     if not ladders:
         return None
@@ -360,11 +362,15 @@ def render_gex_panel(report: Mapping[str, Any], theme: dict) -> html.Div | None:
                 ],
                 className="sfa-flow-gex-header",
             ),
-            dcc.Graph(
-                id={"type": "flow-gex-graph", "index": ticker},
-                figure=figure,
-                config={"displayModeBar": False, "responsive": True},
-                className="sfa-flow-gex-graph",
+            wrap_flow_diagram(
+                dcc.Graph(
+                    id={"type": "flow-gex-graph", "index": ticker},
+                    figure=figure,
+                    config={"displayModeBar": False, "responsive": True},
+                    className="sfa-flow-gex-graph",
+                ),
+                index=f"gex-{ticker}",
+                theme=theme,
             ),
             html.P(
                 caption,

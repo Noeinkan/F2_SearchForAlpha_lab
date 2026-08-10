@@ -326,6 +326,44 @@ def aggregate_strike_ladder(contracts: list[Contract]) -> list[dict]:
     )
 
 
+def _side_quote(contract: Contract, *, flagged: bool) -> dict:
+    return {
+        "last": float(contract.last),
+        "bid": float(contract.bid),
+        "ask": float(contract.ask),
+        "volume": int(contract.volume),
+        "open_interest": int(contract.open_interest),
+        "iv": float(contract.iv),
+        "flagged": bool(flagged),
+    }
+
+
+def build_option_chains(
+    contracts: list[Contract],
+    flagged_contracts: set[Contract] | frozenset[Contract] | None = None,
+) -> dict[str, list[dict]]:
+    """Pivot full chain into Robinhood-style call|strike|put rows per expiry."""
+    flagged = flagged_contracts or frozenset()
+    by_expiry: dict[str, dict[float, dict]] = defaultdict(dict)
+
+    for c in contracts:
+        exp_key = c.expiry.isoformat()
+        row = by_expiry[exp_key].setdefault(
+            float(c.strike),
+            {"strike": float(c.strike), "call": None, "put": None},
+        )
+        side = _side_quote(c, flagged=c in flagged)
+        if c.cp == "C":
+            row["call"] = side
+        else:
+            row["put"] = side
+
+    return {
+        exp: sorted(rows.values(), key=lambda r: float(r["strike"]))
+        for exp, rows in sorted(by_expiry.items())
+    }
+
+
 def max_pain_strike(ladder: list[dict]) -> float | None:
     """Strike that minimises total intrinsic value of open calls + puts (max pain)."""
     if not ladder:
@@ -730,6 +768,7 @@ def _report_to_dict(report: TickerReport, today: date | None = None) -> dict:
     today = today or date.today()
     flagged = [c for c in report.contracts if _contract_flags(report, c)]
     flagged.sort(key=lambda c: _contract_sort_key(report, c), reverse=True)
+    flagged_set = frozenset(flagged)
     flagged_contracts = []
     for c in flagged:
         cflags = _contract_flags(report, c)
@@ -770,6 +809,7 @@ def _report_to_dict(report: TickerReport, today: date | None = None) -> dict:
         "gex_ladders": report.gex_ladders,
         "gex_meta": report.gex_meta,
         "vanna_model": report.vanna_model,
+        "option_chains": build_option_chains(report.contracts, flagged_set),
         "flags": [{"kind": f.kind, "message": f.message} for f in report.flags],
         "contracts": flagged_contracts,
     }

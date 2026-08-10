@@ -6,7 +6,7 @@ import json
 import os
 from datetime import datetime
 
-from dash import MATCH, callback_context, no_update
+from dash import ALL, MATCH, callback_context, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
@@ -14,7 +14,9 @@ from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_TERMINAL, 
 from lib.dash.flow_inventory import figure_from_report
 from lib.dash.flow_gex import figure_from_gex_report
 from lib.dash.flow_vanna import figure_from_vanna_report
+from lib.dash.flow_chain import table_from_report
 from lib.dash.flow_view import (
+    DEFAULT_FLOW_SECTION,
     render_flow_placeholder,
     render_flow_reports,
     render_glossary_panel,
@@ -38,16 +40,86 @@ def _load_flow_json() -> dict | None:
         return None
 
 
-def _render_from_payload(payload: dict | None, theme: dict, *, show_glossary: bool = False):
+def _ui_section(flow_ui: dict | None) -> str:
+    section = str((flow_ui or {}).get("section") or DEFAULT_FLOW_SECTION).lower()
+    return section or DEFAULT_FLOW_SECTION
+
+
+def _ui_concepts_open(flow_ui: dict | None) -> bool:
+    return bool((flow_ui or {}).get("concepts_open"))
+
+
+def _render_from_payload(
+    payload: dict | None,
+    theme: dict,
+    *,
+    show_glossary: bool = False,
+    selected_ticker: str | None = None,
+    section: str = DEFAULT_FLOW_SECTION,
+    concepts_open: bool = False,
+):
     if not payload:
         return render_flow_placeholder(theme)
     reports = payload.get("reports")
     if not reports:
         return render_flow_placeholder(theme, "Report file is empty. Click RESCAN NOW.")
-    return render_flow_reports(payload, theme, show_glossary=show_glossary)
+    return render_flow_reports(
+        payload,
+        theme,
+        show_glossary=show_glossary,
+        selected_ticker=selected_ticker,
+        section=section,
+        concepts_open=concepts_open,
+    )
 
 
 def register_flow_callbacks(app) -> None:
+    app.clientside_callback(
+        """
+        function(nClicksList) {
+            var ctx = window.dash_clientside.callback_context;
+            if (!ctx || !ctx.triggered || !ctx.triggered.length) {
+                return window.dash_clientside.no_update;
+            }
+            var triggered = ctx.triggered[0];
+            if (!triggered || triggered.value === undefined || triggered.value === null || triggered.value === 0) {
+                return window.dash_clientside.no_update;
+            }
+            var raw = triggered.prop_id.split('.')[0];
+            if (!raw) { return ''; }
+            var btn = document.getElementById(raw);
+            if (!btn && ctx.triggered_id && typeof ctx.triggered_id === 'object') {
+                try {
+                    btn = document.getElementById(JSON.stringify(ctx.triggered_id));
+                } catch (e) { btn = null; }
+            }
+            if (!btn) { return ''; }
+            var frame = btn.closest('.sfa-flow-diagram-frame');
+            if (!frame) { return ''; }
+            var resizePlots = function() {
+                if (!window.Plotly) { return; }
+                frame.querySelectorAll('.js-plotly-plot').forEach(function(p) {
+                    try { window.Plotly.Plots.resize(p); } catch (err) {}
+                });
+            };
+            if (document.fullscreenElement === frame) {
+                if (document.exitFullscreen) { document.exitFullscreen(); }
+                return '';
+            }
+            if (frame.requestFullscreen) {
+                frame.requestFullscreen().then(function() {
+                    resizePlots();
+                    setTimeout(resizePlots, 50);
+                }).catch(function() {});
+            }
+            return '';
+        }
+        """,
+        Output("flow-fullscreen-sync", "children"),
+        Input({"type": "flow-fullscreen-btn", "index": ALL}, "n_clicks"),
+        prevent_initial_call=True,
+    )
+
     @app.callback(
         Output("app-url", "pathname", allow_duplicate=True),
         [
@@ -121,13 +193,17 @@ def register_flow_callbacks(app) -> None:
             State("ticker-dropdown", "value"),
             State("flow-state-store", "data"),
             State("theme-store", "data"),
+            State("flow-ui-store", "data"),
         ],
         prevent_initial_call=False,
     )
-    def rescan_or_render_flow(rescan_clicks, pathname, selected_ticker, flow_state, theme_name):
+    def rescan_or_render_flow(rescan_clicks, pathname, selected_ticker, flow_state, theme_name, flow_ui):
         ctx = callback_context
         triggered = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else ""
         theme = get_theme(theme_name or DEFAULT_THEME)
+        path_ticker = extract_path_ticker(pathname)
+        section = _ui_section(flow_ui)
+        concepts_open = _ui_concepts_open(flow_ui)
 
         if not is_flow_route(pathname):
             return no_update, no_update, no_update, False
@@ -136,7 +212,13 @@ def register_flow_callbacks(app) -> None:
             payload = _load_flow_json()
             if payload:
                 return (
-                    _render_from_payload(payload, theme),
+                    _render_from_payload(
+                        payload,
+                        theme,
+                        selected_ticker=path_ticker,
+                        section=section,
+                        concepts_open=concepts_open,
+                    ),
                     "Last report loaded",
                     payload,
                     False,
@@ -152,7 +234,13 @@ def register_flow_callbacks(app) -> None:
             payload = _load_flow_json()
             if payload:
                 return (
-                    _render_from_payload(payload, theme),
+                    _render_from_payload(
+                        payload,
+                        theme,
+                        selected_ticker=path_ticker,
+                        section=section,
+                        concepts_open=concepts_open,
+                    ),
                     "Last report loaded",
                     payload,
                     False,
@@ -164,7 +252,7 @@ def register_flow_callbacks(app) -> None:
                 False,
             )
 
-        ticker = str(extract_path_ticker(pathname) or selected_ticker or DEFAULT_TICKER).strip().upper()
+        ticker = str(path_ticker or selected_ticker or DEFAULT_TICKER).strip().upper()
         tickers = [ticker]
         rc, tail = run_flow_scan(tickers, _FLOW_REPORT, quiet=True)
         if rc != 0:
@@ -182,10 +270,86 @@ def register_flow_callbacks(app) -> None:
             )
 
         return (
-            _render_from_payload(payload, theme),
+            _render_from_payload(
+                payload,
+                theme,
+                selected_ticker=ticker,
+                section=section,
+                concepts_open=concepts_open,
+            ),
             f"Rescanned {ticker} at {datetime.now().strftime('%H:%M:%S')}",
             payload,
             False,
+        )
+
+    @app.callback(
+        Output("app-url", "pathname", allow_duplicate=True),
+        Input({"type": "flow-ticker-select", "index": ALL}, "n_clicks"),
+        State("app-url", "pathname"),
+        prevent_initial_call=True,
+    )
+    def select_flow_ticker(n_clicks_list, pathname):
+        if not is_flow_route(pathname):
+            raise PreventUpdate
+        if not n_clicks_list or not any(n_clicks_list):
+            raise PreventUpdate
+        tid = callback_context.triggered_id
+        if not isinstance(tid, dict):
+            raise PreventUpdate
+        ticker = str(tid.get("index") or "").upper()
+        if not ticker:
+            raise PreventUpdate
+        target = build_flow_path(ticker)
+        if pathname == target:
+            raise PreventUpdate
+        return target
+
+    @app.callback(
+        Output("flow-ui-store", "data"),
+        Input("flow-section-tabs", "value"),
+        State("flow-ui-store", "data"),
+        prevent_initial_call=True,
+    )
+    def store_flow_section(section, flow_ui):
+        if not section:
+            raise PreventUpdate
+        data = dict(flow_ui or {})
+        if data.get("section") == section:
+            raise PreventUpdate
+        data["section"] = section
+        return data
+
+    @app.callback(
+        Output("flow-ui-store", "data", allow_duplicate=True),
+        Input("flow-concepts-button", "n_clicks"),
+        State("flow-ui-store", "data"),
+        prevent_initial_call=True,
+    )
+    def toggle_flow_concepts(n_clicks, flow_ui):
+        if not n_clicks:
+            raise PreventUpdate
+        data = dict(flow_ui or {})
+        data["concepts_open"] = not bool(data.get("concepts_open"))
+        return data
+
+    @app.callback(
+        Output("flow-content", "children", allow_duplicate=True),
+        Input("flow-ui-store", "data"),
+        State("flow-data-store", "data"),
+        State("theme-store", "data"),
+        State("app-url", "pathname"),
+        prevent_initial_call=True,
+    )
+    def rerender_flow_on_ui(flow_ui, flow_data, theme_name, pathname):
+        if not flow_data or not is_flow_route(pathname):
+            raise PreventUpdate
+        theme = get_theme(theme_name or DEFAULT_THEME)
+        return _render_from_payload(
+            flow_data,
+            theme,
+            selected_ticker=extract_path_ticker(pathname),
+            section=_ui_section(flow_ui),
+            concepts_open=_ui_concepts_open(flow_ui),
         )
 
     @app.callback(
@@ -210,24 +374,6 @@ def register_flow_callbacks(app) -> None:
             render_glossary_panel(theme),
             {"display": "block", "padding": "8px 8px 0"},
         )
-
-    app.clientside_callback(
-        """
-        function(n_clicks) {
-            if (!n_clicks) { return window.dash_clientside.no_update; }
-            const overlay = document.getElementById('flow-overlay');
-            if (!overlay) { return window.dash_clientside.no_update; }
-            const panels = overlay.querySelectorAll('details.sfa-flow-panel, details.sfa-flow-guide');
-            if (!panels.length) { return window.dash_clientside.no_update; }
-            const anyOpen = Array.prototype.some.call(panels, function (p) { return p.open; });
-            Array.prototype.forEach.call(panels, function (p) { p.open = !anyOpen; });
-            return anyOpen ? 'EXPAND ALL' : 'COLLAPSE ALL';
-        }
-        """,
-        Output("flow-collapse-all", "children"),
-        Input("flow-collapse-all", "n_clicks"),
-        prevent_initial_call=True,
-    )
 
     @app.callback(
         Output("flow-learn-modal", "is_open"),
@@ -255,13 +401,21 @@ def register_flow_callbacks(app) -> None:
         Output("flow-content", "children", allow_duplicate=True),
         Input("theme-store", "data"),
         State("flow-data-store", "data"),
+        State("app-url", "pathname"),
+        State("flow-ui-store", "data"),
         prevent_initial_call=True,
     )
-    def rerender_flow_on_theme(theme_name, flow_data):
+    def rerender_flow_on_theme(theme_name, flow_data, pathname, flow_ui):
         if not flow_data:
             raise PreventUpdate
         theme = get_theme(theme_name or DEFAULT_THEME)
-        return _render_from_payload(flow_data, theme)
+        return _render_from_payload(
+            flow_data,
+            theme,
+            selected_ticker=extract_path_ticker(pathname) if is_flow_route(pathname) else None,
+            section=_ui_section(flow_ui),
+            concepts_open=_ui_concepts_open(flow_ui),
+        )
 
     @app.callback(
         Output({"type": "flow-inv-graph", "index": MATCH}, "figure"),
@@ -354,6 +508,31 @@ def register_flow_callbacks(app) -> None:
             active_expiries=active_expiries or [],
             theme=theme,
         )
+
+    @app.callback(
+        Output({"type": "flow-chain-body", "index": MATCH}, "children"),
+        Input({"type": "flow-chain-expiry", "index": MATCH}, "value"),
+        State({"type": "flow-chain-expiry", "index": MATCH}, "id"),
+        State("flow-data-store", "data"),
+        State("theme-store", "data"),
+        prevent_initial_call=True,
+    )
+    def update_chain_table(expiry, id_dict, flow_data, theme_name):
+        if not flow_data:
+            raise PreventUpdate
+        ticker = str((id_dict or {}).get("index") or "").upper()
+        report = next(
+            (
+                r
+                for r in (flow_data.get("reports") or [])
+                if str(r.get("ticker", "")).upper() == ticker
+            ),
+            None,
+        )
+        if not report:
+            raise PreventUpdate
+        theme = get_theme(theme_name or DEFAULT_THEME)
+        return table_from_report(report, expiry=expiry, theme=theme)
 
     @app.callback(
         Output("ticker-dropdown", "value", allow_duplicate=True),

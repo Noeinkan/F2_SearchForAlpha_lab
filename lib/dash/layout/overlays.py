@@ -1,7 +1,7 @@
 """
 Modal-style overlays rendered on top of the chart area:
 - Fundamentals workspace (10-year financials + Rule #1 valuation)
-- Flow scanner workspace (iframe hosting the unusual-options HTML report)
+- Flow scanner workspace (native Dash render from flow_report.json)
 
 Both overlays are hidden by default and shown via `display: 'flex'` when
 their respective `open-*` button is clicked.
@@ -181,7 +181,7 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                     **styles['button_outline'],
                     'padding': '6px 12px',
                 }),
-                html.Button("COLLAPSE ALL", id='flow-collapse-all', n_clicks=0, className='sfa-flow-secondary-action', style={
+                html.Button("CONCEPTS", id='flow-concepts-button', n_clicks=0, className='sfa-flow-secondary-action', style={
                     **styles['button_outline'],
                     'padding': '6px 12px',
                 }),
@@ -256,6 +256,7 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
             className='sfa-flow-learn-modal',
             scrollable=True,
         ),
+        html.Div(id='flow-fullscreen-sync', style={'display': 'none'}),
         # Single scroll container for the whole report — the glossary lives inside
         # it so an open glossary scrolls with the content instead of stealing height.
         html.Div(
@@ -285,8 +286,9 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
             style={
                 'flex': '1 1 auto',
                 'minHeight': 0,
-                'overflowY': 'auto',
-                'overflowX': 'hidden',
+                'overflow': 'hidden',
+                'display': 'flex',
+                'flexDirection': 'column',
                 'WebkitOverflowScrolling': 'touch',
             },
         ),
