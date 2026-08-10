@@ -10,7 +10,7 @@ every drag frame. Lightweight Charts is created with `autoSize: true` and
 watches its own container, so the chart now keeps up on its own.
 """
 
-from dash import callback_context, no_update
+from dash import callback_context
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
@@ -19,11 +19,23 @@ def register_layout_callbacks(app) -> None:
     @app.callback(
         Output('sidebar-collapsed', 'data'),
         Input('sidebar-toggle-btn', 'n_clicks'),
+        Input('mobile-menu-btn', 'n_clicks'),
+        Input('mobile-nav-scrim', 'n_clicks'),
         State('sidebar-collapsed', 'data'),
         prevent_initial_call=True,
     )
-    def toggle_sidebar(n_clicks, current):
-        if not n_clicks:
+    def toggle_sidebar(n_sidebar, n_menu, n_scrim, current):
+        if not callback_context.triggered:
+            raise PreventUpdate
+        trigger = callback_context.triggered[0]['prop_id'].split('.')[0]
+        # Scrim always dismisses the drawer (collapsed = closed on phone).
+        if trigger == 'mobile-nav-scrim':
+            if not n_scrim:
+                raise PreventUpdate
+            return True
+        if trigger == 'mobile-menu-btn' and not n_menu:
+            raise PreventUpdate
+        if trigger == 'sidebar-toggle-btn' and not n_sidebar:
             raise PreventUpdate
         return not bool(current)
 
@@ -38,8 +50,31 @@ def register_layout_callbacks(app) -> None:
             raise PreventUpdate
         return not bool(current)
 
+    # On phones, start with both drawers closed so the chart fills the width.
+    # One-shot per page load; session prefs after the user toggles still win
+    # for the rest of the session via the stores below.
+    app.clientside_callback(
+        """
+        function(nIntervals) {
+            if (!nIntervals || window._sfaPhoneCollapseInit) {
+                return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+            }
+            if (!window.matchMedia('(max-width: 900px)').matches) {
+                return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+            }
+            window._sfaPhoneCollapseInit = true;
+            return [true, true];
+        }
+        """,
+        [Output('sidebar-collapsed', 'data', allow_duplicate=True),
+         Output('right-panel-collapsed', 'data', allow_duplicate=True)],
+        Input('startup-interval', 'n_intervals'),
+        prevent_initial_call=True,
+    )
+
     # Mirror the collapsed flags onto the DOM. On viewports <1180px the right
-    # panel is a slide-out drawer (`sfa-open` controls translateX).
+    # panel is a slide-out drawer (`sfa-open` controls translateX). On phones
+    # (≤900px) the left sidebar is the same pattern, plus a dismiss scrim.
     #
     # The chevrons point at the direction the panel will *move*, so they have to
     # flip with the state: a left sidebar that is open collapses leftward ("<<")
@@ -50,6 +85,9 @@ def register_layout_callbacks(app) -> None:
         function(sidebarCollapsed, rightCollapsed) {
             const sidebar = document.querySelector('aside.sfa-sidebar');
             const right = document.querySelector('aside.sfa-right-panel');
+            const scrim = document.getElementById('mobile-nav-scrim');
+            const menuBtn = document.getElementById('mobile-menu-btn');
+            const phone = window.matchMedia('(max-width: 900px)').matches;
             const setGlyph = function(id, collapsed, openGlyph, closedGlyph) {
                 const btn = document.getElementById(id);
                 if (!btn) { return; }
@@ -59,10 +97,20 @@ def register_layout_callbacks(app) -> None:
             };
             if (sidebar) {
                 sidebar.classList.toggle('sfa-collapsed', !!sidebarCollapsed);
+                sidebar.classList.toggle('sfa-open', !sidebarCollapsed);
             }
             if (right) {
                 right.classList.toggle('sfa-collapsed', !!rightCollapsed);
                 right.classList.toggle('sfa-open', !rightCollapsed);
+            }
+            if (scrim) {
+                scrim.classList.toggle('sfa-visible', phone && !sidebarCollapsed);
+            }
+            if (menuBtn) {
+                menuBtn.setAttribute('aria-expanded', (!sidebarCollapsed && phone) ? 'true' : 'false');
+                menuBtn.title = (!sidebarCollapsed && phone)
+                    ? 'Close navigation'
+                    : 'Open navigation (Flow, Fundamentals, controls)';
             }
             setGlyph('sidebar-toggle-btn', !!sidebarCollapsed, '<<', '>>');
             setGlyph('right-panel-toggle-btn', !!rightCollapsed, '>>', '<<');
@@ -198,5 +246,3 @@ def register_layout_callbacks(app) -> None:
         Output('splitter-bind-trigger', 'children'),
         Input('startup-interval', 'n_intervals'),
     )
-
-    _ = callback_context

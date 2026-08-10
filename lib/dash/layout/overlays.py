@@ -11,11 +11,11 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 
 from lib.dash.dash_config import (
-    DEFAULT_TICKER,
     FONT_SIZES, FONT_FAMILY,
     FUNDAMENTALS_PERIOD_OPTIONS, DEFAULT_FUNDAMENTALS_PERIOD,
 )
 from lib.dash.flow_view import render_learn_modal_content
+from lib.dash.layout.symbol_search import build_symbol_search_trigger
 
 
 def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
@@ -38,36 +38,20 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
                     'overflow': 'hidden',
                     'textOverflow': 'ellipsis',
                 }),
-            ], style={'minWidth': 0, 'flex': '1 1 auto'}),
+            ], className='sfa-overlay-toolbar-title', style={'minWidth': 0, 'flex': '1 1 auto'}),
             html.Div([
-                html.Span(id='fundamentals-global-symbol', children=f'GLOBAL {DEFAULT_TICKER}', className='num muted', style={
-                    'fontFamily': FONT_FAMILY,
-                    'fontSize': FONT_SIZES['xs'],
-                    'color': theme['text_secondary'],
-                    'alignSelf': 'center',
-                    'marginRight': '6px',
-                }),
                 html.Span(id='fundamentals-status', children='READY', className='num muted', style={
                     'fontFamily': FONT_FAMILY,
                     'fontSize': FONT_SIZES['xs'],
                     'color': theme['text_secondary'],
                     'alignSelf': 'center',
                 }),
-                dcc.Input(
-                    id='fundamentals-ticker-input',
-                    type='text',
-                    value=DEFAULT_TICKER,
-                    placeholder='Ticker',
-                    debounce=True,
-                    persistence=True,
-                    persistence_type='session',
-                    style={
-                        **styles['input'],
-                        'width': '88px',
-                        'textTransform': 'uppercase',
-                    },
+                build_symbol_search_trigger(
+                    trigger_id='fundamentals-symbol-search-trigger',
+                    symbol_id='fundamentals-symbol-trigger-symbol',
+                    name_id='fundamentals-symbol-trigger-name',
+                    compact=True,
                 ),
-                html.Button("LOAD", id='load-fundamentals-ticker-button', n_clicks=0, style=styles['button_outline']),
                 html.Button("REFRESH", id='refresh-fundamentals-button', n_clicks=0, style=styles['button_outline']),
                 dcc.RadioItems(
                     id='fundamentals-period-toggle',
@@ -85,20 +69,22 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
                     'color': theme['accent_red'],
                     'borderColor': theme['accent_red'],
                 }),
-            ], style={
+            ], className='sfa-overlay-toolbar-actions', style={
                 'display': 'flex',
                 'alignItems': 'center',
                 'gap': '8px',
-                'flex': '0 0 auto',
+                'flex': '0 1 auto',
                 'marginLeft': '8px',
+                'flexWrap': 'wrap',
             }),
-        ], style={
-            'height': '36px',
-            'padding': '0 8px',
+        ], className='sfa-overlay-toolbar', style={
+            'minHeight': '36px',
+            'padding': '4px 8px',
             'display': 'flex',
             'alignItems': 'center',
             'justifyContent': 'space-between',
             'gap': '8px',
+            'flexWrap': 'wrap',
             'backgroundColor': theme['bg_secondary'],
             'borderBottom': f'1px solid {theme["border_primary"]}',
         }),
@@ -107,7 +93,7 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
             type='circle',
             color=theme['accent_blue'],
             delay_show=200,
-            parent_style={'height': 'calc(100% - 36px)'},
+            parent_style={'flex': '1 1 auto', 'minHeight': 0, 'height': 'auto'},
             children=html.Div(id='fundamentals-content', children=[
                 html.Div("Open fundamentals after selecting a stock.", style={
                     'fontFamily': FONT_FAMILY,
@@ -119,11 +105,13 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
                 'height': '100%',
                 'overflow': 'auto',
                 'padding': '6px',
+                'WebkitOverflowScrolling': 'touch',
             }, className='sfa-fundamentals-content'),
         ),
     ], id='fundamentals-overlay', style={
         'display': 'none',
         'position': 'fixed',
+        'flexDirection': 'column',
         # Header is 44px tall — start the overlay flush below it so the
         # logo/tape never peeks through and creates the visual "two-headers"
         # overlap. Status bar is 24px so reserve 24px at the bottom.
@@ -157,24 +145,30 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                         'color': theme['text_primary'],
                     },
                 ),
-            ], style={'minWidth': 0, 'flex': '1 1 auto'}),
+            ], className='sfa-overlay-toolbar-title', style={'minWidth': 0, 'flex': '1 1 auto'}),
             html.Div([
-                html.Span(id='flow-status', children='Ready', className='num muted', style={
+                html.Span(id='flow-status', children='Ready', className='num muted sfa-flow-status', style={
                     'fontFamily': FONT_FAMILY,
                     'fontSize': FONT_SIZES['xs'],
                     'color': theme['text_secondary'],
                     'alignSelf': 'center',
                     'marginRight': '8px',
                 }),
+                build_symbol_search_trigger(
+                    trigger_id='flow-symbol-search-trigger',
+                    symbol_id='flow-symbol-trigger-symbol',
+                    name_id='flow-symbol-trigger-name',
+                    compact=True,
+                ),
                 html.Button("LEARN", id='flow-learn-button', n_clicks=0, style={
                     **styles['button_outline'],
                     'padding': '6px 12px',
                 }),
-                html.Button("GLOSSARY", id='flow-glossary-button', n_clicks=0, style={
+                html.Button("GLOSSARY", id='flow-glossary-button', n_clicks=0, className='sfa-flow-secondary-action', style={
                     **styles['button_outline'],
                     'padding': '6px 12px',
                 }),
-                html.Button("COLLAPSE ALL", id='flow-collapse-all', n_clicks=0, style={
+                html.Button("COLLAPSE ALL", id='flow-collapse-all', n_clicks=0, className='sfa-flow-secondary-action', style={
                     **styles['button_outline'],
                     'padding': '6px 12px',
                 }),
@@ -186,6 +180,7 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                     "OPEN IN NEW TAB",
                     href='/flow_report.html',
                     target='_blank',
+                    className='sfa-flow-secondary-action',
                     style={
                         **styles['button_outline'],
                         'padding': '6px 12px',
@@ -200,13 +195,14 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                     'borderColor': theme['accent_red'],
                     'marginLeft': '8px',
                 }),
-            ], style={
+            ], className='sfa-overlay-toolbar-actions', style={
                 'display': 'flex',
                 'alignItems': 'center',
                 'gap': '8px',
-                'flex': '0 0 auto',
+                'flex': '0 1 auto',
+                'flexWrap': 'wrap',
             }),
-        ], style={
+        ], className='sfa-overlay-toolbar', style={
             'minHeight': '36px',
             'flex': '0 0 auto',
             'padding': '4px 8px',

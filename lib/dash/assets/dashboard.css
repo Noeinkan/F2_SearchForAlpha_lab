@@ -1461,6 +1461,11 @@ input[type="radio"] {
     box-shadow: none !important;
 }
 
+.sfa-fundamentals-overlay {
+    display: flex;
+    flex-direction: column;
+}
+
 .sfa-flow-overlay {
     background: #0A0A0A;
     display: flex;
@@ -3280,6 +3285,169 @@ aside.sfa-right-panel .sfa-panel-toggle-wrap {
 }
 
 /* =============================================================================
+   Phone shell (≤900px) — left drawer, compact chrome, Flow/Fundamentals
+   ========================================================================== */
+
+/* Hamburger — desktop hidden; phone shows it in the header. */
+.sfa-mobile-menu-btn {
+    display: none;
+    flex: 0 0 auto;
+    margin-right: 4px;
+    font-size: 16px;
+    line-height: 1;
+}
+
+/* Scrim behind the left drawer; clientside toggles .sfa-visible. */
+.sfa-mobile-scrim {
+    display: none;
+    position: fixed;
+    inset: 44px 0 24px 0;
+    z-index: 14;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    appearance: none;
+}
+.sfa-mobile-scrim.sfa-visible {
+    display: block;
+}
+
+@media (max-width: 900px) {
+    .sfa-mobile-menu-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Left sidebar becomes an off-canvas drawer (mirrors right panel <1180). */
+    aside.sfa-sidebar,
+    aside.sfa-sidebar.sfa-collapsed {
+        position: fixed !important;
+        left: 0;
+        top: 44px;
+        bottom: 24px;
+        width: min(280px, 85vw) !important;
+        min-width: 0 !important;
+        max-width: 85vw;
+        z-index: 16;
+        transform: translateX(-100%);
+        transition: transform 200ms ease;
+        padding: 8px !important;
+        overflow-x: hidden;
+        overflow-y: auto;
+        background: var(--bg-secondary);
+        border-right: 1px solid var(--border-primary);
+        box-shadow: 8px 0 24px rgba(0, 0, 0, 0.35);
+    }
+    aside.sfa-sidebar.sfa-open {
+        transform: translateX(0);
+    }
+    aside.sfa-sidebar.sfa-collapsed .sfa-panel-toggle-wrap {
+        justify-content: flex-end;
+    }
+
+    .sfa-splitter { display: none !important; }
+
+    /* Soften chart floor on short phone viewports. */
+    #chart-frame {
+        min-height: min(320px, 45vh);
+    }
+
+    /* Compact header / status */
+    .bbg-wordmark-sub { display: none; }
+    .bbg-header-status-label,
+    .bbg-header-divider { display: none; }
+    .bbg-tape-delta { display: none; }
+    .bbg-donate-button {
+        padding: 2px 8px;
+        font-size: 10px;
+    }
+    .bbg-status-segment.flex-grow { display: none; }
+    .bbg-status-btn .sfa-status-kbd { display: none; }
+    button.bbg-status-btn { padding: 2px 8px; font-size: 10px; }
+
+    /* Full-bleed overlays under header / above status */
+    .sfa-fundamentals-overlay,
+    .sfa-flow-overlay {
+        inset: 44px 0 24px 0 !important;
+        border-left: none !important;
+        border-right: none !important;
+        border-radius: 0 !important;
+    }
+
+    .sfa-overlay-toolbar {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+    .sfa-overlay-toolbar-actions {
+        margin-left: 0 !important;
+        width: 100%;
+    }
+    .sfa-overlay-toolbar-actions > * {
+        margin-left: 0 !important;
+    }
+
+    /* Flow: demote secondary actions so RESCAN / CLOSE / symbol stay primary */
+    .sfa-flow-overlay .sfa-flow-secondary-action {
+        display: none !important;
+    }
+    .sfa-flow-overlay .sfa-flow-status {
+        display: none;
+    }
+
+    .sfa-flow-inv-header,
+    .sfa-flow-gex-header,
+    .sfa-flow-vanna-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .sfa-flow-inv-controls,
+    .sfa-flow-gex-controls,
+    .sfa-flow-vanna-expiry {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+    .sfa-flow-strike-track,
+    .sfa-flow-diagram-track {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Fundamentals tables: allow horizontal scroll inside panels */
+    .sfa-fundamentals-panel,
+    .sfa-fundamentals-valuation {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+    .sfa-fundamentals-summary {
+        gap: 4px;
+    }
+    .sfa-fundamentals-hero-value {
+        font-size: 18px;
+    }
+    .sfa-valuation-grid {
+        grid-template-columns: 1fr;
+    }
+    .sfa-fundamentals-charts {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .bbg-tape-price {
+        font-size: 12px;
+    }
+    .sfa-chart-tools {
+        flex-wrap: wrap;
+        row-gap: 4px;
+    }
+}
+
+/* =============================================================================
    Phase 5 — Command palette modal
 
    dbc.Modal renders Bootstrap's standard modal markup. We override the
@@ -3572,6 +3740,18 @@ body.theme-light .sfa-palette-kbd-key {
 .sfa-symbol-trigger-kbd {
     flex: 0 0 auto;
     opacity: 0.7;
+}
+
+/* Compact trigger for fundamentals / flow overlay toolbars. */
+.sfa-symbol-trigger-compact {
+    width: auto;
+    max-width: 260px;
+    flex: 0 1 auto;
+    padding: 4px 8px;
+    height: 28px;
+}
+.sfa-symbol-trigger-compact .sfa-symbol-trigger-name {
+    max-width: 120px;
 }
 
 /* --- Modal shell --------------------------------------------------------- */

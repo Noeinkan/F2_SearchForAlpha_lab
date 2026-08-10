@@ -20,6 +20,7 @@ from lib.dash.dash_config import (
     INDICATOR_SETTING_SCHEMA,
 )
 from lib.dash.components import bloomberg_section
+from lib.dash.layout.symbol_search import build_symbol_search_trigger
 
 
 def _default_ticker_option() -> list[dict[str, str]]:
@@ -38,19 +39,10 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                 # The modal is the whole search experience — asset-class tabs,
                 # sector filter, watchlists — so this is just a display of the
                 # current pick plus its shortcut hint.
-                html.Button(
-                    id='symbol-search-trigger',
-                    className='sfa-symbol-trigger',
-                    n_clicks=0,
-                    title='Search symbols (Ctrl+/)',
-                    **{'aria-label': 'Search symbols'},
-                    children=[
-                        html.Span(DEFAULT_TICKER, id='symbol-trigger-symbol',
-                                  className='sfa-symbol-trigger-sym num'),
-                        html.Span('', id='symbol-trigger-name',
-                                  className='sfa-symbol-trigger-name'),
-                        html.Span('Ctrl+/', className='sfa-status-kbd sfa-symbol-trigger-kbd'),
-                    ],
+                build_symbol_search_trigger(
+                    trigger_id='symbol-search-trigger',
+                    symbol_id='symbol-trigger-symbol',
+                    name_id='symbol-trigger-name',
                 ),
                 # Hidden state carrier. Fifteen callbacks read or write
                 # `ticker-dropdown.value` as the current symbol; keeping the

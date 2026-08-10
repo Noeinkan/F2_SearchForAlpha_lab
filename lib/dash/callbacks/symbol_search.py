@@ -109,11 +109,13 @@ def register_symbol_search_callbacks(app) -> None:
     # ------------------------------------------------------------------
     @app.callback(
         Output('symbol-search-open', 'data'),
-        Input('symbol-search-trigger', 'n_clicks'),
+        [Input('symbol-search-trigger', 'n_clicks'),
+         Input('fundamentals-symbol-search-trigger', 'n_clicks'),
+         Input('flow-symbol-search-trigger', 'n_clicks')],
         prevent_initial_call=True,
     )
-    def _open_modal(n_clicks):
-        if not n_clicks:
+    def _open_modal(sidebar_clicks, fundamentals_clicks, flow_clicks):
+        if not any((sidebar_clicks, fundamentals_clicks, flow_clicks)):
             raise PreventUpdate
         return True
 
@@ -284,14 +286,19 @@ def register_symbol_search_callbacks(app) -> None:
             return normalize(updated)
 
     # ------------------------------------------------------------------
-    # Sidebar trigger label follows the current symbol.
+    # Sidebar + overlay trigger labels follow the current symbol.
     # ------------------------------------------------------------------
     @app.callback(
         [Output('symbol-trigger-symbol', 'children'),
-         Output('symbol-trigger-name', 'children')],
+         Output('symbol-trigger-name', 'children'),
+         Output('fundamentals-symbol-trigger-symbol', 'children'),
+         Output('fundamentals-symbol-trigger-name', 'children'),
+         Output('flow-symbol-trigger-symbol', 'children'),
+         Output('flow-symbol-trigger-name', 'children')],
         Input('ticker-dropdown', 'value'),
     )
     def _update_trigger(ticker):
         symbol = str(ticker or DEFAULT_TICKER).strip().upper()
         row: dict[str, Any] | None = lookup(symbol)
-        return symbol, (row or {}).get('Security', '')
+        name = (row or {}).get('Security', '') or ''
+        return symbol, name, symbol, name, symbol, name

@@ -30,6 +30,7 @@ from .fundamentals_formulas import (
     _formula_card,
     _highlight_metric_rules,
     _merge_valuation_rows,
+    _metric_from_active_cell,
     _parse_display_number,
     _resolve_selected_metric,
     _valuation_explain_content,
@@ -74,50 +75,25 @@ def register_fundamentals_callbacks(app) -> None:
         return period or DEFAULT_FUNDAMENTALS_PERIOD
 
     @app.callback(
-        Output('fundamentals-global-symbol', 'children'),
-        Input('ticker-dropdown', 'value'),
-    )
-    def sync_fundamentals_global_symbol(ticker):
-        return f"GLOBAL {str(ticker or DEFAULT_TICKER).upper()}"
-
-    @app.callback(
-        Output('fundamentals-ticker-input', 'value'),
-        Input('open-fundamentals-button', 'n_clicks'),
-        State('ticker-dropdown', 'value'),
-        prevent_initial_call=True,
-    )
-    def seed_fundamentals_ticker(open_clicks, ticker):
-        if not open_clicks:
-            raise PreventUpdate
-        return str(ticker or DEFAULT_TICKER).upper()
-
-    @app.callback(
         [Output('fundamentals-store', 'data'),
          Output('fundamentals-title', 'children'),
          Output('fundamentals-status', 'children'),
-         Output('ticker-dropdown', 'value', allow_duplicate=True),
-         Output('fundamentals-ticker-input', 'value', allow_duplicate=True)],
+         Output('ticker-dropdown', 'value', allow_duplicate=True)],
         [Input('app-url', 'pathname'),
          Input('app-url', 'search'),
          Input('route-ticker-store', 'data'),
-         Input('refresh-fundamentals-button', 'n_clicks'),
-         Input('load-fundamentals-ticker-button', 'n_clicks'),
-         Input('fundamentals-ticker-input', 'n_submit')],
+         Input('refresh-fundamentals-button', 'n_clicks')],
         [State('ticker-dropdown', 'value'),
-         State('fundamentals-ticker-input', 'value'),
          State('user-ticker-store', 'data')],
         prevent_initial_call='initial_duplicate',
     )
     def load_fundamentals(
         pathname,
         search,
-        refresh_clicks,
-        load_clicks,
-        input_submit,
-        ticker,
-        overlay_ticker,
-        user_ticker,
         path_ticker,
+        _refresh_clicks,
+        ticker,
+        user_ticker,
     ):
         ctx = callback_context
         if not ctx.triggered:
@@ -135,10 +111,16 @@ def register_fundamentals_callbacks(app) -> None:
             if not is_fundamentals_route(pathname):
                 raise PreventUpdate
             effective_path_ticker = path_from_url or path_ticker
-            cold_load = not (effective_path_ticker or url_ticker or overlay_ticker or user_ticker or ticker)
+            cold_load = not (
+                effective_path_ticker or url_ticker or user_ticker or ticker
+            )
             fallback = FUNDAMENTALS_FALLBACK_TICKER if cold_load else DEFAULT_TICKER
             raw = str(
-                effective_path_ticker or url_ticker or overlay_ticker or user_ticker or ticker or fallback
+                effective_path_ticker
+                or url_ticker
+                or user_ticker
+                or ticker
+                or fallback
             ).strip()
         elif trigger_id == 'route-ticker-store':
             if not is_fundamentals_route(pathname):
@@ -147,30 +129,29 @@ def register_fundamentals_callbacks(app) -> None:
                 raise PreventUpdate
             raw = str(path_ticker).strip()
         else:
-            raw = str(overlay_ticker or ticker or DEFAULT_TICKER).strip()
+            # Refresh (and any other local toolbar action) uses the global symbol.
+            raw = str(ticker or DEFAULT_TICKER).strip()
 
         options = _ensure_ticker_options_loaded()
         symbol = resolve_ticker_symbol(raw, options)
 
         if not symbol:
-            return None, 'Invalid ticker', 'ERROR: ticker is required', no_update, no_update
+            return None, 'Invalid ticker', 'ERROR: ticker is required', no_update
 
         try:
             payload = fetch_fundamentals(symbol)
         except Exception as exc:
             logger.exception("Error loading fundamentals for %s", symbol)
-            return None, f'{symbol} fundamentals', f'ERROR: {exc}', no_update, no_update
+            return None, f'{symbol} fundamentals', f'ERROR: {exc}', no_update
 
         title = f"{payload['company_name']} ({payload['ticker']})"
-        # Promote overlay ticker edits to global symbol only when user explicitly
-        # loads/submits a ticker from fundamentals.
+        # Keep the global symbol aligned with the fundamentals URL / refresh.
         update_global_ticker = symbol if trigger_id in {
-            'load-fundamentals-ticker-button',
-            'fundamentals-ticker-input',
             'app-url',
             'route-ticker-store',
+            'refresh-fundamentals-button',
         } else no_update
-        return payload, title, f"LOADED {payload['as_of']}", update_global_ticker, symbol
+        return payload, title, f"LOADED {payload['as_of']}", update_global_ticker
 
     @app.callback(
         Output('fundamentals-content', 'children'),
@@ -297,16 +278,25 @@ def register_fundamentals_callbacks(app) -> None:
                 explain_children = _valuation_generic_content(canonical_metric, theme)
 
         explain_style = _valuation_explain_style(theme, visible=True)
+        # Only clear sibling valuation tables when this trigger is a real
+        # selection. Clearing active_cell→None re-fires this callback; a clear
+        # event must not wipe the remaining selection (or clear it again).
         val_a_cell, val_b_cell, dcf_cell = clear_cells[2], clear_cells[3], clear_cells[4]
-        if trigger == 'fundamentals-valuation-table-a':
-            val_b_cell = None
-            dcf_cell = None
-        elif trigger == 'fundamentals-valuation-table-b':
-            val_a_cell = None
-            dcf_cell = None
-        elif trigger == 'fundamentals-dcf-table':
-            val_a_cell = None
-            val_b_cell = None
+        trigger_has_selection = (
+            (trigger == 'fundamentals-valuation-table-a' and _metric_from_active_cell(val_a_active, val_a_rows))
+            or (trigger == 'fundamentals-valuation-table-b' and _metric_from_active_cell(val_b_active, val_b_rows))
+            or (trigger == 'fundamentals-dcf-table' and _metric_from_active_cell(dcf_active, dcf_rows))
+        )
+        if trigger_has_selection:
+            if trigger == 'fundamentals-valuation-table-a':
+                val_b_cell = None
+                dcf_cell = None
+            elif trigger == 'fundamentals-valuation-table-b':
+                val_a_cell = None
+                dcf_cell = None
+            elif trigger == 'fundamentals-dcf-table':
+                val_a_cell = None
+                val_b_cell = None
         return (
             financial_style,
             big_five_style,

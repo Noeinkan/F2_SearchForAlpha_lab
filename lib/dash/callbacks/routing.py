@@ -8,7 +8,9 @@ from dash.exceptions import PreventUpdate
 
 from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_TERMINAL, get_theme
 from lib.dash.routes import (
+    build_flow_path,
     build_fundamentals_path,
+    build_optimize_path,
     build_ticker_terminal_path,
     extract_path_ticker,
     is_fundamentals_route,
@@ -57,21 +59,24 @@ def register_routing_callbacks(app) -> None:
         prevent_initial_call=True,
     )
     def sync_dropdown_to_url(ticker, pathname):
-        """Reflect the sidebar ticker pick in the browser URL (/ticker/<sym>).
+        """Reflect the current symbol in the browser URL.
 
-        Skipped on the fundamentals/flow/optimize overlays so picking a ticker
-        there doesn't navigate away, and when the path already matches so we
-        don't loop against apply_route_ticker_to_dropdown (URL -> dropdown sync).
+        On the terminal this is ``/ticker/<sym>``. On fundamentals / flow /
+        optimize it stays on that workspace and only swaps the ticker segment,
+        so the shared symbol-search modal can change symbols without bouncing
+        back to the chart shell.
         """
         if not ticker:
             raise PreventUpdate
-        if (
-            is_fundamentals_route(pathname)
-            or is_flow_route(pathname)
-            or is_optimize_route(pathname)
-        ):
-            raise PreventUpdate
-        new_path = build_ticker_terminal_path(ticker)
+        symbol = str(ticker).strip().upper()
+        if is_fundamentals_route(pathname):
+            new_path = build_fundamentals_path(symbol)
+        elif is_flow_route(pathname):
+            new_path = build_flow_path(symbol)
+        elif is_optimize_route(pathname):
+            new_path = build_optimize_path(symbol)
+        else:
+            new_path = build_ticker_terminal_path(symbol)
         if normalize_pathname(pathname) == normalize_pathname(new_path):
             raise PreventUpdate
         return new_path
@@ -80,18 +85,17 @@ def register_routing_callbacks(app) -> None:
         Output('app-url', 'pathname', allow_duplicate=True),
         [Input('open-fundamentals-button', 'n_clicks'),
          Input('close-fundamentals-button', 'n_clicks')],
-        [State('ticker-dropdown', 'value'),
-         State('fundamentals-ticker-input', 'value')],
+        State('ticker-dropdown', 'value'),
         prevent_initial_call=True,
     )
-    def navigate_between_routes(open_clicks, close_clicks, ticker, fundamentals_ticker):
+    def navigate_between_routes(open_clicks, close_clicks, ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
 
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         if trigger_id == 'open-fundamentals-button':
-            symbol = str(fundamentals_ticker or ticker or DEFAULT_TICKER).strip().upper()
+            symbol = str(ticker or DEFAULT_TICKER).strip().upper()
             return build_fundamentals_path(symbol)
         if trigger_id == 'close-fundamentals-button':
             return ROUTE_TERMINAL

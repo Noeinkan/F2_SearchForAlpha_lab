@@ -83,6 +83,12 @@ EXPECTED_SHELL_IDS = {
     "symbol-search-trigger",
     "symbol-search-query",
     "symbol-search-results",
+    # Overlay toolbars reuse the same modal via compact triggers.
+    "fundamentals-symbol-search-trigger",
+    "flow-symbol-search-trigger",
+    # Phone shell — hamburger + dismiss scrim for the left drawer.
+    "mobile-menu-btn",
+    "mobile-nav-scrim",
 }
 
 
@@ -139,6 +145,17 @@ def test_no_sidebar_fetch_window(ids):
 def test_region_classes_present(class_names):
     for region in ("sfa-sidebar", "sfa-right-panel", "bbg-status-bar", "sfa-splitter"):
         assert region in class_names, f"missing region class: {region}"
+
+
+def test_mobile_shell_classes_present(class_names):
+    """Phone drawer chrome must stay wired for ≤900px CSS."""
+    for name in ("sfa-mobile-menu-btn", "sfa-mobile-scrim", "sfa-overlay-toolbar"):
+        assert name in class_names, f"missing mobile shell class: {name}"
+
+
+def test_overlay_toolbar_actions_present(class_names):
+    assert "sfa-overlay-toolbar-actions" in class_names
+    assert "sfa-flow-secondary-action" in class_names
 
 
 # --- Style invariants (the Phase 1 chart-collapse fix) ------------------------

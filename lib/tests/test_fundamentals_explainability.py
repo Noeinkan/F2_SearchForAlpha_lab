@@ -1,11 +1,14 @@
 """Tests for fundamentals explainability dependency/highlight helpers."""
 
+from unittest.mock import MagicMock, patch
+
 from lib.dash.dash_config import get_theme
 from lib.dash.callbacks.fundamentals import (
     _canonical_metric,
     _dependency_layers,
     _highlight_metric_rules,
 )
+from lib.dash.callbacks.fundamentals_formulas import _resolve_selected_metric
 
 
 def test_canonical_metric_aliases_current_price():
@@ -59,3 +62,33 @@ def test_selected_highlight_rule_adds_selected_border_color():
 
     assert selected_rules
     assert selected_rules[0]['border'] == f"1px solid {theme['accent_blue']}"
+
+
+def test_resolve_selected_metric_survives_sibling_table_clear():
+    """Clearing DCF/table-b after selecting PEG must keep PEG as the metric.
+
+    Valuation tables write active_cell=None on siblings; those Outputs are also
+    Inputs, so the clear re-fires the explain callback. Falling through to the
+    remaining selection keeps the formula panel visible.
+    """
+    val_a_rows = [{'metric': 'PEG', 'value': '0.8'}]
+    val_b_rows = [{'metric': 'Entry Price', 'value': '$324.37'}]
+    dcf_rows = [{'metric': 'Base FCFE', 'value': '$6,866'}]
+    ctx = MagicMock()
+    ctx.triggered = [{'prop_id': 'fundamentals-dcf-table.active_cell'}]
+
+    with patch('lib.dash.callbacks.fundamentals_formulas.callback_context', ctx):
+        metric = _resolve_selected_metric(
+            None,
+            None,
+            {'row': 0, 'column_id': 'value'},
+            None,
+            None,
+            None,
+            val_a_rows,
+            val_b_rows,
+            None,  # dcf cleared
+            dcf_rows,
+        )
+
+    assert metric == 'PEG'

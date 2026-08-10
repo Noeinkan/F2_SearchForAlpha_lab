@@ -1,8 +1,8 @@
 """Symbol-search modal — the TradingView-style replacement for the sidebar Select.
 
-Opened by the sidebar `symbol-search-trigger` button or Ctrl+/ (bound in the
-global keyboard listener in callbacks/misc_ui.py). Closed by Esc, the backdrop,
-or picking a row.
+Opened by any `*-symbol-search-trigger` button (sidebar, fundamentals, flow) or
+Ctrl+/ (bound in the global keyboard listener in callbacks/misc_ui.py). Closed
+by Esc, the backdrop, or picking a row.
 
 Chrome deliberately mirrors the command palette (layout/command_palette.py) so
 the two overlays feel like one system: same modal shell, same footer key hints,
@@ -29,6 +29,39 @@ ASSET_CLASS_TABS = [
     {"id": "FX", "label": "FOREX"},
     {"id": "Future", "label": "FUTURES"},
 ]
+
+
+def build_symbol_search_trigger(
+    *,
+    trigger_id: str,
+    symbol_id: str,
+    name_id: str,
+    compact: bool = False,
+) -> html.Button:
+    """Open-symbol-search control used in the sidebar and overlay toolbars.
+
+    Selection still funnels through the shared modal; these buttons only open
+    it and mirror the current ``ticker-dropdown`` value.
+    """
+    classes = 'sfa-symbol-trigger'
+    if compact:
+        classes = f'{classes} sfa-symbol-trigger-compact'
+    return html.Button(
+        id=trigger_id,
+        className=classes,
+        n_clicks=0,
+        title='Search symbols (Ctrl+/)',
+        **{'aria-label': 'Search symbols'},
+        children=[
+            html.Span(
+                DEFAULT_TICKER,
+                id=symbol_id,
+                className='sfa-symbol-trigger-sym num',
+            ),
+            html.Span('', id=name_id, className='sfa-symbol-trigger-name'),
+            html.Span('Ctrl+/', className='sfa-status-kbd sfa-symbol-trigger-kbd'),
+        ],
+    )
 
 # Badge colour class per asset class, so the list is scannable at a glance.
 ASSET_CLASS_BADGE = {
@@ -210,6 +243,7 @@ def build_result_rows(rows: list[dict], starred: set[str], active: str | None = 
 __all__ = [
     '_create_symbol_search_modal',
     'build_result_rows',
+    'build_symbol_search_trigger',
     'ASSET_CLASS_TABS',
     'DEFAULT_TICKER',
 ]

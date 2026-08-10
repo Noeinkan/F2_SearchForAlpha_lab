@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from dash import html
+from dash import callback_context, html
 
 from lib.dash.dash_config import FONT_FAMILY, FONT_SIZES
 
@@ -780,18 +780,25 @@ def _resolve_selected_metric(
     dcf_active: dict[str, Any] | None = None,
     dcf_rows: list[dict[str, Any]] | None = None,
 ) -> str | None:
+    """Resolve which metric owns the explain panel.
+
+    Prefer the triggering table when it still has a cell selected. When a
+    sibling table is cleared to ``None`` (Outputs are also Inputs), that
+    cascade must not wipe the panel — fall through to any remaining selection.
+    """
     ctx = callback_context
     trigger = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else ''
-    if trigger == 'fundamentals-valuation-table-a':
-        return _metric_from_active_cell(val_a_active, val_a_rows)
-    if trigger == 'fundamentals-valuation-table-b':
-        return _metric_from_active_cell(val_b_active, val_b_rows)
-    if trigger == 'fundamentals-dcf-table':
-        return _metric_from_active_cell(dcf_active, dcf_rows)
-    if trigger == 'fundamentals-financial-table':
-        return _metric_from_active_cell(fin_active, fin_rows)
-    if trigger == 'fundamentals-big-five-table':
-        return _metric_from_active_cell(big_active, big_rows)
+    by_trigger = {
+        'fundamentals-valuation-table-a': (val_a_active, val_a_rows),
+        'fundamentals-valuation-table-b': (val_b_active, val_b_rows),
+        'fundamentals-dcf-table': (dcf_active, dcf_rows),
+        'fundamentals-financial-table': (fin_active, fin_rows),
+        'fundamentals-big-five-table': (big_active, big_rows),
+    }
+    if trigger in by_trigger:
+        metric = _metric_from_active_cell(*by_trigger[trigger])
+        if metric:
+            return metric
     return (
         _metric_from_active_cell(val_a_active, val_a_rows)
         or _metric_from_active_cell(val_b_active, val_b_rows)

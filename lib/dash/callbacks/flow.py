@@ -351,10 +351,7 @@ def register_flow_callbacks(app) -> None:
         )
 
     @app.callback(
-        [
-            Output("ticker-dropdown", "value", allow_duplicate=True),
-            Output("fundamentals-ticker-input", "value", allow_duplicate=True),
-        ],
+        Output("ticker-dropdown", "value", allow_duplicate=True),
         [Input("app-url", "search"), Input("app-url", "pathname")],
         [State("ticker-dropdown", "data")],
         prevent_initial_call='initial_duplicate',
@@ -369,4 +366,4 @@ def register_flow_callbacks(app) -> None:
         known = {str(row.get("value", "")).upper() for row in (ticker_data or [])}
         if known and ticker not in known and len(known) <= 1:
             raise PreventUpdate
-        return ticker, ticker
+        return ticker

@@ -20,6 +20,14 @@ from lib.dash.bootstrap import BootstrapSnapshot
 def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Header:
     """Create the dashboard header."""
     return html.Header([
+        html.Button(
+            id='mobile-menu-btn',
+            children='☰',
+            n_clicks=0,
+            className='bbg-icon-button sfa-mobile-menu-btn',
+            title='Open navigation (Flow, Fundamentals, controls)',
+            **{'aria-label': 'Open navigation menu', 'aria-expanded': 'false'},
+        ),
         html.Div([
             html.Div("SFA", style=styles['logo_icon'], className='bbg-wordmark'),
             html.Span("Terminal", style=styles['logo_text'], className='bbg-wordmark-sub'),
