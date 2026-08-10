@@ -536,6 +536,43 @@ input.bbg-input[type=number] {
     padding: 0 14px;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-primary);
+    position: relative;
+    z-index: 30;
+}
+.sfa-workspace-nav {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    overflow: hidden;
+    background: var(--bg-tertiary);
+    flex-shrink: 0;
+}
+.sfa-workspace-nav-btn {
+    margin: 0;
+    padding: 5px 10px;
+    border: none;
+    border-right: 1px solid var(--border-primary);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    line-height: 1.2;
+}
+.sfa-workspace-nav-btn:last-child {
+    border-right: none;
+}
+.sfa-workspace-nav-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.sfa-workspace-nav-btn.is-active {
+    background: var(--accent);
+    color: #000;
 }
 .bbg-wordmark {
     font-family: var(--font-sans);

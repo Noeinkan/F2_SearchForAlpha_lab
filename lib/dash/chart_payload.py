@@ -177,15 +177,45 @@ def _threshold(price: float, color: str, title: str, style: str = 'dashed') -> d
 
 # ---------------------------------------------------------------- indicators
 
+def _volume_alpha(rvol: float | None) -> str:
+    """Map relative volume (vol / SMA) to a hex alpha suffix for histogram bars."""
+    if rvol is None:
+        return '99'
+    try:
+        r = float(rvol)
+    except (TypeError, ValueError):
+        return '99'
+    if math.isnan(r) or math.isinf(r) or r < 0:
+        return '99'
+    if r < 0.75:
+        return '55'
+    if r < 1.25:
+        return '99'
+    if r < 2.0:
+        return 'CC'
+    return 'FF'
+
+
 def _volume_series(df, times, config, theme) -> List[dict]:
     up, down = theme['chart_candle_up'], theme['chart_candle_down']
+    ma_period = _period(_get_setting(config, 'volume', 'ma_period', 20), 20)
+    ma = df['Volume'].rolling(window=ma_period, min_periods=1).mean()
+
     bars = []
     closes, opens = df['Close'].to_numpy(), df['Open'].to_numpy()
-    for t, v, c, o in zip(times, df['Volume'].to_numpy(), closes, opens):
+    volumes = df['Volume'].to_numpy()
+    ma_vals = ma.to_numpy()
+    for t, v, c, o, m in zip(times, volumes, closes, opens, ma_vals):
         num = _num(v, 0)
         if num is None:
             continue
-        bars.append({'time': t, 'value': num, 'color': (up if c > o else down) + '99'})
+        try:
+            m_f = float(m)
+            rvol = (float(v) / m_f) if m_f > 0 and not math.isnan(m_f) else None
+        except (TypeError, ValueError):
+            rvol = None
+        hue = up if c > o else down
+        bars.append({'time': t, 'value': num, 'color': hue + _volume_alpha(rvol)})
 
     specs = [{
         'id': 'volume',
@@ -200,11 +230,10 @@ def _volume_series(df, times, config, theme) -> List[dict]:
         'data': bars,
     }]
 
-    ma_period = _period(_get_setting(config, 'volume', 'ma_period', 20), 20)
     if config.get('show_volume_ma', False) and ma_period > 1:
-        ma = df['Volume'].rolling(window=ma_period, min_periods=1).mean()
         specs.append(_line_spec('volume', f'Vol MA ({ma_period})', times, ma,
-                                theme['accent_blue'], width=1.2, digits=0))
+                                theme['text_secondary'], width=1.2, style='dotted',
+                                digits=0))
     return specs
 
 
@@ -214,7 +243,7 @@ def _rsi_series(df, times, config, theme) -> List[dict]:
     oversold = _get_setting(config, 'rsi', 'oversold', 30)
     values = RSIIndicator(close=df['Close'], window=period).rsi()
     return [_line_spec(
-        'rsi', f'RSI ({period})', times, values, theme['accent_orange'], digits=2,
+        'rsi', f'RSI ({period})', times, values, theme['accent_purple'], digits=2,
         price_lines=[
             _threshold(overbought, theme['accent_red'], 'OB'),
             _threshold(oversold, theme['accent_green'], 'OS'),
@@ -229,7 +258,7 @@ def _cci_series(df, times, config, theme) -> List[dict]:
     floor = _get_setting(config, 'cci', 'floor', -100)
     values = CCIIndicator(high=df['High'], low=df['Low'], close=df['Close'], window=period).cci()
     return [_line_spec(
-        'cci', f'CCI ({period})', times, values, theme['accent_purple'], digits=2,
+        'cci', f'CCI ({period})', times, values, theme['accent_orange'], digits=2,
         price_lines=[
             _threshold(ceiling, theme['accent_red'], '+'),
             _threshold(floor, theme['accent_green'], '-'),
@@ -263,7 +292,7 @@ def _macd_series(df, times, config, theme) -> List[dict]:
             'data': bars,
         },
         _line_spec('macd', f'MACD ({fast},{slow})', times, macd.macd(),
-                   theme['accent_blue'], digits=6,
+                   theme['accent_cyan'], digits=6,
                    price_lines=[_threshold(0, theme['text_tertiary'], '', style='dotted')]),
         _line_spec('macd', f'Signal ({signal})', times, macd.macd_signal(),
                    theme['accent_orange'], digits=6),
@@ -277,7 +306,8 @@ def _vwap_series(df, times, config, theme) -> List[dict]:
         volume=df['Volume'].fillna(0), window=window,
     ).volume_weighted_average_price()
     return [
-        _line_spec('vwap', f'VWAP ({window})', times, values, theme['accent_blue'], width=1.6, digits=2),
+        _line_spec('vwap', f'VWAP ({window})', times, values, theme['text_primary'],
+                   width=1.6, digits=2),
         _line_spec('vwap', 'Close', times, df['Close'], theme['text_secondary'],
                    width=1.1, style='dotted', digits=2),
     ]
@@ -314,7 +344,8 @@ def _adx_series(df, times, config, theme) -> List[dict]:
 
     return [
         _line_spec(
-            'adx', f'ADX ({period})', times, values, theme['accent_cyan'], digits=2,
+            # Neutral strength line — not directional (direction lives on ±DI).
+            'adx', f'ADX ({period})', times, values, theme['text_primary'], digits=2,
             price_lines=[
                 _threshold(threshold, theme['text_tertiary'], 'TREND'),
                 _threshold(range_threshold, theme['text_tertiary'], 'RANGE', style='dotted'),
@@ -365,7 +396,7 @@ def _atr_series(df, times, config, theme) -> List[dict]:
             'data': _line_points(times, atr_pct, 3),
         },
         _line_spec('atr', f'ATR% MA ({lookback})', times, atr_pct_ma,
-                   theme['accent_blue'], width=1.1, style='dotted', digits=3),
+                   theme['text_secondary'], width=1.1, style='dotted', digits=3),
         # The gate levels themselves — where Expansion / Compression actually fire.
         _line_spec('atr', f'Expansion (x{expansion_factor:g})', times,
                    atr_pct_ma * expansion_factor,
@@ -376,6 +407,10 @@ def _atr_series(df, times, config, theme) -> List[dict]:
     ]
 
 
+# Okabe–Ito sky — OBV identity, distinct from RSI purple / MACD+ATR cyan.
+_OBV_COLOR = '#56B4E9'
+
+
 def _obv_series(df, times, config, theme) -> List[dict]:
     ma_period = _period(_get_setting(config, 'obv', 'ma_period', 20), 20)
 
@@ -383,7 +418,7 @@ def _obv_series(df, times, config, theme) -> List[dict]:
     if obv is None:
         obv = (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
 
-    specs = [_line_spec('obv', 'OBV', times, obv, theme['accent_purple'], digits=0)]
+    specs = [_line_spec('obv', 'OBV', times, obv, _OBV_COLOR, digits=0)]
     if ma_period > 1:
         obv_ma = _strategy_column(df, 'OBV_MA')
         if obv_ma is None:
@@ -391,7 +426,8 @@ def _obv_series(df, times, config, theme) -> List[dict]:
             # drawn through the warmup would show a cross the strategy cannot see.
             obv_ma = obv.rolling(window=ma_period, min_periods=ma_period).mean()
         specs.append(_line_spec('obv', f'OBV MA ({ma_period})', times, obv_ma,
-                                theme['accent_blue'], width=1.1, style='dotted', digits=0))
+                                theme['text_secondary'], width=1.1, style='dotted',
+                                digits=0))
     return specs
 
 
@@ -424,12 +460,12 @@ def _build_markers(df, times, config, theme) -> List[dict]:
         'buy': {
             'columns': config.get('buy_signal_columns') or [],
             'shape': 'arrowUp', 'position': 'belowBar',
-            'color': theme['accent_blue'], 'text': 'B',
+            'color': theme['chart_candle_up'], 'text': 'B',
         },
         'sell': {
             'columns': config.get('sell_signal_columns') or [],
             'shape': 'arrowDown', 'position': 'aboveBar',
-            'color': theme['accent_purple'], 'text': 'S',
+            'color': theme['chart_candle_down'], 'text': 'S',
         },
     }
 
@@ -515,7 +551,8 @@ def build_chart_payload(df: pd.DataFrame, config: Dict, theme: dict) -> Dict[str
     for spec in get_tv_overlay_specs(df, theme, overlay_visibility):
         series.append(_line_spec(
             'price', spec['title'], times, df[spec['column']],
-            spec['color'], width=spec.get('lineWidth', 1.5), digits=precision,
+            spec['color'], width=spec.get('lineWidth', 1.5),
+            style=spec.get('style'), digits=precision,
         ))
 
     for pane in panes[1:]:

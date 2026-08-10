@@ -86,6 +86,10 @@ EXPECTED_SHELL_IDS = {
     # Overlay toolbars reuse the same modal via compact triggers.
     "fundamentals-symbol-search-trigger",
     "flow-symbol-search-trigger",
+    # Persistent workspace switcher in the header (outside #terminal-shell).
+    "nav-workspace-sfa",
+    "nav-workspace-fundamentals",
+    "nav-workspace-flow",
     # Phone shell — hamburger, Backtest affordance, dismiss scrim.
     "mobile-menu-btn",
     "mobile-backtest-btn",
@@ -163,6 +167,38 @@ def test_mobile_shell_classes_present(class_names):
 def test_overlay_toolbar_actions_present(class_names):
     assert "sfa-overlay-toolbar-actions" in class_names
     assert "sfa-flow-secondary-action" in class_names
+
+
+def _find_by_id(component, target):
+    if getattr(component, "id", None) == target:
+        return component
+    children = getattr(component, "children", None)
+    if children is None:
+        return None
+    if not isinstance(children, (list, tuple)):
+        children = [children]
+    for child in children:
+        found = _find_by_id(child, target)
+        if found is not None:
+            return found
+    return None
+
+
+def test_fundamentals_overlay_scrolls_in_one_container(layout):
+    """Scroll lives on #fundamentals-scroll-region, outside dcc.Loading."""
+    overlay = _find_by_id(layout, "fundamentals-overlay")
+    assert overlay is not None
+
+    region = _find_by_id(overlay, "fundamentals-scroll-region")
+    assert region is not None
+    assert region.style["overflowY"] == "auto"
+    assert region.style["minHeight"] == 0
+
+    content = _find_by_id(region, "fundamentals-content")
+    assert content is not None
+    assert "overflow" not in (content.style or {})
+    assert "overflowY" not in (content.style or {})
+    assert _find_by_id(region, "fundamentals-loading") is not None
 
 
 # --- Style invariants (the Phase 1 chart-collapse fix) ------------------------

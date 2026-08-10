@@ -102,11 +102,12 @@ def register_optimize_workspace_callbacks(app) -> None:
             }
         )
         if on_optimize:
-            style.update({"inset": "0", "boxShadow": "none"})
+            # Persistent header is 44px — keep the workspace under it.
+            style.update({"inset": "44px 0 0 0", "boxShadow": "none"})
         else:
             style.update(
                 {
-                    "inset": "42px 6px 24px 6px",
+                    "inset": "44px 6px 24px 6px",
                     "boxShadow": "0 18px 60px rgba(0, 0, 0, 0.45)",
                 }
             )

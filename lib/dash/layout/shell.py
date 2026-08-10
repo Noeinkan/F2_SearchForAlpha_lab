@@ -173,8 +173,10 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         html.Div(id='command-palette-focus-sync', style={'display': 'none'}),
         html.Div(id='command-palette-guard-sync', style={'display': 'none'}),
 
+        # Header sits outside #terminal-shell so SFA / FUNDAMENTALS / FLOW
+        # stay reachable when alt workspaces hide the shell.
+        _create_header(styles, theme, bootstrap=bootstrap),
         html.Div([
-            _create_header(styles, theme, bootstrap=bootstrap),
             html.Div([
                 _create_sidebar(styles, theme),
                 _create_chart_area(styles, theme, bootstrap=bootstrap),

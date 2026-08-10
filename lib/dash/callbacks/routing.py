@@ -6,7 +6,7 @@ from dash import callback_context, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_TERMINAL, get_theme
+from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, get_theme
 from lib.dash.routes import (
     build_flow_path,
     build_fundamentals_path,
@@ -84,22 +84,40 @@ def register_routing_callbacks(app) -> None:
     @app.callback(
         Output('app-url', 'pathname', allow_duplicate=True),
         [Input('open-fundamentals-button', 'n_clicks'),
-         Input('close-fundamentals-button', 'n_clicks')],
+         Input('close-fundamentals-button', 'n_clicks'),
+         Input('nav-workspace-sfa', 'n_clicks'),
+         Input('nav-workspace-fundamentals', 'n_clicks')],
         State('ticker-dropdown', 'value'),
         prevent_initial_call=True,
     )
-    def navigate_between_routes(open_clicks, close_clicks, ticker):
+    def navigate_between_routes(open_clicks, close_clicks, nav_sfa, nav_fund, ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
 
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        if trigger_id == 'open-fundamentals-button':
-            symbol = str(ticker or DEFAULT_TICKER).strip().upper()
+        symbol = str(ticker or DEFAULT_TICKER).strip().upper()
+        if trigger_id in ('open-fundamentals-button', 'nav-workspace-fundamentals'):
             return build_fundamentals_path(symbol)
-        if trigger_id == 'close-fundamentals-button':
-            return ROUTE_TERMINAL
+        if trigger_id in ('close-fundamentals-button', 'nav-workspace-sfa'):
+            return build_ticker_terminal_path(symbol)
         raise PreventUpdate
+
+    @app.callback(
+        [Output('nav-workspace-sfa', 'className'),
+         Output('nav-workspace-fundamentals', 'className'),
+         Output('nav-workspace-flow', 'className')],
+        Input('app-url', 'pathname'),
+        prevent_initial_call=False,
+    )
+    def sync_workspace_nav_active(pathname):
+        base = 'sfa-workspace-nav-btn'
+        active = f'{base} is-active'
+        if is_fundamentals_route(pathname):
+            return base, active, base
+        if is_flow_route(pathname):
+            return base, base, active
+        return active, base, base
 
     @app.callback(
         [Output('terminal-shell', 'style'),
@@ -132,13 +150,14 @@ def register_routing_callbacks(app) -> None:
             'overflow': 'hidden',
         })
         if on_fundamentals:
+            # Persistent header is 44px — keep the workspace under it.
             style.update({
-                'inset': '0',
+                'inset': '44px 0 0 0',
                 'boxShadow': 'none',
             })
         else:
             style.update({
-                'inset': '42px 6px 24px 6px',
+                'inset': '44px 6px 24px 6px',
                 'boxShadow': '0 18px 60px rgba(0, 0, 0, 0.45)',
             })
 

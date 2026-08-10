@@ -37,7 +37,37 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
             **{'aria-label': 'Open Backtest panel', 'aria-expanded': 'false'},
         ),
         html.Div([
-            html.Div("SFA", style=styles['logo_icon'], className='bbg-wordmark'),
+            html.Div(
+                [
+                    html.Button(
+                        'SFA',
+                        id='nav-workspace-sfa',
+                        n_clicks=0,
+                        className='sfa-workspace-nav-btn is-active',
+                        title='Trading terminal',
+                        **{'aria-label': 'Open trading terminal', 'aria-current': 'page'},
+                    ),
+                    html.Button(
+                        'FUNDAMENTALS',
+                        id='nav-workspace-fundamentals',
+                        n_clicks=0,
+                        className='sfa-workspace-nav-btn',
+                        title='10-year fundamentals and Rule #1 valuation',
+                        **{'aria-label': 'Open fundamentals workspace'},
+                    ),
+                    html.Button(
+                        'FLOW',
+                        id='nav-workspace-flow',
+                        n_clicks=0,
+                        className='sfa-workspace-nav-btn',
+                        title='Unusual options flow scanner',
+                        **{'aria-label': 'Open flow scanner'},
+                    ),
+                ],
+                className='sfa-workspace-nav',
+                role='navigation',
+                **{'aria-label': 'Workspace'},
+            ),
             html.Span("Terminal", style=styles['logo_text'], className='bbg-wordmark-sub'),
         ], style=styles['logo']),
 

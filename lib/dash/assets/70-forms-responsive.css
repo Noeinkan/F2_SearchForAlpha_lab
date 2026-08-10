@@ -375,6 +375,11 @@ aside.sfa-right-panel .sfa-panel-toggle-wrap {
 
     /* Compact header / status */
     .bbg-wordmark-sub { display: none; }
+    .sfa-workspace-nav-btn {
+        padding: 4px 6px;
+        font-size: 10px;
+        letter-spacing: 0.5px;
+    }
     .bbg-header-status-label,
     .bbg-header-divider { display: none; }
     .bbg-tape-delta { display: none; }

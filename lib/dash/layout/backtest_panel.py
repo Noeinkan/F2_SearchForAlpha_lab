@@ -1107,7 +1107,12 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
             ],
             className='compact-accordion',
             always_open=True,
-            active_item=['backtest-window', 'backtest-strategy', 'backtest-signals'],
+            active_item=[
+                'backtest-window',
+                'backtest-strategy',
+                'backtest-sizing',
+                'backtest-signals',
+            ],
             flush=True,
         ),
 

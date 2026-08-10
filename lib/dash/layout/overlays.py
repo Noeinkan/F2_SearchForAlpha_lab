@@ -79,6 +79,7 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
             }),
         ], className='sfa-overlay-toolbar', style={
             'minHeight': '36px',
+            'flex': '0 0 auto',
             'padding': '4px 8px',
             'display': 'flex',
             'alignItems': 'center',
@@ -88,25 +89,36 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
             'backgroundColor': theme['bg_secondary'],
             'borderBottom': f'1px solid {theme["border_primary"]}',
         }),
-        dcc.Loading(
-            id='fundamentals-loading',
-            type='circle',
-            color=theme['accent_blue'],
-            delay_show=200,
-            parent_style={'flex': '1 1 auto', 'minHeight': 0, 'height': 'auto'},
-            children=html.Div(id='fundamentals-content', children=[
-                html.Div("Open fundamentals after selecting a stock.", style={
-                    'fontFamily': FONT_FAMILY,
-                    'fontSize': FONT_SIZES['sm'],
-                    'color': theme['text_secondary'],
-                    'padding': '18px',
-                })
-            ], style={
-                'height': '100%',
-                'overflow': 'auto',
-                'padding': '6px',
+        # Scroll outside dcc.Loading — Loading wrappers break nested
+        # flex/overflow chains (same fix as #flow-scroll-region).
+        html.Div(
+            dcc.Loading(
+                id='fundamentals-loading',
+                type='circle',
+                color=theme['accent_blue'],
+                delay_show=200,
+                children=html.Div(
+                    id='fundamentals-content',
+                    children=[
+                        html.Div("Open fundamentals after selecting a stock.", style={
+                            'fontFamily': FONT_FAMILY,
+                            'fontSize': FONT_SIZES['sm'],
+                            'color': theme['text_secondary'],
+                            'padding': '18px',
+                        })
+                    ],
+                    style={'padding': '6px'},
+                    className='sfa-fundamentals-content',
+                ),
+            ),
+            id='fundamentals-scroll-region',
+            style={
+                'flex': '1 1 auto',
+                'minHeight': 0,
+                'overflowY': 'auto',
+                'overflowX': 'hidden',
                 'WebkitOverflowScrolling': 'touch',
-            }, className='sfa-fundamentals-content'),
+            },
         ),
     ], id='fundamentals-overlay', style={
         'display': 'none',
@@ -114,7 +126,8 @@ def _create_fundamentals_overlay(styles: dict, theme: dict) -> html.Div:
         'flexDirection': 'column',
         # Header is 44px tall — start the overlay flush below it so the
         # logo/tape never peeks through and creates the visual "two-headers"
-        # overlap. Status bar is 24px so reserve 24px at the bottom.
+        # overlap. Status bar is 24px so reserve 24px at the bottom when the
+        # terminal shell (and its status bar) is still visible.
         'inset': '44px 6px 24px 6px',
         'zIndex': 20,
         'backgroundColor': theme['bg_primary'],

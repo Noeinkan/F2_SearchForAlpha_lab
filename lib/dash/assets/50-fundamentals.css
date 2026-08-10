@@ -3,6 +3,7 @@
    ========================================================================== */
 
 .sfa-fundamentals-overlay.sfa-fundamentals-route {
+    inset: 44px 0 0 0 !important;
     border: none !important;
     box-shadow: none !important;
 }
@@ -10,6 +11,24 @@
 .sfa-fundamentals-overlay {
     display: flex;
     flex-direction: column;
+}
+
+/* One scroll container for fundamentals. Scroll lives outside dcc.Loading —
+   nested flex/overflow on #fundamentals-content clipped with no scrollbar. */
+.sfa-fundamentals-overlay #fundamentals-scroll-region {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+}
+
+.sfa-fundamentals-overlay #fundamentals-loading,
+.sfa-fundamentals-overlay #fundamentals-loading > div,
+.sfa-fundamentals-overlay #fundamentals-content {
+    display: block;
+    min-height: 0;
+    overflow: visible;
 }
 
 .sfa-flow-overlay {
@@ -38,7 +57,7 @@
 }
 
 .sfa-flow-overlay.sfa-flow-route {
-    inset: 0 !important;
+    inset: 44px 0 0 0 !important;
     border: none !important;
     box-shadow: none !important;
 }
@@ -50,7 +69,7 @@
 }
 
 .sfa-optimize-overlay.sfa-optimize-route {
-    inset: 0 !important;
+    inset: 44px 0 0 0 !important;
     border: none !important;
     box-shadow: none !important;
 }
