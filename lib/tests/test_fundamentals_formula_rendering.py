@@ -132,3 +132,21 @@ def test_render_payload_quarterly_keeps_annual_valuation_and_big_five():
     assert 'Big Five' in text
     assert 'Financials' in text
     assert '2024-Q2' in text
+    assert 'sfa-fundamentals-band-quality' in text
+    assert 'sfa-fundamentals-band-growth' in text
+    assert 'sfa-fundamentals-band-financials' in text
+    assert 'sfa-fundamentals-band-valuation' in text
+    assert 'sfa-fundamentals-valuation-band' in text
+    assert 'sfa-fundamentals-valuation-rule1' in text
+    assert 'sfa-fundamentals-valuation-dcf' in text
+
+    # Story order: Quality (Big Five) → Growth (charts) → Financials → Valuation
+    idx_quality = text.find('sfa-fundamentals-band-quality')
+    idx_growth = text.find('sfa-fundamentals-band-growth')
+    idx_financials = text.find('sfa-fundamentals-band-financials')
+    idx_valuation = text.find('sfa-fundamentals-band-valuation')
+    assert idx_quality != -1
+    assert idx_quality < idx_growth < idx_financials < idx_valuation
+    assert text.find('Big Five') < text.find('sfa-fundamentals-charts')
+    assert text.find('sfa-fundamentals-charts') < text.find('fundamentals-financial-table')
+    assert text.find('fundamentals-financial-table') < text.find('DCF (FCFE)')

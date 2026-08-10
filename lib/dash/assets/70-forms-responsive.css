@@ -420,46 +420,17 @@ aside.sfa-right-panel .sfa-panel-toggle-wrap {
         display: none;
     }
 
-    .sfa-flow-workspace {
-        flex-direction: column;
-        overflow-y: auto;
-        overflow-x: hidden;
-    }
-    .sfa-flow-ticker-list {
-        flex: 0 0 auto;
-        width: 100%;
-        max-width: none;
-        max-height: 36vh;
-        border-right: none;
-        border-bottom: 1px solid var(--border-primary, #333);
-        padding-right: 0;
-        padding-bottom: 8px;
-    }
-    .sfa-flow-ticker-detail {
-        flex: 1 1 auto;
-        padding-left: 0;
-        overflow: visible;
-    }
-    .sfa-flow-concepts[open] {
-        max-height: none;
-    }
-
     .sfa-flow-inv-header,
     .sfa-flow-gex-header,
-    .sfa-flow-vanna-header,
-    .sfa-flow-chain-header {
+    .sfa-flow-vanna-header {
         flex-wrap: wrap;
         gap: 8px;
     }
     .sfa-flow-inv-controls,
     .sfa-flow-gex-controls,
-    .sfa-flow-vanna-expiry,
-    .sfa-flow-chain-expiry {
+    .sfa-flow-vanna-expiry {
         flex-wrap: wrap;
         width: 100%;
-    }
-    .sfa-flow-chain-scroll {
-        max-height: 50vh;
     }
     .sfa-flow-strike-track,
     .sfa-flow-diagram-track {
@@ -469,7 +440,8 @@ aside.sfa-right-panel .sfa-panel-toggle-wrap {
 
     /* Fundamentals tables: allow horizontal scroll inside panels */
     .sfa-fundamentals-panel,
-    .sfa-fundamentals-valuation {
+    .sfa-fundamentals-valuation,
+    .sfa-fundamentals-valuation-band {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         max-width: 100%;
@@ -480,7 +452,8 @@ aside.sfa-right-panel .sfa-panel-toggle-wrap {
     .sfa-fundamentals-hero-value {
         font-size: 18px;
     }
-    .sfa-valuation-grid {
+    .sfa-valuation-grid,
+    .sfa-fundamentals-valuation-band {
         grid-template-columns: 1fr;
     }
     .sfa-fundamentals-charts {

@@ -23,7 +23,6 @@ from lib.dash.flow_glossary import (
 )
 from lib.dash.flow_view import (
     _table_conditional_styles,
-    render_concepts_drawer,
     render_flow_guide,
     render_flow_reports,
     render_glossary_panel,
@@ -32,9 +31,6 @@ from lib.dash.flow_view import (
     render_summary_cards,
     render_theta_decay_panel,
     render_ticker_card,
-    render_ticker_detail,
-    render_ticker_list,
-    resolve_selected_report,
 )
 from lib.dash.layout.overlays import _create_flow_overlay
 from lib.dash.styles import get_styles
@@ -268,14 +264,13 @@ def test_render_flow_guide_has_diagram_and_legend():
     theme = get_theme(DEFAULT_THEME)
     guide = render_flow_guide(theme)
     assert guide.__class__.__name__ == "Details"
-    assert guide.open is True
+    assert guide.open is False  # education collapsed by default
     serialized = str(guide)
     assert "sfa-flow-guide" in serialized
     assert "sfa-flow-diagram" in serialized
-    assert "sfa-flow-diagram-frame" in serialized
-    assert "flow-fullscreen-btn" in serialized
     assert "How to read this page" in serialized
     assert "OTM puts" in serialized or "OTM" in serialized
+    assert render_flow_guide(theme, open=True).open is True
 
 
 def test_theta_decay_series_convex_toward_expiry():
@@ -312,15 +307,14 @@ def test_render_theta_decay_panel_has_chart_and_captions():
     theme = get_theme(DEFAULT_THEME)
     panel = render_theta_decay_panel(theme)
     assert panel.__class__.__name__ == "Details"
-    assert panel.open is True
+    assert panel.open is False
     assert "sfa-flow-theta-panel" in panel.className
     serialized = str(panel)
     assert "Theta Decay" in serialized
     assert "flow-theta-decay-graph" in serialized
-    assert "sfa-flow-diagram-frame" in serialized
-    assert "flow-fullscreen-btn" in serialized
     assert "0DTE" in serialized
     assert TERM_DEFINITIONS["theta"][:20] in serialized or "time decay" in serialized.lower()
+    assert render_theta_decay_panel(theme, open=True).open is True
 
 
 def test_iv_surface_series_peak_at_short_low_moneyness():
@@ -356,15 +350,14 @@ def test_render_iv_surface_panel_has_chart_and_captions():
     theme = get_theme(DEFAULT_THEME)
     panel = render_iv_surface_panel(theme)
     assert panel.__class__.__name__ == "Details"
-    assert panel.open is True
+    assert panel.open is False
     assert "sfa-flow-iv-surface-panel" in panel.className
     serialized = str(panel)
     assert "Implied Volatility Surface" in serialized
     assert "flow-iv-surface-graph" in serialized
-    assert "sfa-flow-diagram-frame" in serialized
-    assert "flow-fullscreen-btn" in serialized
     assert "moneyness" in serialized
     assert "0DTE" in serialized
+    assert render_iv_surface_panel(theme, open=True).open is True
 
 
 def test_render_learn_modal_content_has_sections():
@@ -378,35 +371,34 @@ def test_render_learn_modal_content_has_sections():
     assert "flow-theta-decay-graph" not in serialized
     assert "sfa-flow-theta-panel" not in serialized
 
-
-def test_render_ticker_detail_overview_has_table_on_contracts_tab():
+def test_render_ticker_card_returns_collapsible_panel_with_chain():
     theme = get_theme(DEFAULT_THEME)
-    detail = render_ticker_detail(_sample_report(), theme, section="overview", index=0)
-    assert detail.id == "flow-ticker-detail"
-    assert "sfa-flow-ticker-card" in detail.className
-    serialized = str(detail)
+    report = _sample_report(option_chains={
+        "2026-06-20": [{
+            "strike": 210.0,
+            "call": {
+                "last": 4.1, "bid": 4.05, "ask": 4.15, "volume": 55471,
+                "open_interest": 5000, "iv": 0.315, "flagged": True,
+            },
+            "put": None,
+        }],
+    })
+    card = render_ticker_card(report, theme, index=0)
+    assert card.__class__.__name__ == "Details"
+    assert card.open is True  # top-scoring card starts expanded
+    assert "sfa-flow-panel" in card.className
+    serialized = str(card)
     assert "NVDA" in serialized
-    assert "flow-section-tabs" in serialized
-    assert "sfa-flow-section-overview" in serialized
-    # Contracts table mounts only on the Contracts tab.
-    assert "flow-table-0-NVDA" not in serialized
-
-    contracts = render_ticker_detail(_sample_report(), theme, section="contracts", index=0)
-    assert "flow-table-0-NVDA" in str(contracts)
+    assert "sfa-flow-chain" in serialized
+    assert "flow-table-" not in serialized
 
 
-def test_render_ticker_card_is_detail_alias():
+def test_render_ticker_card_collapsed_below_top_rank():
     theme = get_theme(DEFAULT_THEME)
-    card = render_ticker_card(_sample_report(), theme, index=0)
-    assert card.id == "flow-ticker-detail"
-    assert "Score" in str(card)
-
-
-def test_resolve_selected_report_prefers_path_then_score():
-    low = _sample_report(ticker="AAA", unusual_score=10)
-    high = _sample_report(ticker="ZZZ", unusual_score=900)
-    assert resolve_selected_report([low, high], None)["ticker"] == "ZZZ"
-    assert resolve_selected_report([low, high], "AAA")["ticker"] == "AAA"
+    card = render_ticker_card(_sample_report(), theme, index=1)
+    assert card.open is False
+    # Score stays on the summary row so a collapsed card is still rankable.
+    assert "Score" in str(card.children[0])
 
 
 def test_render_summary_cards_is_always_visible_strip():
@@ -426,101 +418,53 @@ def test_render_glossary_panel_is_collapsible_and_open():
     assert render_glossary_panel(theme, open=False).open is False
 
 
-def test_render_concepts_drawer_closed_by_default():
+def test_render_ticker_card_has_sentiment_badge():
     theme = get_theme(DEFAULT_THEME)
-    drawer = render_concepts_drawer(theme)
-    assert drawer.id == "flow-concepts"
-    assert drawer.open is False
-    serialized = str(drawer)
-    assert "sfa-flow-guide" in serialized
-    assert "sfa-flow-theta-panel" in serialized
-    assert "sfa-flow-iv-surface-panel" in serialized
-    assert render_concepts_drawer(theme, open=True).open is True
-
-
-def test_render_ticker_list_marks_selected_row():
-    theme = get_theme(DEFAULT_THEME)
-    reports = [
-        _sample_report(ticker="NVDA", unusual_score=100),
-        _sample_report(ticker="AAPL", unusual_score=50),
-    ]
-    listing = render_ticker_list(reports, theme, selected_ticker="AAPL")
-    serialized = str(listing)
-    assert "flow-ticker-list" in serialized
-    assert "sfa-flow-ticker-row-selected" in serialized
-    assert "AAPL" in serialized
-
-
-def test_render_ticker_detail_has_sentiment_badge():
-    theme = get_theme(DEFAULT_THEME)
-    detail = render_ticker_detail(_sample_report(), theme, index=0)
-    serialized = str(detail)
+    card = render_ticker_card(_sample_report(), theme, index=0)
+    serialized = str(card)
     assert "sfa-flow-sentiment-badge" in serialized
     assert "BULLISH" in serialized or "NEUTRAL" in serialized or "MIXED" in serialized
 
 
-def test_render_ticker_detail_overview_has_insight_list():
+def test_render_ticker_card_has_insight_list():
     theme = get_theme(DEFAULT_THEME)
-    detail = render_ticker_detail(
+    card = render_ticker_card(
         _sample_report(flags=[{"kind": "repeat_call", "message": "3"}]),
         theme,
-        section="overview",
         index=0,
     )
-    serialized = str(detail)
+    serialized = str(card)
     assert "sfa-flow-insights" in serialized
     assert "sfa-flow-insight-chip" in serialized
 
 
-def test_render_ticker_detail_overview_has_score_chips_and_inventory_fallback():
+def test_render_ticker_card_has_score_chips_and_strike_map():
     theme = get_theme(DEFAULT_THEME)
-    overview = render_ticker_detail(_sample_report(), theme, section="overview", index=0)
-    assert "sfa-flow-score-chips" in str(overview)
-    inventory = render_ticker_detail(_sample_report(), theme, section="inventory", index=0)
-    assert "sfa-flow-strike-map" in str(inventory)
-    contracts = render_ticker_detail(_sample_report(), theme, section="contracts", index=0)
-    assert "sfa-flow-color-legend" in str(contracts)
+    card = render_ticker_card(_sample_report(), theme, index=0)
+    serialized = str(card)
+    assert "sfa-flow-score-chips" in serialized
+    assert "sfa-flow-strike-map" in serialized
 
 
-def test_render_flow_reports_is_data_first_master_detail():
+def test_render_flow_reports_composes_summary_and_cards():
     theme = get_theme(DEFAULT_THEME)
-    payload = {
-        "generated_at": "2026-06-14T12:00:00",
-        "reports": [
-            _sample_report(ticker="LOW", unusual_score=10),
-            _sample_report(ticker="HIGH", unusual_score=900),
-        ],
-    }
+    payload = {"generated_at": "2026-06-14T12:00:00", "reports": [_sample_report()]}
     root = render_flow_reports(payload, theme)
     serialized = str(root)
-    assert "Tickers: 2" in serialized
+    assert "Tickers: 1" in serialized
     assert "Educational/research use only" in serialized
-    assert "flow-workspace" in serialized
-    assert "flow-ticker-list" in serialized
-    assert "flow-ticker-detail" in serialized
-    assert "flow-concepts" in serialized
-    # Education is present but Concepts starts closed — not an open-by-default stack above data.
-    concepts = next(
-        c for c in root.children
-        if getattr(c, "id", None) == "flow-concepts"
-    )
-    assert concepts.open is False
-    # Highest score selected when path ticker absent.
-    assert "HIGH $" in serialized or "HIGH" in serialized
-
-
-def test_render_flow_reports_honours_selected_ticker_and_section():
-    theme = get_theme(DEFAULT_THEME)
-    payload = {
-        "reports": [
-            _sample_report(ticker="AAA", unusual_score=10),
-            _sample_report(ticker="BBB", unusual_score=20),
-        ],
-    }
-    root = render_flow_reports(payload, theme, selected_ticker="AAA", section="contracts")
-    serialized = str(root)
-    assert "flow-table-0-AAA" in serialized or "flow-table-1-AAA" in serialized
-    assert "AAA $" in serialized
+    assert "sfa-flow-summary-strip" in serialized
+    assert "sfa-flow-education" in serialized
+    assert "sfa-flow-guide" in serialized
+    assert "How to read this page" in serialized
+    assert "sfa-flow-theta-panel" in serialized
+    assert "Theta Decay" in serialized
+    assert "flow-theta-decay-graph" in serialized
+    assert "sfa-flow-iv-surface-panel" in serialized
+    assert "Implied Volatility Surface" in serialized
+    assert "flow-iv-surface-graph" in serialized
+    # Narrative order: ticker card before education block.
+    assert serialized.index("sfa-flow-ticker-card") < serialized.index("sfa-flow-education")
 
 
 def test_flow_overlay_has_learn_modal_ids():
@@ -532,7 +476,8 @@ def test_flow_overlay_has_learn_modal_ids():
     assert "flow-learn-modal" in serialized
     assert "flow-learn-close" in serialized
     assert "flow-glossary-button" in serialized
-    assert "flow-concepts-button" in serialized
+    assert "flow-collapse-all" in serialized
+    assert "flow-fullscreen-sync" in serialized
 
 
 def _find_by_id(node, target):
@@ -551,17 +496,19 @@ def _find_by_id(node, target):
 
 
 def test_flow_overlay_scrolls_in_one_container():
-    """Workspace panes scroll; #flow-scroll-region is the flex host (overflow hidden)."""
+    """Only #flow-scroll-region scrolls; the glossary lives inside it."""
     theme = get_theme(DEFAULT_THEME)
     overlay = _create_flow_overlay(get_styles(theme), theme)
 
     region = _find_by_id(overlay, "flow-scroll-region")
     assert region is not None
-    assert region.style["overflow"] == "hidden"
+    assert region.style["overflowY"] == "auto"
     assert region.style["minHeight"] == 0
 
+    # Content must not open a second scrollbar inside the region.
     content = _find_by_id(region, "flow-content")
     assert content is not None
+    assert "overflowY" not in content.style
 
     # Glossary is nested in the scroll region, not a sibling stealing viewport height.
     assert _find_by_id(region, "flow-glossary") is not None

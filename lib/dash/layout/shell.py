@@ -93,7 +93,6 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Interval(id='optimizer-oos-interval', interval=400, disabled=True, n_intervals=0),
         dcc.Store(id='flow-state-store', data={'last_scan_at': None, 'tickers': []}, storage_type='session'),
         dcc.Store(id='flow-data-store', data=None, storage_type='session'),
-        dcc.Store(id='flow-ui-store', data={'section': 'overview', 'concepts_open': False}, storage_type='session'),
         dcc.Interval(id='flow-rescan-interval', interval=2000, max_intervals=1, disabled=True),
 
         # Phase 2 — collapsible sidebars + splitter

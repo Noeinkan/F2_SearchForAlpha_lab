@@ -43,8 +43,7 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
     valuation_rows = annual.get('valuation', [])
     dcf_rows = annual.get('dcf', [])
     dcf_sensitivity = annual.get('dcf_sensitivity', [])
-    chart_years = active.get('years', [])
-    chart_labels = _period_column_labels(chart_years)
+    chart_labels = _period_column_labels(active.get('years', []))
 
     if active_period == 'quarterly' and not active.get('financials'):
         quarterly_notice = html.Div(
@@ -59,36 +58,9 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
     else:
         quarterly_notice = None
 
-    financials_panel = html.Div([
-        _panel_title('Financials', theme),
-        quarterly_notice,
-        _financial_table(
-            active.get('financials', []),
-            period_labels,
-            theme,
-            last_price=payload.get('last_price'),
-        ),
-    ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-main')
-
-    return html.Div([
-        _summary_strip(payload, active, active_period, theme),
-        html.Div([
-            financials_panel,
-            html.Div([
-                _panel_title('Valuation', theme, size='sm'),
-                _valuation_assumptions(valuation_rows, theme),
-                _valuation_tables(valuation_rows, theme),
-                html.Div(
-                    id='fundamentals-valuation-explain',
-                    className='sfa-valuation-explain',
-                    style=_valuation_explain_style(theme, visible=False),
-                ),
-                _panel_title('DCF (FCFE)', theme, size='sm'),
-                _dcf_assumptions(dcf_rows, theme),
-                _valuation_table(dcf_rows, theme, table_id='fundamentals-dcf-table'),
-                _dcf_sensitivity_grid(dcf_sensitivity, theme),
-            ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-side sfa-fundamentals-valuation'),
-        ], className='sfa-fundamentals-top'),
+    quality_band = _section_band(
+        'Quality',
+        'quality',
         html.Div([
             _panel_title('Big Five', theme),
             _big_five_note(annual.get('big_five_note', ''), theme),
@@ -98,12 +70,78 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
                 theme,
             ),
         ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-big-five'),
+    )
+
+    growth_band = _section_band(
+        'Growth',
+        'growth',
         html.Div([
             _chart_card(label, values, chart_labels, theme)
             for label, values in active.get('chart_series', {}).items()
         ], className='sfa-fundamentals-charts'),
+    )
+
+    financials_band = _section_band(
+        'Financials',
+        'financials',
+        html.Div([
+            quarterly_notice,
+            _financial_table(
+                active.get('financials', []),
+                period_labels,
+                theme,
+                last_price=payload.get('last_price'),
+            ),
+        ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-main'),
+    )
+
+    valuation_band = _section_band(
+        'Valuation',
+        'valuation',
+        html.Div([
+            html.Div([
+                _panel_title('Rule #1', theme, size='sm'),
+                _valuation_assumptions(valuation_rows, theme),
+                _valuation_tables(valuation_rows, theme),
+                html.Div(
+                    id='fundamentals-valuation-explain',
+                    className='sfa-valuation-explain',
+                    style=_valuation_explain_style(theme, visible=False),
+                ),
+            ], style=_panel_style(theme), className=(
+                'sfa-fundamentals-panel sfa-fundamentals-valuation '
+                'sfa-fundamentals-valuation-rule1'
+            )),
+            html.Div([
+                _panel_title('DCF (FCFE)', theme, size='sm'),
+                _dcf_assumptions(dcf_rows, theme),
+                _valuation_table(dcf_rows, theme, table_id='fundamentals-dcf-table'),
+                _dcf_sensitivity_grid(dcf_sensitivity, theme),
+            ], style=_panel_style(theme), className=(
+                'sfa-fundamentals-panel sfa-fundamentals-valuation '
+                'sfa-fundamentals-valuation-dcf'
+            )),
+        ], className='sfa-fundamentals-valuation-band'),
+    )
+
+    return html.Div([
+        _summary_strip(payload, active, active_period, theme),
+        quality_band,
+        growth_band,
+        financials_band,
+        valuation_band,
         _quality_notes(payload.get('quality_notes', []), theme),
     ], style={'width': '100%', 'minWidth': 0}, className='sfa-fundamentals-root')
+
+
+def _section_band(title: str, slug: str, body: Any) -> html.Section:
+    return html.Section(
+        [
+            html.Div(title, className='sfa-fundamentals-band-header'),
+            body,
+        ],
+        className=f'sfa-fundamentals-band sfa-fundamentals-band-{slug}',
+    )
 
 
 def _summary_strip(

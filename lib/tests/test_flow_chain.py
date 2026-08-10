@@ -9,10 +9,11 @@ from lib.dash.dash_config import DEFAULT_THEME, get_theme
 from lib.dash.flow_chain import (
     atm_strike_index,
     build_chain_table,
+    filter_chain_rows,
     render_chain_panel,
     table_from_report,
 )
-from lib.dash.flow_view import FLOW_SECTION_OPTIONS, render_ticker_detail
+from lib.dash.flow_view import render_flow_reports, render_ticker_card
 from scripts.flow_scanner import (
     Contract,
     TickerReport,
@@ -88,6 +89,44 @@ def test_atm_strike_index_nearest_spot():
     assert atm_strike_index([], 100.0) is None
 
 
+def test_filter_chain_rows_flagged_only():
+    rows = [
+        {"strike": 100.0, "call": {"flagged": True}, "put": None},
+        {"strike": 105.0, "call": {"flagged": False}, "put": {"flagged": False}},
+    ]
+    assert len(filter_chain_rows(rows, flagged_only=False)) == 2
+    flagged = filter_chain_rows(rows, flagged_only=True)
+    assert len(flagged) == 1
+    assert flagged[0]["strike"] == 100.0
+
+
+def test_build_chain_table_includes_spot_divider():
+    theme = get_theme(DEFAULT_THEME)
+    rows = [
+        {
+            "strike": 95.0,
+            "call": {
+                "last": 1.0, "bid": 0.9, "ask": 1.1, "volume": 10,
+                "open_interest": 20, "iv": 0.3, "flagged": False,
+            },
+            "put": None,
+        },
+        {
+            "strike": 105.0,
+            "call": {
+                "last": 0.5, "bid": 0.4, "ask": 0.6, "volume": 5,
+                "open_interest": 10, "iv": 0.32, "flagged": True,
+            },
+            "put": None,
+        },
+    ]
+    table = build_chain_table(rows, spot=100.0, theme=theme)
+    blob = str(table)
+    assert "sfa-flow-chain-spot-divider" in blob
+    assert "Spot 100.00" in blob
+    assert "sfa-flow-chain-flagged" in blob
+
+
 def test_render_chain_panel_and_empty_state():
     theme = get_theme(DEFAULT_THEME)
     assert render_chain_panel({"ticker": "X", "spot": 10, "option_chains": {}}, theme) is None
@@ -119,34 +158,6 @@ def test_render_chain_panel_and_empty_state():
                         "flagged": False,
                     },
                 },
-                {
-                    "strike": 105.0,
-                    "call": {
-                        "last": 0.5,
-                        "bid": 0.4,
-                        "ask": 0.6,
-                        "volume": 5,
-                        "open_interest": 40,
-                        "iv": 0.32,
-                        "flagged": False,
-                    },
-                    "put": None,
-                },
-            ],
-            "2026-07-18": [
-                {
-                    "strike": 100.0,
-                    "call": {
-                        "last": 2.0,
-                        "bid": 1.9,
-                        "ask": 2.1,
-                        "volume": 1,
-                        "open_interest": 10,
-                        "iv": 0.27,
-                        "flagged": False,
-                    },
-                    "put": None,
-                }
             ],
         },
     }
@@ -155,70 +166,68 @@ def test_render_chain_panel_and_empty_state():
     blob = str(panel)
     assert "sfa-flow-chain" in blob
     assert "flow-chain-expiry" in blob
-    assert "flow-chain-body" in blob
-    assert "100" in blob
-    assert "sfa-flow-chain-flagged" in blob or "flagged" in blob.lower() or "0.90" in blob
+    assert "Flagged only" in blob
 
-    # Expiry switch helper rebuilds body for later expiry.
-    later = table_from_report(report, expiry="2026-07-18", theme=theme)
-    later_blob = str(later)
-    assert "2.00" in later_blob or "1.90" in later_blob
+    body = table_from_report(report, expiry="2026-06-20", theme=theme, flagged_only=True)
+    assert "sfa-flow-chain-table" in str(body)
 
 
-def test_build_chain_table_marks_atm_row():
+def test_ticker_card_narrative_includes_chain_before_education_order():
     theme = get_theme(DEFAULT_THEME)
-    table = build_chain_table(
-        [
-            {"strike": 95.0, "call": None, "put": {"bid": 1, "ask": 1.1, "iv": 0.2, "volume": 1, "open_interest": 1, "flagged": False}},
-            {"strike": 100.0, "call": {"bid": 1, "ask": 1.1, "iv": 0.2, "volume": 1, "open_interest": 1, "flagged": False}, "put": None},
-        ],
-        spot=99.5,
-        theme=theme,
-    )
-    assert "sfa-flow-chain-atm" in str(table)
-
-
-def test_chain_tab_in_section_options_and_detail():
-    assert any(o["value"] == "chain" for o in FLOW_SECTION_OPTIONS)
-    labels = [o["label"] for o in FLOW_SECTION_OPTIONS]
-    assert labels.index("Chain") < labels.index("GEX")
-    assert labels.index("Overview") < labels.index("Chain")
-
-    theme = get_theme(DEFAULT_THEME)
-    empty = render_ticker_detail(
-        {"ticker": "AAA", "spot": 10, "unusual_score": 0, "flags": [], "contracts": []},
-        theme,
-        section="chain",
-    )
-    assert "Rescan to load the option chain" in str(empty)
-
-    detail = render_ticker_detail(
-        {
-            "ticker": "BBB",
-            "spot": 50.0,
-            "unusual_score": 1,
-            "flags": [],
-            "contracts": [],
-            "option_chains": {
-                "2026-06-20": [
-                    {
-                        "strike": 50.0,
-                        "call": {
-                            "last": 1,
-                            "bid": 1,
-                            "ask": 1.1,
-                            "volume": 1,
-                            "open_interest": 1,
-                            "iv": 0.2,
-                            "flagged": False,
-                        },
-                        "put": None,
-                    }
-                ]
-            },
+    report = {
+        "ticker": "TEST",
+        "spot": 100.0,
+        "prev_close": 99.0,
+        "day_low": 98.0,
+        "day_high": 101.0,
+        "wk52_low": 50.0,
+        "wk52_high": 150.0,
+        "pc_vol_ratio": 0.5,
+        "call_pct": 55.0,
+        "put_pct": 45.0,
+        "unusual_score": 10,
+        "error": None,
+        "top_call_strikes": [[105.0, 150]],
+        "top_put_strikes": [[95.0, 20]],
+        "flags": [{"kind": "repeat_call", "message": "3 strikes"}],
+        "contracts": [{
+            "strike": 105.0,
+            "cp": "C",
+            "last": 1.0,
+            "bid": 0.9,
+            "ask": 1.1,
+            "volume": 200,
+            "open_interest": 50,
+            "iv": 0.3,
+            "premium": 20000.0,
+            "expiry": "2026-06-20",
+            "is_weekly": False,
+            "is_otm": True,
+            "flags": [{"kind": "unusual", "message": "x"}],
+        }],
+        "option_chains": {
+            "2026-06-20": [{
+                "strike": 105.0,
+                "call": {
+                    "last": 1.0, "bid": 0.9, "ask": 1.1, "volume": 200,
+                    "open_interest": 50, "iv": 0.3, "flagged": True,
+                },
+                "put": None,
+            }],
         },
-        theme,
-        section="chain",
-    )
-    assert "sfa-flow-chain" in str(detail)
-    assert "Option chain" in str(detail)
+        "strike_ladders": {},
+    }
+    card = render_ticker_card(report, theme, index=0)
+    blob = str(card)
+    assert "sfa-flow-chain" in blob
+    assert "sfa-flow-insights" in blob
+    # Flat flagged DataTable demoted — chain is primary.
+    assert "flow-table-" not in blob
+
+    root = render_flow_reports({"generated_at": "2026-06-14T12:00:00", "reports": [report]}, theme)
+    serialized = str(root)
+    assert "sfa-flow-summary-strip" in serialized
+    assert "sfa-flow-education" in serialized
+    # Education comes after ticker card content in the composed tree.
+    assert serialized.index("sfa-flow-ticker-card") < serialized.index("sfa-flow-education")
+    assert "Tickers: 1" in serialized

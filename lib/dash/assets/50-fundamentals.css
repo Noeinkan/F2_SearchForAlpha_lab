@@ -40,115 +40,23 @@
     flex-direction: column;
 }
 
-/* One scroll container for the flow report. Master–detail workspace scrolls its
-   panes independently; meta/summary/concepts stay above the fold. */
+/* One scroll container for the flow report. Everything inside it is normal block
+   flow — nested flex/overflow chains broke scrolling whenever dcc.Loading added
+   its own wrapper divs around #flow-content. */
 .sfa-flow-overlay #flow-scroll-region {
     flex: 1 1 auto;
     min-height: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: contain;
 }
 
 .sfa-flow-overlay #flow-loading,
 .sfa-flow-overlay #flow-loading > div,
 .sfa-flow-overlay #flow-content {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
+    display: block;
     min-height: 0;
-    overflow: hidden;
-}
-
-.sfa-flow-overlay #flow-content > .sfa-flow-content-root {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-}
-
-.sfa-flow-overlay #flow-glossary {
-    flex: 0 0 auto;
-    max-height: 40%;
-    overflow-y: auto;
-}
-
-.sfa-flow-workspace {
-    display: flex;
-    flex: 1 1 auto;
-    min-height: 0;
-    gap: 10px;
-    overflow: hidden;
-}
-
-.sfa-flow-ticker-list {
-    flex: 0 0 280px;
-    width: 280px;
-    max-width: 40%;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding-right: 4px;
-    border-right: 1px solid var(--border-primary, #333);
-}
-
-.sfa-flow-ticker-list-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.sfa-flow-ticker-row:hover {
-    filter: brightness(1.08);
-}
-
-.sfa-flow-ticker-row-selected {
-    box-shadow: inset 2px 0 0 var(--accent-blue, #5b9bd5);
-}
-
-.sfa-flow-ticker-detail {
-    flex: 1 1 auto;
-    min-width: 0;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 4px 4px 12px 8px;
-}
-
-.sfa-flow-detail-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    padding: 4px 0 8px;
-    background: var(--bg-primary, #0a0a0a);
-    border-bottom: 1px solid var(--border-primary, #333);
-    margin-bottom: 8px;
-}
-
-.sfa-flow-section-tabs {
-    margin-bottom: 10px;
-}
-
-.sfa-flow-concepts {
-    flex: 0 0 auto;
-}
-
-.sfa-flow-concepts[open] {
-    max-height: 45%;
-    overflow-y: auto;
-}
-
-.sfa-flow-summary-strip,
-.sfa-flow-generated-at,
-.sfa-flow-disclaimer {
-    flex: 0 0 auto;
+    overflow: visible;
 }
 
 .sfa-flow-overlay.sfa-flow-route {
@@ -339,7 +247,33 @@
     background: #0A0A0A;
 }
 
-/* Flow diagram fullscreen toggle */
+/* Flow Scanner — tooltips, insights, table heat */
+.sfa-flow-overlay .dash-table-tooltip {
+    background-color: #161b22 !important;
+    color: #e6edf3 !important;
+    border: 1px solid #30363d !important;
+    border-radius: 6px !important;
+    padding: 8px 10px !important;
+    font-family: "Segoe UI", system-ui, sans-serif !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    max-width: 320px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+}
+
+.sfa-flow-sentiment-badge {
+    vertical-align: middle;
+}
+
+.sfa-flow-insights {
+    list-style: none;
+}
+
+.sfa-flow-insight-chip {
+    display: inline-block;
+    vertical-align: baseline;
+}
+
 .sfa-flow-diagram-frame {
     position: relative;
 }
@@ -419,31 +353,157 @@
     min-height: 30vh;
 }
 
-/* Flow Scanner — tooltips, insights, table heat */
-.sfa-flow-overlay .dash-table-tooltip {
-    background-color: #161b22 !important;
-    color: #e6edf3 !important;
-    border: 1px solid #30363d !important;
-    border-radius: 6px !important;
-    padding: 8px 10px !important;
-    font-family: "Segoe UI", system-ui, sans-serif !important;
-    font-size: 12px !important;
-    line-height: 1.4 !important;
-    max-width: 320px !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+.sfa-flow-summary-strip {
+    flex: 0 0 auto;
 }
 
-.sfa-flow-sentiment-badge {
-    vertical-align: middle;
+.sfa-flow-deep-dive {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 8px 0 10px;
+    align-items: stretch;
 }
 
-.sfa-flow-insights {
-    list-style: none;
+.sfa-flow-deep-col {
+    flex: 1 1 360px;
+    min-width: 0;
 }
 
-.sfa-flow-insight-chip {
-    display: inline-block;
-    vertical-align: baseline;
+.sfa-flow-chain {
+    margin: 4px 0 12px;
+}
+
+.sfa-flow-chain-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.sfa-flow-chain-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+.sfa-flow-chain-expiry .Select-control,
+.sfa-flow-chain-expiry .Select__control {
+    min-height: 28px !important;
+}
+
+.sfa-flow-chain-side-headers {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    margin-bottom: 4px;
+    font-family: var(--font-family, inherit);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+.sfa-flow-chain-calls-label {
+    text-align: left;
+    color: var(--accent-green, #3fb950);
+}
+
+.sfa-flow-chain-puts-label {
+    grid-column: 3;
+    text-align: right;
+    color: var(--accent-red, #f85149);
+}
+
+.sfa-flow-chain-scroll {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: min(62vh, 560px);
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--border-primary, #333);
+    border-radius: 6px;
+}
+
+.sfa-flow-chain-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.sfa-flow-chain-table th,
+.sfa-flow-chain-table td {
+    padding: 3px 6px;
+    border-bottom: 1px solid var(--border-primary, #2a2a2a);
+    text-align: right;
+}
+
+.sfa-flow-chain-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--table-header-bg, #161616);
+    color: var(--text-secondary, #9aa0a6);
+    font-weight: 600;
+}
+
+.sfa-flow-chain-strike,
+.sfa-flow-chain-strike-h {
+    text-align: center !important;
+    font-weight: 700;
+    color: var(--text-primary, #e8e8e8);
+    background: var(--bg-secondary, #111);
+    border-left: 1px solid var(--border-primary, #333);
+    border-right: 1px solid var(--border-primary, #333);
+}
+
+.sfa-flow-chain-spot-divider td,
+.sfa-flow-chain-spot-divider-cell {
+    text-align: center !important;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--accent-cyan, #58a6ff);
+    background: color-mix(in srgb, var(--accent-cyan, #58a6ff) 14%, transparent);
+    border-top: 1px solid var(--accent-cyan, #58a6ff);
+    border-bottom: 1px solid var(--accent-cyan, #58a6ff);
+    padding: 4px 8px !important;
+}
+
+.sfa-flow-chain-row.sfa-flow-chain-atm td {
+    background: color-mix(in srgb, var(--accent-cyan, #58a6ff) 12%, transparent);
+}
+
+.sfa-flow-chain-row.sfa-flow-chain-call-itm td.sfa-flow-chain-c {
+    background: color-mix(in srgb, var(--accent-green, #3fb950) 10%, transparent);
+}
+
+.sfa-flow-chain-row.sfa-flow-chain-put-itm td.sfa-flow-chain-p {
+    background: color-mix(in srgb, var(--accent-red, #f85149) 10%, transparent);
+}
+
+.sfa-flow-chain-row-flagged td.sfa-flow-chain-strike {
+    box-shadow: inset 0 0 0 1px var(--accent-purple, #c084fc);
+}
+
+.sfa-flow-chain-flagged {
+    color: var(--accent-purple, #c084fc) !important;
+    font-weight: 700;
+}
+
+.sfa-flow-chain-empty {
+    color: var(--text-tertiary, #666);
+}
+
+.sfa-flow-section-empty {
+    font-family: var(--font-family, inherit);
+    font-size: 12px;
+    color: var(--text-tertiary, #666);
+    padding: 12px 4px;
 }
 
 /* Flow Scanner — how-to-read guide, legend, strike map, learn modal */
@@ -616,118 +676,6 @@
     max-width: 72ch;
 }
 
-.sfa-flow-chain {
-    margin: 4px 0 8px;
-}
-
-.sfa-flow-chain-header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 4px;
-}
-
-.sfa-flow-chain-expiry .Select-control,
-.sfa-flow-chain-expiry .Select__control {
-    min-height: 28px !important;
-}
-
-.sfa-flow-chain-side-headers {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    margin-bottom: 4px;
-    font-family: var(--font-family, inherit);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-}
-
-.sfa-flow-chain-calls-label {
-    text-align: left;
-    color: var(--accent-green, #3fb950);
-}
-
-.sfa-flow-chain-puts-label {
-    grid-column: 3;
-    text-align: right;
-    color: var(--accent-red, #f85149);
-}
-
-.sfa-flow-chain-scroll {
-    overflow-x: auto;
-    overflow-y: auto;
-    max-height: min(62vh, 560px);
-    -webkit-overflow-scrolling: touch;
-    border: 1px solid var(--border-primary, #333);
-    border-radius: 6px;
-}
-
-.sfa-flow-chain-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 11px;
-    white-space: nowrap;
-}
-
-.sfa-flow-chain-table th,
-.sfa-flow-chain-table td {
-    padding: 3px 6px;
-    border-bottom: 1px solid var(--border-primary, #2a2a2a);
-    text-align: right;
-}
-
-.sfa-flow-chain-table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: var(--table-header-bg, #161616);
-    color: var(--text-secondary, #9aa0a6);
-    font-weight: 600;
-}
-
-.sfa-flow-chain-strike,
-.sfa-flow-chain-strike-h {
-    text-align: center !important;
-    font-weight: 700;
-    color: var(--text-primary, #e8e8e8);
-    background: var(--bg-secondary, #111);
-    border-left: 1px solid var(--border-primary, #333);
-    border-right: 1px solid var(--border-primary, #333);
-}
-
-.sfa-flow-chain-spot-tag {
-    display: block;
-    font-size: 9px;
-    font-weight: 500;
-    color: var(--accent-cyan, #58a6ff);
-}
-
-.sfa-flow-chain-row.sfa-flow-chain-atm td {
-    background: color-mix(in srgb, var(--accent-cyan, #58a6ff) 12%, transparent);
-}
-
-.sfa-flow-chain-row.sfa-flow-chain-call-itm td.sfa-flow-chain-c {
-    background: color-mix(in srgb, var(--accent-green, #3fb950) 10%, transparent);
-}
-
-.sfa-flow-chain-row.sfa-flow-chain-put-itm td.sfa-flow-chain-p {
-    background: color-mix(in srgb, var(--accent-red, #f85149) 10%, transparent);
-}
-
-.sfa-flow-chain-flagged {
-    color: var(--accent-purple, #c084fc) !important;
-    font-weight: 700;
-}
-
-.sfa-flow-chain-empty {
-    color: var(--text-tertiary, #666);
-}
-
 .sfa-flow-vanna {
     margin: 6px 0 10px;
 }
@@ -776,12 +724,42 @@
 .sfa-fundamentals-root {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 10px;
 }
 
 .sfa-fundamentals-summary {
+    display: grid;
     grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr));
     gap: 6px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 4px 0 6px;
+    background: var(--bg-primary, #0a0a0a);
+    border-bottom: 1px solid var(--border-primary, #333);
+}
+
+.sfa-fundamentals-band {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.sfa-fundamentals-band-header {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    padding: 2px 0 0;
+    border-top: 1px solid var(--border-primary, #333);
+}
+
+.sfa-fundamentals-band-quality .sfa-fundamentals-band-header {
+    border-top: none;
+    padding-top: 0;
 }
 
 .sfa-fundamentals-hero {
@@ -847,9 +825,9 @@
     font-weight: 400 !important;
 }
 
-.sfa-fundamentals-top {
+.sfa-fundamentals-valuation-band {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(500px, 40vw);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 6px;
     align-items: start;
 }
@@ -915,23 +893,23 @@
     line-height: 1.4;
 }
 
-/* Valuation tables — larger type than financials/big-five for side-panel readability */
+/* Valuation tables — slightly larger type for metric readability */
 .sfa-fundamentals-valuation .dash-spreadsheet td,
 .sfa-fundamentals-valuation .dash-spreadsheet th {
-    font-size: 13px !important;
-    line-height: 20px !important;
+    font-size: 12.5px !important;
+    line-height: 18px !important;
 }
 
 .sfa-fundamentals-valuation .dash-spreadsheet td .dash-cell-value,
 .sfa-fundamentals-valuation .dash-spreadsheet th .column-header-name {
-    font-size: 13px !important;
-    line-height: 20px !important;
+    font-size: 12.5px !important;
+    line-height: 18px !important;
 }
 
 .sfa-fundamentals-valuation .dash-spreadsheet-container .row {
-    min-height: 30px;
-    max-height: 30px;
-    height: 30px;
+    min-height: 28px;
+    max-height: 28px;
+    height: 28px;
 }
 
 /* Valuation explainability panel — two-column layout */
@@ -1229,17 +1207,13 @@
 }
 
 @media (min-width: 1800px) {
-    .sfa-fundamentals-top {
-        grid-template-columns: minmax(0, 1fr) minmax(560px, 38vw);
-    }
-
     .sfa-fundamentals-charts {
         grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
     }
 }
 
 @media (max-width: 1180px) {
-    .sfa-fundamentals-top {
+    .sfa-fundamentals-valuation-band {
         grid-template-columns: 1fr;
     }
 
