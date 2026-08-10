@@ -3794,8 +3794,8 @@ body.theme-light .sfa-palette-kbd-key {
 
 .sfa-symsearch-input {
     width: 100%;
-    height: 52px !important;
-    font-size: 16px !important;
+    height: 56px !important;
+    font-size: 18px !important;
     font-family: var(--font-sans) !important;
     background: var(--bg-secondary) !important;
     border: none !important;
@@ -3817,7 +3817,7 @@ body.theme-light .sfa-palette-kbd-key {
 .sfa-symsearch-esc {
     position: absolute;
     right: 14px;
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-tertiary);
     pointer-events: none;
 }
@@ -3835,13 +3835,13 @@ body.theme-light .sfa-palette-kbd-key {
 
 .sfa-symsearch-tab {
     flex: 0 0 auto;
-    padding: 8px 16px;
+    padding: 9px 16px;
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
     color: var(--text-secondary);
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.8px;
     cursor: pointer;
@@ -3873,7 +3873,7 @@ body.theme-light .sfa-palette-kbd-key {
 
 .sfa-symsearch-sector .Select-control,
 .sfa-symsearch-list .Select-control {
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .sfa-symsearch-favtoggle {
@@ -3887,7 +3887,7 @@ body.theme-light .sfa-palette-kbd-key {
     border-radius: 2px;
     color: var(--text-secondary);
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.6px;
     cursor: pointer;
@@ -3902,13 +3902,13 @@ body.theme-light .sfa-palette-kbd-key {
     border-color: var(--accent);
     background: var(--bg-hover);
 }
-.sfa-symsearch-star-glyph { font-size: 12px; line-height: 1; }
+.sfa-symsearch-star-glyph { font-size: 13px; line-height: 1; }
 
 .sfa-symsearch-count {
     flex: 0 0 auto;
     margin-left: auto;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-tertiary);
     letter-spacing: 0.4px;
     white-space: nowrap;
@@ -3925,12 +3925,11 @@ body.theme-light .sfa-palette-kbd-key {
 
 .sfa-symsearch-row {
     display: grid;
-    /* star | symbol | name | badge | category | exchange */
-    grid-template-columns: 28px 78px minmax(0, 1.6fr) 62px minmax(0, 1.4fr) 92px;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 14px;
-    cursor: pointer;
+    /* star | selectable body */
+    grid-template-columns: 36px minmax(0, 1fr);
+    align-items: stretch;
+    gap: 4px;
+    padding: 0 14px 0 6px;
     border-left: 2px solid transparent;
     transition: background 60ms ease, border-color 60ms ease;
     min-width: 0;
@@ -3947,21 +3946,48 @@ body.theme-light .sfa-palette-kbd-key {
     color: var(--accent);
 }
 
+.sfa-symsearch-row-body {
+    display: grid;
+    /* symbol | name | badge | category | exchange */
+    grid-template-columns: 88px minmax(0, 1.6fr) 68px minmax(0, 1.4fr) 96px;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    cursor: pointer;
+    min-width: 0;
+}
+
 .sfa-symsearch-star {
+    align-self: center;
+    justify-self: center;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: none;
     border: none;
+    border-radius: 2px;
     padding: 0;
-    font-size: 13px;
+    font-size: 15px;
     line-height: 1;
     color: var(--text-tertiary);
     cursor: pointer;
-    transition: color 80ms ease, transform 80ms ease;
+    transition: color 80ms ease, background 80ms ease, transform 80ms ease;
 }
-.sfa-symsearch-star:hover { color: var(--accent); transform: scale(1.2); }
-.sfa-symsearch-star.on    { color: var(--accent); }
+.sfa-symsearch-star:hover {
+    color: var(--accent);
+    background: var(--bg-tertiary);
+    transform: scale(1.08);
+}
+.sfa-symsearch-star.on { color: var(--accent); }
+.sfa-symsearch-star:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 1px;
+}
 
 .sfa-symsearch-sym {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 700;
     color: var(--text-primary);
     letter-spacing: 0.4px;
@@ -3979,10 +4005,10 @@ body.theme-light .sfa-palette-kbd-key {
     white-space: nowrap;
     min-width: 0;
 }
-.sfa-symsearch-name { font-size: 11px; color: var(--text-primary); }
-.sfa-symsearch-cat  { font-size: 10px; color: var(--text-secondary); }
+.sfa-symsearch-name { font-size: 13px; color: var(--text-primary); }
+.sfa-symsearch-cat  { font-size: 11px; color: var(--text-secondary); }
 .sfa-symsearch-exch {
-    font-size: 9px;
+    font-size: 10px;
     color: var(--text-tertiary);
     letter-spacing: 0.5px;
     text-align: right;
@@ -3991,7 +4017,7 @@ body.theme-light .sfa-palette-kbd-key {
 /* Asset-class badge — colour carries the class so the list is scannable. */
 .sfa-symsearch-badge {
     font-family: var(--font-mono);
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.6px;
     text-align: center;
@@ -4011,7 +4037,7 @@ body.theme-light .sfa-palette-kbd-key {
     padding: 24px 18px;
     text-align: center;
     font-family: var(--font-sans);
-    font-size: 11px;
+    font-size: 13px;
     color: var(--text-tertiary);
 }
 
@@ -4024,8 +4050,8 @@ body.theme-light .sfa-palette-kbd-key {
 @media (max-width: 820px) {
     /* Drop the two lowest-value columns rather than letting the grid squash
        the symbol and name into ellipses. */
-    .sfa-symsearch-row {
-        grid-template-columns: 28px 70px minmax(0, 1fr) 58px;
+    .sfa-symsearch-row-body {
+        grid-template-columns: 70px minmax(0, 1fr) 58px;
     }
     .sfa-symsearch-cat,
     .sfa-symsearch-exch {

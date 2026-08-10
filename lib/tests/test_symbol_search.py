@@ -271,16 +271,22 @@ def test_build_result_rows_marks_starred_and_current():
     rows = search_symbols("", asset_class="ETF")
     children = build_result_rows(rows, starred={"SPY"}, active="GLD")
 
-    ids = [child.id["index"] for child in children]
+    def _body(row):
+        return row.children[1]
+
+    ids = [_body(child).id["index"] for child in children]
     assert "SPY" in ids and "GLD" in ids
 
-    spy = next(c for c in children if c.id["index"] == "SPY")
-    gld = next(c for c in children if c.id["index"] == "GLD")
+    spy = next(c for c in children if _body(c).id["index"] == "SPY")
+    gld = next(c for c in children if _body(c).id["index"] == "GLD")
 
     assert spy.children[0].children == "★"
     assert gld.children[0].children == "☆"
     assert "current" in gld.className
     assert "current" not in spy.className
+    # Star is a sibling of the selectable body so clicks do not select.
+    assert _body(spy).id["type"] == "sym-row"
+    assert spy.children[0].id["type"] == "sym-star"
 
 
 def test_build_result_rows_empty_state():
@@ -293,6 +299,6 @@ def test_build_result_rows_joins_sector_and_industry():
     rows = [row for row in search_symbols("nvda") if row["Symbol"] == "NVDA"]
     children = build_result_rows(rows, starred=set())
     categories = [
-        child.children[4].children for child in children
+        child.children[1].children[3].children for child in children
     ]
     assert categories == ["Technology · Semiconductors"]

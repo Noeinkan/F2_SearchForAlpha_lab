@@ -290,10 +290,24 @@ def register_misc_callbacks(app) -> None:
                     }
                     if (e.key === 'Enter') {
                         // Only intercept when a row is highlighted; otherwise
-                        // let the input submit the typed text.
+                        // let the input submit the typed text. Click the
+                        // selectable body — not the wrap — so starring stays
+                        // independent of selection.
                         if (symActive) {
                             e.preventDefault();
-                            symActive.click();
+                            var body = symActive.querySelector('.sfa-symsearch-row-body');
+                            (body || symActive).click();
+                        }
+                        return;
+                    }
+                    if ((e.key === 's' || e.key === 'S')
+                        && !e.ctrlKey && !e.metaKey && !e.altKey
+                        && !inTextField(e)) {
+                        // Star/unstar the highlighted row without selecting it.
+                        e.preventDefault();
+                        if (symActive) {
+                            var star = symActive.querySelector('.sfa-symsearch-star');
+                            if (star) { star.click(); }
                         }
                         return;
                     }

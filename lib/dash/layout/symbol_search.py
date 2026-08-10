@@ -148,7 +148,7 @@ def _create_symbol_search_modal(styles: dict, theme: dict) -> dbc.Modal:
         html.Div([
             html.Span('↑↓ navigate', className='sfa-palette-foot-key'),
             html.Span('↵ select', className='sfa-palette-foot-key'),
-            html.Span('★ star', className='sfa-palette-foot-key'),
+            html.Span('S star', className='sfa-palette-foot-key'),
             html.Span('esc close', className='sfa-palette-foot-key'),
             html.Span('Ctrl+/', className='sfa-palette-foot-key'),
         ], className='sfa-palette-foot sfa-symsearch-foot'),
@@ -176,6 +176,9 @@ def build_result_rows(rows: list[dict], starred: set[str], active: str | None = 
         rows: Universe row dicts from `ticker_search.search_symbols`.
         starred: Symbols in the currently selected watchlist.
         active: The currently loaded symbol, highlighted in the list.
+
+    The star is a sibling of the selectable body, not a child of it, so
+    starring never bubbles into a symbol selection / modal close.
     """
     if not rows:
         return [html.Div(
@@ -199,9 +202,7 @@ def build_result_rows(rows: list[dict], starred: set[str], active: str | None = 
             row_class += ' current'
 
         children.append(html.Div(
-            id={'type': 'sym-row', 'index': symbol},
             className=row_class,
-            n_clicks=0,
             **{'data-symbol': symbol},
             children=[
                 html.Button(
@@ -212,28 +213,44 @@ def build_result_rows(rows: list[dict], starred: set[str], active: str | None = 
                         else 'sfa-symsearch-star'
                     ),
                     n_clicks=0,
+                    type='button',
                     title=(
                         f'Remove {symbol} from watchlist' if is_starred
                         else f'Add {symbol} to watchlist'
                     ),
+                    **{'aria-label': (
+                        f'Remove {symbol} from watchlist' if is_starred
+                        else f'Add {symbol} to watchlist'
+                    )},
                 ),
-                html.Span(symbol, className='sfa-symsearch-sym num'),
-                html.Span(
-                    str(row.get('Security', '')),
-                    className='sfa-symsearch-name',
-                    title=str(row.get('Security', '')),
-                ),
-                html.Span(
-                    asset_class.upper(),
-                    className=(
-                        'sfa-symsearch-badge '
-                        + ASSET_CLASS_BADGE.get(asset_class, 'sfa-symsearch-badge-stock')
-                    ),
-                ),
-                html.Span(category, className='sfa-symsearch-cat', title=category),
-                html.Span(
-                    str(row.get('Exchange', '') or ''),
-                    className='sfa-symsearch-exch',
+                html.Div(
+                    id={'type': 'sym-row', 'index': symbol},
+                    className='sfa-symsearch-row-body',
+                    n_clicks=0,
+                    children=[
+                        html.Span(symbol, className='sfa-symsearch-sym num'),
+                        html.Span(
+                            str(row.get('Security', '')),
+                            className='sfa-symsearch-name',
+                            title=str(row.get('Security', '')),
+                        ),
+                        html.Span(
+                            asset_class.upper(),
+                            className=(
+                                'sfa-symsearch-badge '
+                                + ASSET_CLASS_BADGE.get(
+                                    asset_class, 'sfa-symsearch-badge-stock'
+                                )
+                            ),
+                        ),
+                        html.Span(
+                            category, className='sfa-symsearch-cat', title=category
+                        ),
+                        html.Span(
+                            str(row.get('Exchange', '') or ''),
+                            className='sfa-symsearch-exch',
+                        ),
+                    ],
                 ),
             ],
         ))
