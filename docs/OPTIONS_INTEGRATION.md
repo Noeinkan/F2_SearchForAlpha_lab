@@ -356,7 +356,7 @@ Aggiunge un entry point non-UI: `python -m lib.cli.app options price --model bs 
 - Tab switcher: [lib/dash/callbacks/misc_ui.py](lib/dash/callbacks/misc_ui.py)
 - Componenti riusabili: [lib/dash/components.py](lib/dash/components.py)
 - Config: [lib/dash/dash_config.py](lib/dash/dash_config.py)
-- Tema Bloomberg CSS: [lib/dash/assets/dashboard.css](lib/dash/assets/dashboard.css)
+- Tema Bloomberg CSS: [lib/dash/assets/10-tokens.css](lib/dash/assets/10-tokens.css) (fogli `10-` … `90-`, vedi [docs/ui-architecture.md](ui-architecture.md))
 - pyproject: [pyproject.toml](pyproject.toml)
 - optlib upstream: https://github.com/dbrojas/optlib (branch `master`, MIT)
 - greeks-package: https://pypi.org/project/greeks-package/ (v1.2.2, MIT)

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`lib/dash/assets/dashboard.css` (4,183 lines) split into ten per-concern stylesheets**
+  — `10-tokens.css`, `20-controls.css`, `30-vendor-widgets.css`, `40-chart.css`,
+  `50-fundamentals.css`, `55-theme-light.css`, `60-execution.css`,
+  `70-forms-responsive.css`, `80-command-palette.css`, `90-symbol-search.css`. The split
+  is strictly sequential: concatenating the files in Dash's load order reproduces the old
+  file byte for byte, so nothing about rendering changed. Vendored Bootstrap was renamed
+  to `00-bootstrap.min.css` because Dash injects assets in sorted filename order and
+  digits sort before letters — without the prefix the project sheets would have loaded
+  *before* Bootstrap and lost every override. A new regression test pins that ordering.
+  See [docs/ui-architecture.md](docs/ui-architecture.md) for the file map.
+
 ### Fixed
 - The symbol-search sector dropdown now refills from the asset-class tab click itself
   rather than the `symbol-search-filters` store, which is written downstream of the

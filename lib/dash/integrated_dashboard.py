@@ -202,9 +202,12 @@ def run_dashboard(dev_mode: bool = False) -> None:
     # on-demand via window._dashPlotlyJSURL; if that lazy load loses the
     # race against dcc.Graph's async chunk (or the suite endpoint 500s),
     # the chart container stays a dark void with no canvas drawn.
-    # Bootstrap CSS is vendored at lib/dash/assets/bootstrap.min.css and
+    # Bootstrap CSS is vendored at lib/dash/assets/00-bootstrap.min.css and
     # auto-served by Dash (no CDN) — avoids Edge Tracking Prevention noise
     # from jsdelivr. dash-bootstrap-components is still used for components.
+    # The 00- prefix is load-bearing: Dash injects assets in sorted filename
+    # order, so Bootstrap must sort ahead of 10-tokens.css .. 90-symbol-search.css,
+    # which are mostly overrides of it. See lib/dash/assets/VENDOR.md.
     app = dash.Dash(
         __name__,
         external_stylesheets=[],

@@ -103,13 +103,13 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         html.Div(id='layout-class-sync', style={'display': 'none'}),
         html.Div(id='right-panel-width-sync', style={'display': 'none'}),
         html.Div(id='splitter-bind-trigger', style={'display': 'none'}),
-        # Phone nav scrim — closes the left drawer when tapped (≤900px).
+        # Phone nav scrim — closes either drawer when tapped (≤900px).
         html.Button(
             id='mobile-nav-scrim',
             n_clicks=0,
             className='sfa-mobile-scrim',
-            title='Close menu',
-            **{'aria-label': 'Close navigation menu'},
+            title='Close drawer',
+            **{'aria-label': 'Close navigation drawer'},
         ),
 
         # Keyboard shortcut listener

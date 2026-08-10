@@ -1,0 +1,109 @@
+/* =============================================================================
+   Light theme overrides — flip palette when body has .theme-light
+   ========================================================================== */
+
+/* In light mode the label override still works correctly because
+   --text-primary is now dark (#1f2328) matching the light background. */
+body.theme-light {
+    --bg-primary:        #ffffff;
+    --bg-secondary:      #f6f8fa;
+    --bg-tertiary:       #eaeef2;
+    --bg-hover:          #d0d7de;
+    --bg-panel:          #f1f4f7;
+    --bg-panel-header:   #e6ebf0;
+    --text-primary:      #1f2328;
+    --text-secondary:    #656d76;
+    --text-tertiary:     #8c959f;
+    --accent:            #9a6700;
+    --up:                #1a7f37;
+    --down:              #cf222e;
+    --warn:              #9a6700;
+    --info:              #0598bc;
+    --border-primary:    #d0d7de;
+    --border-secondary:  #eaeef2;
+    --border-focus:      #9a6700;
+    --table-header-bg:   #f6f8fa;
+    --table-row-alt:     rgba(246,248,250,0.5);
+    --table-row-hover:   #eaeef2;
+
+    --Dash-Fill-Inverse-Strong:  var(--bg-secondary);
+    --Dash-Text-Strong:            var(--text-primary);
+    --Dash-Text-Weak:              var(--text-secondary);
+    --Dash-Text-Disabled:          var(--text-tertiary);
+    --Dash-Stroke-Strong:          var(--border-primary);
+    --Dash-Fill-Interactive-Strong: var(--accent);
+    --Dash-Fill-Interactive-Weak:  rgba(154, 103, 0, 0.12);
+}
+
+/* =============================================================================
+   Bootstrap Accordion dark-theme overrides (compact-accordion)
+   Bootstrap defaults use white bg + dark text; override everything here.
+   ========================================================================== */
+
+.compact-accordion .accordion-item {
+    background-color: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid var(--border-primary) !important;
+}
+
+.compact-accordion .accordion-item:last-child {
+    border-bottom: none !important;
+}
+
+.compact-accordion .accordion-button {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    padding: 8px 10px !important;
+    box-shadow: none !important;
+    border-bottom: 1px solid var(--border-primary) !important;
+}
+
+.compact-accordion .accordion-button:not(.collapsed) {
+    background-color: var(--bg-panel-header) !important;
+    color: var(--accent) !important;
+    border-bottom-color: var(--accent) !important;
+}
+
+.compact-accordion .accordion-button::after {
+    filter: invert(1) !important;
+    opacity: 0.6;
+}
+
+.compact-accordion .accordion-button:not(.collapsed)::after {
+    filter: invert(1) brightness(2) sepia(1) hue-rotate(5deg) saturate(5) !important;
+    opacity: 1;
+}
+
+.compact-accordion .accordion-body {
+    background-color: var(--bg-panel) !important;
+    color: var(--text-primary) !important;
+    padding: 8px 6px !important;
+}
+
+/* accordion title row — title + summary side by side */
+.accordion-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 8px;
+    font-family: var(--font-sans);
+}
+
+.accordion-title-summary {
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--text-tertiary);
+    text-transform: none;
+    letter-spacing: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+

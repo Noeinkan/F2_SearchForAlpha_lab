@@ -2,8 +2,9 @@
 Dashboard Styles
 Style generators for dashboard components.
 
-The bulk of theming lives in `lib/dash/assets/dashboard.css` (auto-loaded by
-Dash) using CSS variables. This module provides Python-side inline style
+The bulk of theming lives in the numbered stylesheets under
+`lib/dash/assets/` (`10-tokens.css` … `90-symbol-search.css`, auto-loaded by
+Dash in filename order) using CSS variables. This module provides inline style
 dicts that consume the active theme palette directly — used where Dash
 components only accept inline `style=` props.
 """
@@ -461,12 +462,12 @@ def get_styles(theme: dict) -> dict:
     }
 
 
-# Minimal extra CSS injected via index_string. The main stylesheet lives in
-# lib/dash/assets/dashboard.css (auto-loaded by Dash), which uses CSS
-# variables and handles theme switching via a body class. Anything kept
-# here is safety duplication for environments where the assets folder
-# hasn't been picked up yet.
+# Minimal extra CSS injected via index_string. The real stylesheets live in
+# lib/dash/assets/ as 10-tokens.css .. 90-symbol-search.css (auto-loaded by
+# Dash), which use CSS variables and handle theme switching via a body class.
+# Anything kept here is safety duplication for environments where the assets
+# folder hasn't been picked up yet.
 CUSTOM_CSS = '''
-/* Fallback resets in case assets/dashboard.css fails to load */
+/* Fallback resets in case the assets/ stylesheets fail to load */
 body { margin: 0; }
 '''

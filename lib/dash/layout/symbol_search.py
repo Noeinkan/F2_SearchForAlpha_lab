@@ -169,23 +169,37 @@ def _create_symbol_search_modal(styles: dict, theme: dict) -> dbc.Modal:
     )
 
 
-def build_result_rows(rows: list[dict], starred: set[str], active: str | None = None) -> list:
+def build_result_rows(
+    rows: list[dict],
+    starred: set[str],
+    active: str | None = None,
+    quotes: dict | None = None,
+) -> list:
     """Render universe rows into the modal's result list.
 
     Args:
         rows: Universe row dicts from `ticker_search.search_symbols`.
         starred: Symbols in the currently selected watchlist.
         active: The currently loaded symbol, highlighted in the list.
+        quotes: Optional ``symbol -> SymbolQuote`` map for the live price column.
 
     The star is a sibling of the selectable body, not a child of it, so
     starring never bubbles into a symbol selection / modal close.
     """
+    from lib.dash.symbol_quotes import (
+        SymbolQuote,
+        change_class,
+        format_change_pct,
+        format_price,
+    )
+
     if not rows:
         return [html.Div(
             'No symbols match. Press ↵ to load the text as a symbol anyway.',
             className='sfa-symsearch-empty',
         )]
 
+    quote_map: dict[str, SymbolQuote] = quotes or {}
     children = []
     for row in rows:
         symbol = str(row.get('Symbol', ''))
@@ -196,6 +210,10 @@ def build_result_rows(rows: list[dict], starred: set[str], active: str | None = 
         # when they differ so "Technology · Semiconductors" reads as a path.
         category = ' · '.join(part for part in (sector, industry) if part)
         is_starred = symbol in starred
+        quote = quote_map.get(symbol)
+        ch_class = change_class(quote)
+        price_text = format_price(quote)
+        change_text = format_change_pct(quote)
 
         row_class = 'sfa-symsearch-row'
         if active and symbol == active:
@@ -233,6 +251,25 @@ def build_result_rows(rows: list[dict], starred: set[str], active: str | None = 
                             str(row.get('Security', '')),
                             className='sfa-symsearch-name',
                             title=str(row.get('Security', '')),
+                        ),
+                        html.Div(
+                            [
+                                c for c in (
+                                    html.Span(
+                                        price_text,
+                                        className='sfa-symsearch-px num',
+                                    ),
+                                    html.Span(
+                                        change_text,
+                                        className=f'sfa-symsearch-ch {ch_class} num',
+                                    ) if change_text else None,
+                                ) if c is not None
+                            ],
+                            className=f'sfa-symsearch-quote {ch_class}',
+                            title=(
+                                f'{price_text} ({change_text})'
+                                if change_text else price_text
+                            ),
                         ),
                         html.Span(
                             asset_class.upper(),

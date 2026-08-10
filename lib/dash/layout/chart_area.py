@@ -28,12 +28,15 @@ SCALE_MODES = [
 ]
 
 
-def _tool_button(label: str, btn_id: str, title: str) -> html.Button:
+def _tool_button(label: str, btn_id: str, title: str, *, secondary: bool = False) -> html.Button:
+    classes = 'bbg-button-ghost'
+    if secondary:
+        classes += ' sfa-chart-secondary-tool'
     return html.Button(
         label,
         id=btn_id,
         title=title,
-        className='bbg-button-ghost',
+        className=classes,
         n_clicks=0,
     )
 
@@ -129,9 +132,9 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
                         className='bbg-radio-seg sfa-scale-seg',
                     ),
                     _tool_button('FIT', 'chart-fit-btn', 'Fit all bars to the viewport (R)'),
-                    _tool_button('IMG', 'export-img-btn', 'Save the chart as a PNG'),
-                    _tool_button('CSV', 'export-csv-btn', 'Export the chart data as CSV'),
-                    _tool_button('⛶', 'chart-fullscreen-btn', 'Toggle fullscreen chart'),
+                    _tool_button('IMG', 'export-img-btn', 'Save the chart as a PNG', secondary=True),
+                    _tool_button('CSV', 'export-csv-btn', 'Export the chart data as CSV', secondary=True),
+                    _tool_button('⛶', 'chart-fullscreen-btn', 'Toggle fullscreen chart', secondary=True),
                 ], className='sfa-chart-tools'),
             ], style={
                 **styles['chart_toolbar'],

@@ -1,13 +1,23 @@
 # Vendored front-end assets
 
 Dash auto-serves everything in this directory and injects `.css` / `.js` into the
-page in sorted filename order. The numeric prefixes on the chart files exist to
-pin that order — the library must evaluate before the glue that uses it.
+page in **sorted filename order** (`sorted(files)` in Dash's
+`_walk_assets_directory`). Every prefix here exists to pin that order:
+
+- `00-lightweight-charts…js` before `10-sfa-chart.js` — the library must
+  evaluate before the glue that uses it.
+- `00-bootstrap.min.css` before the project sheets (`10-tokens.css` …
+  `90-symbol-search.css`) — those are almost entirely overrides of Bootstrap and
+  Dash component styles and must win the cascade. **Keep the `00-` prefix when
+  re-vendoring Bootstrap:** digits sort before letters, so a bare
+  `bootstrap.min.css` would load *last* and silently break the whole theme.
+  `test_vendored_bootstrap_loads_before_project_css` in
+  `lib/tests/test_dashboard_startup.py` guards this.
 
 | File | Version | Source | License |
 |---|---|---|---|
 | `00-lightweight-charts.standalone.production.js` | 5.2.0 | [unpkg](https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js) | Apache-2.0 |
-| `bootstrap.min.css` | 5.x | Bootstrap | MIT |
+| `00-bootstrap.min.css` | 5.x | Bootstrap | MIT |
 
 Both are served locally rather than from a CDN — see the comment in
 `lib/dash/integrated_dashboard.py` about Edge Tracking Prevention noise.

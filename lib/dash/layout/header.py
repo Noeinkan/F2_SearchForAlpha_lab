@@ -28,6 +28,14 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
             title='Open navigation (Flow, Fundamentals, controls)',
             **{'aria-label': 'Open navigation menu', 'aria-expanded': 'false'},
         ),
+        html.Button(
+            id='mobile-backtest-btn',
+            children='BT',
+            n_clicks=0,
+            className='bbg-icon-button sfa-mobile-backtest-btn',
+            title='Open Backtest panel',
+            **{'aria-label': 'Open Backtest panel', 'aria-expanded': 'false'},
+        ),
         html.Div([
             html.Div("SFA", style=styles['logo_icon'], className='bbg-wordmark'),
             html.Span("Terminal", style=styles['logo_text'], className='bbg-wordmark-sub'),

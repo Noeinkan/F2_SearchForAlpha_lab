@@ -86,8 +86,9 @@ EXPECTED_SHELL_IDS = {
     # Overlay toolbars reuse the same modal via compact triggers.
     "fundamentals-symbol-search-trigger",
     "flow-symbol-search-trigger",
-    # Phone shell — hamburger + dismiss scrim for the left drawer.
+    # Phone shell — hamburger, Backtest affordance, dismiss scrim.
     "mobile-menu-btn",
+    "mobile-backtest-btn",
     "mobile-nav-scrim",
 }
 
@@ -149,7 +150,13 @@ def test_region_classes_present(class_names):
 
 def test_mobile_shell_classes_present(class_names):
     """Phone drawer chrome must stay wired for ≤900px CSS."""
-    for name in ("sfa-mobile-menu-btn", "sfa-mobile-scrim", "sfa-overlay-toolbar"):
+    for name in (
+        "sfa-mobile-menu-btn",
+        "sfa-mobile-backtest-btn",
+        "sfa-mobile-scrim",
+        "sfa-overlay-toolbar",
+        "sfa-chart-secondary-tool",
+    ):
         assert name in class_names, f"missing mobile shell class: {name}"
 
 

@@ -118,7 +118,7 @@ indicator), `command_palette`, `misc_ui` (keyboard shortcuts),
 
 The chart region must keep `flex: 1 1 0`, `minWidth: 0`, `width: 100%` on both
 `main_container` and `chart_container` (see `styles.py`), plus the viewport lock
-in `dashboard.css`. Without `min-width: 0` a flex child refuses to shrink below
+in `40-chart.css`. Without `min-width: 0` a flex child refuses to shrink below
 its content and the chart collapses to zero width. `test_layout.py` guards this.
 
 ---
@@ -155,6 +155,45 @@ along with the zoom round-trip that needed it.
 
 ---
 
+## Stylesheet layout
+
+There is no build step. Dash auto-serves everything in
+[`lib/dash/assets/`](../lib/dash/assets/) and injects the `.css` files **in
+sorted filename order**, so the numeric prefixes *are* the cascade:
+
+| File | Owns |
+|---|---|
+| `00-bootstrap.min.css` | vendored Bootstrap 5 (see [VENDOR.md](../lib/dash/assets/VENDOR.md)) |
+| `10-tokens.css` | palette custom properties, CVD theme, base reset, focus rings |
+| `20-controls.css` | hand-rolled primitives: status dots, segmented control, buttons, inputs, header, status bar, tabs, KPI cells |
+| `30-vendor-widgets.css` | overrides for third-party internals — react-select dropdowns, date pickers, scrollbars, checkboxes, tooltips, alerts |
+| `40-chart.css` | terminal chart frame + OHLC readout |
+| `50-fundamentals.css` | Fundamentals workspace |
+| `55-theme-light.css` | `.theme-light` palette flip + Bootstrap accordion overrides |
+| `60-execution.css` | strategy mode cards, Execution Type explainer, signal panel |
+| `70-forms-responsive.css` | trade-setup stepper, responsive layout, splitter, phone shell |
+| `80-command-palette.css` | command palette modal |
+| `90-symbol-search.css` | symbol search universe browser |
+
+Two rules when editing:
+
+1. **Bootstrap must sort first.** Nearly all project CSS overrides it (~400
+   `!important` rules). Digits sort before letters, so dropping the `00-` prefix
+   on Bootstrap would move it to the end and break the theme wholesale.
+   `test_vendored_bootstrap_loads_before_project_css` guards this.
+2. **`55-theme-light.css` sits where it does on purpose.** Its rules must land
+   after Fundamentals but before the execution explainer, phone shell, command
+   palette and symbol search — that is the order they had when everything lived
+   in one file. Moving it changes which rules win. Folding those rules into the
+   per-component sheets is a worthwhile cleanup, but it is a behaviour change
+   and needs its own visual pass across all three themes.
+
+These files were split out of a single 4,183-line `dashboard.css` in a
+concatenation-preserving refactor: the slices in load order still reproduce that
+file byte for byte, so the split changed nothing about rendering.
+
+---
+
 ## How to add a new theme / palette
 
 Themes are palette dicts in `THEMES` in
@@ -169,8 +208,10 @@ Themes are palette dicts in `THEMES` in
 3. `DEFAULT_THEME` selects the initial theme.
 4. If the theme needs CSS overrides beyond inline styles (e.g. the CVD focus
    ring), add a `:root[data-theme="<name>"]` block in
-   [`lib/dash/assets/dashboard.css`](../lib/dash/assets/dashboard.css). The theme
-   toggle stamps `data-theme` on the root element.
+   [`lib/dash/assets/10-tokens.css`](../lib/dash/assets/10-tokens.css). The theme
+   toggle stamps `data-theme` on the root element. (The `light` theme is the
+   exception — its overrides live in `55-theme-light.css`; see the stylesheet
+   layout below for why that position matters.)
 
 When you change the shape of any persisted `dcc.Store`, bump
 `UI_STORAGE_VERSION` in `dash_config.py` so stale browser storage is discarded.

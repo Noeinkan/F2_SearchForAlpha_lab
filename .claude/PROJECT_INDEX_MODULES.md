@@ -119,6 +119,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | [lib/dash/chart_meta.py](../lib/dash/chart_meta.py) | Bar-interval inference + toolbar bar-count summary |
 | [lib/dash/signal_markers.py](../lib/dash/signal_markers.py) | Buy/sell trigger resolution shared by the chart markers and the TRIG/REJ counters |
 | [lib/dash/assets/10-sfa-chart.js](../lib/dash/assets/10-sfa-chart.js) | TradingView Lightweight Charts glue — owns pan/zoom/crosshair client-side |
+| [lib/dash/assets/](../lib/dash/assets/) | Ten numbered stylesheets `10-tokens.css` … `90-symbol-search.css` (+ vendored `00-bootstrap.min.css`). Dash injects them in sorted filename order — the prefixes are the cascade. Map: [docs/ui-architecture.md](../docs/ui-architecture.md#stylesheet-layout) |
 | [lib/dash/dash_config.py](../lib/dash/dash_config.py) | Theme, defaults, indicator settings |
 | [lib/dash/state.py](../lib/dash/state.py) | `dashboard_state` — in-memory session cache |
 | [lib/dash/routes.py](../lib/dash/routes.py) | URL route parsing — terminal, fundamentals, flow, ticker_terminal |

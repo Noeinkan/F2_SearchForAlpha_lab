@@ -10,45 +10,63 @@ every drag frame. Lightweight Charts is created with `autoSize: true` and
 watches its own container, so the chart now keeps up on its own.
 """
 
-from dash import callback_context
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 
 def register_layout_callbacks(app) -> None:
-    @app.callback(
-        Output('sidebar-collapsed', 'data'),
-        Input('sidebar-toggle-btn', 'n_clicks'),
-        Input('mobile-menu-btn', 'n_clicks'),
-        Input('mobile-nav-scrim', 'n_clicks'),
-        State('sidebar-collapsed', 'data'),
-        prevent_initial_call=True,
-    )
-    def toggle_sidebar(n_sidebar, n_menu, n_scrim, current):
-        if not callback_context.triggered:
-            raise PreventUpdate
-        trigger = callback_context.triggered[0]['prop_id'].split('.')[0]
-        # Scrim always dismisses the drawer (collapsed = closed on phone).
-        if trigger == 'mobile-nav-scrim':
-            if not n_scrim:
-                raise PreventUpdate
-            return True
-        if trigger == 'mobile-menu-btn' and not n_menu:
-            raise PreventUpdate
-        if trigger == 'sidebar-toggle-btn' and not n_sidebar:
-            raise PreventUpdate
-        return not bool(current)
+    # Drawer toggles are clientside so phone mutual-exclusion can read
+    # matchMedia. Scrim closes both; opening one drawer on ≤900px closes the other.
+    app.clientside_callback(
+        """
+        function(nSidebar, nMenu, nScrim, nRight, nBacktest, sideCol, rightCol) {
+            const ctx = window.dash_clientside.callback_context;
+            if (!ctx.triggered || !ctx.triggered.length) {
+                return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+            }
+            const id = ctx.triggered[0].prop_id.split('.')[0];
+            const phone = window.matchMedia('(max-width: 900px)').matches;
+            let side = !!sideCol;
+            let right = !!rightCol;
 
-    @app.callback(
-        Output('right-panel-collapsed', 'data'),
-        Input('right-panel-toggle-btn', 'n_clicks'),
-        State('right-panel-collapsed', 'data'),
+            if (id === 'mobile-nav-scrim') {
+                if (!nScrim) {
+                    return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+                }
+                return [true, true];
+            }
+            if (id === 'mobile-menu-btn' || id === 'sidebar-toggle-btn') {
+                const n = id === 'mobile-menu-btn' ? nMenu : nSidebar;
+                if (!n) {
+                    return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+                }
+                side = !side;
+                if (phone && !side) { right = true; }
+                return [side, right];
+            }
+            if (id === 'mobile-backtest-btn' || id === 'right-panel-toggle-btn') {
+                const n = id === 'mobile-backtest-btn' ? nBacktest : nRight;
+                if (!n) {
+                    return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+                }
+                right = !right;
+                if (phone && !right) { side = true; }
+                return [side, right];
+            }
+            return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+        }
+        """,
+        [Output('sidebar-collapsed', 'data'),
+         Output('right-panel-collapsed', 'data')],
+        [Input('sidebar-toggle-btn', 'n_clicks'),
+         Input('mobile-menu-btn', 'n_clicks'),
+         Input('mobile-nav-scrim', 'n_clicks'),
+         Input('right-panel-toggle-btn', 'n_clicks'),
+         Input('mobile-backtest-btn', 'n_clicks')],
+        [State('sidebar-collapsed', 'data'),
+         State('right-panel-collapsed', 'data')],
         prevent_initial_call=True,
     )
-    def toggle_right_panel(n_clicks, current):
-        if not n_clicks:
-            raise PreventUpdate
-        return not bool(current)
 
     # On phones, start with both drawers closed so the chart fills the width.
     # One-shot per page load; session prefs after the user toggles still win
@@ -87,7 +105,10 @@ def register_layout_callbacks(app) -> None:
             const right = document.querySelector('aside.sfa-right-panel');
             const scrim = document.getElementById('mobile-nav-scrim');
             const menuBtn = document.getElementById('mobile-menu-btn');
+            const backtestBtn = document.getElementById('mobile-backtest-btn');
             const phone = window.matchMedia('(max-width: 900px)').matches;
+            const leftOpen = phone && !sidebarCollapsed;
+            const rightOpen = phone && !rightCollapsed;
             const setGlyph = function(id, collapsed, openGlyph, closedGlyph) {
                 const btn = document.getElementById(id);
                 if (!btn) { return; }
@@ -104,13 +125,17 @@ def register_layout_callbacks(app) -> None:
                 right.classList.toggle('sfa-open', !rightCollapsed);
             }
             if (scrim) {
-                scrim.classList.toggle('sfa-visible', phone && !sidebarCollapsed);
+                scrim.classList.toggle('sfa-visible', leftOpen || rightOpen);
             }
             if (menuBtn) {
-                menuBtn.setAttribute('aria-expanded', (!sidebarCollapsed && phone) ? 'true' : 'false');
-                menuBtn.title = (!sidebarCollapsed && phone)
+                menuBtn.setAttribute('aria-expanded', leftOpen ? 'true' : 'false');
+                menuBtn.title = leftOpen
                     ? 'Close navigation'
                     : 'Open navigation (Flow, Fundamentals, controls)';
+            }
+            if (backtestBtn) {
+                backtestBtn.setAttribute('aria-expanded', rightOpen ? 'true' : 'false');
+                backtestBtn.title = rightOpen ? 'Close Backtest panel' : 'Open Backtest panel';
             }
             setGlyph('sidebar-toggle-btn', !!sidebarCollapsed, '<<', '>>');
             setGlyph('right-panel-toggle-btn', !!rightCollapsed, '>>', '<<');

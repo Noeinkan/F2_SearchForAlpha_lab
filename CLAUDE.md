@@ -19,6 +19,7 @@ Python algorithmic trading research: Yahoo Finance OHLCV → indicator signals �
 - Dash reload: `DASH_RELOAD=1` opt-in (off by default — Werkzeug reloader is unreliable on Windows; debug error pages still honour `DASH_DEV`)
 - Browser landing: `run_dashboard()` opens `http://127.0.0.1:<port>/ticker/<DEFAULT_TICKER>` via `_default_browser_path()` (bootstrap-driven)
 - Theme: default is `bloomberg` (dark); header button cycles bloomberg→cvd→light. Palettes in `lib/dash/dash_config.py` `THEMES` (`DEFAULT_THEME`)
+- CSS: ten numbered sheets in `lib/dash/assets/` (`10-tokens.css` … `90-symbol-search.css`), no build step. **Dash injects assets in sorted filename order, so the prefixes are the cascade** — vendored Bootstrap must stay `00-bootstrap.min.css` or every override breaks. File map + editing rules: [docs/ui-architecture.md](docs/ui-architecture.md#stylesheet-layout)
 - Flow Scanner: served at `/flow/<ticker>` and `/flow_report.html` (stub when `flow_report.html` absent); regenerate via `scripts/flow_scanner.py <ticker>`
 - Symbol search: modal at `lib/dash/layout/symbol_search.py` (Ctrl+/). **`ticker-dropdown` is still the current-symbol source of truth for ~15 callbacks** — it is mounted but `display:none` in the sidebar; never delete or re-type it, write to `.value` with `allow_duplicate=True`
 - Symbol universe: committed `config/tickers_universe.csv` (~13k rows, sector/industry/asset class), read via `lib/ticker_universe.py`. Regenerate with `python scripts/build_universe.py`; hand-maintained non-equities live in `config/tickers_curated.csv`

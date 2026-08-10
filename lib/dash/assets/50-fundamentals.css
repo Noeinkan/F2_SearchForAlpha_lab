@@ -1,0 +1,866 @@
+/* =============================================================================
+   Fundamentals workspace
+   ========================================================================== */
+
+.sfa-fundamentals-overlay.sfa-fundamentals-route {
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.sfa-fundamentals-overlay {
+    display: flex;
+    flex-direction: column;
+}
+
+.sfa-flow-overlay {
+    background: #0A0A0A;
+    display: flex;
+    flex-direction: column;
+}
+
+/* One scroll container for the flow report. Everything inside it is normal block
+   flow — nested flex/overflow chains broke scrolling whenever dcc.Loading added
+   its own wrapper divs around #flow-content. */
+.sfa-flow-overlay #flow-scroll-region {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+}
+
+.sfa-flow-overlay #flow-loading,
+.sfa-flow-overlay #flow-loading > div,
+.sfa-flow-overlay #flow-content {
+    display: block;
+    min-height: 0;
+    overflow: visible;
+}
+
+.sfa-flow-overlay.sfa-flow-route {
+    inset: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.sfa-optimize-overlay {
+    background: #0A0A0A;
+    display: flex;
+    flex-direction: column;
+}
+
+.sfa-optimize-overlay.sfa-optimize-route {
+    inset: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Optimizer results pane: sticky chart + one scroll stack below.
+   Nested flex:1 + overflow:hidden used to clip landscape/history. */
+.sfa-optimize-results-pane {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 12px 16px 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Optimizer hosts the singleton #chart-area-home while on /optimize. */
+.sfa-optimize-chart-slot {
+    flex: 0 0 auto;
+    height: min(36vh, 340px);
+    min-height: 200px;
+    max-height: 40vh;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    margin-bottom: 10px;
+    border: 1px solid var(--sfa-border, #2a2a2a);
+    border-radius: 4px;
+    background: var(--sfa-bg-secondary, #111);
+}
+
+.sfa-optimize-chart-slot #chart-area-home {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+}
+
+.sfa-optimize-chart-slot #chart-frame {
+    flex: 1 1 auto;
+    min-height: 160px;
+}
+
+.sfa-optimize-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 12px;
+}
+
+.sfa-optimize-progress:empty {
+    display: none;
+}
+
+.sfa-optimize-results-board {
+    flex: 0 0 auto;
+    min-height: 0;
+}
+
+.sfa-optimize-empty {
+    border: 1px dashed var(--sfa-border, #2a2a2a);
+    border-radius: 4px;
+    background: transparent;
+    padding: 12px 10px;
+}
+
+.sfa-optimize-realistic-off {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.sfa-optimize-results-accordion {
+    flex: 0 0 auto;
+}
+
+.sfa-optimize-landscape-graph {
+    width: 100%;
+}
+
+.sfa-grid-estimate {
+    padding: 8px 0 4px;
+}
+
+.sfa-grid-estimate-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.sfa-grid-estimate-count {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.sfa-grid-estimate-cap {
+    font-size: 11px;
+    opacity: 0.75;
+}
+
+.sfa-grid-estimate-badge {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+
+.sfa-grid-estimate-ok {
+    background: rgba(38, 194, 129, 0.18);
+    color: #26C281;
+}
+
+.sfa-grid-estimate-over {
+    background: rgba(239, 83, 80, 0.18);
+    color: #EF5350;
+}
+
+.sfa-grid-estimate-hint {
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+.sfa-grid-params-checklist label {
+    display: block;
+    margin-bottom: 2px;
+}
+
+.sfa-grid-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.sfa-grid-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.2s ease;
+}
+
+.sfa-grid-ranges-graph,
+.sfa-grid-landscape-graph {
+    width: 100%;
+}
+
+.sfa-optimize-oos {
+    flex: 0 0 auto;
+    padding: 8px 10px;
+    border: 1px solid var(--sfa-border, #2a2a2a);
+    border-radius: 4px;
+    background: var(--sfa-bg-secondary, #111);
+}
+
+.sfa-optimize-oos:empty {
+    display: none;
+}
+
+.sfa-optimize-history-body {
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.sfa-flow-iframe {
+    background: #0A0A0A;
+}
+
+/* Flow Scanner — tooltips, insights, table heat */
+.sfa-flow-overlay .dash-table-tooltip {
+    background-color: #161b22 !important;
+    color: #e6edf3 !important;
+    border: 1px solid #30363d !important;
+    border-radius: 6px !important;
+    padding: 8px 10px !important;
+    font-family: "Segoe UI", system-ui, sans-serif !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    max-width: 320px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+}
+
+.sfa-flow-sentiment-badge {
+    vertical-align: middle;
+}
+
+.sfa-flow-insights {
+    list-style: none;
+}
+
+.sfa-flow-insight-chip {
+    display: inline-block;
+    vertical-align: baseline;
+}
+
+/* Flow Scanner — how-to-read guide, legend, strike map, learn modal */
+.sfa-flow-guide > summary,
+.sfa-flow-panel > summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sfa-flow-guide > summary::-webkit-details-marker,
+.sfa-flow-panel > summary::-webkit-details-marker {
+    display: none;
+}
+
+.sfa-flow-guide > summary::before,
+.sfa-flow-panel > summary::before {
+    content: "▾";
+    display: inline-block;
+    width: 0.9em;
+    opacity: 0.7;
+    flex: 0 0 auto;
+}
+
+.sfa-flow-guide:not([open]) > summary::before,
+.sfa-flow-panel:not([open]) > summary::before {
+    content: "▸";
+}
+
+.sfa-flow-panel > summary:hover {
+    filter: brightness(1.15);
+}
+
+.sfa-flow-panel > summary:focus-visible {
+    outline: 1px solid currentColor;
+    outline-offset: 2px;
+}
+
+.sfa-flow-diagram-track {
+    width: 100%;
+}
+
+.sfa-flow-theta-panel .sfa-flow-theta-body {
+    margin-top: 8px;
+}
+
+.sfa-flow-theta-panel .sfa-flow-theta-chart,
+.sfa-flow-theta-panel .sfa-flow-theta-chart .js-plotly-plot,
+.sfa-flow-theta-panel .sfa-flow-theta-chart .plot-container {
+    width: 100% !important;
+}
+
+.sfa-flow-theta-panel .sfa-flow-theta-chart .js-plotly-plot {
+    min-height: 260px;
+}
+
+.sfa-flow-legend-chip {
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 1.35;
+}
+
+.sfa-flow-color-legend,
+.sfa-flow-flag-legend,
+.sfa-flow-score-chips {
+    line-height: 1.5;
+}
+
+.sfa-flow-strike-track {
+    position: relative;
+    height: 22px;
+    margin: 2px 0 0;
+}
+
+.sfa-flow-strike-track-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 2px;
+    transform: translateY(-50%);
+    border-radius: 1px;
+}
+
+.sfa-flow-strike-dot,
+.sfa-flow-strike-spot {
+    position: absolute;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid;
+    transform: translate(-50%, -50%);
+    cursor: help;
+    z-index: 1;
+}
+
+.sfa-flow-strike-spot {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    z-index: 2;
+}
+
+.sfa-flow-inventory {
+    margin: 6px 0 10px;
+}
+
+.sfa-flow-inv-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.sfa-flow-inv-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.sfa-flow-inv-expiry .Select-control,
+.sfa-flow-inv-expiry .Select__control {
+    min-height: 28px !important;
+}
+
+.sfa-flow-inv-graph .js-plotly-plot,
+.sfa-flow-inv-graph .plotly {
+    width: 100% !important;
+}
+
+.sfa-flow-inv-caption {
+    max-width: 72ch;
+}
+
+.sfa-flow-gex {
+    margin: 6px 0 10px;
+}
+
+.sfa-flow-gex-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.sfa-flow-gex-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.sfa-flow-gex-expiry .Select-control,
+.sfa-flow-gex-expiry .Select__control {
+    min-height: 28px !important;
+}
+
+.sfa-flow-gex-graph .js-plotly-plot,
+.sfa-flow-gex-graph .plotly {
+    width: 100% !important;
+}
+
+.sfa-flow-gex-caption {
+    max-width: 72ch;
+}
+
+.sfa-flow-vanna {
+    margin: 6px 0 10px;
+}
+
+.sfa-flow-vanna-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.sfa-flow-vanna-expiry {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.sfa-flow-vanna-graph .js-plotly-plot,
+.sfa-flow-vanna-graph .plotly {
+    width: 100% !important;
+}
+
+.sfa-flow-vanna-caption {
+    max-width: 72ch;
+}
+
+.sfa-flow-learn-modal .modal-content {
+    max-height: min(85vh, 720px);
+}
+
+.sfa-flow-learn-modal-body {
+    padding-top: 4px;
+}
+
+.sfa-flow-learn-section:last-of-type p {
+    margin-bottom: 0;
+}
+
+.sfa-fundamentals-content {
+    scrollbar-gutter: stable;
+}
+
+.sfa-fundamentals-root {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sfa-fundamentals-summary {
+    grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.sfa-fundamentals-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 7px 9px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    min-width: 0;
+}
+
+.sfa-fundamentals-hero-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+}
+
+.sfa-fundamentals-hero-value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.1;
+}
+
+.sfa-fundamentals-hero-change {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
+.sfa-fundamentals-hero-change.up   { color: var(--up); }
+.sfa-fundamentals-hero-change.down { color: var(--down); }
+.sfa-fundamentals-hero-change.flat { color: var(--text-secondary); }
+
+.sfa-fundamentals-hero-state {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+}
+
+.sfa-fundamentals-last-col {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+    font-weight: 700 !important;
+    font-family: var(--font-mono) !important;
+    font-variant-numeric: tabular-nums;
+    border-left: 2px solid var(--accent) !important;
+}
+
+.sfa-fundamentals-last-empty {
+    color: var(--text-tertiary) !important;
+    background: transparent !important;
+    border-left: 1px dashed var(--border-primary) !important;
+    font-weight: 400 !important;
+}
+
+.sfa-fundamentals-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(500px, 40vw);
+    gap: 6px;
+    align-items: start;
+}
+
+.sfa-fundamentals-panel,
+.sfa-fundamentals-panel .dash-table-container,
+.sfa-fundamentals-panel .dash-spreadsheet-container,
+.sfa-fundamentals-panel .dash-spreadsheet-inner,
+.sfa-fundamentals-panel table {
+    min-width: 0;
+    width: 100%;
+}
+
+/* Dash DataTable applies default active/selected styles that can wash out text.
+   Force readable contrast for fundamentals tables, including fixed-column clones. */
+.sfa-fundamentals-panel .dash-spreadsheet tr:hover td,
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected,
+.sfa-fundamentals-panel .dash-spreadsheet td.focused,
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected.focused {
+    color: var(--text-primary) !important;
+    background: var(--table-row-hover) !important;
+    opacity: 1 !important;
+}
+
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected,
+.sfa-fundamentals-panel .dash-spreadsheet td.focused,
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected.focused {
+    border-color: var(--info) !important;
+}
+
+.sfa-fundamentals-panel .dash-spreadsheet tr:hover td .dash-cell-value,
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected .dash-cell-value,
+.sfa-fundamentals-panel .dash-spreadsheet td.focused .dash-cell-value,
+.sfa-fundamentals-panel .dash-spreadsheet td.cell--selected.focused .dash-cell-value {
+    color: var(--text-primary) !important;
+    opacity: 1 !important;
+}
+
+.sfa-fundamentals-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 6px;
+}
+
+.sfa-valuation-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px;
+    align-items: start;
+}
+
+.sfa-valuation-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.sfa-valuation-assumption {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    line-height: 1.4;
+}
+
+/* Valuation tables — larger type than financials/big-five for side-panel readability */
+.sfa-fundamentals-valuation .dash-spreadsheet td,
+.sfa-fundamentals-valuation .dash-spreadsheet th {
+    font-size: 13px !important;
+    line-height: 20px !important;
+}
+
+.sfa-fundamentals-valuation .dash-spreadsheet td .dash-cell-value,
+.sfa-fundamentals-valuation .dash-spreadsheet th .column-header-name {
+    font-size: 13px !important;
+    line-height: 20px !important;
+}
+
+.sfa-fundamentals-valuation .dash-spreadsheet-container .row {
+    min-height: 30px;
+    max-height: 30px;
+    height: 30px;
+}
+
+/* Valuation explainability panel — two-column layout */
+.sfa-valuation-explain {
+    margin-top: 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-primary);
+    border-left: 3px solid var(--info);
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+}
+
+.sfa-explain-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(200px, 0.85fr);
+    gap: 12px 16px;
+    align-items: start;
+}
+
+.sfa-explain-col-formulas {
+    min-width: 0;
+}
+
+.sfa-explain-col-notes {
+    min-width: 0;
+    padding-left: 12px;
+    border-left: 1px solid var(--border-primary);
+}
+
+.sfa-explain-heading {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--accent);
+    margin: 6px 0 3px;
+}
+
+.sfa-explain-col-notes > .sfa-explain-heading:first-child {
+    margin-top: 0;
+}
+
+.sfa-formula-what,
+.sfa-formula-why {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
+.sfa-formula-why {
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+}
+
+.sfa-formula-title {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+
+.sfa-formula-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sfa-formula-block {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    padding: 7px 9px;
+}
+
+.sfa-formula-block.sfa-formula-substituted {
+    border-color: color-mix(in srgb, var(--info) 35%, var(--border-primary));
+    background: color-mix(in srgb, var(--info) 6%, var(--bg-secondary));
+}
+
+.sfa-formula-block-label {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.sfa-formula-math {
+    overflow-x: auto;
+    padding: 4px 0;
+    --sfa-formula-size: 18px;   /* 14px base + 30% */
+}
+
+.sfa-formula-equation {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    font-family: var(--font-sans);
+    font-size: var(--sfa-formula-size);
+    line-height: 1.4;
+    color: var(--text-primary);
+}
+
+.sfa-f-var {
+    font-weight: 600;
+    font-style: italic;
+    color: var(--text-primary);
+}
+
+.sfa-f-sub {
+    font-size: 0.72em;
+    font-style: normal;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-left: 1px;
+}
+
+.sfa-f-op {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.sfa-f-text {
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-style: normal;
+}
+
+.sfa-f-val {
+    font-size: var(--sfa-formula-size, 18px);
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.sfa-f-frac {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    margin: 0 2px;
+    min-width: 3.5em;
+}
+
+.sfa-f-frac-num {
+    padding: 0 6px 3px;
+    border-bottom: 1px solid var(--border-primary);
+    width: 100%;
+    text-align: center;
+}
+
+.sfa-f-frac-den {
+    padding: 3px 6px 0;
+    width: 100%;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.92em;
+}
+
+.sfa-formula-block.sfa-formula-substituted .sfa-f-val {
+    color: var(--info);
+}
+
+.sfa-formula-explanation {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    line-height: 1.45;
+    margin-bottom: 2px;
+    color: var(--text-secondary);
+}
+
+.sfa-formula-meta {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    line-height: 1.4;
+    margin-bottom: 2px;
+    color: var(--text-tertiary);
+}
+
+@media (max-width: 720px) {
+    .sfa-explain-grid {
+        grid-template-columns: 1fr;
+    }
+    .sfa-explain-col-notes {
+        padding-left: 0;
+        border-left: none;
+        padding-top: 8px;
+        border-top: 1px solid var(--border-primary);
+    }
+}
+
+.sfa-fundamentals-chart .js-plotly-plot,
+.sfa-fundamentals-chart .plot-container,
+.sfa-fundamentals-chart .svg-container {
+    width: 100% !important;
+}
+
+@media (min-width: 1800px) {
+    .sfa-fundamentals-top {
+        grid-template-columns: minmax(0, 1fr) minmax(560px, 38vw);
+    }
+
+    .sfa-fundamentals-charts {
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    }
+}
+
+@media (max-width: 1180px) {
+    .sfa-fundamentals-top {
+        grid-template-columns: 1fr;
+    }
+
+    .sfa-fundamentals-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 720px) {
+    .sfa-fundamentals-summary,
+    .sfa-fundamentals-charts {
+        grid-template-columns: 1fr;
+    }
+
+    .sfa-valuation-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sfa-valuation-grid > :nth-child(2) {
+        margin-top: 4px;
+    }
+}
+

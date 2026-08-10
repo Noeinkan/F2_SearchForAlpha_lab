@@ -1,12 +1,14 @@
-﻿"""Regression: Dash 4 RadioItems segment CSS must keep radios clickable."""
+"""Regression: Dash 4 RadioItems segment CSS must keep radios clickable."""
 
 from pathlib import Path
 
-CSS = Path(__file__).resolve().parents[1] / "dash" / "assets" / "dashboard.css"
+ASSETS = Path(__file__).resolve().parents[1] / "dash" / "assets"
+CONTROLS = ASSETS / "20-controls.css"
+VENDOR_WIDGETS = ASSETS / "30-vendor-widgets.css"
 
 
 def _segment_block() -> str:
-    text = CSS.read_text(encoding="utf-8")
+    text = CONTROLS.read_text(encoding="utf-8")
     start = text.index("Segmented RadioItems")
     end = text.index("Section primitives", start)
     return text[start:end]
@@ -26,5 +28,5 @@ def test_bbg_radio_seg_styles_dash4_selected_state():
 
 
 def test_dropdown_options_list_styles_exclude_segment_radios():
-    text = CSS.read_text(encoding="utf-8")
+    text = VENDOR_WIDGETS.read_text(encoding="utf-8")
     assert "dash-options-list:not(.bbg-radio-seg)" in text

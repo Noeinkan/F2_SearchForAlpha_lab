@@ -1,0 +1,161 @@
+/* =============================================================================
+   SearchForAlpha — Bloomberg Terminal-inspired (modernized amber)
+   Auto-loaded by Dash from lib/dash/assets/.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap');
+
+:root {
+    /* Palette — bloomberg theme */
+    --bg-primary:        #0A0A0A;
+    --bg-secondary:      #111111;
+    --bg-tertiary:       #161616;
+    --bg-hover:          #1F1F1F;
+    --bg-panel:          #0E0E0E;
+    --bg-panel-header:   #1A1A1A;
+
+    --text-primary:      #E8E8E8;
+    --text-secondary:    #A8A8A8;
+    /* Phase 4 contrast audit: bumped from #6E6E6E (3.0:1 on bg_primary,
+       fails WCAG 2.2 AA) to #8A8A8A (4.6:1, passes AA for body text). */
+    --text-tertiary:     #8A8A8A;
+
+    --accent:            #FFA726;       /* amber primary */
+    --accent-dim:        #B87420;
+    --up:                #26C281;
+    --down:              #EF5350;
+    --warn:              #FFCA28;
+    --info:              #4FC3F7;
+
+    --border-primary:    #1F1F1F;
+    --border-secondary:  #171717;
+    --border-focus:      #FFA726;
+
+    --table-header-bg:   #141414;
+    --table-row-alt:     rgba(20,20,20,0.5);
+    --table-row-hover:   #1A1A1A;
+
+    /* Dash 4 DCC tokens — map to bloomberg palette (datepicker, input, etc.) */
+    --Dash-Fill-Inverse-Strong:  var(--bg-secondary);
+    --Dash-Text-Strong:          var(--text-primary);
+    --Dash-Text-Weak:            var(--text-secondary);
+    --Dash-Text-Disabled:        var(--text-tertiary);
+    --Dash-Stroke-Strong:        var(--border-primary);
+    --Dash-Fill-Interactive-Strong: var(--accent);
+    --Dash-Fill-Interactive-Weak: rgba(255, 167, 38, 0.12);
+
+    /* Typography — sans for UI chrome, mono reserved for numeric data */
+    --font-sans: "Source Sans 3", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+}
+
+/* =============================================================================
+   CVD theme overrides (color-vision-deficiency safe)
+
+   Applied when <body> has class `theme-cvd`. Swaps the up/down palette
+   to blue/orange so users with red/green CVD can still distinguish
+   direction. Matches the Bloomberg Terminal's published CVD research.
+   The only values that need to change are the up/down pair; everything
+   else is already identical to the default bloomberg look.
+   ========================================================================== */
+
+body.theme-cvd {
+    --up:                #0091EA;   /* CVD-safe: blue for "up" */
+    --down:              #FF6F00;   /* CVD-safe: orange for "down" */
+}
+
+/* =============================================================================
+   Base
+   ========================================================================== */
+
+/* Viewport lock — prevent any flex child from pushing the layout past the
+   viewport width. Backstop against intrinsic-min-width collapse (Phase 1 fix). */
+html, body { width: 100%; max-width: 100vw; overflow-x: hidden; }
+#app-container { width: 100%; max-width: 100vw; }
+
+/* =============================================================================
+   Phase 4 — Focus rings (accessibility)
+
+   WCAG 2.4.7 (Focus Visible) requires a visible focus indicator on every
+   focusable element. Many component-level rules below set `outline: none`
+   to silence the browser default; this block re-introduces a visible
+   amber outline specifically for keyboard focus (`:focus-visible`) so
+   mouse clicks don't show a stale ring but Tab/Shift+Tab navigation does.
+
+   The amber 2px outline mirrors `--accent` (the primary action color) and
+   uses `outline-offset: 2px` to keep it clear of dense Bloomberg chrome.
+   `!important` is used on the outline declaration to override the
+   `outline: none !important` resets on dropdowns and date pickers below.
+   ========================================================================== */
+:focus-visible {
+    outline: 2px solid var(--border-focus) !important;
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* Inputs and segmented controls already have a hover border accent;
+   stack the focus ring on top so the keyboard state is unambiguous. */
+.bbg-input:focus-visible,
+input.bbg-input:focus-visible,
+.dash-dropdown.dark-dropdown:focus-visible,
+.Select.is-focused:not(.is-open) > .Select-control:focus-visible,
+.dash-dropdown-search:focus-visible,
+.SingleDatePickerInput__withBorder:focus-within,
+.dash-datepicker-input-wrapper.dark-datepicker:focus-within {
+    outline: 2px solid var(--border-focus) !important;
+    outline-offset: 1px;
+}
+
+/* Buttons and gear icons: keep the outline; remove it for the inner
+   segmented children so the ring lands on the whole control, not the
+   pressed segment. */
+button.bbg-button:focus-visible,
+button.bbg-button-outline:focus-visible,
+button.bbg-button-ghost:focus-visible,
+.bbg-seg > button:focus-visible,
+.bbg-radio-seg > label:focus-visible,
+.bbg-signal-toggle:focus-visible,
+.panel-tab:focus-visible,
+.bbg-pill:focus-visible {
+    outline: 2px solid var(--border-focus) !important;
+    outline-offset: 2px;
+}
+
+/* Splitter handle is keyboard-resizable: make the focus ring obvious. */
+.sfa-splitter:focus-visible {
+    outline: 2px solid var(--border-focus) !important;
+    outline-offset: 0;
+}
+
+html, body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+/* Tabular numerals for price / metric data (sans + tnum keeps columns aligned) */
+.num,
+.bbg-num,
+.numeric {
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    font-weight: 500;
+    letter-spacing: 0;
+}
+
+.up    { color: var(--up); }
+.down  { color: var(--down); }
+.warn  { color: var(--warn); }
+.muted { color: var(--text-secondary); }
+
+.uppercase {
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+

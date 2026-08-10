@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -73,37 +74,55 @@ def test_get_env_port_uses_start_port_default(monkeypatch):
     assert _get_env_port(8050) == 8050
 
 
-def test_collect_asset_files_includes_dashboard_css():
+def test_collect_asset_files_includes_stylesheets():
     paths = _collect_asset_files()
-    assert any(path.endswith("dashboard.css") for path in paths)
+    names = {os.path.basename(path) for path in paths}
+    assert {"10-tokens.css", "20-controls.css", "90-symbol-search.css"} <= names
+
+
+def test_vendored_bootstrap_loads_before_project_css():
+    """Dash appends assets in ``sorted(files)`` order (dash.py ``_walk_assets_directory``).
+
+    Digits sort before letters, so the project sheets carry numeric prefixes to
+    stay behind the vendored Bootstrap -- otherwise every override in them (and
+    there are ~400 ``!important`` rules) would lose the cascade. Re-vendoring
+    Bootstrap without the ``00-`` prefix silently breaks the whole theme.
+    """
+    sheets = sorted(
+        os.path.basename(path)
+        for path in _collect_asset_files()
+        if path.endswith(".css")
+    )
+    assert sheets[0] == "00-bootstrap.min.css"
+    assert len(sheets) > 1
 
 
 def test_configure_dev_server_sets_no_store_on_assets():
     app = dash.Dash(__name__)
 
-    @app.server.route("/assets/dashboard.css")
+    @app.server.route("/assets/10-tokens.css")
     def _css():
         return "body{}"
 
     extra_files = _configure_dev_server(app, dev_mode=True)
     assert extra_files
-    assert any(path.endswith("dashboard.css") for path in extra_files)
+    assert any(path.endswith("10-tokens.css") for path in extra_files)
 
     client = app.server.test_client()
-    resp = client.get("/assets/dashboard.css")
+    resp = client.get("/assets/10-tokens.css")
     assert resp.headers.get("Cache-Control") == "no-store"
 
 
 def test_configure_dev_server_skips_hooks_in_production():
     app = dash.Dash(__name__)
 
-    @app.server.route("/assets/dashboard.css")
+    @app.server.route("/assets/10-tokens.css")
     def _css():
         return "body{}"
 
     assert _configure_dev_server(app, dev_mode=False) is None
     client = app.server.test_client()
-    resp = client.get("/assets/dashboard.css")
+    resp = client.get("/assets/10-tokens.css")
     assert resp.headers.get("Cache-Control") is None
 
 

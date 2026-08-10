@@ -1,0 +1,401 @@
+/* =============================================================================
+   Dropdowns (Select / VirtualizedSelect — react-select v1)
+   ========================================================================== */
+
+.Select-control,
+.dark-dropdown .Select-control {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+    min-height: 28px !important;
+    height: 28px !important;
+    transition: border-color 100ms ease !important;
+}
+.Select-control:hover,
+.dark-dropdown .Select-control:hover {
+    border-color: var(--accent) !important;
+}
+.Select.is-focused:not(.is-open) > .Select-control {
+    border-color: var(--accent) !important;
+    box-shadow: none !important;
+}
+.Select-menu-outer,
+.dark-dropdown .Select-menu-outer {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6) !important;
+}
+.Select-option,
+.dark-dropdown .Select-option {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+}
+.Select-option.is-focused,
+.Select-option:hover,
+.dark-dropdown .Select-option.is-focused,
+.dark-dropdown .Select-option:hover {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+}
+.Select-option.is-selected,
+.dark-dropdown .Select-option.is-selected {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+}
+.Select-value-label,
+.Select-placeholder,
+.Select-input > input,
+.dark-dropdown .Select-value-label,
+.dark-dropdown .Select-placeholder,
+.dark-dropdown .Select-input > input {
+    color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+}
+.Select-arrow {
+    border-color: var(--text-secondary) transparent transparent !important;
+}
+.VirtualizedSelectOption {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+}
+.VirtualizedSelectFocusedOption,
+.VirtualizedSelectOption:hover {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+}
+.VirtualizedSelectSelectedOption {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+}
+
+/* Dash >= 2.18 dropdown classes (Radix-based) */
+.dash-dropdown.dark-dropdown {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+    min-height: 28px !important;
+    height: 28px !important;
+    width: 100% !important;
+}
+.dash-dropdown.dark-dropdown:hover,
+.dash-dropdown.dark-dropdown[data-state="open"],
+.dash-dropdown.dark-dropdown:focus-visible {
+    border-color: var(--accent) !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+.dash-dropdown-trigger-icon,
+.dash-dropdown-search-icon {
+    color: var(--text-secondary) !important;
+}
+.dash-dropdown-value {
+    color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+}
+.dash-dropdown-placeholder {
+    color: var(--text-secondary) !important;
+}
+.dash-dropdown-content {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.65) !important;
+    color: var(--text-primary) !important;
+    z-index: 1100 !important;
+}
+.dash-dropdown-search-container {
+    background: var(--bg-secondary) !important;
+    border-bottom: 1px solid var(--border-primary) !important;
+    padding: 8px 8px 10px !important;
+}
+.dash-dropdown-search {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+    padding: 7px 10px 7px 28px !important;
+}
+.dash-dropdown-search::placeholder {
+    color: var(--text-secondary) !important;
+}
+.dash-dropdown-search:focus {
+    border-color: var(--accent) !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+.dash-dropdown-options,
+.dash-options-list:not(.bbg-radio-seg) {
+    background: var(--bg-secondary) !important;
+    margin-top: 4px !important;
+    border-top: 1px solid var(--border-primary) !important;
+}
+.dash-dropdown-option,
+.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    border-bottom: 1px solid var(--border-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+}
+.dash-dropdown-option:last-child,
+.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option:last-child {
+    border-bottom: none !important;
+}
+.dash-dropdown-option:hover,
+.dash-dropdown-option[aria-selected="true"],
+.dash-dropdown-option[data-state="checked"],
+.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option:hover,
+.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option[aria-selected="true"],
+.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option[data-state="checked"] {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+}
+
+/* =============================================================================
+   Date pickers
+   ========================================================================== */
+
+/* Dash 4 date pickers — className lands on input-wrapper, not root */
+.dash-datepicker:has(.dark-datepicker) {
+    background: transparent !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+    width: 100% !important;
+}
+.dash-datepicker-input-wrapper.dark-datepicker {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    color: var(--text-primary) !important;
+    min-height: 28px !important;
+    height: 28px !important;
+    padding: 0 8px !important;
+    transition: border-color 100ms ease;
+}
+.dash-datepicker-input-wrapper.dark-datepicker:hover,
+.dash-datepicker-input-wrapper.dark-datepicker:focus-within {
+    border-color: var(--accent) !important;
+}
+.dash-datepicker-input-wrapper.dark-datepicker .dash-datepicker-input,
+.dash-datepicker-input-wrapper.dark-datepicker input {
+    background: transparent !important;
+    color: var(--text-primary) !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+    height: 26px !important;
+}
+.dash-datepicker-input-wrapper.dark-datepicker .dash-datepicker-input::placeholder,
+.dash-datepicker-input-wrapper.dark-datepicker input::placeholder {
+    color: var(--text-secondary) !important;
+}
+.dash-datepicker-input-wrapper.dark-datepicker .dash-datepicker-caret-icon,
+.dash-datepicker-input-wrapper.dark-datepicker .dash-datepicker-range-arrow,
+.dash-datepicker-input-wrapper.dark-datepicker .dash-datepicker-clear {
+    color: var(--text-secondary) !important;
+    fill: var(--text-secondary) !important;
+}
+.dash-datepicker-content {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.65) !important;
+}
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-inside {
+    color: var(--text-primary) !important;
+}
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-selected:not(.dash-datepicker-calendar-date-outside) {
+    background-color: var(--accent) !important;
+    color: #000 !important;
+}
+
+/* Dash 3 react-dates (legacy fallback) */
+.SingleDatePickerInput,
+.SingleDatePickerInput__withBorder {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    transition: border-color 100ms ease !important;
+}
+.SingleDatePicker,
+.SingleDatePickerInput,
+.DateInput,
+.DateInput_input {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+.SingleDatePickerInput:hover {
+    border-color: var(--accent) !important;
+}
+.DateInput_input {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+    padding: 5px 8px !important;
+    height: 28px !important;
+    border-bottom: none !important;
+}
+.DateInput_input__focused {
+    border-bottom: none !important;
+}
+.SingleDatePicker_picker {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 2px !important;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.6) !important;
+    z-index: 9999 !important;
+}
+.DayPicker,
+.CalendarMonth,
+.CalendarMonth_table {
+    background: var(--bg-secondary) !important;
+}
+.CalendarMonth_caption {
+    color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.DayPicker_weekHeader {
+    color: var(--text-secondary) !important;
+    font-family: var(--font-sans) !important;
+}
+.CalendarDay {
+    border: 1px solid var(--border-primary) !important;
+    color: var(--text-primary) !important;
+    background: var(--bg-secondary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 11px !important;
+}
+.CalendarDay__default:hover {
+    background: var(--bg-hover) !important;
+    border-color: var(--accent) !important;
+    color: var(--text-primary) !important;
+}
+.CalendarDay__selected,
+.CalendarDay__selected:hover {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: #000 !important;
+}
+.CalendarDay__outside {
+    color: var(--text-tertiary) !important;
+    background: var(--bg-panel) !important;
+}
+.DayPickerNavigation_button {
+    border: 1px solid var(--border-primary) !important;
+    background: var(--bg-tertiary) !important;
+}
+.DayPickerNavigation_button:hover {
+    border-color: var(--accent) !important;
+}
+.date-picker-end .SingleDatePicker_picker {
+    left: 0 !important;
+    right: auto !important;
+}
+
+/* =============================================================================
+   Scrollbars
+   ========================================================================== */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--bg-hover);
+    border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-dim);
+}
+
+/* =============================================================================
+   Checkboxes / radios (use accent)
+   ========================================================================== */
+
+input[type="checkbox"],
+input[type="radio"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+/* =============================================================================
+   Tooltips
+   ========================================================================== */
+
+.tooltip-inner {
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-primary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+    border-radius: 2px !important;
+    max-width: 260px !important;
+}
+.tooltip.bs-tooltip-top .tooltip-arrow::before,
+.tooltip.bs-tooltip-bottom .tooltip-arrow::before {
+    border-top-color: var(--border-primary) !important;
+    border-bottom-color: var(--border-primary) !important;
+}
+
+/* Dash DataTable tooltips use a different DOM than Bootstrap tooltips.
+   Force readable contrast to avoid white-on-white in fundamentals explainability. */
+.dash-table-tooltip,
+.dash-tooltip {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+    border-radius: 2px !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35) !important;
+}
+
+.dash-table-tooltip *,
+.dash-tooltip * {
+    color: var(--text-primary) !important;
+}
+
+/* =============================================================================
+   Alerts
+   ========================================================================== */
+
+.custom-alert {
+    border-left: 3px solid;
+    border-radius: 2px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    padding: 8px 10px;
+}
+.custom-alert.success { border-left-color: var(--up);     color: var(--up); }
+.custom-alert.warning { border-left-color: var(--warn);   color: var(--warn); }
+.custom-alert.error   { border-left-color: var(--down);   color: var(--down); }
+.custom-alert.info    { border-left-color: var(--accent); color: var(--accent); }
+

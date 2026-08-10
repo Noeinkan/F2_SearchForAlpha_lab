@@ -299,6 +299,23 @@ def test_build_result_rows_joins_sector_and_industry():
     rows = [row for row in search_symbols("nvda") if row["Symbol"] == "NVDA"]
     children = build_result_rows(rows, starred=set())
     categories = [
-        child.children[1].children[3].children for child in children
+        child.children[1].children[4].children for child in children
     ]
     assert categories == ["Technology · Semiconductors"]
+
+
+def test_build_result_rows_shows_quote_column():
+    from lib.dash.symbol_quotes import SymbolQuote
+
+    rows = [row for row in search_symbols("aapl") if row["Symbol"] == "AAPL"]
+    quotes = {
+        "AAPL": SymbolQuote(
+            symbol="AAPL", price=190.25, change_pct=1.25, currency="USD"
+        )
+    }
+    children = build_result_rows(rows, starred=set(), quotes=quotes)
+    quote_cell = children[0].children[1].children[2]
+    assert "sfa-symsearch-quote" in quote_cell.className
+    assert quote_cell.children[0].children == "$190.25"
+    assert quote_cell.children[1].children == "+1.25%"
+    assert "up" in quote_cell.children[1].className

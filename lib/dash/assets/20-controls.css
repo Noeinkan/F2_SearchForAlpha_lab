@@ -1,0 +1,721 @@
+/* =============================================================================
+   Status dots (footer / header / section indicators)
+   ========================================================================== */
+
+.dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+    margin-right: 6px;
+    flex: 0 0 6px;
+    vertical-align: middle;
+}
+.dot-up    { background: var(--up); }
+.dot-down  { background: var(--down); }
+.dot-warn  { background: var(--warn); }
+.dot-amber { background: var(--accent); }
+.dot-idle  { background: var(--text-tertiary); }
+
+.dot-pulse {
+    animation: bbg-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes bbg-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+}
+
+/* =============================================================================
+   Bloomberg-styled segmented control (tabs, range buttons, P/TV toggle)
+   ========================================================================== */
+
+.bbg-seg {
+    display: inline-flex;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.bbg-seg > button,
+.bbg-seg > .bbg-seg-item {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: background 80ms ease, color 80ms ease;
+    border-right: 1px solid var(--border-primary);
+}
+.bbg-seg > button:last-child,
+.bbg-seg > .bbg-seg-item:last-child {
+    border-right: none;
+}
+.bbg-seg > button:hover,
+.bbg-seg > .bbg-seg-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.bbg-seg > button.active,
+.bbg-seg > .bbg-seg-item.active {
+    background: var(--accent);
+    color: #000;
+}
+
+/* Segmented RadioItems (D/1H/4H, period toggles, …).
+   Dash 4 renders RadioItems as:
+     div.dash-options-list.bbg-radio-seg[role=listbox]
+       label.dash-options-list-option[.selected][aria-selected]
+         span.dash-options-list-option-wrapper > input[readonly]
+         span.dash-options-list-option-text
+   `display:none` on the input breaks label activation in Chromium, so
+   clicks never fire onChange and the chart never reloads. Keep the input
+   visually hidden but still activatable. Dropdown `.dash-options-list*`
+   rules use !important — segment rules must match that weight and the
+   Dash 4 `.selected` / `[aria-selected]` hooks (not only :checked). */
+.bbg-radio-seg,
+.bbg-radio-seg.dash-options-list {
+    display: inline-flex !important;
+    align-items: stretch;
+    border: 1px solid var(--border-primary) !important;
+    border-top: 1px solid var(--border-primary) !important;
+    background: var(--bg-secondary) !important;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 0 !important;
+    width: auto !important;
+}
+.bbg-radio-seg > label,
+.bbg-radio-seg > .dash-options-list-option {
+    position: relative;
+    display: inline-flex !important;
+    align-items: center;
+    margin: 0 !important;
+    padding: 4px 10px !important;
+    border-right: 1px solid var(--border-primary) !important;
+    border-bottom: none !important;
+    background: transparent !important;
+    color: var(--text-secondary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 11px !important;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: background 80ms ease, color 80ms ease;
+}
+.bbg-radio-seg > label:last-child,
+.bbg-radio-seg > .dash-options-list-option:last-child {
+    border-right: none !important;
+}
+.bbg-radio-seg > label:hover,
+.bbg-radio-seg > .dash-options-list-option:hover {
+    background: var(--bg-hover) !important;
+    color: var(--text-primary) !important;
+}
+.bbg-radio-seg > label.selected,
+.bbg-radio-seg > label[aria-selected="true"],
+.bbg-radio-seg > label:has(input:checked),
+.bbg-radio-seg > .dash-options-list-option.selected,
+.bbg-radio-seg > .dash-options-list-option[aria-selected="true"] {
+    background: var(--accent) !important;
+    color: #000 !important;
+}
+/* Transparent hit-target over the whole segment. Must NOT use display:none —
+   Chromium will not activate a display:none radio via its <label>, so Dash 4
+   onChange never fires. Full-size opacity:0 input receives the click. */
+.bbg-radio-seg .dash-options-list-option-wrapper {
+    position: absolute !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    z-index: 1;
+}
+.bbg-radio-seg input,
+.bbg-radio-seg .dash-options-list-option-checkbox {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    cursor: pointer !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+}
+.bbg-radio-seg .dash-options-list-option-text {
+    position: relative;
+    z-index: 0;
+    color: inherit !important;
+    font: inherit !important;
+    pointer-events: none;
+}
+
+/* Chart toolbar bar-interval segment — sit clear of title meta */
+.sfa-bar-interval.bbg-radio-seg {
+    flex-shrink: 0;
+}
+.sfa-bar-interval.bbg-radio-seg > label,
+.sfa-bar-interval.bbg-radio-seg > .dash-options-list-option {
+    padding: 5px 12px !important;
+    min-width: 28px;
+    justify-content: center;
+}
+
+/* Test-window shortcuts — eight options (MAX…YTD) wrap into two rows of four
+   so each label keeps usable padding inside the right panel's narrow column. */
+.sfa-test-window-seg.bbg-radio-seg {
+    display: flex !important;
+    flex-wrap: wrap;
+    width: 100% !important;
+}
+.sfa-test-window-seg.bbg-radio-seg > label,
+.sfa-test-window-seg.bbg-radio-seg > .dash-options-list-option {
+    flex: 1 1 25%;
+    box-sizing: border-box;
+    min-width: 0;
+    padding: 5px 6px !important;
+    justify-content: center;
+    text-align: center;
+    letter-spacing: 0.4px;
+    border-right: 1px solid var(--border-primary) !important;
+    border-bottom: 1px solid var(--border-primary) !important;
+}
+.sfa-test-window-seg.bbg-radio-seg > label:nth-child(4n),
+.sfa-test-window-seg.bbg-radio-seg > .dash-options-list-option:nth-child(4n) {
+    border-right: none !important;
+}
+.sfa-test-window-seg.bbg-radio-seg > label:nth-last-child(-n+4),
+.sfa-test-window-seg.bbg-radio-seg > .dash-options-list-option:nth-last-child(-n+4) {
+    border-bottom: none !important;
+}
+.sfa-test-window-seg.bbg-radio-seg > label:last-child,
+.sfa-test-window-seg.bbg-radio-seg > .dash-options-list-option:last-child {
+    border-right: none !important;
+}
+
+/* =============================================================================
+   Section primitives (sidebar / right panel)
+   ========================================================================== */
+
+.bbg-section {
+    border: 1px solid var(--border-primary);
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+    margin-bottom: 6px;
+}
+.bbg-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-panel-header);
+    border-bottom: 1px solid var(--border-primary);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+.bbg-section.expanded .bbg-section-header {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+details.bbg-section > .bbg-section-header {
+    list-style: none;
+}
+details.bbg-section > .bbg-section-header::-webkit-details-marker {
+    display: none;
+}
+details.bbg-section > .bbg-section-header::after {
+    content: '+';
+    color: var(--text-tertiary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    margin-left: auto;
+}
+details.bbg-section[open] > .bbg-section-header {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+details.bbg-section[open] > .bbg-section-header::after {
+    content: '-';
+    color: var(--accent);
+}
+.bbg-section-body {
+    padding: 8px 10px;
+}
+
+/* =============================================================================
+   KPI cell (backtest results grid)
+   ========================================================================== */
+
+.bbg-kpi {
+    border: 1px solid var(--border-primary);
+    background: var(--bg-tertiary);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-radius: 2px;
+}
+.bbg-kpi-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+.bbg-kpi-value {
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 18px;
+    color: var(--text-primary);
+}
+.bbg-kpi-delta {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* =============================================================================
+   Ticker pill (TRIG / REJ counters etc)
+   ========================================================================== */
+
+.bbg-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-radius: 2px;
+}
+.bbg-pill .bbg-pill-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+.bbg-pill.up    .bbg-pill-value { color: var(--up); }
+.bbg-pill.down  .bbg-pill-value { color: var(--down); }
+.bbg-pill.amber .bbg-pill-value { color: var(--accent); }
+
+/* =============================================================================
+   Buttons
+   ========================================================================== */
+
+button.bbg-button {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 8px 14px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: filter 100ms ease;
+}
+button.bbg-button:hover  { filter: brightness(1.1); }
+button.bbg-button:active { filter: brightness(0.9); }
+
+button.bbg-button-outline {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+button.bbg-button-outline:hover {
+    background: var(--accent);
+    color: #000;
+}
+
+button.bbg-button-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-primary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    padding: 4px 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border-radius: 2px;
+}
+button.bbg-button-ghost:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* Compact ghost button sized to fit the 24px-tall status bar. */
+button.bbg-status-btn {
+    padding: 1px 8px;
+    font-size: 10px;
+    line-height: 16px;
+    display: inline-flex;
+    align-items: center;
+}
+button.bbg-status-btn .sfa-status-kbd {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 1px 4px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    line-height: 1;
+    color: var(--text-secondary);
+    letter-spacing: 0.4px;
+}
+
+/* =============================================================================
+   Header chrome — status labels, divider, clock, icon buttons
+   ========================================================================== */
+
+.bbg-header-status-label {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.bbg-header-divider {
+    color: var(--border-primary);
+    font-family: var(--font-sans);
+    user-select: none;
+}
+
+.bbg-header-clock {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    min-width: 56px;
+}
+
+/* Compact, square-ish icon button used by the theme toggle and the
+   keyboard-shortcut launcher. Sized so the two controls don't crowd
+   the right edge of the header. */
+button.bbg-icon-button,
+a.bbg-icon-button {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-primary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    min-width: 28px;
+    height: 26px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: color 80ms ease, border-color 80ms ease, background 80ms ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    box-sizing: border-box;
+}
+button.bbg-icon-button:hover,
+a.bbg-icon-button:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+button.bbg-icon-button:active,
+a.bbg-icon-button:active {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* Donate CTA — warm accent fill so it reads as a giving action, not a
+   utility control. Research-backed pattern: high-contrast warm tone
+   (amber) separate from neutral icon buttons; concise action label. */
+a.bbg-donate-button {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 65%, var(--border-primary));
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: none;
+    padding: 3px 10px;
+    min-width: 28px;
+    height: 26px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: color 80ms ease, border-color 80ms ease, background 80ms ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    box-sizing: border-box;
+}
+a.bbg-donate-button:hover {
+    background: var(--accent);
+    color: var(--bg-primary);
+    border-color: var(--accent);
+}
+a.bbg-donate-button:active {
+    background: color-mix(in srgb, var(--accent) 88%, #000);
+    border-color: color-mix(in srgb, var(--accent) 88%, #000);
+    color: var(--bg-primary);
+}
+
+/* Light theme: filled amber needs light label text for contrast. */
+body.theme-light a.bbg-donate-button:hover,
+body.theme-light a.bbg-donate-button:active {
+    color: #ffffff;
+}
+
+/* =============================================================================
+   Inputs (dense)
+   ========================================================================== */
+
+.bbg-input,
+input.bbg-input,
+.bbg-input input {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 12px !important;
+    padding: 5px 8px !important;
+    border-radius: 2px !important;
+    height: 28px !important;
+    box-sizing: border-box !important;
+    outline: none;
+    transition: border-color 100ms ease;
+}
+.bbg-input:focus,
+input.bbg-input:focus,
+.bbg-input input:focus {
+    border-color: var(--accent) !important;
+}
+
+/* Hide spinner buttons on number inputs */
+.bbg-input::-webkit-outer-spin-button,
+.bbg-input::-webkit-inner-spin-button,
+input.bbg-input::-webkit-outer-spin-button,
+input.bbg-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+}
+input.bbg-input[type=number] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+/* =============================================================================
+   Header
+   ========================================================================== */
+
+.bbg-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 44px;
+    padding: 0 14px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+}
+.bbg-wordmark {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 2px;
+}
+.bbg-wordmark-sub {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-left: 1px solid var(--border-primary);
+    padding-left: 12px;
+    margin-left: 4px;
+}
+.bbg-tape {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    flex: 1;
+    justify-content: center;
+}
+.bbg-tape-symbol {
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 1px;
+}
+.bbg-tape-price {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.bbg-tape-delta {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+}
+
+/* =============================================================================
+   Status bar (bottom)
+   ========================================================================== */
+
+.bbg-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    height: 24px;
+    padding: 0 12px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-primary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+}
+.bbg-status-segment {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border-right: 1px solid var(--border-primary);
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.bbg-status-segment:last-child { border-right: none; }
+.bbg-status-segment.flex-grow {
+    flex: 1;
+    min-width: 0;
+}
+
+/* =============================================================================
+   Signal list rows (right panel)
+   ========================================================================== */
+
+.bbg-signal-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    height: 24px;
+    border-bottom: 1px solid var(--border-secondary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--text-primary);
+    transition: background 80ms ease;
+}
+.bbg-signal-row:hover {
+    background: var(--bg-hover);
+}
+.bbg-signal-row .bbg-signal-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bbg-signal-toggle {
+    width: 22px;
+    height: 16px;
+    border: 1px solid var(--border-primary);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-left: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 1px;
+}
+.bbg-signal-toggle.active.buy {
+    background: var(--up);
+    color: #000;
+    border-color: var(--up);
+}
+.bbg-signal-toggle.active.sell {
+    background: var(--down);
+    color: #000;
+    border-color: var(--down);
+}
+
+/* =============================================================================
+   Progress bar (flat amber)
+   ========================================================================== */
+
+.progress-container {
+    width: 100%;
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 0;
+    overflow: hidden;
+    margin: 6px 0;
+}
+.progress-bar {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.3s ease;
+}
+.progress-bar.indeterminate {
+    width: 100%;
+    background: linear-gradient(90deg, var(--bg-tertiary) 0%, var(--accent) 50%, var(--bg-tertiary) 100%);
+    background-size: 200% 100%;
+    animation: bbg-shimmer 1.4s linear infinite;
+}
+@keyframes bbg-shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+}
+
+/* =============================================================================
+   Tabs (right-panel: Backtest / Optimizer / Data)
+   ========================================================================== */
+
+.panel-tab {
+    background: transparent !important;
+    border: none;
+    color: var(--text-secondary) !important;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 8px 14px !important;
+    border-bottom: 2px solid transparent !important;
+    cursor: pointer;
+    transition: color 80ms ease, border-color 80ms ease;
+}
+.panel-tab:hover {
+    color: var(--text-primary) !important;
+}
+.panel-tab.active {
+    color: var(--accent) !important;
+    border-bottom-color: var(--accent) !important;
+    font-weight: 700;
+}
+
+/* Drop the underline animation */
+.panel-tab::after { display: none !important; }
+

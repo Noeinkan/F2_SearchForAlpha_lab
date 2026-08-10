@@ -1,0 +1,635 @@
+/* =============================================================================
+   Strategy mode radio cards (right panel > Execution Type)
+
+   These are styled here and ONLY here. right_panel.py used to pass an inline
+   style dict as well, which won the cascade and silently disabled the :hover
+   and :checked rules below.
+   ========================================================================== */
+
+.strategy-mode-radio {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* The RadioItems label wraps the entire card div */
+.strategy-mode-radio label {
+    color: var(--text-primary) !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    cursor: pointer;
+}
+
+.strategy-mode-card {
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    padding: 8px 10px;
+    background: var(--bg-tertiary);
+    transition: background 80ms ease, border-color 80ms ease;
+    cursor: pointer;
+}
+
+.strategy-mode-card:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-focus);
+}
+
+/* Highlight the selected card (sibling input checked → parent label) */
+.strategy-mode-radio input[type="radio"]:checked + label .strategy-mode-card,
+.strategy-mode-radio label:has(input:checked) .strategy-mode-card {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+}
+
+/* =============================================================================
+   Execution Type explainer — mode fingerprints, matrix, sandbox
+
+   Every number these styles wrap is produced by lib/dash/execution_sim.py,
+   which runs the real backtest engine. See that module's docstring.
+   ========================================================================== */
+
+/* --- Fingerprint sparkline on each mode card --- */
+.sfa-exec-spark {
+    margin-top: 5px;
+    height: 22px;
+    opacity: 0.55;
+    transition: opacity 120ms ease;
+}
+
+.strategy-mode-card:hover .sfa-exec-spark,
+.strategy-mode-radio label:has(input:checked) .sfa-exec-spark {
+    opacity: 1;
+}
+
+.sfa-exec-spark-img {
+    display: block;
+    width: 100%;
+    height: 22px;
+}
+
+/* --- Inline dollar preview under each caption --- */
+.sfa-exec-preview {
+    letter-spacing: -0.01em;
+}
+
+/* --- "HOW EXECUTION WORKS" trigger --- */
+.sfa-exec-learn-btn {
+    width: 100%;
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px dashed var(--border-secondary);
+    border-radius: 2px;
+    color: var(--text-tertiary);
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: color 80ms ease, border-color 80ms ease;
+}
+
+.sfa-exec-learn-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--border-focus);
+    border-style: solid;
+}
+
+/* --- Dead-config warning (sell signals in Accumulation) --- */
+.sfa-exec-warning {
+    margin: -4px 0 12px;
+    padding: 7px 9px;
+    border: 1px solid;
+    border-radius: 3px;
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    font-family: var(--font-sans);
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+/* --- Modal shell ---
+   dbc.Modal ships Bootstrap's light shell (#fff) while everything rendered
+   inside is coloured from the theme tokens, so accent text — the matrix
+   headers, the mode intro, the section titles — landed near-white on white.
+   Paint the shell from the theme instead; see also .sfa-flow-learn-modal. */
+.sfa-exec-learn-modal .modal-content { max-height: min(88vh, 780px); }
+.sfa-exec-learn-modal-body { padding-top: 6px; }
+
+.sfa-exec-learn-modal .modal-content,
+.sfa-flow-learn-modal .modal-content,
+.sfa-opt-learn-modal .modal-content {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+}
+
+.sfa-exec-learn-modal .modal-header,
+.sfa-exec-learn-modal .modal-footer,
+.sfa-flow-learn-modal .modal-header,
+.sfa-flow-learn-modal .modal-footer,
+.sfa-opt-learn-modal .modal-header,
+.sfa-opt-learn-modal .modal-footer {
+    border-color: var(--border-primary);
+}
+
+/* Bootstrap's close glyph is a dark SVG — invert it on the dark themes. */
+.sfa-exec-learn-modal .btn-close,
+.sfa-flow-learn-modal .btn-close,
+.sfa-opt-learn-modal .btn-close {
+    filter: invert(1) grayscale(100%) brightness(1.6);
+    opacity: 0.7;
+}
+
+.sfa-exec-learn-modal .btn-close:hover,
+.sfa-flow-learn-modal .btn-close:hover,
+.sfa-opt-learn-modal .btn-close:hover { opacity: 1; }
+
+body.theme-light .sfa-exec-learn-modal .btn-close,
+body.theme-light .sfa-flow-learn-modal .btn-close,
+body.theme-light .sfa-opt-learn-modal .btn-close {
+    filter: none;
+}
+
+.sfa-opt-learn-modal .modal-content { max-height: min(88vh, 780px); }
+.sfa-opt-learn-modal-body { padding-top: 6px; }
+
+.sfa-opt-learn-section:last-of-type p { margin-bottom: 0; }
+
+.sfa-opt-learn-table {
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.sfa-opt-learn-tr {
+    display: grid;
+    grid-template-columns: minmax(140px, 1.1fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
+    gap: 8px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--border-primary);
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+}
+
+.sfa-opt-learn-tr:first-child { border-top: none; }
+
+.sfa-opt-learn-tr-head {
+    background: var(--bg-tertiary);
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.sfa-opt-section-blurb {
+    max-width: 100%;
+}
+
+/* --- Mechanics matrix --- */
+.sfa-exec-matrix-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+}
+
+.sfa-exec-matrix th:first-child,
+.sfa-exec-matrix td:first-child {
+    background: var(--bg-secondary);
+    position: sticky;
+    left: 0;
+}
+
+.sfa-exec-matrix tbody tr:last-child td { border-bottom: none; }
+.sfa-exec-matrix tbody tr:hover td { background: var(--bg-hover); }
+
+/* --- Try-it header + progress dots --- */
+.sfa-exec-tryit-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.sfa-exec-kicker {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+}
+
+.sfa-exec-dots { display: flex; gap: 5px; align-items: center; }
+
+.sfa-exec-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    border: 1px solid;
+    display: inline-block;
+    transition: background 160ms ease;
+}
+
+/* --- Mode tabs inside the modal --- */
+.sfa-exec-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+
+.sfa-exec-tab {
+    flex: 1;
+    padding: 6px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid transparent;
+    border-radius: 2px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    opacity: 0.78;
+    transition: opacity 80ms ease, background 80ms ease;
+}
+
+.sfa-exec-tab:hover { opacity: 0.92; }
+.sfa-exec-tab.is-active { opacity: 1; background: var(--bg-hover); }
+.sfa-exec-tab-tick { margin-left: 5px; font-size: 10px; }
+
+/* --- Sandbox --- */
+.sfa-exec-mode-intro {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.45;
+    margin-bottom: 10px;
+}
+
+.sfa-exec-predict {
+    padding: 10px;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    background: var(--bg-secondary);
+}
+
+.sfa-exec-predict-q {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.sfa-exec-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.sfa-exec-option {
+    flex: 1 1 auto;
+    min-width: 96px;
+    padding: 7px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+    transition: border-color 80ms ease, background 80ms ease, color 80ms ease;
+}
+
+.sfa-exec-option:hover:not(:disabled) {
+    border-color: var(--border-focus);
+    color: var(--text-primary);
+}
+
+.sfa-exec-option.is-picked {
+    border-color: var(--border-focus);
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+/* The whole point of the mechanic: a wrong guess is marked as clearly as a
+   right one, because that contrast is what makes the behaviour stick.
+   --up/--down (not raw green/red) so the CVD theme remaps these too. */
+.sfa-exec-option.is-correct {
+    border-color: var(--up);
+    color: var(--up);
+    background: color-mix(in srgb, var(--up) 12%, transparent);
+}
+
+.sfa-exec-option.is-wrong {
+    border-color: var(--down);
+    color: var(--down);
+    background: color-mix(in srgb, var(--down) 10%, transparent);
+    text-decoration: line-through;
+}
+
+.sfa-exec-option:disabled { cursor: default; }
+
+.sfa-exec-reveal {
+    padding: 6px 16px;
+    background: transparent;
+    border: 1px solid;
+    border-radius: 2px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+}
+
+.sfa-exec-reveal:hover { background: var(--bg-hover); }
+
+.sfa-exec-sting {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.sfa-exec-tape-note {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    margin: 10px 0 6px;
+}
+
+/* --- Sandbox sliders --- */
+.sfa-exec-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 4px 16px;
+    margin-bottom: 10px;
+}
+
+.sfa-exec-control { padding-bottom: 14px; }
+
+.sfa-exec-control-label {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    margin-bottom: 2px;
+}
+
+/* --- Stat row --- */
+.sfa-exec-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.sfa-exec-stat {
+    flex: 1 1 auto;
+    min-width: 72px;
+    padding: 5px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+}
+
+.sfa-exec-stat-label {
+    font-family: var(--font-sans);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.sfa-exec-stat-value {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* --- Ledger --- */
+.sfa-exec-ledger-wrap {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+}
+
+/* Bars where nothing happened recede so the eye lands on the fills. */
+.sfa-exec-row.is-quiet td { opacity: 0.58; }
+.sfa-exec-row:hover td { background: var(--bg-hover); opacity: 1; }
+
+.sfa-exec-chip {
+    display: inline-block;
+    min-width: 34px;
+    padding: 0 4px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    font-family: var(--font-sans);
+    font-size: 9px;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: 0.06em;
+}
+
+.sfa-exec-chip.is-empty { border-color: transparent; }
+
+.sfa-exec-inert {
+    margin-top: 8px;
+    font-family: var(--font-sans);
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sfa-exec-spark,
+    .sfa-exec-option,
+    .sfa-exec-tab { transition: none; }
+}
+
+/* Signal logic OR / AND radio toggle */
+.signal-logic-toggle {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.signal-logic-toggle label {
+    color: var(--text-secondary) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 11px !important;
+    border-radius: 2px;
+    transition: background 80ms ease, color 80ms ease;
+}
+
+.signal-logic-toggle label:has(input:checked) {
+    color: var(--text-primary) !important;
+    background: var(--bg-hover);
+}
+
+/* =============================================================================
+   Signal panel — left sidebar signal list
+   ========================================================================== */
+
+/* Force all labels and text to use theme colour, overriding Bootstrap's
+   dark default (#212529) that bleeds in on dark backgrounds. */
+label,
+.form-check-label,
+.form-label {
+    color: var(--text-primary) !important;
+}
+
+.signals-filter-label {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    margin-bottom: 3px;
+}
+
+.signals-category-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+}
+
+.signals-category-filter .form-check {
+    padding-left: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+}
+
+.signals-category-filter .form-check-input {
+    margin: 0;
+}
+
+.signals-unified-header {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    justify-items: center;
+    gap: 12px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-primary);
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+    text-align: center;
+}
+
+.signals-unified-header__col {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    width: 100%;
+}
+
+.signals-unified-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-height: 340px;
+    overflow-y: auto;
+}
+
+.signal-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    justify-items: center;
+    padding: 3px 8px;
+    border-bottom: 1px solid var(--border-secondary);
+    transition: background 80ms ease;
+    gap: 12px;
+    min-height: 26px;
+    text-align: center;
+}
+
+.signal-row:hover {
+    background: var(--bg-hover);
+}
+
+.signal-name {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    text-align: center;
+    width: 100%;
+    justify-self: stretch;
+}
+
+/* Buy/sell toggle checkboxes inside signal rows */
+.signal-toggle {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    justify-self: center;
+}
+
+/* Disabled placeholder when a signal has no buy/sell variant. */
+.signal-toggle--na {
+    opacity: 0.35;
+    cursor: default;
+}
+.signal-toggle--na .form-check-input {
+    cursor: not-allowed;
+    accent-color: var(--border-secondary);
+    border-color: var(--border-secondary);
+}
+
+.signal-toggle .form-check {
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
+.signal-toggle .form-check-input {
+    margin: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.buy-toggle .form-check-input {
+    accent-color: var(--up);
+    border-color: var(--up);
+}
+
+.sell-toggle .form-check-input {
+    accent-color: var(--down);
+    border-color: var(--down);
+}
+
+/* Ensure any label inside signal rows is always visible */
+.signal-row label,
+.signal-toggle label {
+    color: var(--text-primary) !important;
+    font-size: 11px;
+    font-family: var(--font-sans);
+    margin: 0;
+    cursor: pointer;
+}
+
+/* =============================================================================
+   Misc — keep existing animations available
+   ========================================================================== */
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(-12px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+.fade-in  { animation: fadeIn  0.18s ease-out; }
+.slide-in { animation: slideIn 0.18s ease-out; }
+

@@ -1,0 +1,171 @@
+/* =============================================================================
+   Terminal main chart frame
+   ========================================================================== */
+
+/* The floor must stay well under the shortest realistic viewport. The frame
+   lives in a column that is `calc(100vh - 44px - 24px)` tall with
+   `overflow:hidden`, so any floor the flexbox cannot shrink past pushes the
+   bottom of the chart out of the clip box — and the bottom of a Lightweight
+   Chart is the time axis. A 720px floor did exactly that below ~830px of
+   viewport: the dates vanished and the last pane was cut mid-histogram. */
+#chart-frame {
+    width: 100%;
+    flex: 1 1 0;
+    min-height: 320px;
+    position: relative;
+    min-width: 0;
+    /* Flex column so #financial-chart gets a definite used height without
+       relying on percentage resolution against a flex item (which collapses
+       to 0×0 in some Chromium layouts and leaves a black void). */
+    display: flex;
+    flex-direction: column;
+}
+
+#financial-chart {
+    flex: 1 1 0;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    position: relative;   /* anchors the floating OHLC legend */
+}
+
+/* Loading overlay is position:absolute (see .sfa-chart-loading) — do not
+   stretch #chart-frame descendants with height:100%. That rule used to target
+   a Loading wrapper around the canvas; it now also hit Lightweight Charts'
+   internal wrappers and the floating legend (grey veil). Legend sizes itself;
+   the canvas sizes via the flex rule on #financial-chart above. */
+
+/* Keep the spinner centered over the chart/panel without stealing layout
+   height, and tint it with the loading colour we pass from Python. */
+._dash-loading-callback,
+.dash-spinner-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Spinner overlay for the chart. Absolute + click-through so it floats over
+   the canvas without joining the flex layout or swallowing drags. */
+.sfa-chart-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 4;
+}
+
+/* ---- Floating OHLC + indicator readout.
+   Parks top-left when idle; .sfa-chart-legend--follow is positioned from the
+   crosshair by 10-sfa-chart.js. pointer-events:none so it never eats a drag.
+   Sized to content (narrow column) so it doesn't veil the price pane. */
+.sfa-chart-legend {
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    width: max-content;
+    max-width: min(168px, 38%);
+    padding: 4px 6px;
+    background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    box-shadow: 0 2px 10px color-mix(in srgb, #000 28%, transparent);
+    font-size: 10px;
+    line-height: 1.25;
+    pointer-events: none;
+    user-select: none;
+}
+
+.sfa-chart-legend:empty { display: none; }
+
+.sfa-chart-legend-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 6px;
+}
+
+.sfa-chart-legend-symbol {
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-primary);
+}
+
+.sfa-chart-legend-interval {
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    padding: 0 3px;
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    color: var(--text-secondary);
+}
+
+.sfa-chart-legend-cell {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 2px;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+}
+
+.sfa-chart-legend-cell i {
+    font-style: normal;
+    font-size: 9px;
+    color: var(--text-tertiary);
+}
+
+.sfa-chart-legend-cell b { font-weight: 600; font-size: 10px; }
+
+.sfa-chart-legend-inds {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding-top: 3px;
+    border-top: 1px solid var(--border-primary);
+}
+
+.sfa-chart-legend-ind {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+}
+
+.sfa-chart-legend-ind i {
+    font-style: normal;
+    font-size: 9px;
+    letter-spacing: 0.2px;
+    opacity: 0.9;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sfa-chart-legend-ind b {
+    font-weight: 600;
+    font-size: 10px;
+    flex-shrink: 0;
+}
+
+/* ---- Chart toolbar controls ---- */
+.sfa-chart-tools {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.sfa-chart-tools .bbg-button-ghost { padding: 2px 7px; }
+

@@ -23,6 +23,7 @@ from dash.exceptions import PreventUpdate
 
 from lib.dash.dash_config import DEFAULT_TICKER, WATCHLIST_FILE_PATH
 from lib.dash.layout.symbol_search import ASSET_CLASS_TABS, build_result_rows
+from lib.dash.symbol_quotes import QUOTE_LIMIT, fetch_quotes
 from lib.dash.ticker_search import resolve_ticker_symbol, search_symbols
 from lib.dash.watchlist_storage import (
     load_watchlists,
@@ -216,7 +217,20 @@ def register_symbol_search_callbacks(app) -> None:
             else f'{len(rows)} match{"" if len(rows) == 1 else "es"}'
         )
         current = str(active or '').strip().upper()
-        return build_result_rows(rows, starred, active=current), count
+
+        # Live prices only while the modal is open, and only for the top of
+        # the list — keeps typing snappy and avoids N× Yahoo calls offline.
+        quotes = {}
+        if open_state and rows:
+            try:
+                quotes = fetch_quotes(
+                    (row.get('Symbol') for row in rows),
+                    limit=QUOTE_LIMIT,
+                )
+            except Exception as exc:
+                logger.warning("Symbol quote enrichment failed: %s", exc)
+
+        return build_result_rows(rows, starred, active=current, quotes=quotes), count
 
     # ------------------------------------------------------------------
     # Selection. Both paths write the same Output, so they live in one

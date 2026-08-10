@@ -1,0 +1,465 @@
+/* =============================================================================
+   Trade-setup stepper inputs (right panel)
+   The numeric inputs (min-holding-period, trailing-stop-pct, take-profit-pct,
+   position-size-pct, position-scaling-pct, signal-cooldown-bars, amount-per-buy,
+   kelly-win-rate, kelly-win-loss-ratio) live inside coloured option cards.
+   Make the value large/tabular so the digit dominates over the chrome.
+
+   Note: the inputs do NOT carry the .bbg-input class — styling is fully inline
+   via the `style=` prop — so we target them by their `id` attribute directly.
+   `!important` is required to beat the inline padding/font-size on `style=`.
+   ========================================================================== */
+
+#min-holding-period,
+#trailing-stop-pct,
+#take-profit-pct,
+#position-size-pct,
+#position-scaling-pct,
+#signal-cooldown-bars,
+#amount-per-buy,
+#kelly-win-rate,
+#kelly-win-loss-ratio {
+    font-family: var(--font-mono) !important;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    font-weight: 600 !important;
+    font-size: 18px !important;
+    color: var(--text-primary) !important;
+    text-align: center !important;
+    height: 38px !important;
+    padding: 4px 32px !important;           /* leave room for native spinners */
+    letter-spacing: 0.5px;
+}
+
+/* Re-enable the WebKit native spinner buttons. The earlier global rule hides
+   them with `-webkit-appearance: none`; an ID selector + !important overrides
+   that for these specific inputs so users get a discoverable +/- control. */
+#min-holding-period::-webkit-inner-spin-button,
+#min-holding-period::-webkit-outer-spin-button,
+#trailing-stop-pct::-webkit-inner-spin-button,
+#trailing-stop-pct::-webkit-outer-spin-button,
+#take-profit-pct::-webkit-inner-spin-button,
+#take-profit-pct::-webkit-outer-spin-button,
+#position-size-pct::-webkit-inner-spin-button,
+#position-size-pct::-webkit-outer-spin-button,
+#position-scaling-pct::-webkit-inner-spin-button,
+#position-scaling-pct::-webkit-outer-spin-button,
+#signal-cooldown-bars::-webkit-inner-spin-button,
+#signal-cooldown-bars::-webkit-outer-spin-button,
+#amount-per-buy::-webkit-inner-spin-button,
+#amount-per-buy::-webkit-outer-spin-button,
+#kelly-win-rate::-webkit-inner-spin-button,
+#kelly-win-rate::-webkit-outer-spin-button,
+#kelly-win-loss-ratio::-webkit-inner-spin-button,
+#kelly-win-loss-ratio::-webkit-outer-spin-button {
+    -webkit-appearance: inner-spin-button !important;
+    appearance: auto !important;
+    opacity: 1 !important;
+    width: 22px !important;
+    height: 100% !important;
+    background: transparent !important;
+    cursor: pointer;
+    margin: 0 !important;
+}
+
+/* Firefox shows the spinner as a faint text-style control — make it visible
+   against the dark card backgrounds. */
+#min-holding-period,
+#trailing-stop-pct,
+#take-profit-pct,
+#position-size-pct,
+#position-scaling-pct,
+#signal-cooldown-bars,
+#amount-per-buy,
+#kelly-win-rate,
+#kelly-win-loss-ratio {
+    -moz-appearance: auto !important;
+}
+
+/* On focus, lift the value to the accent colour so the active input stands out. */
+#min-holding-period:focus,
+#trailing-stop-pct:focus,
+#take-profit-pct:focus,
+#position-size-pct:focus,
+#position-scaling-pct:focus,
+#signal-cooldown-bars:focus,
+#amount-per-buy:focus,
+#kelly-win-rate:focus,
+#kelly-win-loss-ratio:focus {
+    color: var(--accent) !important;
+}
+
+/* =============================================================================
+   Phase 2 — Responsive layout, collapsible sidebars, splitter
+   ========================================================================== */
+
+/* Toggle buttons (sits in panel/sidebar headers) */
+.sfa-panel-toggle {
+    background: transparent;
+    border: 1px solid var(--border-primary);
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 1px 6px;
+    cursor: pointer;
+    border-radius: 2px;
+    line-height: 1;
+    height: 18px;
+    transition: color 80ms ease, border-color 80ms ease;
+}
+.sfa-panel-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.sfa-panel-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Sidebar (left) — collapsed state: 40px rail showing only icons.
+   !important is mandatory: `styles['sidebar']` sets width/minWidth as an
+   *inline* style on the <aside>, and an inline declaration outranks any class
+   selector. Without it the children hide but the column keeps its full width,
+   so collapsing just leaves a dead black gutter instead of freeing space. */
+aside.sfa-sidebar { transition: width 160ms ease, min-width 160ms ease; }
+aside.sfa-sidebar.sfa-collapsed {
+    width: 40px !important;
+    min-width: 40px !important;
+    padding: 8px 4px !important;
+    overflow: hidden;
+}
+aside.sfa-sidebar.sfa-collapsed > *:not(.sfa-panel-toggle-wrap) { display: none; }
+aside.sfa-sidebar .sfa-panel-toggle-wrap {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 6px;
+}
+
+/* Right panel — collapsed state: hidden on the right edge */
+aside.sfa-right-panel {
+    transition: width 160ms ease, min-width 160ms ease, transform 160ms ease;
+    position: relative;
+}
+/* Same inline-style cascade problem as the sidebar above, doubled: the width
+   here is set both by `styles['right_panel']` and by the splitter drag
+   handler (`right.style.width = ...`). Only !important can beat either. */
+aside.sfa-right-panel.sfa-collapsed {
+    width: 0 !important;
+    min-width: 0 !important;
+    border-left-width: 0 !important;
+    overflow: hidden;
+}
+aside.sfa-right-panel .sfa-panel-toggle-wrap {
+    position: absolute;
+    top: 6px;
+    left: -22px;
+    z-index: 4;
+}
+
+/* Inner wrapper is a flex column so `panel_content` (flex:1; overflow:auto)
+   actually scrolls. Without `display:flex; min-height:0` the child grows to
+   full content height and the scrollbar never appears — the user sees
+   content bleed past the panel bottom and can't reach it. */
+.sfa-right-panel-inner {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+/* Splitter handle — 8px draggable column between chart and right panel */
+.sfa-splitter {
+    flex: 0 0 8px;
+    width: 8px;
+    cursor: col-resize;
+    background: transparent;
+    position: relative;
+    z-index: 2;
+    align-self: stretch;
+}
+.sfa-splitter::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 3px;
+    width: 2px;
+    background: var(--border-primary);
+    transition: background 80ms ease;
+}
+.sfa-splitter:hover::after,
+.sfa-splitter.dragging::after { background: var(--accent); }
+
+/* On viewports <1180px, the right panel becomes a slide-out drawer.
+   !important is required here because the inline `width` set by the Python
+   stylesheet (styles['right_panel']) would otherwise win the cascade. */
+@media (max-width: 1180px) {
+    aside.sfa-sidebar { width: 220px !important; min-width: 220px !important; }
+    aside.sfa-right-panel {
+        position: fixed !important;
+        right: 0;
+        top: 44px;
+        bottom: 24px;
+        width: 320px !important;
+        min-width: 320px !important;
+        transform: translateX(100%);
+        transition: transform 200ms ease;
+        z-index: 5;
+        border-left: 1px solid var(--border-primary);
+    }
+    aside.sfa-right-panel.sfa-open {
+        transform: translateX(0);
+    }
+    /* The fixed-position drawer ignores .sfa-collapsed width:0 — collapse
+       becomes a translate-X too so we don't trap content offscreen. */
+    aside.sfa-right-panel.sfa-collapsed { width: 320px !important; min-width: 320px !important; }
+    .sfa-splitter { display: none; }
+}
+
+/* On viewports ≥1800px, give the right panel more breathing room */
+@media (min-width: 1800px) {
+    aside.sfa-right-panel { width: 360px !important; min-width: 360px !important; }
+    aside.sfa-right-panel .sfa-right-panel-inner { width: 100%; }
+}
+
+/* =============================================================================
+   Phone shell (≤900px) — drawers, compact chrome, terminal + overlays
+   ========================================================================== */
+
+/* Hamburger — desktop hidden; phone shows it in the header. */
+.sfa-mobile-menu-btn,
+.sfa-mobile-backtest-btn {
+    display: none;
+    flex: 0 0 auto;
+    margin-right: 4px;
+    font-size: 16px;
+    line-height: 1;
+}
+.sfa-mobile-backtest-btn {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+/* Scrim behind drawers; clientside toggles .sfa-visible. */
+.sfa-mobile-scrim {
+    display: none;
+    position: fixed;
+    inset: 44px 0 24px 0;
+    z-index: 14;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    appearance: none;
+}
+.sfa-mobile-scrim.sfa-visible {
+    display: block;
+}
+
+@media (max-width: 900px) {
+    .sfa-mobile-menu-btn,
+    .sfa-mobile-backtest-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Left sidebar becomes an off-canvas drawer (mirrors right panel <1180). */
+    aside.sfa-sidebar,
+    aside.sfa-sidebar.sfa-collapsed {
+        position: fixed !important;
+        left: 0;
+        top: 44px;
+        bottom: 24px;
+        width: min(280px, 85vw) !important;
+        min-width: 0 !important;
+        max-width: 85vw;
+        z-index: 16;
+        transform: translateX(-100%);
+        transition: transform 200ms ease;
+        padding: 8px !important;
+        overflow-x: hidden;
+        overflow-y: auto;
+        background: var(--bg-secondary);
+        border-right: 1px solid var(--border-primary);
+        box-shadow: 8px 0 24px rgba(0, 0, 0, 0.35);
+    }
+    aside.sfa-sidebar.sfa-open {
+        transform: translateX(0);
+    }
+    aside.sfa-sidebar.sfa-collapsed .sfa-panel-toggle-wrap {
+        justify-content: flex-end;
+    }
+
+    /* Right panel: match left drawer affordance; header BT replaces edge peek. */
+    aside.sfa-right-panel,
+    aside.sfa-right-panel.sfa-collapsed {
+        position: fixed !important;
+        right: 0;
+        top: 44px;
+        bottom: 24px;
+        width: min(360px, 92vw) !important;
+        min-width: 0 !important;
+        max-width: 92vw;
+        z-index: 16;
+        transform: translateX(100%);
+        transition: transform 200ms ease;
+        border-left: 1px solid var(--border-primary);
+        box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+        background: var(--bg-secondary);
+    }
+    aside.sfa-right-panel.sfa-open {
+        transform: translateX(0);
+    }
+    aside.sfa-right-panel .sfa-panel-toggle-wrap {
+        display: none;
+    }
+    aside.sfa-right-panel .sfa-right-panel-inner {
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+    }
+    aside.sfa-right-panel .sfa-right-panel-inner > div:last-child {
+        min-height: 0;
+        -webkit-overflow-scrolling: touch;
+    }
+    aside.sfa-right-panel #panel-backtest,
+    aside.sfa-right-panel #panel-optimizer,
+    aside.sfa-right-panel #panel-data {
+        min-height: 0;
+    }
+
+    .sfa-splitter { display: none !important; }
+
+    /* Soften chart floor on short phone viewports. */
+    #chart-frame {
+        min-height: min(320px, 45vh);
+    }
+
+    /* Chart toolbar: wrap early; demote export/fullscreen. */
+    .sfa-chart-tools {
+        flex-wrap: wrap;
+        row-gap: 4px;
+    }
+    #chart-type-select,
+    .sfa-chart-type {
+        width: min(96px, 28vw) !important;
+        min-width: 0 !important;
+    }
+    .sfa-chart-secondary-tool {
+        display: none !important;
+    }
+    #chart-subtitle {
+        display: none;
+    }
+    #signal-count-bar {
+        gap: 4px;
+    }
+
+    /* Backtest drawer content */
+    .sfa-test-window-seg.bbg-radio-seg {
+        flex-wrap: wrap;
+    }
+    .strategy-mode-radio {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    #data-table-container,
+    #backtest-results {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+
+    /* Compact header / status */
+    .bbg-wordmark-sub { display: none; }
+    .bbg-header-status-label,
+    .bbg-header-divider { display: none; }
+    .bbg-tape-delta { display: none; }
+    .bbg-donate-button {
+        padding: 2px 8px;
+        font-size: 10px;
+    }
+    .bbg-status-segment.flex-grow { display: none; }
+    .bbg-status-btn .sfa-status-kbd { display: none; }
+    button.bbg-status-btn { padding: 2px 8px; font-size: 10px; }
+
+    /* Full-bleed overlays under header / above status */
+    .sfa-fundamentals-overlay,
+    .sfa-flow-overlay {
+        inset: 44px 0 24px 0 !important;
+        border-left: none !important;
+        border-right: none !important;
+        border-radius: 0 !important;
+    }
+
+    .sfa-overlay-toolbar {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+    .sfa-overlay-toolbar-actions {
+        margin-left: 0 !important;
+        width: 100%;
+    }
+    .sfa-overlay-toolbar-actions > * {
+        margin-left: 0 !important;
+    }
+
+    /* Flow: demote secondary actions so RESCAN / CLOSE / symbol stay primary */
+    .sfa-flow-overlay .sfa-flow-secondary-action {
+        display: none !important;
+    }
+    .sfa-flow-overlay .sfa-flow-status {
+        display: none;
+    }
+
+    .sfa-flow-inv-header,
+    .sfa-flow-gex-header,
+    .sfa-flow-vanna-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .sfa-flow-inv-controls,
+    .sfa-flow-gex-controls,
+    .sfa-flow-vanna-expiry {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+    .sfa-flow-strike-track,
+    .sfa-flow-diagram-track {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Fundamentals tables: allow horizontal scroll inside panels */
+    .sfa-fundamentals-panel,
+    .sfa-fundamentals-valuation {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+    .sfa-fundamentals-summary {
+        gap: 4px;
+    }
+    .sfa-fundamentals-hero-value {
+        font-size: 18px;
+    }
+    .sfa-valuation-grid {
+        grid-template-columns: 1fr;
+    }
+    .sfa-fundamentals-charts {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .bbg-tape-price {
+        font-size: 12px;
+    }
+    .sfa-chart-tools {
+        row-gap: 4px;
+    }
+}
+
