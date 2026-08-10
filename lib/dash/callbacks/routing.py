@@ -141,10 +141,14 @@ def register_routing_callbacks(app) -> None:
         terminal_style = {'display': 'none'} if on_alt_page else {}
 
         style = dict(overlay_style or {})
+        # Must be flex (not block): #fundamentals-scroll-region needs a flex
+        # parent + min-height:0 to form a scrollport. display:block overrides
+        # the CSS column and clips Big Five / charts with no scrollbar.
         style.update({
             'backgroundColor': theme['bg_primary'],
             'border': f'1px solid {theme["border_primary"]}',
-            'display': 'block' if on_fundamentals else 'none',
+            'display': 'flex' if on_fundamentals else 'none',
+            'flexDirection': 'column',
             'position': 'fixed',
             'zIndex': 20,
             'overflow': 'hidden',

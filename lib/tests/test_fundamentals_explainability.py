@@ -92,3 +92,86 @@ def test_resolve_selected_metric_survives_sibling_table_clear():
         )
 
     assert metric == 'PEG'
+
+
+def test_dependency_chips_include_live_values():
+    from lib.dash.callbacks.fundamentals_formulas import _dependency_chip_rows
+
+    layers = {
+        'direct_valuation': ['Rule #1 PE', 'Estimated EPS GR'],
+        'indirect_valuation': [],
+        'direct_financial': [],
+        'indirect_financial': [],
+        'direct_big_five': [],
+        'indirect_big_five': [],
+    }
+    row_map = {'Rule #1 PE': '40.0', 'Estimated EPS GR': '50.00%'}
+    chips = _dependency_chip_rows(layers, row_map)
+    assert chips is not None
+    text = str(chips)
+    assert 'Rule #1 PE' in text
+    assert '40.0' in text
+    assert '50.00%' in text
+    assert 'sfa-dep-chip-direct' in text
+
+
+def test_dependency_chip_uses_pattern_matched_button_id():
+    from lib.dash.callbacks.fundamentals_formulas import _dependency_chip
+
+    chip = _dependency_chip('Rule #1 PE', {'Rule #1 PE': '40.0'}, tone='direct')
+    assert chip.id == {'type': 'sfa-dep-chip', 'metric': 'Rule #1 PE'}
+    assert chip.n_clicks == 0
+    assert 'sfa-dep-chip-direct' in chip.className
+
+
+def test_locate_metric_cell_finds_valuation_a_and_b_rows():
+    from lib.dash.callbacks.fundamentals_formulas import _locate_metric_cell
+
+    val_a = [{'metric': 'PEG', 'value': '0.8'}, {'metric': 'Rule #1 PE', 'value': '40.0'}]
+    val_b = [{'metric': 'MARR', 'value': '15.00%'}, {'metric': 'Entry Price', 'value': '$324.37'}]
+    dcf = [{'metric': 'Base FCFE', 'value': '$1'}]
+
+    peg = _locate_metric_cell('PEG', None, None, val_a, val_b, dcf)
+    assert peg is not None
+    assert peg[0] == 'fundamentals-valuation-table-a'
+    assert peg[1]['row'] == 0
+
+    entry = _locate_metric_cell('Entry Price', None, None, val_a, val_b, dcf)
+    assert entry is not None
+    assert entry[0] == 'fundamentals-valuation-table-b'
+    assert entry[1]['row'] == 1
+
+
+def test_triggered_dep_chip_metric_parses_prop_id():
+    from lib.dash.callbacks.fundamentals_formulas import _triggered_dep_chip_metric
+
+    prop_id = '{"metric":"Rule #1 PE","type":"sfa-dep-chip"}.n_clicks'
+    assert _triggered_dep_chip_metric(prop_id) == 'Rule #1 PE'
+    assert _triggered_dep_chip_metric('fundamentals-valuation-table-a.active_cell') is None
+
+
+def test_valuation_explain_content_includes_subtitle_and_chips():
+    from lib.dash.callbacks.fundamentals_formulas import (
+        _VALUATION_EXPLAIN_MAP,
+        _valuation_explain_content,
+    )
+    from lib.dash.dash_config import get_theme
+
+    rows = [
+        {'metric': 'PEG', 'value': '0.8'},
+        {'metric': 'Rule #1 PE', 'value': '40.0'},
+        {'metric': 'Estimated EPS GR', 'value': '50.00%'},
+    ]
+    content = _valuation_explain_content(
+        'PEG',
+        _VALUATION_EXPLAIN_MAP['PEG'],
+        get_theme('bloomberg'),
+        rows,
+    )
+    blob = str(content)
+    assert 'Sources highlighted above' in blob
+    assert 'Esc to close' in blob
+    assert 'sfa-dep-chip' in blob
+    assert 'Rule #1 PE' in blob
+    assert 'Data sources' not in blob
+    assert "{'type': 'sfa-dep-chip'" in blob or '{"type":"sfa-dep-chip"' in blob or "sfa-dep-chip" in blob

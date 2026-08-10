@@ -6,6 +6,9 @@
     inset: 44px 0 0 0 !important;
     border: none !important;
     box-shadow: none !important;
+    /* Inline display:block from an old route callback killed the scrollport. */
+    display: flex !important;
+    flex-direction: column !important;
 }
 
 .sfa-fundamentals-overlay {
@@ -706,8 +709,101 @@
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.4px;
-    margin-bottom: 8px;
+    margin-bottom: 2px;
     color: var(--text-primary);
+}
+
+.sfa-formula-header {
+    margin-bottom: 8px;
+}
+
+.sfa-formula-subtitle {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    line-height: 1.35;
+    color: var(--text-tertiary);
+    letter-spacing: 0.2px;
+}
+
+.sfa-dep-chips {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sfa-dep-group-label {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 3px;
+}
+
+.sfa-dep-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.sfa-dep-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    max-width: 100%;
+    padding: 2px 7px;
+    border-radius: 2px;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    line-height: 1.35;
+    color: inherit;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+    text-align: left;
+}
+
+.sfa-dep-chip:hover {
+    background: var(--bg-hover);
+}
+
+.sfa-dep-chip:focus-visible {
+    outline: 1px solid var(--border-focus);
+    outline-offset: 1px;
+}
+
+.sfa-dep-chip-direct {
+    border-color: color-mix(in srgb, var(--warn) 55%, var(--border-primary));
+    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--warn) 80%, transparent);
+}
+
+.sfa-dep-chip-direct:hover {
+    border-color: var(--warn);
+}
+
+.sfa-dep-chip-indirect {
+    border-color: color-mix(in srgb, var(--info) 55%, var(--border-primary));
+    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--info) 80%, transparent);
+}
+
+.sfa-dep-chip-indirect:hover {
+    border-color: var(--info);
+}
+
+.sfa-dep-chip-name {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.sfa-dep-chip-sep {
+    color: var(--text-tertiary);
+}
+
+.sfa-dep-chip-value {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
 }
 
 .sfa-formula-card {

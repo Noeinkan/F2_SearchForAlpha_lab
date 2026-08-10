@@ -201,6 +201,15 @@ def test_fundamentals_overlay_scrolls_in_one_container(layout):
     assert _find_by_id(region, "fundamentals-loading") is not None
 
 
+def test_fundamentals_route_shows_overlay_as_flex():
+    """display:block on the overlay parent clips content; flex forms the scrollport."""
+    from pathlib import Path
+
+    src = Path("lib/dash/callbacks/routing.py").read_text(encoding="utf-8")
+    assert "'display': 'flex' if on_fundamentals else 'none'" in src
+    assert "'display': 'block' if on_fundamentals" not in src
+
+
 # --- Style invariants (the Phase 1 chart-collapse fix) ------------------------
 
 def test_chart_container_has_min_width_zero():

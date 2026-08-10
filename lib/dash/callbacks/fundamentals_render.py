@@ -557,7 +557,10 @@ def _valuation_tooltips(rows: list[dict[str, Any]]) -> list[dict[str, dict[str, 
                 'value': {'value': metric, 'type': 'text'},
             })
             continue
-        tooltip_text = f"{explain.get('what', explain['explanation'])}\n{explain.get('why_use', explain['explanation'])}"
+        what = str(explain.get('what') or explain.get('explanation') or metric).strip()
+        if len(what) > 110:
+            what = what[:107].rstrip() + '...'
+        tooltip_text = f"{what}\nClick for formula & sources."
         tooltip_rows.append({
             'metric': {'value': tooltip_text, 'type': 'text'},
             'value': {'value': tooltip_text, 'type': 'text'},

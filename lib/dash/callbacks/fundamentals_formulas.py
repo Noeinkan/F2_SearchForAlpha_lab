@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from dash import callback_context, html
@@ -661,6 +662,7 @@ def _formula_card(symbolic: html.Div | None, substituted: html.Div | None) -> ht
 def _explain_notes_column(
     explain: dict[str, Any],
     layers: dict[str, Any],
+    row_map: dict[str, str] | None = None,
 ) -> html.Div:
     """Right column: definitions, rationale, calculation notes, sources."""
     sections: list[Any] = [
@@ -671,17 +673,19 @@ def _explain_notes_column(
         html.Div('How we calculate it', className='sfa-explain-heading'),
         html.Div(explain.get('explanation', '--'), className='sfa-formula-explanation'),
     ]
+    dep_chips = _dependency_chip_rows(layers, row_map or {})
+    has_dep_metrics = _has_dependency_metrics(layers)
+    # Chips already list upstream metrics; keep prose only when there are no chip rows.
     source_text = _source_summary(explain)
-    if source_text and source_text != 'No upstream rows required.':
+    if source_text and source_text != 'No upstream rows required.' and not has_dep_metrics:
         sections.extend([
             html.Div('Data sources', className='sfa-explain-heading'),
             html.Div(source_text, className='sfa-formula-meta'),
         ])
-    layer_text = _layer_summary_text(layers)
-    if layer_text:
+    if dep_chips is not None:
         sections.extend([
             html.Div('Dependencies', className='sfa-explain-heading'),
-            html.Div(layer_text, className='sfa-formula-meta'),
+            dep_chips,
         ])
     inputs = explain.get('inputs', [])
     if inputs:
@@ -705,12 +709,18 @@ def _valuation_explain_content(metric: str, explain: dict[str, Any], theme: dict
     symbolic = _build_symbolic_equation(canonical)
     substituted = _build_substituted_equation(canonical, row_map)
     return [
-        html.Div(f"Calculation detail: {metric}", className='sfa-formula-title', style={
-            'color': theme['accent_blue'],
-        }),
+        html.Div([
+            html.Div(f"Calculation detail: {metric}", className='sfa-formula-title', style={
+                'color': theme['accent_blue'],
+            }),
+            html.Div(
+                'Sources highlighted above · Esc to close',
+                className='sfa-formula-subtitle',
+            ),
+        ], className='sfa-formula-header'),
         html.Div([
             html.Div(_formula_card(symbolic, substituted), className='sfa-explain-col-formulas'),
-            _explain_notes_column(explain, layers),
+            _explain_notes_column(explain, layers, row_map),
         ], className='sfa-explain-grid'),
     ]
 
@@ -885,6 +895,117 @@ def _dependency_layers(metric: str) -> dict[str, list[str]]:
         'direct_big_five': sorted(set(direct_big_five)),
         'indirect_big_five': sorted(indirect_big_five.difference(direct_big_five)),
     }
+
+
+def _has_dependency_metrics(layers: dict[str, list[str]]) -> bool:
+    return any(
+        layers.get(key)
+        for key in (
+            'direct_valuation',
+            'indirect_valuation',
+            'direct_financial',
+            'indirect_financial',
+            'direct_big_five',
+            'indirect_big_five',
+        )
+    )
+
+
+def _dependency_chip_rows(layers: dict[str, list[str]], row_map: dict[str, str]) -> html.Div | None:
+    """Build direct/indirect dependency chips with live table values when available."""
+    groups: list[tuple[str, str, list[str]]] = [
+        ('Direct', 'direct', (
+            list(layers.get('direct_valuation') or [])
+            + list(layers.get('direct_financial') or [])
+            + list(layers.get('direct_big_five') or [])
+        )),
+        ('Indirect', 'indirect', (
+            list(layers.get('indirect_valuation') or [])
+            + list(layers.get('indirect_financial') or [])
+            + list(layers.get('indirect_big_five') or [])
+        )),
+    ]
+    sections: list[Any] = []
+    for label, tone, metrics in groups:
+        unique = []
+        seen: set[str] = set()
+        for metric in metrics:
+            canonical = _canonical_metric(metric)
+            if canonical in seen:
+                continue
+            seen.add(canonical)
+            unique.append(canonical)
+        if not unique:
+            continue
+        chips = [_dependency_chip(metric, row_map, tone=tone) for metric in unique]
+        sections.append(html.Div([
+            html.Div(label, className='sfa-dep-group-label'),
+            html.Div(chips, className='sfa-dep-chip-row'),
+        ], className=f'sfa-dep-group sfa-dep-group-{tone}'))
+    if not sections:
+        return html.Div('No dependency rows for this metric.', className='sfa-formula-meta')
+    return html.Div(sections, className='sfa-dep-chips')
+
+
+def _dependency_chip(metric: str, row_map: dict[str, str], *, tone: str) -> html.Button:
+    canonical = _canonical_metric(metric)
+    value = row_map.get(canonical)
+    children: list[Any] = [html.Span(metric, className='sfa-dep-chip-name')]
+    if value and value != '--':
+        children.extend([
+            html.Span('·', className='sfa-dep-chip-sep'),
+            html.Span(value, className='sfa-dep-chip-value'),
+        ])
+    return html.Button(
+        children,
+        id={'type': 'sfa-dep-chip', 'metric': canonical},
+        n_clicks=0,
+        type='button',
+        title=f'Open formula for {metric}',
+        className=f'sfa-dep-chip sfa-dep-chip-{tone}',
+    )
+
+
+def _locate_metric_cell(
+    metric: str,
+    fin_rows: list[dict[str, Any]] | None,
+    big_rows: list[dict[str, Any]] | None,
+    val_a_rows: list[dict[str, Any]] | None,
+    val_b_rows: list[dict[str, Any]] | None,
+    dcf_rows: list[dict[str, Any]] | None = None,
+) -> tuple[str, dict[str, Any]] | None:
+    """Return (table_id, active_cell) for a metric row, or None if not found."""
+    canonical = _canonical_metric(metric)
+    tables: list[tuple[str, list[dict[str, Any]] | None]] = [
+        ('fundamentals-valuation-table-a', val_a_rows),
+        ('fundamentals-valuation-table-b', val_b_rows),
+        ('fundamentals-dcf-table', dcf_rows),
+        ('fundamentals-financial-table', fin_rows),
+        ('fundamentals-big-five-table', big_rows),
+    ]
+    for table_id, rows in tables:
+        if not rows:
+            continue
+        for index, row in enumerate(rows):
+            if _canonical_metric(str(row.get('metric', ''))) == canonical:
+                return table_id, {
+                    'row': index,
+                    'column': 0,
+                    'column_id': 'metric',
+                }
+    return None
+
+
+def _triggered_dep_chip_metric(prop_id: str) -> str | None:
+    """Parse pattern-matched ``sfa-dep-chip`` metric from a Dash prop_id."""
+    try:
+        payload = json.loads(str(prop_id).split('.', 1)[0])
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get('type') != 'sfa-dep-chip':
+        return None
+    metric = payload.get('metric')
+    return _canonical_metric(str(metric)) if metric else None
 
 
 def _layer_summary_text(layers: dict[str, list[str]]) -> str:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from dash import callback_context, no_update
-from dash.dependencies import Input, Output, State
+from dash.dependencies import ALL, Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.dash.routes import extract_path_ticker, is_fundamentals_route, ticker_from_search
@@ -29,10 +29,12 @@ from .fundamentals_formulas import (
     _dependency_layers,
     _formula_card,
     _highlight_metric_rules,
+    _locate_metric_cell,
     _merge_valuation_rows,
     _metric_from_active_cell,
     _parse_display_number,
     _resolve_selected_metric,
+    _triggered_dep_chip_metric,
     _valuation_explain_content,
     _valuation_explain_style,
     _valuation_generic_content,
@@ -184,13 +186,15 @@ def register_fundamentals_callbacks(app) -> None:
          Input('fundamentals-valuation-table-b', 'active_cell'),
          Input('fundamentals-dcf-table', 'active_cell'),
          Input('fundamentals-esc-signal', 'value'),
-         Input('theme-store', 'data')],
+         Input('theme-store', 'data'),
+         Input({'type': 'sfa-dep-chip', 'metric': ALL}, 'n_clicks')],
         [State('fundamentals-financial-table', 'data'),
          State('fundamentals-big-five-table', 'data'),
          State('fundamentals-big-five-table', 'columns'),
          State('fundamentals-valuation-table-a', 'data'),
          State('fundamentals-valuation-table-b', 'data'),
          State('fundamentals-dcf-table', 'data')],
+        prevent_initial_call=True,
     )
     def update_fundamentals_explainability(
         fin_active,
@@ -200,6 +204,7 @@ def register_fundamentals_callbacks(app) -> None:
         dcf_active,
         esc_signal,
         theme_name,
+        chip_clicks,  # noqa: ARG001 — required ALL Input for pattern-matched chips
         fin_rows,
         big_rows,
         big_columns,
@@ -216,9 +221,16 @@ def register_fundamentals_callbacks(app) -> None:
         val_rows = _merge_valuation_rows(val_a_rows, val_b_rows) + list(dcf_rows or [])
         explain_style = _valuation_explain_style(theme, visible=False)
         explain_children = []
-        clear_cells = no_update, no_update, no_update, no_update, no_update
+        fin_cell = big_cell = val_a_cell = val_b_cell = dcf_cell = no_update
 
-        trigger = callback_context.triggered[0]['prop_id'].split('.')[0] if callback_context.triggered else ''
+        triggered = callback_context.triggered[0] if callback_context.triggered else {}
+        trigger_prop = str(triggered.get('prop_id') or '')
+        trigger = trigger_prop.split('.')[0] if trigger_prop else ''
+        chip_metric = _triggered_dep_chip_metric(trigger_prop)
+        if chip_metric is not None and not triggered.get('value'):
+            # Chip remount / ALL-list churn fires with n_clicks=0 — ignore.
+            raise PreventUpdate
+
         if trigger == 'fundamentals-esc-signal' and esc_signal:
             return (
                 financial_style, big_five_style, valuation_style, valuation_style, dcf_style,
@@ -226,18 +238,38 @@ def register_fundamentals_callbacks(app) -> None:
                 None, None, None, None, None,
             )
 
-        metric = _resolve_selected_metric(
-            fin_active,
-            big_active,
-            val_a_active,
-            val_b_active,
-            fin_rows,
-            big_rows,
-            val_a_rows,
-            val_b_rows,
-            dcf_active,
-            dcf_rows,
-        )
+        if chip_metric:
+            metric = chip_metric
+            located = _locate_metric_cell(
+                chip_metric, fin_rows, big_rows, val_a_rows, val_b_rows, dcf_rows,
+            )
+            fin_cell = big_cell = val_a_cell = val_b_cell = dcf_cell = None
+            if located:
+                table_id, active = located
+                if table_id == 'fundamentals-financial-table':
+                    fin_cell = active
+                elif table_id == 'fundamentals-big-five-table':
+                    big_cell = active
+                elif table_id == 'fundamentals-valuation-table-a':
+                    val_a_cell = active
+                elif table_id == 'fundamentals-valuation-table-b':
+                    val_b_cell = active
+                elif table_id == 'fundamentals-dcf-table':
+                    dcf_cell = active
+        else:
+            metric = _resolve_selected_metric(
+                fin_active,
+                big_active,
+                val_a_active,
+                val_b_active,
+                fin_rows,
+                big_rows,
+                val_a_rows,
+                val_b_rows,
+                dcf_active,
+                dcf_rows,
+            )
+
         if not metric:
             return (
                 financial_style,
@@ -247,7 +279,11 @@ def register_fundamentals_callbacks(app) -> None:
                 dcf_style,
                 explain_children,
                 explain_style,
-                *clear_cells,
+                fin_cell,
+                big_cell,
+                val_a_cell,
+                val_b_cell,
+                dcf_cell,
             )
 
         canonical_metric = _canonical_metric(metric)
@@ -281,22 +317,34 @@ def register_fundamentals_callbacks(app) -> None:
         # Only clear sibling valuation tables when this trigger is a real
         # selection. Clearing active_cell→None re-fires this callback; a clear
         # event must not wipe the remaining selection (or clear it again).
-        val_a_cell, val_b_cell, dcf_cell = clear_cells[2], clear_cells[3], clear_cells[4]
-        trigger_has_selection = (
-            (trigger == 'fundamentals-valuation-table-a' and _metric_from_active_cell(val_a_active, val_a_rows))
-            or (trigger == 'fundamentals-valuation-table-b' and _metric_from_active_cell(val_b_active, val_b_rows))
-            or (trigger == 'fundamentals-dcf-table' and _metric_from_active_cell(dcf_active, dcf_rows))
-        )
-        if trigger_has_selection:
-            if trigger == 'fundamentals-valuation-table-a':
-                val_b_cell = None
-                dcf_cell = None
-            elif trigger == 'fundamentals-valuation-table-b':
-                val_a_cell = None
-                dcf_cell = None
-            elif trigger == 'fundamentals-dcf-table':
-                val_a_cell = None
-                val_b_cell = None
+        if not chip_metric:
+            trigger_has_selection = (
+                (trigger == 'fundamentals-valuation-table-a' and _metric_from_active_cell(val_a_active, val_a_rows))
+                or (trigger == 'fundamentals-valuation-table-b' and _metric_from_active_cell(val_b_active, val_b_rows))
+                or (trigger == 'fundamentals-dcf-table' and _metric_from_active_cell(dcf_active, dcf_rows))
+                or (trigger == 'fundamentals-financial-table' and _metric_from_active_cell(fin_active, fin_rows))
+                or (trigger == 'fundamentals-big-five-table' and _metric_from_active_cell(big_active, big_rows))
+            )
+            if trigger_has_selection:
+                if trigger == 'fundamentals-valuation-table-a':
+                    val_b_cell = None
+                    dcf_cell = None
+                elif trigger == 'fundamentals-valuation-table-b':
+                    val_a_cell = None
+                    dcf_cell = None
+                elif trigger == 'fundamentals-dcf-table':
+                    val_a_cell = None
+                    val_b_cell = None
+                elif trigger == 'fundamentals-financial-table':
+                    val_a_cell = None
+                    val_b_cell = None
+                    dcf_cell = None
+                    big_cell = None
+                elif trigger == 'fundamentals-big-five-table':
+                    val_a_cell = None
+                    val_b_cell = None
+                    dcf_cell = None
+                    fin_cell = None
         return (
             financial_style,
             big_five_style,
@@ -305,8 +353,8 @@ def register_fundamentals_callbacks(app) -> None:
             dcf_style,
             explain_children,
             explain_style,
-            clear_cells[0],
-            clear_cells[1],
+            fin_cell,
+            big_cell,
             val_a_cell,
             val_b_cell,
             dcf_cell,
