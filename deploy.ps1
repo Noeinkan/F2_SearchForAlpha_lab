@@ -44,7 +44,16 @@ $SYNC_DIRS = @("lib", "config", "scripts")
 
 # Config files uploaded on every deploy (strategy_config.yaml is opt-in via -PushConfig
 # so server-side promotions / openclaw edits are not overwritten).
-$CONFIG_FILES_ALWAYS = @("agent.yaml", "ui_presets.json", "param_history.yaml")
+# tickers_*.csv must ship every deploy — symbol search reads them from disk on
+# the server; omitting them leaves prod with an empty/missing universe while
+# localhost (full repo checkout) still works.
+$CONFIG_FILES_ALWAYS = @(
+    "agent.yaml",
+    "ui_presets.json",
+    "param_history.yaml",
+    "tickers_universe.csv",
+    "tickers_curated.csv"
+)
 
 # Files / patterns to exclude from rsync
 $EXCLUDES = @(

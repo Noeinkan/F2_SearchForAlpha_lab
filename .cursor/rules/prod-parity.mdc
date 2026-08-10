@@ -1,0 +1,13 @@
+---
+description: Local and Hetzner prod must behave the same; verify on prod
+alwaysApply: true
+---
+
+# Production parity (Hetzner)
+
+- **Prod URL:** http://77.42.70.26:8060/ (`root@77.42.70.26`, app under `/opt/searchforalpha`)
+- **Deploy:** `deploy.ps1` (and `scripts/restart_sfa_dashboard.ps1`)
+- **Rule:** Anything that works locally must work on prod. Do not treat “works on localhost” as done.
+- When fixing UI/data/search bugs reported from the live site, reproduce or verify against the Hetzner host (SSH or the prod URL), not only the local workspace.
+- After code or config changes that affect the dashboard (universe CSV, callbacks, assets), deploy/restart so prod picks them up.
+- `deploy.ps1` must keep shipping `config/tickers_universe.csv` and `config/tickers_curated.csv` — without them prod falls back to a thin network list and symbol search misses names like ZS/CHKP.

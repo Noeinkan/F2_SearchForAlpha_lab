@@ -77,8 +77,33 @@ class TestFundamentalsResult(unittest.TestCase):
         self.assertIn("big_five_note", payload)
         self.assertIn("Entry Price", [row["metric"] for row in payload["valuation"]])
         self.assertIn("ROIC", payload["chart_series"])
+        self.assertIn("dcf", payload)
+        self.assertIn("dcf_sensitivity", payload)
+        self.assertEqual(payload["dcf"], [])  # no sharesOutstanding in info
+        self.assertTrue(any("DCF unavailable" in note for note in payload["quality_notes"]))
 
-    def test_estimated_eps_growth_uses_minimum_positive_rate(self):
+    def test_annual_dcf_populated_when_shares_present(self):
+        result = build_fundamentals_result(
+            ticker="TEST",
+            info={
+                "longName": "Test Corp",
+                "financialCurrency": "USD",
+                "earningsGrowth": 0.10,
+                "beta": 1.1,
+                "sharesOutstanding": 500_000_000,
+                "currentPrice": 40.0,
+            },
+            income=self.income,
+            balance=self.balance,
+            cashflow=self.cashflow,
+            yearly_prices=self.prices,
+        )
+        payload = result.to_dict()
+        metrics = [row["metric"] for row in payload["dcf"]]
+        self.assertIn("DCF Fair Value", metrics)
+        self.assertIn("Cost of Equity", metrics)
+        self.assertEqual(len(payload["dcf_sensitivity"]), 3)
+        self.assertEqual(len(payload["dcf_sensitivity"][0]["cells"]), 3)
         result = build_fundamentals_result(
             ticker="TEST",
             info={"earningsGrowth": 0.82, "forwardPE": 25, "trailingEps": 10.0},
@@ -223,6 +248,8 @@ class TestQuarterlyFundamentals(unittest.TestCase):
         self.assertEqual(payload["period"], "quarterly")
         self.assertEqual(payload["years"][-1], "2024-Q2")
         self.assertEqual(payload["valuation"], [])
+        self.assertEqual(payload["dcf"], [])
+        self.assertEqual(payload["dcf_sensitivity"], [])
         self.assertEqual(payload["big_five"], [])
         self.assertEqual(len(payload["financials"]), 13)
         self.assertIn("Sales", payload["chart_series"])

@@ -41,6 +41,8 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
 
     period_labels = _period_column_labels(active.get('years', []))
     valuation_rows = annual.get('valuation', [])
+    dcf_rows = annual.get('dcf', [])
+    dcf_sensitivity = annual.get('dcf_sensitivity', [])
     chart_years = active.get('years', [])
     chart_labels = _period_column_labels(chart_years)
 
@@ -76,6 +78,10 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
                 _panel_title('Valuation', theme, size='sm'),
                 _valuation_assumptions(valuation_rows, theme),
                 _valuation_tables(valuation_rows, theme),
+                _panel_title('DCF (FCFE)', theme, size='sm'),
+                _dcf_assumptions(dcf_rows, theme),
+                _valuation_table(dcf_rows, theme, table_id='fundamentals-dcf-table'),
+                _dcf_sensitivity_grid(dcf_sensitivity, theme),
                 html.Div(
                     id='fundamentals-valuation-explain',
                     className='sfa-valuation-explain',
@@ -452,6 +458,92 @@ def _valuation_assumptions(rows: list[dict[str, Any]], theme: dict) -> html.Div:
             'marginBottom': '6px',
         },
     )
+
+
+def _dcf_assumptions(rows: list[dict[str, Any]], theme: dict) -> html.Div:
+    row_map = {str(row.get('metric', '')): str(row.get('value', '--')) for row in rows}
+    if not rows:
+        text = 'DCF unavailable for this symbol (needs positive FCFE and share count).'
+    else:
+        text = (
+            f"Assumptions: r {row_map.get('Cost of Equity', '--')} | "
+            f"g1 {row_map.get('Stage 1 FCFE GR', '--')} | "
+            f"g2 {row_map.get('Terminal GR', '--')}. "
+            "Sibling of Rule #1 — not averaged."
+        )
+    return html.Div(
+        text,
+        className='sfa-valuation-assumption',
+        style={
+            'fontFamily': FONT_FAMILY,
+            'fontSize': FONT_SIZES['sm'],
+            'color': theme['text_secondary'],
+            'lineHeight': '1.4',
+            'marginTop': '10px',
+            'marginBottom': '6px',
+        },
+    )
+
+
+def _dcf_sensitivity_grid(grid: list[dict[str, Any]], theme: dict) -> html.Div:
+    """Render discount-rate × terminal-growth fair-value matrix."""
+    if not grid:
+        return html.Div(id='fundamentals-dcf-sensitivity', style={'display': 'none'})
+
+    growths: list[float] = []
+    for cell in grid[0].get('cells', []):
+        growths.append(float(cell.get('terminal_growth', 0.0)))
+
+    columns = [{'name': 'r \\ g₂', 'id': 'discount_rate'}]
+    for growth in growths:
+        col_id = f'g_{growth:.4f}'
+        columns.append({'name': f'{growth * 100:.1f}%', 'id': col_id})
+
+    data: list[dict[str, Any]] = []
+    for row in grid:
+        rate = float(row.get('discount_rate', 0.0))
+        record: dict[str, Any] = {'discount_rate': f'{rate * 100:.1f}%'}
+        for cell in row.get('cells', []):
+            growth = float(cell.get('terminal_growth', 0.0))
+            value = cell.get('value_per_share')
+            try:
+                numeric = float(value)
+                display = f'${numeric:,.2f}' if numeric == numeric else 'n/a'
+            except (TypeError, ValueError):
+                display = 'n/a'
+            record[f'g_{growth:.4f}'] = display
+        data.append(record)
+
+    return html.Div([
+        html.Div(
+            'Sensitivity (fair value / share)',
+            style={
+                'fontFamily': FONT_FAMILY,
+                'fontSize': FONT_SIZES['xs'],
+                'color': theme['text_secondary'],
+                'marginTop': '8px',
+                'marginBottom': '4px',
+            },
+        ),
+        dash_table.DataTable(
+            id='fundamentals-dcf-sensitivity',
+            columns=columns,
+            data=data,
+            fill_width=True,
+            style_table={'overflowX': 'auto', 'width': '100%'},
+            style_cell=_valuation_table_cell_style(theme),
+            style_header=_valuation_table_header_style(theme),
+            style_cell_conditional=[
+                {
+                    'if': {'column_id': 'discount_rate'},
+                    'textAlign': 'left',
+                    'fontWeight': 700,
+                    'width': '22%',
+                },
+            ],
+            style_data_conditional=_valuation_conditionals(theme),
+        ),
+    ], className='sfa-dcf-sensitivity')
 
 
 def _valuation_tooltips(rows: list[dict[str, Any]]) -> list[dict[str, dict[str, str]]]:

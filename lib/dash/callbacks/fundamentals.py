@@ -189,29 +189,34 @@ def register_fundamentals_callbacks(app) -> None:
          Output('fundamentals-big-five-table', 'style_data_conditional'),
          Output('fundamentals-valuation-table-a', 'style_data_conditional'),
          Output('fundamentals-valuation-table-b', 'style_data_conditional'),
+         Output('fundamentals-dcf-table', 'style_data_conditional'),
          Output('fundamentals-valuation-explain', 'children'),
          Output('fundamentals-valuation-explain', 'style'),
          Output('fundamentals-financial-table', 'active_cell'),
          Output('fundamentals-big-five-table', 'active_cell'),
          Output('fundamentals-valuation-table-a', 'active_cell'),
-         Output('fundamentals-valuation-table-b', 'active_cell')],
+         Output('fundamentals-valuation-table-b', 'active_cell'),
+         Output('fundamentals-dcf-table', 'active_cell')],
         [Input('fundamentals-financial-table', 'active_cell'),
          Input('fundamentals-big-five-table', 'active_cell'),
          Input('fundamentals-valuation-table-a', 'active_cell'),
          Input('fundamentals-valuation-table-b', 'active_cell'),
+         Input('fundamentals-dcf-table', 'active_cell'),
          Input('fundamentals-esc-signal', 'value'),
          Input('theme-store', 'data')],
         [State('fundamentals-financial-table', 'data'),
          State('fundamentals-big-five-table', 'data'),
          State('fundamentals-big-five-table', 'columns'),
          State('fundamentals-valuation-table-a', 'data'),
-         State('fundamentals-valuation-table-b', 'data')],
+         State('fundamentals-valuation-table-b', 'data'),
+         State('fundamentals-dcf-table', 'data')],
     )
     def update_fundamentals_explainability(
         fin_active,
         big_active,
         val_a_active,
         val_b_active,
+        dcf_active,
         esc_signal,
         theme_name,
         fin_rows,
@@ -219,23 +224,25 @@ def register_fundamentals_callbacks(app) -> None:
         big_columns,
         val_a_rows,
         val_b_rows,
+        dcf_rows,
     ):
         theme = get_theme(theme_name or DEFAULT_THEME)
         value_columns = _big_five_value_columns(big_columns)
         financial_style = _financial_conditionals(theme)
         big_five_style = _big_five_conditionals(theme, value_columns)
         valuation_style = _valuation_conditionals(theme)
-        val_rows = _merge_valuation_rows(val_a_rows, val_b_rows)
+        dcf_style = _valuation_conditionals(theme)
+        val_rows = _merge_valuation_rows(val_a_rows, val_b_rows) + list(dcf_rows or [])
         explain_style = _valuation_explain_style(theme, visible=False)
         explain_children = []
-        clear_cells = no_update, no_update, no_update, no_update
+        clear_cells = no_update, no_update, no_update, no_update, no_update
 
         trigger = callback_context.triggered[0]['prop_id'].split('.')[0] if callback_context.triggered else ''
         if trigger == 'fundamentals-esc-signal' and esc_signal:
             return (
-                financial_style, big_five_style, valuation_style, valuation_style,
+                financial_style, big_five_style, valuation_style, valuation_style, dcf_style,
                 explain_children, explain_style,
-                None, None, None, None,
+                None, None, None, None, None,
             )
 
         metric = _resolve_selected_metric(
@@ -247,6 +254,8 @@ def register_fundamentals_callbacks(app) -> None:
             big_rows,
             val_a_rows,
             val_b_rows,
+            dcf_active,
+            dcf_rows,
         )
         if not metric:
             return (
@@ -254,6 +263,7 @@ def register_fundamentals_callbacks(app) -> None:
                 big_five_style,
                 valuation_style,
                 valuation_style,
+                dcf_style,
                 explain_children,
                 explain_style,
                 *clear_cells,
@@ -271,11 +281,15 @@ def register_fundamentals_callbacks(app) -> None:
             valuation_style += _highlight_metric_rules(layers['direct_valuation'], theme, tone='direct')
             valuation_style += _highlight_metric_rules(layers['indirect_valuation'], theme, tone='indirect')
             valuation_style += _highlight_metric_rules([canonical_metric], theme, tone='selected')
+            dcf_style += _highlight_metric_rules(layers['direct_valuation'], theme, tone='direct')
+            dcf_style += _highlight_metric_rules(layers['indirect_valuation'], theme, tone='indirect')
+            dcf_style += _highlight_metric_rules([canonical_metric], theme, tone='selected')
             explain_children = _valuation_explain_content(canonical_metric, explain, theme, val_rows)
         else:
             dependents = _REVERSE_DEPENDENCY_MAP.get(canonical_metric, [])
             if dependents:
                 valuation_style += _highlight_metric_rules(dependents, theme, tone='direct')
+                dcf_style += _highlight_metric_rules(dependents, theme, tone='direct')
                 financial_style += _highlight_metric_rules([canonical_metric], theme, tone='selected')
                 big_five_style += _highlight_metric_rules([canonical_metric], theme, tone='selected')
                 explain_children = _valuation_source_content(canonical_metric, dependents, theme)
@@ -283,21 +297,28 @@ def register_fundamentals_callbacks(app) -> None:
                 explain_children = _valuation_generic_content(canonical_metric, theme)
 
         explain_style = _valuation_explain_style(theme, visible=True)
-        val_a_cell, val_b_cell = clear_cells[2], clear_cells[3]
+        val_a_cell, val_b_cell, dcf_cell = clear_cells[2], clear_cells[3], clear_cells[4]
         if trigger == 'fundamentals-valuation-table-a':
             val_b_cell = None
+            dcf_cell = None
         elif trigger == 'fundamentals-valuation-table-b':
             val_a_cell = None
+            dcf_cell = None
+        elif trigger == 'fundamentals-dcf-table':
+            val_a_cell = None
+            val_b_cell = None
         return (
             financial_style,
             big_five_style,
             valuation_style,
             valuation_style,
+            dcf_style,
             explain_children,
             explain_style,
             clear_cells[0],
             clear_cells[1],
             val_a_cell,
             val_b_cell,
+            dcf_cell,
         )
 

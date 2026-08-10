@@ -151,6 +151,95 @@ _VALUATION_EXPLAIN_MAP: dict[str, dict[str, Any]] = {
         'sources': {'valuation': ['Year-end Close', 'Entry Price'], 'financial': [], 'big_five': []},
         'inputs': [],
     },
+    # --- FCFE DCF (sibling of Rule #1; not blended) -------------------------
+    'Base FCFE (3y avg)': {
+        'what': 'Average free cash flow to equity over the last three years, in $ millions.',
+        'why_use': 'A multi-year average stops one capex-heavy year from setting the entire DCF base.',
+        'formula': 'Base FCFE = mean of last 3 years of FCF (OCF + CapEx when FCF is missing).',
+        'explanation': 'Uses the same FCF series as the financials table; values are already scaled to $mil.',
+        'sources': {'valuation': [], 'financial': ['FCF'], 'big_five': []},
+        'inputs': [],
+    },
+    'Stage 1 FCFE GR': {
+        'what': 'Near-term FCFE growth used for the explicit forecast stage (up to 10 years).',
+        'why_use': 'Growth drives the cash-flow path; we take the more conservative of analyst and historical rates.',
+        'formula': 'Stage 1 FCFE GR = min(positive analyst growth, historical FCF CAGR), capped and floored at terminal growth.',
+        'explanation': 'Mirrors Rule #1 conservatism: when sources disagree, use the least optimistic positive rate.',
+        'sources': {'valuation': [], 'financial': ['FCF'], 'big_five': []},
+        'inputs': ['yfinance info: earningsGrowth/revenueGrowth/earningsQuarterlyGrowth'],
+    },
+    'Terminal GR': {
+        'what': 'Perpetual growth rate applied after stage 1 in the Gordon growth terminal value.',
+        'why_use': 'Long-run growth must stay below the discount rate or the terminal value is undefined.',
+        'formula': 'Terminal GR is configured (default 2.5%).',
+        'explanation': 'Set in strategy_config.yaml under dcf.terminal_growth.',
+        'sources': {'valuation': [], 'financial': [], 'big_five': []},
+        'inputs': ['config dcf.terminal_growth'],
+    },
+    'Beta (clamped)': {
+        'what': 'Equity beta used in CAPM, clamped between configured floor and cap.',
+        'why_use': 'Extreme betas produce unrealistic discount rates; clamping keeps cost of equity in a defensible band.',
+        'formula': 'Beta (clamped) = min(max(beta, beta_floor), beta_cap); default 1.0 if beta missing.',
+        'explanation': 'Raw beta comes from market info; floor/cap come from dcf config.',
+        'sources': {'valuation': [], 'financial': [], 'big_five': []},
+        'inputs': ['yfinance info: beta', 'config dcf.beta_floor/beta_cap'],
+    },
+    'Cost of Equity': {
+        'what': 'CAPM required return used to discount levered free cash flow.',
+        'why_use': 'FCFE is already after interest, so discounting at cost of equity yields equity value directly (no WACC).',
+        'formula': 'Cost of Equity = risk_free + Beta (clamped) × equity_risk_premium.',
+        'explanation': 'Risk-free and ERP come from config; beta is clamped from quote data.',
+        'sources': {'valuation': ['Beta (clamped)'], 'financial': [], 'big_five': []},
+        'inputs': ['config dcf.risk_free', 'config dcf.equity_risk_premium'],
+    },
+    'PV Stage 1': {
+        'what': 'Present value of the explicit-stage FCFE forecasts.',
+        'why_use': 'Shows how much of equity value comes from cash flows you actually project year by year.',
+        'formula': 'PV Stage 1 = Σ FCFE_t / (1 + r)^t for t = 1…N.',
+        'explanation': 'Each year’s FCFE grows along the stage-1 path (optionally fading to terminal growth), then is discounted at cost of equity.',
+        'sources': {'valuation': ['Base FCFE (3y avg)', 'Stage 1 FCFE GR', 'Cost of Equity'], 'financial': [], 'big_five': []},
+        'inputs': [],
+    },
+    'PV Terminal Value': {
+        'what': 'Present value of the Gordon growth terminal value at the end of stage 1.',
+        'why_use': 'Most of the answer often sits here—so the grid and terminal share matter more than year-3 precision.',
+        'formula': 'TV = FCFE_N × (1 + g2) / (r − g2); PV Terminal = TV / (1 + r)^N.',
+        'explanation': 'Requires r > g2. Discounted back from year N at the cost of equity.',
+        'sources': {'valuation': ['Cost of Equity', 'Terminal GR', 'Stage 1 FCFE GR'], 'financial': [], 'big_five': []},
+        'inputs': [],
+    },
+    'Terminal Value Share': {
+        'what': 'Share of total equity value that comes from the terminal value.',
+        'why_use': 'A high share means the answer is mostly an assumption about year N+1 onward.',
+        'formula': 'Terminal Value Share = PV Terminal Value / Equity Value.',
+        'explanation': 'Flagged in quality notes when above 75%.',
+        'sources': {'valuation': ['PV Terminal Value', 'Equity Value'], 'financial': [], 'big_five': []},
+        'inputs': [],
+    },
+    'Equity Value': {
+        'what': 'Total equity value from the two-stage FCFE model ($ millions).',
+        'why_use': 'The firm-level output before dividing by shares outstanding.',
+        'formula': 'Equity Value = PV Stage 1 + PV Terminal Value.',
+        'explanation': 'Already an equity value because FCFE is levered and discounted at cost of equity.',
+        'sources': {'valuation': ['PV Stage 1', 'PV Terminal Value'], 'financial': [], 'big_five': []},
+        'inputs': [],
+    },
+    'DCF Fair Value': {
+        'what': 'Equity value per share from the two-stage FCFE DCF.',
+        'why_use': 'Sibling of Rule #1 sticker/entry prices—same company, different theory of value. Do not average them.',
+        'formula': 'DCF Fair Value = Equity Value / shares outstanding (millions).',
+        'explanation': 'Shares come from market info. Soft inputs (r, g2) move this number a lot—see the sensitivity grid.',
+        'sources': {'valuation': ['Cost of Equity', 'Stage 1 FCFE GR', 'Terminal GR'], 'financial': [], 'big_five': []},
+        'inputs': ['yfinance info: sharesOutstanding'],
+    },
+    'Upside vs Price': {
+        'what': 'Percentage gap between DCF fair value and the current market price.',
+        'why_use': 'Quick read of whether the market price sits above or below the FCFE-implied value.',
+        'formula': 'Upside vs Price = DCF Fair Value / current price − 1.',
+        'explanation': 'Uses currentPrice when available, otherwise the latest stock price from financials.',
+        'sources': {'valuation': ['DCF Fair Value'], 'financial': ['Stock Price (31/12)'], 'big_five': []},
+        'inputs': ['yfinance info: currentPrice'],
+    },
 }
 
 
@@ -188,10 +277,12 @@ def _valuation_row_map(rows: list[dict[str, Any]] | None) -> dict[str, str]:
 
 def _parse_display_number(raw: str) -> float | None:
     text = str(raw or '').strip()
-    if not text or text == '--':
+    if not text or text in {'--', 'n/a'}:
         return None
     is_pct = text.endswith('%')
     cleaned = text.replace('$', '').replace(',', '').replace('%', '').strip()
+    if cleaned.endswith(('m', 'M')):
+        cleaned = cleaned[:-1].strip()
     try:
         value = float(cleaned)
     except ValueError:
@@ -324,6 +415,63 @@ def _build_symbolic_equation(metric: str) -> html.Div | None:
             _f_text('Ratio'), _f_op(' = '),
             _f_frac(_f_var('P', 'close'), _f_var('P', 'entry')),
         )
+    if c == 'Base FCFE (3y avg)':
+        return _f_equation(_f_var('FCFE', '0'), _f_op(' = mean('), _f_text('last 3y FCF'), _f_op(')'))
+    if c == 'Stage 1 FCFE GR':
+        return _f_equation(
+            _f_var('g', '1'), _f_op(' = min('),
+            _f_text('analyst growth'), _f_op(', '),
+            _f_text('FCF CAGR'), _f_op(')'),
+        )
+    if c == 'Terminal GR':
+        return _f_equation(_f_var('g', '2'), _f_op(' = '), _f_text('configured terminal growth'))
+    if c == 'Beta (clamped)':
+        return _f_equation(
+            _f_var('β', 'used'), _f_op(' = clamp('),
+            _f_var('β', 'raw'), _f_op(', floor, cap)'),
+        )
+    if c == 'Cost of Equity':
+        return _f_equation(
+            _f_var('r', 'e'), _f_op(' = '),
+            _f_var('r', 'f'), _f_op(' + '),
+            _f_var('β', 'used'), _f_op(' × ERP'),
+        )
+    if c == 'PV Stage 1':
+        return _f_equation(
+            _f_text('PV₁'), _f_op(' = Σ '),
+            _f_frac(_f_var('FCFE', 't'), html.Span([_f_op('(1 + '), _f_var('r', 'e'), _f_op(')ᵗ')])),
+        )
+    if c == 'PV Terminal Value':
+        return _f_equation(
+            _f_text('PVₜᵥ'), _f_op(' = '),
+            _f_frac(
+                html.Span([
+                    _f_var('FCFE', 'N'), _f_op(' × (1 + '), _f_var('g', '2'), _f_op(') / ('),
+                    _f_var('r', 'e'), _f_op(' − '), _f_var('g', '2'), _f_op(')'),
+                ]),
+                html.Span([_f_op('(1 + '), _f_var('r', 'e'), _f_op(')ᴺ')]),
+            ),
+        )
+    if c == 'Terminal Value Share':
+        return _f_equation(
+            _f_text('Share'), _f_op(' = '),
+            _f_frac(_f_text('PVₜᵥ'), _f_text('Equity Value')),
+        )
+    if c == 'Equity Value':
+        return _f_equation(
+            _f_text('Equity'), _f_op(' = '),
+            _f_text('PV₁'), _f_op(' + '), _f_text('PVₜᵥ'),
+        )
+    if c == 'DCF Fair Value':
+        return _f_equation(
+            _f_var('P', 'dcf'), _f_op(' = '),
+            _f_frac(_f_text('Equity Value'), _f_text('shares (mil)')),
+        )
+    if c == 'Upside vs Price':
+        return _f_equation(
+            _f_text('Upside'), _f_op(' = '),
+            _f_var('P', 'dcf'), _f_op(' / '), _f_var('P', 'mkt'), _f_op(' − 1'),
+        )
     return None
 
 
@@ -343,7 +491,10 @@ def _build_substituted_equation(metric: str, row_map: dict[str, str]) -> html.Di
             return None
         if canonical in {'PEG', 'Close/Entry price ratio', 'Rule #1st Price/Earn Ratio', 'Forward Price/Earn Ratio', 'Historical PE', 'Rule #1 PE'}:
             return _fmt_decimal(result, 1)
-        if canonical in {"Analysts' GR", 'Historical Equity GR', 'Estimated EPS GR', 'MARR', 'MOS'}:
+        if canonical in {
+            "Analysts' GR", 'Historical Equity GR', 'Estimated EPS GR', 'MARR', 'MOS',
+            'Stage 1 FCFE GR', 'Terminal GR', 'Cost of Equity', 'Terminal Value Share', 'Upside vs Price',
+        }:
             return _fmt_pct(result)
         return _fmt_money(result)
 
@@ -452,6 +603,32 @@ def _build_substituted_equation(metric: str, row_map: dict[str, str]) -> html.Di
             _f_var('m', 'MOS'), _f_op(' = '), _f_val(_fmt_pct(mos)),
             _f_op(' (× '), _f_val(_fmt_decimal(mos)), _f_op(')'),
         )
+
+    if canonical == 'Cost of Equity':
+        rate = num('Cost of Equity')
+        if rate is None:
+            return None
+        return _f_equation(
+            _f_var('r', 'e'), _f_op(' = '),
+            _f_text('r_f + β × ERP'), _f_op(' = '), _f_val(_fmt_pct(rate)),
+        )
+
+    if canonical == 'DCF Fair Value':
+        fair = num('DCF Fair Value')
+        if fair is None:
+            return None
+        return _f_equation(
+            _f_var('P', 'dcf'), _f_op(' = '),
+            _f_text('Equity / shares'), _f_op(' = '), _f_val(_fmt_money(fair)),
+        )
+
+    if canonical in {
+        'Stage 1 FCFE GR', 'Terminal GR', 'Terminal Value Share', 'Upside vs Price',
+    }:
+        rate = num(canonical)
+        if rate is None:
+            return None
+        return _f_equation(_f_text(canonical), _f_op(' = '), _f_val(_fmt_pct(rate)))
 
     return None
 
@@ -600,6 +777,8 @@ def _resolve_selected_metric(
     big_rows: list[dict[str, Any]] | None,
     val_a_rows: list[dict[str, Any]] | None,
     val_b_rows: list[dict[str, Any]] | None,
+    dcf_active: dict[str, Any] | None = None,
+    dcf_rows: list[dict[str, Any]] | None = None,
 ) -> str | None:
     ctx = callback_context
     trigger = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else ''
@@ -607,6 +786,8 @@ def _resolve_selected_metric(
         return _metric_from_active_cell(val_a_active, val_a_rows)
     if trigger == 'fundamentals-valuation-table-b':
         return _metric_from_active_cell(val_b_active, val_b_rows)
+    if trigger == 'fundamentals-dcf-table':
+        return _metric_from_active_cell(dcf_active, dcf_rows)
     if trigger == 'fundamentals-financial-table':
         return _metric_from_active_cell(fin_active, fin_rows)
     if trigger == 'fundamentals-big-five-table':
@@ -614,6 +795,7 @@ def _resolve_selected_metric(
     return (
         _metric_from_active_cell(val_a_active, val_a_rows)
         or _metric_from_active_cell(val_b_active, val_b_rows)
+        or _metric_from_active_cell(dcf_active, dcf_rows)
         or _metric_from_active_cell(fin_active, fin_rows)
         or _metric_from_active_cell(big_active, big_rows)
     )

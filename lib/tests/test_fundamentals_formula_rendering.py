@@ -109,6 +109,8 @@ def test_render_payload_quarterly_keeps_annual_valuation_and_big_five():
         'annual': {
             'years': [2023, 2024],
             'valuation': [{'metric': 'Entry Price', 'value': '$40.00'}],
+            'dcf': [{'metric': 'DCF Fair Value', 'value': '$55.00'}],
+            'dcf_sensitivity': [],
             'big_five': [{'metric': 'Equity-GR', 'unit': '%', '2023': '10.00%', '2024': '10.00%'}],
             'big_five_note': 'NOTE: Big Five should be >= 10% per year over the last 10 years.',
         },
@@ -126,6 +128,7 @@ def test_render_payload_quarterly_keeps_annual_valuation_and_big_five():
     rendered = _render_payload(payload, 'quarterly', get_theme(DEFAULT_THEME))
     text = str(rendered)
     assert 'Valuation' in text
+    assert 'DCF (FCFE)' in text
     assert 'Big Five' in text
     assert 'Financials' in text
     assert '2024-Q2' in text

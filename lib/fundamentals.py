@@ -30,6 +30,9 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from lib.config_loader import get_config
+from lib.dcf import DcfAssumptions, build_dcf, dcf_rows
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -95,6 +98,8 @@ class FundamentalResult:
     big_five: list[dict[str, Any]]
     big_five_note: str
     valuation: list[dict[str, Any]]
+    dcf: list[dict[str, Any]]
+    dcf_sensitivity: list[dict[str, Any]]
     chart_series: dict[str, list[float | None]]
     quality_notes: list[str]
     as_of: str
@@ -110,10 +115,32 @@ class FundamentalResult:
             "big_five": self.big_five,
             "big_five_note": self.big_five_note,
             "valuation": self.valuation,
+            "dcf": self.dcf,
+            "dcf_sensitivity": self.dcf_sensitivity,
             "chart_series": self.chart_series,
             "quality_notes": self.quality_notes,
             "as_of": self.as_of,
         }
+
+
+def _dcf_assumptions_from_config() -> DcfAssumptions:
+    """Load DCF assumptions from strategy_config.yaml; unknown keys ignored."""
+    raw = get_config().get("dcf", {}) or {}
+    if not isinstance(raw, dict):
+        return DcfAssumptions()
+    allowed = {
+        "risk_free",
+        "equity_risk_premium",
+        "terminal_growth",
+        "beta",
+        "beta_floor",
+        "beta_cap",
+        "stage1_years",
+        "max_stage1_growth",
+        "fade_to_terminal",
+    }
+    kwargs = {key: raw[key] for key in allowed if key in raw}
+    return DcfAssumptions(**kwargs)
 
 
 def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> dict[str, Any]:
@@ -165,6 +192,7 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
     # Live quote snapshot read once from info so both the payload header and
     # the Stock Price row agree on the same source of truth.
     live_snapshot = _live_price_snapshot(info)
+    dcf_assumptions = _dcf_assumptions_from_config()
 
     annual_result = build_fundamentals_result(
         ticker=symbol,
@@ -176,6 +204,7 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
         periods=years,
         period="annual",
         live_price=live_snapshot["last_price"],
+        dcf_assumptions=dcf_assumptions,
     ).to_dict()
 
     try:
@@ -202,6 +231,8 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
             "big_five": [],
             "big_five_note": "",
             "valuation": [],
+            "dcf": [],
+            "dcf_sensitivity": [],
             "chart_series": {},
             "quality_notes": [str(exc)],
             "as_of": annual_result["as_of"],
@@ -221,6 +252,8 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
         "big_five": annual_result["big_five"],
         "big_five_note": annual_result["big_five_note"],
         "valuation": annual_result["valuation"],
+        "dcf": annual_result["dcf"],
+        "dcf_sensitivity": annual_result["dcf_sensitivity"],
         "chart_series": annual_result["chart_series"],
         "quality_notes": [f"Data source: {data_source}"] + annual_result["quality_notes"],
     }
@@ -274,6 +307,7 @@ def build_fundamentals_result(
     marr: float = DEFAULT_MARR,
     margin_of_safety: float = DEFAULT_MARGIN_OF_SAFETY,
     live_price: float | None = None,
+    dcf_assumptions: DcfAssumptions | None = None,
 ) -> FundamentalResult:
     """Build the fundamentals payload from normalized statement inputs."""
     if period_prices is None:
@@ -294,15 +328,24 @@ def build_fundamentals_result(
 
     period_labels = [_period_column_key(value) for value in all_periods]
     financial_map = _build_financial_map(income, balance, cashflow, period_prices, all_periods)
+    notes_extra: list[str] = []
     if period == "quarterly":
         big_five: list[dict[str, Any]] = []
         big_five_note = ""
         valuation: list[dict[str, Any]] = []
+        dcf: list[dict[str, Any]] = []
+        dcf_sensitivity: list[dict[str, Any]] = []
     else:
         big_five = _build_big_five(financial_map, all_periods)
         valuation = _build_valuation(info, financial_map, all_periods, marr, margin_of_safety)
         big_five_note = "NOTE: Big Five should be >= 10% per year over the last 10 years."
-    notes = _quality_notes(financial_map, all_periods, period=period)
+        try:
+            dcf_result = build_dcf(info, financial_map, dcf_assumptions or DcfAssumptions())
+            dcf, dcf_sensitivity = dcf_rows(dcf_result), dcf_result.sensitivity
+            notes_extra = list(dcf_result.notes)
+        except ValueError as exc:
+            dcf, dcf_sensitivity, notes_extra = [], [], [f"DCF unavailable: {exc}"]
+    notes = _quality_notes(financial_map, all_periods, period=period) + notes_extra
     financials = _attach_live_price(
         _rows_from_map(financial_map, all_periods), live_price
     )
@@ -317,6 +360,8 @@ def build_fundamentals_result(
         big_five=big_five,
         big_five_note=big_five_note,
         valuation=valuation,
+        dcf=dcf,
+        dcf_sensitivity=dcf_sensitivity,
         chart_series=_chart_series(financial_map, all_periods),
         quality_notes=notes,
         as_of=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

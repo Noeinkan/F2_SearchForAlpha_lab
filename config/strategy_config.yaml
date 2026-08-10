@@ -127,6 +127,18 @@ ml_strategy:
   random_state: 42
   n_estimators: 100
 
+# Two-stage FCFE DCF assumptions (sibling of Rule #1 valuation).
+# Cost of equity = risk_free + beta * equity_risk_premium (beta from quote, clamped).
+dcf:
+  risk_free: 0.04
+  equity_risk_premium: 0.05
+  terminal_growth: 0.025
+  beta_floor: 0.8
+  beta_cap: 2.0
+  stage1_years: 10
+  max_stage1_growth: 0.20
+  fade_to_terminal: true
+
 # Agent strategy bundles. Each entry is a (ticker, signals, params, mode)
 # bundle that the sfa CLI can backtest, optimise, walk forward, and run.
 # Note: the older top level "strategies" key above holds per indicator

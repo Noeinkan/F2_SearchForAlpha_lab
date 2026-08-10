@@ -23,6 +23,19 @@ def test_dependency_layers_for_entry_price_include_direct_and_indirect_sources()
     assert 'Fut. Market Price (10 Y)' in layers['indirect_valuation']
 
 
+def test_dcf_fair_value_sources_trace_soft_inputs():
+    from lib.dash.callbacks.fundamentals import _VALUATION_EXPLAIN_MAP
+
+    explain = _VALUATION_EXPLAIN_MAP['DCF Fair Value']
+    assert explain['sources']['valuation'] == [
+        'Cost of Equity',
+        'Stage 1 FCFE GR',
+        'Terminal GR',
+    ]
+    layers = _dependency_layers('DCF Fair Value')
+    assert 'Cost of Equity' in layers['direct_valuation']
+    assert 'Beta (clamped)' in layers['indirect_valuation']
+
 def test_highlight_rules_use_different_colors_for_direct_and_indirect():
     theme = get_theme('dark')
 
