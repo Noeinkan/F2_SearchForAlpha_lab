@@ -329,6 +329,7 @@ def _conservative_growth(*candidates: float, cap: float, floor: float) -> float:
 
 
 def _growth_from_info(info: dict[str, Any]) -> float:
+    """Yahoo quote growth fields are ratios: 0.15 = 15%, 2.14 = 214%."""
     for key in ("earningsGrowth", "revenueGrowth", "earningsQuarterlyGrowth"):
         value = _number(info.get(key))
         if _is_number(value):

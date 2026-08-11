@@ -15,7 +15,7 @@ with fixed fixtures independent of any remote source.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 import json
 import logging
 import math
@@ -73,10 +73,14 @@ _BALANCE_CONCEPTS: list[tuple[str, list[str], bool]] = [
 ]
 # Capital Expenditure: SEC reports positive payments; negate to match yfinance
 # sign convention (negative = cash outflow) so FCF = OCF + CAPEX works correctly.
+# ProductiveAssets is the tag many filers (e.g. NVDA) use instead of PPE.
 _CASHFLOW_CONCEPTS: list[tuple[str, list[str], bool]] = [
     ("Operating Cash Flow", ["NetCashProvidedByUsedInOperatingActivities"], False),
-    ("Capital Expenditure", ["PaymentsToAcquirePropertyPlantAndEquipment",
-                              "PaymentsForCapitalImprovements"], True),
+    ("Capital Expenditure", [
+        "PaymentsToAcquirePropertyPlantAndEquipment",
+        "PaymentsToAcquireProductiveAssets",
+        "PaymentsForCapitalImprovements",
+    ], True),
 ]
 
 DEFAULT_MARR = 0.15
@@ -193,6 +197,7 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
     # the Stock Price row agree on the same source of truth.
     live_snapshot = _live_price_snapshot(info)
     dcf_assumptions = _dcf_assumptions_from_config()
+    as_of = datetime.now()
 
     annual_result = build_fundamentals_result(
         ticker=symbol,
@@ -201,10 +206,12 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
         balance=balance,
         cashflow=cashflow,
         period_prices=yearly_prices,
+        history=history,
         periods=years,
         period="annual",
         live_price=live_snapshot["last_price"],
         dcf_assumptions=dcf_assumptions,
+        as_of=as_of,
     ).to_dict()
 
     try:
@@ -215,9 +222,11 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
             balance=q_balance,
             cashflow=q_cashflow,
             period_prices=quarterly_prices,
+            history=history,
             periods=DEFAULT_FUNDAMENTAL_QUARTERS,
             period="quarterly",
             live_price=live_snapshot["last_price"],
+            as_of=as_of,
         ).to_dict()
     except ValueError as exc:
         logger.warning("Quarterly fundamentals unavailable for %s: %s", symbol, exc)
@@ -301,6 +310,7 @@ def build_fundamentals_result(
     cashflow: pd.DataFrame | None,
     period_prices: pd.Series | None = None,
     yearly_prices: pd.Series | None = None,
+    history: pd.DataFrame | None = None,
     periods: int | None = None,
     years: int = DEFAULT_FUNDAMENTAL_YEARS,
     period: PeriodMode = "annual",
@@ -308,11 +318,13 @@ def build_fundamentals_result(
     margin_of_safety: float = DEFAULT_MARGIN_OF_SAFETY,
     live_price: float | None = None,
     dcf_assumptions: DcfAssumptions | None = None,
+    as_of: datetime | date | pd.Timestamp | None = None,
 ) -> FundamentalResult:
     """Build the fundamentals payload from normalized statement inputs."""
     if period_prices is None:
         period_prices = yearly_prices
     window = periods if periods is not None else years
+    as_of_ts = _as_of_timestamp(as_of)
 
     info = info or {}
     income = _clean_statement(income, period=period)
@@ -320,11 +332,28 @@ def build_fundamentals_result(
     cashflow = _clean_statement(cashflow, period=period)
     period_prices = _clean_period_prices(period_prices, period=period)
 
+    period_ends = _merge_period_ends(income, balance, cashflow)
     statement_periods = _collect_periods(income, balance, cashflow, period=period)
-    all_periods = (statement_periods or _collect_periods(period_prices, period=period))[-window:]
+    if not statement_periods:
+        statement_periods = _collect_periods(period_prices, period=period)
+        for key in statement_periods:
+            period_ends.setdefault(key, _default_period_end(key, mode=period))
+    statement_periods = _drop_incomplete_periods(
+        statement_periods, period_ends, as_of=as_of_ts, period=period
+    )
+    all_periods = statement_periods[-window:]
     if not all_periods:
         label = "quarterly" if period == "quarterly" else "annual"
         raise ValueError(f"No {label} fundamentals available for {ticker}")
+
+    for key in all_periods:
+        period_ends.setdefault(key, _default_period_end(key, mode=period))
+    if history is not None and not history.empty:
+        asof_prices = _closes_at_period_ends(
+            history, {key: period_ends[key] for key in all_periods}
+        )
+        if not asof_prices.empty:
+            period_prices = asof_prices
 
     period_labels = [_period_column_key(value) for value in all_periods]
     financial_map = _build_financial_map(income, balance, cashflow, period_prices, all_periods)
@@ -406,35 +435,91 @@ def _sec_company_facts(cik: str) -> dict[str, Any] | None:
         return None
 
 
-def _sec_annual_series(usgaap: dict[str, Any], concept: str) -> dict[int, float]:
-    """Return a fiscal-year\u2192value dict from SEC XBRL for one concept.
+def _sec_period_year(entry: dict[str, Any]) -> int | None:
+    """Calendar year of the fact's period end (fallback: filing fiscal year).
 
-    Only 10-K and 10-K/A filings are included.  When a fiscal year has
-    multiple entries (e.g. original + amendment) the latest-filed value wins.
+    10-Ks embed up to three annual columns that share the same filing ``fy``.
+    Keying by period end avoids comparative years overwriting the current year.
+    """
+    end = entry.get("end")
+    if isinstance(end, str) and len(end) >= 4:
+        try:
+            year = int(end[:4])
+            if 1900 <= year <= 2100:
+                return year
+        except ValueError:
+            pass
+    fy = entry.get("fy")
+    return fy if isinstance(fy, int) else None
+
+
+def _sec_is_annual_fact(entry: dict[str, Any]) -> bool:
+    """True when the XBRL fact looks like a full-year 10-K amount."""
+    if entry.get("form") not in ("10-K", "10-K/A"):
+        return False
+    fp = entry.get("fp")
+    if fp is not None and fp != "FY":
+        return False
+    start, end = entry.get("start"), entry.get("end")
+    if isinstance(start, str) and isinstance(end, str):
+        try:
+            days = (pd.Timestamp(end) - pd.Timestamp(start)).days
+        except (TypeError, ValueError):
+            return True
+        # Reject YTD / stub periods that occasionally appear on 10-K forms.
+        if days < 300:
+            return False
+    return True
+
+
+def _sec_annual_series(usgaap: dict[str, Any], concept: str) -> dict[int, float]:
+    """Return a period-year→value dict from SEC XBRL for one concept."""
+    values, _ends = _sec_annual_series_and_ends(usgaap, concept)
+    return values
+
+
+def _sec_annual_series_and_ends(
+    usgaap: dict[str, Any], concept: str
+) -> tuple[dict[int, float], dict[int, pd.Timestamp]]:
+    """Return values and period-end timestamps for one SEC XBRL concept.
+
+    Only annual 10-K / 10-K/A facts are included.  Facts are keyed by the
+    calendar year of ``end`` (not filing ``fy``), so comparative columns in a
+    single 10-K do not clobber each other.  When the same period appears in
+    multiple filings, the latest-filed value wins.
     """
     concept_data = usgaap.get(concept)
     if not concept_data:
-        return {}
+        return {}, {}
     for unit in ("USD", "USD/shares", "shares"):
         entries = concept_data.get("units", {}).get(unit)
         if not entries:
             continue
-        best: dict[int, tuple[str, float]] = {}  # fy \u2192 (filed_date, val)
+        # period_year → (filed_date, val, period_end)
+        best: dict[int, tuple[str, float, pd.Timestamp]] = {}
         for entry in entries:
-            if entry.get("form") not in ("10-K", "10-K/A"):
+            if not _sec_is_annual_fact(entry):
                 continue
-            fy = entry.get("fy")
-            if not isinstance(fy, int):
+            period_year = _sec_period_year(entry)
+            if period_year is None:
                 continue
             val = entry.get("val")
             if val is None:
                 continue
             filed = entry.get("filed", "")
-            if fy not in best or filed > best[fy][0]:
-                best[fy] = (filed, float(val))
+            end_raw = entry.get("end")
+            try:
+                end_ts = pd.Timestamp(end_raw) if end_raw else _default_period_end(period_year)
+            except (TypeError, ValueError):
+                end_ts = _default_period_end(period_year)
+            end_ts = _naive_timestamp(end_ts)
+            if period_year not in best or filed > best[period_year][0]:
+                best[period_year] = (filed, float(val), end_ts)
         if best:
-            return {fy: val for fy, (_, val) in best.items()}
-    return {}
+            values = {year: val for year, (_, val, _) in best.items()}
+            ends = {year: end for year, (_, _, end) in best.items()}
+            return values, ends
+    return {}, {}
 
 
 def _build_sec_statement(
@@ -445,17 +530,20 @@ def _build_sec_statement(
 
     Returns a DataFrame with row labels matching the names that
     _series_from_statement() already looks up and integer year columns,
-    identical in shape to a cleaned yfinance statement.
+    identical in shape to a cleaned yfinance statement.  Period-end dates are
+    stored on ``df.attrs['period_ends']`` so incomplete fiscal years can be
+    filtered before they become table columns.
     """
     rows: dict[str, dict[int, float]] = {}
+    period_ends: dict[int, pd.Timestamp] = {}
     for label, concept_names, negate in concepts:
-        series: dict[int, float] = {}
-        for concept in concept_names:
-            series = _sec_annual_series(usgaap, concept)
-            if series:
-                break
+        series, ends = _best_sec_series(usgaap, concept_names)
         if series:
             rows[label] = {fy: -val if negate else val for fy, val in series.items()}
+            for year, end in ends.items():
+                prev = period_ends.get(year)
+                if prev is None or end > prev:
+                    period_ends[year] = end
 
     if not rows:
         return pd.DataFrame()
@@ -467,7 +555,36 @@ def _build_sec_statement(
         index=all_years,
     ).T
     df.columns = pd.Index(all_years)
+    df.attrs["period_ends"] = {
+        year: period_ends[year]
+        for year in all_years
+        if year in period_ends
+    }
     return df
+
+
+def _best_sec_series(
+    usgaap: dict[str, Any], concept_names: list[str]
+) -> tuple[dict[int, float], dict[int, pd.Timestamp]]:
+    """Pick the alternate XBRL concept with the best recent coverage.
+
+    Filers rename tags over time (PPE vs ProductiveAssets).  The first
+    non-empty concept is not enough — a single ancient year would mask a
+    complete modern series.
+    """
+    best: dict[int, float] = {}
+    best_ends: dict[int, pd.Timestamp] = {}
+    best_score = (-1, -1)  # (max_year, count)
+    for concept in concept_names:
+        series, ends = _sec_annual_series_and_ends(usgaap, concept)
+        if not series:
+            continue
+        score = (max(series), len(series))
+        if score > best_score:
+            best_score = score
+            best = series
+            best_ends = ends
+    return best, best_ends
 
 
 def _fetch_sec_fundamentals(
@@ -580,31 +697,45 @@ def _clean_statement(statement: pd.DataFrame | None, *, period: PeriodMode = "an
     if statement is None or statement.empty:
         return pd.DataFrame()
 
+    inherited_ends = {
+        key: _naive_timestamp(value)
+        for key, value in dict(getattr(statement, "attrs", {}).get("period_ends") or {}).items()
+    }
     df = statement.copy()
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     converted_columns: dict[Any, PeriodKey] = {}
+    discovered_ends: dict[PeriodKey, pd.Timestamp] = {}
     for column in df.columns:
         if isinstance(column, tuple) and len(column) == 2:
-            converted_columns[column] = (int(column[0]), int(column[1]))
+            key = (int(column[0]), int(column[1]))
+            converted_columns[column] = key
+            discovered_ends.setdefault(key, _default_period_end(key, mode="quarterly"))
             continue
         if isinstance(column, (int, np.integer)):
             if period == "quarterly":
                 continue
-            converted_columns[column] = int(column)
+            key = int(column)
+            converted_columns[column] = key
             continue
         try:
-            timestamp = pd.Timestamp(column)
+            timestamp = _naive_timestamp(pd.Timestamp(column))
             if period == "quarterly":
-                converted_columns[column] = (timestamp.year, timestamp.quarter)
+                key = (timestamp.year, timestamp.quarter)
+                converted_columns[column] = key
             else:
-                converted_columns[column] = timestamp.year
+                key = int(timestamp.year)
+                converted_columns[column] = key
+            prev = discovered_ends.get(key)
+            if prev is None or timestamp > prev:
+                discovered_ends[key] = timestamp.normalize()
         except Exception:
             try:
                 if period == "quarterly":
                     continue
-                converted_columns[column] = int(column)
+                key = int(column)
+                converted_columns[column] = key
             except Exception:
                 continue
 
@@ -617,7 +748,99 @@ def _clean_statement(statement: pd.DataFrame | None, *, period: PeriodMode = "an
         return pd.DataFrame()
     df = df.T.groupby(level=0).first().T
     ordered = sorted(df.columns, key=_period_sort_key)
-    return df.reindex(ordered, axis=1)
+    result = df.reindex(ordered, axis=1)
+    merged_ends = {**inherited_ends, **discovered_ends}
+    result.attrs["period_ends"] = {
+        key: merged_ends[key]
+        for key in result.columns
+        if key in merged_ends
+    }
+    return result
+
+
+def _naive_timestamp(value: Any) -> pd.Timestamp:
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC").tz_localize(None)
+    return ts
+
+
+def _as_of_timestamp(as_of: datetime | date | pd.Timestamp | None) -> pd.Timestamp:
+    if as_of is None:
+        return _naive_timestamp(datetime.now()).normalize()
+    return _naive_timestamp(as_of).normalize()
+
+
+def _default_period_end(key: PeriodKey, *, mode: PeriodMode = "annual") -> pd.Timestamp:
+    """Fallback period end when SEC/Yahoo did not supply an exact date."""
+    if mode == "quarterly" or isinstance(key, tuple):
+        if not isinstance(key, tuple):
+            raise TypeError(f"Quarterly period end requires tuple key, got {key!r}")
+        year, quarter = int(key[0]), int(key[1])
+        month = quarter * 3
+        return pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(0)
+    return pd.Timestamp(year=int(key), month=12, day=31)
+
+
+def _merge_period_ends(*statements: pd.DataFrame) -> dict[PeriodKey, pd.Timestamp]:
+    merged: dict[PeriodKey, pd.Timestamp] = {}
+    for statement in statements:
+        if statement is None or getattr(statement, "empty", True):
+            continue
+        ends = getattr(statement, "attrs", {}).get("period_ends") or {}
+        for key, value in ends.items():
+            ts = _naive_timestamp(value)
+            prev = merged.get(key)
+            if prev is None or ts > prev:
+                merged[key] = ts.normalize()
+    return merged
+
+
+def _drop_incomplete_periods(
+    periods: list[PeriodKey],
+    period_ends: dict[PeriodKey, pd.Timestamp],
+    *,
+    as_of: pd.Timestamp,
+    period: PeriodMode,
+) -> list[PeriodKey]:
+    """Keep only periods whose fiscal period end is on or before ``as_of``."""
+    as_of_ts = _naive_timestamp(as_of).normalize()
+    kept: list[PeriodKey] = []
+    for key in periods:
+        end = period_ends.get(key)
+        if end is None:
+            end = _default_period_end(key, mode=period)
+        if _naive_timestamp(end).normalize() <= as_of_ts:
+            kept.append(key)
+    return kept
+
+
+def _closes_at_period_ends(
+    history: pd.DataFrame,
+    period_ends: dict[PeriodKey, pd.Timestamp],
+) -> pd.Series:
+    """Last close on or before each fiscal period end (not calendar YTD)."""
+    if history is None or history.empty or "Close" not in history or not period_ends:
+        return pd.Series(dtype="float64")
+    closes = history["Close"].dropna().copy()
+    if closes.empty:
+        return pd.Series(dtype="float64")
+    closes.index = pd.to_datetime(closes.index)
+    if getattr(closes.index, "tz", None) is not None:
+        closes.index = closes.index.tz_convert("UTC").tz_localize(None)
+    closes = closes.sort_index()
+
+    out: dict[PeriodKey, float] = {}
+    for key, end in period_ends.items():
+        end_ts = _naive_timestamp(end).normalize() + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+        eligible = closes.loc[:end_ts]
+        if not eligible.empty:
+            out[key] = float(eligible.iloc[-1])
+    if not out:
+        return pd.Series(dtype="float64")
+    series = pd.Series(out, dtype="float64")
+    ordered = sorted(series.index, key=_period_sort_key)
+    return series.reindex(ordered).astype(float)
 
 
 def _yearly_close_prices(history: pd.DataFrame) -> pd.Series:
@@ -746,7 +969,7 @@ def _build_financial_map(
         "current_debt": _metric("Current Debt (Liab)", "$mil", current_debt, scale=1_000_000),
         "long_debt": _metric("Long-term debt (Liab)", "$mil", long_debt, scale=1_000_000),
         "total_debt": _metric("Total Debt (Liab)", "$mil", total_debt, scale=1_000_000),
-        "stock_price": _metric("Stock Price (31/12)", "$", stock_price),
+        "stock_price": _metric("Stock Price (FYE)", "$", stock_price),
         "roic": _metric("ROIC", "%", roic, percent=True),
         "equity_gr": _growth_metric("Equity-GR", equity),
         "eps_gr": _growth_metric("EPS-GR", eps),
@@ -881,13 +1104,13 @@ def _display_row(metric: dict[str, Any], periods: list[PeriodKey], *, live_value
 
 
 def _attach_live_price(financials: list[dict[str, Any]], live_price: float | None) -> list[dict[str, Any]]:
-    """Stamp the live price onto the Stock Price (31/12) row so the UI can
+    """Stamp the live price onto the Stock Price (FYE) row so the UI can
     surface it without re-walking the payload."""
     if live_price is None:
         return financials
     enriched: list[dict[str, Any]] = []
     for row in financials:
-        if row.get("metric") == "Stock Price (31/12)":
+        if row.get("metric") == "Stock Price (FYE)":
             new_row = dict(row)
             new_row["live_value"] = float(live_price)
             enriched.append(new_row)
@@ -990,10 +1213,15 @@ def _quality_notes(
 
 
 def _growth_from_info(info: dict[str, Any]) -> float:
+    """Yahoo quote growth fields are ratios: 0.15 = 15%, 2.14 = 214%.
+
+    Do not divide values > 1 by 100 — that silently turns hyper-growth into
+    low-single-digit growth and collapses Rule #1 PE (growth × 200).
+    """
     for key in ("earningsGrowth", "revenueGrowth", "earningsQuarterlyGrowth"):
         value = _number(info.get(key))
         if _is_number(value):
-            return value / 100 if value > 1 else value
+            return float(value)
     return np.nan
 
 

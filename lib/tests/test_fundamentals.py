@@ -10,6 +10,8 @@ from lib.fundamentals import (
     _build_sec_statement,
     _clean_period_prices,
     _clean_statement,
+    _closes_at_period_ends,
+    _drop_incomplete_periods,
     _fetch_sec_fundamentals,
     _live_price_snapshot,
     _quarterly_close_prices,
@@ -116,6 +118,21 @@ class TestFundamentalsResult(unittest.TestCase):
 
         self.assertEqual(valuation["Analysts' GR"], "82.00%")
         self.assertEqual(valuation["Historical Equity GR"], "10.00%")
+        self.assertEqual(valuation["Estimated EPS GR"], "10.00%")
+
+    def test_yahoo_growth_above_one_is_hyper_growth_not_percent_points(self):
+        """Yahoo uses ratios: 2.145 means 214.5%, not 2.145%."""
+        result = build_fundamentals_result(
+            ticker="TEST",
+            info={"earningsGrowth": 2.145, "forwardPE": 25, "trailingEps": 10.0},
+            income=self.income,
+            balance=self.balance,
+            cashflow=self.cashflow,
+            yearly_prices=self.prices,
+        )
+        valuation = {row["metric"]: row["value"] for row in result.valuation}
+        self.assertEqual(valuation["Analysts' GR"], "214.50%")
+        # Estimated GR still takes the conservative min vs historical.
         self.assertEqual(valuation["Estimated EPS GR"], "10.00%")
 
     def test_growth_summary_uses_cagr(self):
@@ -255,7 +272,7 @@ class TestQuarterlyFundamentals(unittest.TestCase):
         self.assertIn("Sales", payload["chart_series"])
         sales_row = next(row for row in payload["financials"] if row["metric"] == "Sales (Rev)")
         self.assertIn("2024-Q2", sales_row)
-        stock_row = next(row for row in payload["financials"] if row["metric"] == "Stock Price (31/12)")
+        stock_row = next(row for row in payload["financials"] if row["metric"] == "Stock Price (FYE)")
         self.assertNotEqual(stock_row["2024-Q2"], "--")
 
     def test_fetch_fundamentals_exposes_annual_and_quarterly_blocks(self):
@@ -324,14 +341,52 @@ class TestSecAnnualSeries(unittest.TestCase):
             "Revenues": {
                 "units": {
                     "USD": [
-                        {"form": "10-K", "fy": 2021, "val": 200.0, "filed": "2022-02-01", "fp": "FY"},
-                        {"form": "10-K/A", "fy": 2021, "val": 205.0, "filed": "2022-03-15", "fp": "FY"},
+                        {"form": "10-K", "fy": 2021, "val": 200.0, "filed": "2022-02-01", "fp": "FY",
+                         "end": "2021-12-31"},
+                        {"form": "10-K/A", "fy": 2021, "val": 205.0, "filed": "2022-03-15", "fp": "FY",
+                         "end": "2021-12-31"},
                     ]
                 }
             }
         }
         result = _sec_annual_series(usgaap, "Revenues")
         self.assertEqual(result[2021], 205.0)
+
+    def test_keys_by_period_end_not_filing_fy(self):
+        """A single 10-K carries three annual columns that share filing fy."""
+        usgaap = {
+            "NetCashProvidedByUsedInOperatingActivities": {
+                "units": {
+                    "USD": [
+                        {"form": "10-K", "fy": 2026, "fp": "FY", "filed": "2026-02-25",
+                         "start": "2023-01-30", "end": "2024-01-28", "val": 28_090_000_000},
+                        {"form": "10-K", "fy": 2026, "fp": "FY", "filed": "2026-02-25",
+                         "start": "2024-01-29", "end": "2025-01-26", "val": 64_089_000_000},
+                        {"form": "10-K", "fy": 2026, "fp": "FY", "filed": "2026-02-25",
+                         "start": "2025-01-27", "end": "2026-01-25", "val": 102_718_000_000},
+                    ]
+                }
+            }
+        }
+        result = _sec_annual_series(usgaap, "NetCashProvidedByUsedInOperatingActivities")
+        self.assertEqual(result[2024], 28_090_000_000)
+        self.assertEqual(result[2025], 64_089_000_000)
+        self.assertEqual(result[2026], 102_718_000_000)
+
+    def test_rejects_stub_periods_shorter_than_a_year(self):
+        usgaap = {
+            "Revenues": {
+                "units": {
+                    "USD": [
+                        {"form": "10-K", "fy": 2024, "fp": "FY", "filed": "2024-02-01",
+                         "start": "2024-01-01", "end": "2024-03-31", "val": 25.0},
+                        _make_usgaap_entry(2024, 100.0),
+                    ]
+                }
+            }
+        }
+        result = _sec_annual_series(usgaap, "Revenues")
+        self.assertEqual(result, {2024: 100.0})
 
     def test_returns_empty_dict_for_unknown_concept(self):
         result = _sec_annual_series({}, "UnknownConcept")
@@ -381,6 +436,35 @@ class TestBuildSecStatement(unittest.TestCase):
         concepts = [("Capital Expenditure", ["PaymentsToAcquirePropertyPlantAndEquipment"], True)]
         df = _build_sec_statement(concepts, usgaap)
         self.assertEqual(df.loc["Capital Expenditure", 2020], -50_000.0)
+
+    def test_capex_falls_back_to_productive_assets_concept(self):
+        from lib.fundamentals import _CASHFLOW_CONCEPTS
+
+        usgaap = {
+            "PaymentsToAcquireProductiveAssets": {"units": {"USD": [
+                _make_usgaap_entry(2024, 1_069_000_000),
+            ]}}
+        }
+        df = _build_sec_statement(_CASHFLOW_CONCEPTS, usgaap)
+        self.assertEqual(df.loc["Capital Expenditure", 2024], -1_069_000_000.0)
+
+    def test_prefers_newer_capex_concept_over_stale_alternate(self):
+        """An old PPE tag must not hide a complete ProductiveAssets series."""
+        from lib.fundamentals import _CASHFLOW_CONCEPTS
+
+        usgaap = {
+            "PaymentsToAcquirePropertyPlantAndEquipment": {"units": {"USD": [
+                _make_usgaap_entry(2011, 77_601_000),
+            ]}},
+            "PaymentsToAcquireProductiveAssets": {"units": {"USD": [
+                _make_usgaap_entry(2024, 1_069_000_000),
+                _make_usgaap_entry(2025, 3_236_000_000),
+                _make_usgaap_entry(2026, 6_042_000_000),
+            ]}},
+        }
+        df = _build_sec_statement(_CASHFLOW_CONCEPTS, usgaap)
+        self.assertEqual(list(df.columns), [2024, 2025, 2026])
+        self.assertEqual(df.loc["Capital Expenditure", 2026], -6_042_000_000.0)
 
     def test_returns_empty_dataframe_when_no_concepts_found(self):
         df = _build_sec_statement([("X", ["NonExistentConcept"], False)], {})
@@ -524,7 +608,7 @@ class TestLivePriceSnapshot(unittest.TestCase):
 
 
 class TestFinancialsLiveAttachment(unittest.TestCase):
-    """Stock Price (31/12) row receives the live price; it sits at the top."""
+    """Stock Price (FYE) row receives the live price; it sits at the top."""
 
     def _build(self, info=None, live_price=None):
         years = pd.to_datetime([f"{year}-12-31" for year in range(2013, 2024)])
@@ -556,7 +640,7 @@ class TestFinancialsLiveAttachment(unittest.TestCase):
 
     def test_stock_price_row_is_first(self):
         payload = self._build(info={"currentPrice": 42.0}, live_price=42.0)
-        self.assertEqual(payload["financials"][0]["metric"], "Stock Price (31/12)")
+        self.assertEqual(payload["financials"][0]["metric"], "Stock Price (FYE)")
 
     def test_live_value_attached_to_stock_price_row(self):
         payload = self._build(info={"currentPrice": 42.5}, live_price=42.5)
@@ -572,6 +656,108 @@ class TestFinancialsLiveAttachment(unittest.TestCase):
     def test_total_row_count_unchanged(self):
         payload = self._build(info={"currentPrice": 1.0}, live_price=1.0)
         self.assertEqual(len(payload["financials"]), 13)
+
+
+
+
+class TestIncompleteAnnualPeriods(unittest.TestCase):
+    """Annual columns must not appear before the fiscal period has ended."""
+
+    def test_drop_incomplete_assumes_dec_31_when_end_unknown(self):
+        kept = _drop_incomplete_periods(
+            [2024, 2025, 2026],
+            {},
+            as_of=pd.Timestamp("2026-08-11"),
+            period="annual",
+        )
+        self.assertEqual(kept, [2024, 2025])
+
+    def test_keeps_early_fiscal_year_that_already_closed(self):
+        kept = _drop_incomplete_periods(
+            [2025, 2026],
+            {2025: pd.Timestamp("2025-06-30"), 2026: pd.Timestamp("2026-06-30")},
+            as_of=pd.Timestamp("2026-08-11"),
+            period="annual",
+        )
+        self.assertEqual(kept, [2025, 2026])
+
+    def test_build_drops_future_december_year_column(self):
+        income = pd.DataFrame(
+            [[100.0, 110.0, 120.0]],
+            index=["Total Revenue"],
+            columns=[2024, 2025, 2026],
+        )
+        balance = pd.DataFrame(
+            [[50.0, 55.0, 60.0]],
+            index=["Stockholders Equity"],
+            columns=[2024, 2025, 2026],
+        )
+        cashflow = pd.DataFrame(
+            [[20.0, 22.0, 24.0]],
+            index=["Operating Cash Flow"],
+            columns=[2024, 2025, 2026],
+        )
+        result = build_fundamentals_result(
+            ticker="CAL",
+            info={"longName": "Calendar Corp"},
+            income=income,
+            balance=balance,
+            cashflow=cashflow,
+            as_of=pd.Timestamp("2026-08-11"),
+        )
+        self.assertEqual(result.years[-1], 2025)
+        self.assertNotIn(2026, result.years)
+
+    def test_build_keeps_closed_june_fiscal_year(self):
+        income = pd.DataFrame(
+            [[100.0, 110.0]],
+            index=["Total Revenue"],
+            columns=[2025, 2026],
+        )
+        income.attrs["period_ends"] = {
+            2025: pd.Timestamp("2025-06-30"),
+            2026: pd.Timestamp("2026-06-30"),
+        }
+        balance = pd.DataFrame(
+            [[50.0, 55.0]],
+            index=["Stockholders Equity"],
+            columns=[2025, 2026],
+        )
+        balance.attrs["period_ends"] = dict(income.attrs["period_ends"])
+        cashflow = pd.DataFrame(
+            [[20.0, 22.0]],
+            index=["Operating Cash Flow"],
+            columns=[2025, 2026],
+        )
+        cashflow.attrs["period_ends"] = dict(income.attrs["period_ends"])
+        history = pd.DataFrame(
+            {"Close": [10.0, 11.0, 12.0, 13.0]},
+            index=pd.to_datetime(["2025-06-30", "2025-12-31", "2026-06-30", "2026-08-10"]),
+        )
+        result = build_fundamentals_result(
+            ticker="JUN",
+            info={"longName": "June FY Corp"},
+            income=income,
+            balance=balance,
+            cashflow=cashflow,
+            history=history,
+            as_of=pd.Timestamp("2026-08-11"),
+        )
+        self.assertEqual(result.years[-1], 2026)
+        stock_row = next(row for row in result.financials if row["metric"] == "Stock Price (FYE)")
+        self.assertEqual(stock_row[2026], "$12.00")
+
+    def test_closes_at_period_ends_ignores_later_ytd_prints(self):
+        history = pd.DataFrame(
+            {"Close": [100.0, 110.0, 120.0]},
+            index=pd.to_datetime(["2025-12-31", "2026-06-30", "2026-08-10"]),
+        )
+        prices = _closes_at_period_ends(
+            history,
+            {2025: pd.Timestamp("2025-12-31"), 2026: pd.Timestamp("2026-06-30")},
+        )
+        self.assertAlmostEqual(prices[2025], 100.0)
+        self.assertAlmostEqual(prices[2026], 110.0)
 
 
 if __name__ == "__main__":

@@ -132,8 +132,8 @@ _VALUATION_EXPLAIN_MAP: dict[str, dict[str, Any]] = {
         'what': 'The latest annual closing price from price history (aligned with financial year-ends).',
         'why_use': 'A consistent “current price” for comparing the market quote to your entry threshold.',
         'formula': 'Year-end Close uses the latest available annual close from price history.',
-        'explanation': 'Same series as Stock Price (31/12) in financials—yearly close, not intraday.',
-        'sources': {'valuation': [], 'financial': ['Stock Price (31/12)'], 'big_five': []},
+        'explanation': 'Same series as Stock Price (FYE) in financials—period-end close, not intraday.',
+        'sources': {'valuation': [], 'financial': ['Stock Price (FYE)'], 'big_five': []},
         'inputs': ['yfinance history: yearly close'],
     },
     'Entry Price': {
@@ -238,7 +238,7 @@ _VALUATION_EXPLAIN_MAP: dict[str, dict[str, Any]] = {
         'why_use': 'Quick read of whether the market price sits above or below the FCFE-implied value.',
         'formula': 'Upside vs Price = DCF Fair Value / current price − 1.',
         'explanation': 'Uses currentPrice when available, otherwise the latest stock price from financials.',
-        'sources': {'valuation': ['DCF Fair Value'], 'financial': ['Stock Price (31/12)'], 'big_five': []},
+        'sources': {'valuation': ['DCF Fair Value'], 'financial': ['Stock Price (FYE)'], 'big_five': []},
         'inputs': ['yfinance info: currentPrice'],
     },
 }

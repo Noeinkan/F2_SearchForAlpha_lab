@@ -287,13 +287,13 @@ def _decorate_financial_rows_with_last(
     rows: list[dict[str, Any]],
     last_price: float | None,
 ) -> list[dict[str, Any]]:
-    """Inject a 'Last' column. Only the Stock Price (31/12) row shows the live
+    """Inject a 'Last' column. Only the Stock Price (FYE) row shows the live
     value; the rest stay at '--' so the column semantics are unambiguous."""
     enriched: list[dict[str, Any]] = []
     for row in rows:
         new_row = dict(row)
         metric = str(new_row.get('metric', '')).strip()
-        if metric == 'Stock Price (31/12)' and last_price is not None:
+        if metric == 'Stock Price (FYE)' and last_price is not None:
             new_row['Last'] = f'${float(last_price):,.2f}'
         else:
             new_row['Last'] = '--'
@@ -627,7 +627,7 @@ def _financial_conditionals(theme: dict) -> list[dict[str, Any]]:
         {'if': {'filter_query': '{metric} = "Debt Ratio"'}, 'backgroundColor': f'{theme["accent_cyan"]}28'},
         {'if': {'filter_query': '{metric} = "PE Ratio"'}, 'backgroundColor': f'{theme["accent_orange"]}24'},
         {'if': {'filter_query': '{metric} = "Avg. Invested Capital"'}, 'backgroundColor': f'{theme["accent_orange"]}22'},
-        {'if': {'filter_query': '{metric} = "Stock Price (31/12)"'}, 'backgroundColor': f'{theme["accent_orange"]}24', 'fontWeight': 700},
+        {'if': {'filter_query': '{metric} = "Stock Price (FYE)"'}, 'backgroundColor': f'{theme["accent_orange"]}24', 'fontWeight': 700},
         {'if': {'column_id': 'Last', 'filter_query': '{Last} != "--"'}, 'backgroundColor': f'{theme["accent_orange"]}30', 'color': theme['accent_orange'], 'fontWeight': 700},
         {'if': {'column_id': 'Last', 'filter_query': '{Last} = "--"'}, 'color': theme['text_tertiary']},
         {'if': {'state': 'active'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
