@@ -35,11 +35,9 @@ graph TD
     HOME --> TOOLBAR["chart_toolbar<br/>title · #chart-bar-count · export"]
     HOME --> FRAME["#chart-frame > dcc.Loading > #financial-chart"]
 
-    RIGHT --> TABS["Backtest · Optimizer · Data tabs"]
     RIGHT --> BT["#panel-backtest → #backtest-results"]
-    RIGHT --> OPT["#panel-optimizer teaser → /optimize"]
-    RIGHT --> DATA["#panel-data → #data-table-container"]
     RIGHT --> EXEC["#execution-learn-modal"]
+    DATAOV["#data-overlay"] --> DATATABLE["#data-table-container"]
 
     OPTWS --> OPTCFG["config rail + Run/Stop + opt-* mirrors"]
     OPTWS --> OPTSLOT["#optimize-chart-slot hosts #chart-area-home"]
@@ -67,9 +65,9 @@ All under [`lib/dash/layout/`](../lib/dash/layout/):
 | `header.py` | The Bloomberg-style header tape **and** the dense bottom status bar (`_create_header`, `_create_status_bar`). |
 | `sidebar.py` | Left sidebar: Market Data, Saved Configurations, Chart Settings. |
 | `chart_area.py` | Center chart region: `#chart-area-home` wraps toolbar + `#financial-chart` (reparented into `#optimize-chart-slot` on `/optimize`). |
-| `right_panel.py` | Right panel shell: Backtest / Optimizer / Data tabs. |
-| `backtest_panel.py` | Backtest tab accordion + execution-mode cards; emits `execution-learn-modal`; **OPEN OPTIMIZER** CTA. SoT for capital/window/costs. |
-| `optimizer_panel.py` | Optimizer tab teaser — deep-links to the full-screen workspace. |
+| `right_panel.py` | Right panel shell: Backtest-only rail. |
+| `backtest_panel.py` | Backtest tab accordion + execution-mode cards; emits `execution-learn-modal`; **OPEN OPTIMIZER** and **OPEN DATA** CTAs. SoT for capital/window/costs. |
+| `data_overlay.py` | Shared Data overlay: singleton filters, CSV export, summary strip, and table host. |
 | `optimizer_workspace.py` | Full-screen `/optimize/<ticker>` overlay: `opt-*` mirrors, universe, chart slot, Run/Stop, results. |
 | `overlays.py` | Fundamentals workspace and Flow scanner workspace (both hidden until opened), plus the Flow learn modal. |
 | `command_palette.py` | The Ctrl+K command-palette modal. |

@@ -61,19 +61,18 @@ def register_optimize_workspace_callbacks(app) -> None:
         Output("app-url", "pathname", allow_duplicate=True),
         [
             Input("open-optimizer-button", "n_clicks"),
-            Input("open-optimizer-from-teaser", "n_clicks"),
             Input("close-optimize-button", "n_clicks"),
         ],
         State("ticker-dropdown", "value"),
         prevent_initial_call=True,
     )
-    def navigate_optimize(open_bt, open_teaser, close_clicks, ticker):
+    def navigate_optimize(open_bt, close_clicks, ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
         trigger = ctx.triggered[0]["prop_id"].split(".")[0]
         symbol = str(ticker or DEFAULT_TICKER).strip().upper()
-        if trigger in ("open-optimizer-button", "open-optimizer-from-teaser"):
+        if trigger == "open-optimizer-button":
             return build_optimize_path(symbol)
         if trigger == "close-optimize-button":
             return build_ticker_terminal_path(symbol)

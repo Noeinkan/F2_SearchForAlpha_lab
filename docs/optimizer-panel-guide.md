@@ -37,7 +37,6 @@ On the **left sidebar** (Market Data): set **Symbol** — it loads full availabl
 its own. Then open the Optimizer via:
 
 - **OPEN OPTIMIZER** on the Backtest tab, or
-- the right-rail **Optimizer** tab teaser → **OPEN FULL OPTIMIZER**, or
 - command palette → **Open optimizer**, or
 - URL `/optimize/<TICKER>`
 

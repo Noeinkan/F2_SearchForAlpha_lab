@@ -146,9 +146,9 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | `header.py` | Header bar + status bar |
 | `sidebar.py` | Left sidebar (ticker, date range, toggles) |
 | `chart_area.py` | Main chart + controls |
-| `right_panel.py` | Right panel shell (Backtest / Optimizer / Data tabs) |
-| `backtest_panel.py` | Backtest tab accordion + execution-mode cards + learn modal |
-| `optimizer_panel.py` | Optimizer tab teaser → full-screen `/optimize` |
+| `right_panel.py` | Right panel shell (Backtest-only rail) |
+| `backtest_panel.py` | Backtest accordion + execution-mode cards + learn modal + OPEN DATA/OPTIMIZER CTAs |
+| `data_overlay.py` | Shared Data overlay (filters, export, summary, table host) |
 | `optimizer_workspace.py` | Full-screen Optimizer overlay (mirrors, universe, chart slot, results) |
 | `overlays.py` | Fundamentals + Flow Scanner overlays (incl. Flow learn modal) |
 | `command_palette.py` | Ctrl+K command palette |

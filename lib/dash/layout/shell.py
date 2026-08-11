@@ -20,6 +20,7 @@ from lib.dash.styles import get_styles
 from .header import _create_header, _create_status_bar
 from .overlays import _create_fundamentals_overlay, _create_flow_overlay
 from .optimizer_workspace import _create_optimize_overlay
+from .data_overlay import _create_data_overlay
 from .sidebar import _create_sidebar
 from .chart_area import _create_chart_area
 from .right_panel import _create_right_panel
@@ -48,7 +49,6 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Store(id='presets-store', data={'presets': {}}),
         dcc.Store(id='active-preset-name', data=None),
         dcc.Store(id='preset-apply-store', data=None),
-        dcc.Store(id='active-tab-store', data='backtest', storage_type='local'),
         dcc.Store(id='optimization-running', data=False),
         dcc.Store(id='optimization-state', data={
             'running': False,
@@ -200,6 +200,7 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         _create_fundamentals_overlay(styles, theme),
         _create_flow_overlay(styles, theme),
         _create_optimize_overlay(styles, theme),
+        _create_data_overlay(styles, theme),
 
         # Phase 5 — command palette modal (must be the LAST child so it
         # stacks above every overlay).

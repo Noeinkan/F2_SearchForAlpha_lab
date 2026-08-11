@@ -275,7 +275,10 @@ class TestDefaultOffWiring(unittest.TestCase):
     def test_new_categories_are_default_off(self):
         from lib.dash.dash_config import DEFAULT_OFF_SIGNAL_CATEGORIES
 
-        self.assertEqual(DEFAULT_OFF_SIGNAL_CATEGORIES, frozenset({'ADX', 'ATR', 'OBV'}))
+        self.assertEqual(
+            DEFAULT_OFF_SIGNAL_CATEGORIES,
+            frozenset({'ADX', 'ATR', 'OBV', 'SMA', 'EMA', 'VWAP'}),
+        )
 
     def test_default_category_selection_excludes_them(self):
         from lib.dash.dash_config import DEFAULT_OFF_SIGNAL_CATEGORIES
@@ -284,10 +287,7 @@ class TestDefaultOffWiring(unittest.TestCase):
             category for category in get_signal_categories()
             if category not in DEFAULT_OFF_SIGNAL_CATEGORIES
         ]
-        self.assertNotIn('ADX', selected)
-        self.assertNotIn('ATR', selected)
-        self.assertNotIn('OBV', selected)
-        self.assertIn('RSI', selected)
+        self.assertEqual(set(selected), {'BB', 'MACD', 'RSI', 'CCI'})
 
     def test_chart_panes_stay_off_by_default(self):
         from lib.dash.bootstrap import DEFAULT_SELECTED_PLOTS

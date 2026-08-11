@@ -493,15 +493,13 @@ def register_optimizer_grid_callbacks(app) -> None:
     @app.callback(
         [Output('indicator-settings-store', 'data', allow_duplicate=True),
          Output('optimizer-apply-store', 'data', allow_duplicate=True),
-         Output('tab-backtest', 'n_clicks', allow_duplicate=True),
          Output('backtest-origin-note', 'children', allow_duplicate=True),
          Output('app-url', 'pathname', allow_duplicate=True),
          Output('grid-progress', 'children', allow_duplicate=True)],
         Input('apply-grid-btn', 'n_clicks'),
         [State('grid-results-store', 'data'),
          State('indicator-settings-store', 'data'),
-         State('ticker-dropdown', 'value'),
-         State('tab-backtest', 'n_clicks')],
+         State('ticker-dropdown', 'value')],
         prevent_initial_call=True,
     )
     def apply_grid_params(
@@ -509,7 +507,6 @@ def register_optimizer_grid_callbacks(app) -> None:
         grid_data,
         current_settings,
         ticker,
-        current_backtest_clicks,
     ):
         if not n_clicks or not grid_data:
             raise PreventUpdate
@@ -548,7 +545,6 @@ def register_optimizer_grid_callbacks(app) -> None:
         return (
             merged_settings,
             apply_payload,
-            (current_backtest_clicks or 0) + 1,
             note,
             build_ticker_terminal_path(ticker),
             grid_note,

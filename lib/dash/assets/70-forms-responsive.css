@@ -325,8 +325,8 @@ aside.sfa-right-panel .sfa-panel-toggle-wrap {
         -webkit-overflow-scrolling: touch;
     }
     aside.sfa-right-panel #panel-backtest,
-    aside.sfa-right-panel #panel-optimizer,
-    aside.sfa-right-panel #panel-data {
+    #data-overlay,
+    #data-table-container {
         min-height: 0;
     }
 

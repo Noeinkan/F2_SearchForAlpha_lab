@@ -492,10 +492,12 @@ INDICATOR_DEFINITIONS = [
 ]
 
 # Signal categories that stay unticked in the SIGNALS panel on first load.
-# ADX/ATR/OBV are regime and confirmation filters rather than standalone
-# entries, so they are hidden until the user opts in — matching the fact that
-# their chart panes are also absent from bootstrap.DEFAULT_SELECTED_PLOTS.
-DEFAULT_OFF_SIGNAL_CATEGORIES = frozenset({'ADX', 'ATR', 'OBV'})
+# Default-on set is BB / MACD / RSI / CCI only. SMA/EMA/VWAP stay opt-in to
+# keep the first-paint signal list focused; ADX/ATR/OBV are regime filters
+# (their chart panes are also absent from bootstrap.DEFAULT_SELECTED_PLOTS).
+DEFAULT_OFF_SIGNAL_CATEGORIES = frozenset({
+    'ADX', 'ATR', 'OBV', 'SMA', 'EMA', 'VWAP',
+})
 
 PLOT_OPTIONS = [('Candlestick', 'candlestick')] + [
     (definition['label'], definition['key'])

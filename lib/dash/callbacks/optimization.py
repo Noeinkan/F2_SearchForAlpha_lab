@@ -1015,13 +1015,11 @@ def register_optimization_callbacks(app) -> None:
 
     @app.callback(
         [Output('optimizer-apply-store', 'data'),
-         Output('tab-backtest', 'n_clicks', allow_duplicate=True),
          Output('backtest-origin-note', 'children'),
          Output('app-url', 'pathname', allow_duplicate=True)],
         [Input('apply-strategy-btn', 'n_clicks')],
         [State('optimization-results-store', 'data'),
          State('sort-metric-dropdown', 'value'),
-         State('tab-backtest', 'n_clicks'),
          State('ticker-dropdown', 'value'),
          State('optimization-state', 'data')],
         prevent_initial_call=True
@@ -1030,7 +1028,6 @@ def register_optimization_callbacks(app) -> None:
         n_clicks,
         results_data,
         sort_by,
-        current_backtest_clicks,
         ticker,
         opt_client_state,
     ):
@@ -1082,7 +1079,6 @@ def register_optimization_callbacks(app) -> None:
         }
         return (
             apply_payload,
-            (current_backtest_clicks or 0) + 1,
             note,
             build_ticker_terminal_path(ticker),
         )

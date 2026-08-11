@@ -1,8 +1,8 @@
 """
 Full-screen Optimizer workspace overlay.
 
-Holds the live optimizer control IDs (run/stop, search knobs, results) so the
-right-rail Optimizer tab can stay a thin teaser that deep-links here.
+Holds the live optimizer control IDs (run/stop, search knobs, results).
+Opened from the Backtest tab CTA, command palette, or ``/optimize/<ticker>``.
 
 Capital / window / friction editors are *mirrors* of Backtest SoT IDs — Dash
 forbids remounting those IDs. Sync lives in ``callbacks/optimizer_sync.py``.
@@ -925,6 +925,17 @@ def _create_optimize_overlay(styles: dict, theme: dict) -> html.Div:
                 dbc.Tooltip(
                     "Beginner guide: what each analysis does and which button to press.",
                     target='optimizer-learn-button',
+                    placement='bottom',
+                ),
+                html.Button(
+                    "DATA",
+                    id='open-data-from-optimizer',
+                    n_clicks=0,
+                    style={**styles['button_outline'], 'padding': '6px 12px'},
+                ),
+                dbc.Tooltip(
+                    "Open the loaded data table on top of the Optimizer workspace.",
+                    target='open-data-from-optimizer',
                     placement='bottom',
                 ),
                 html.Button(

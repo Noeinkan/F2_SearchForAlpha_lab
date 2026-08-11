@@ -15,84 +15,43 @@ from lib.dash.dash_config import (
     get_theme,
 )
 from lib.dash.state import dashboard_state
-from lib.dash.styles import get_styles
 
 
 def register_misc_callbacks(app) -> None:
     @app.callback(
-        [Output('panel-backtest', 'style'),
-         Output('panel-optimizer', 'style'),
-         Output('panel-data', 'style'),
-         Output('tab-backtest', 'style'),
-         Output('tab-optimizer', 'style'),
-         Output('tab-data', 'style'),
-         Output('tab-backtest', 'className'),
-         Output('tab-optimizer', 'className'),
-         Output('tab-data', 'className'),
-         Output('active-tab-store', 'data')],
-        [Input('tab-backtest', 'n_clicks'),
-         Input('tab-optimizer', 'n_clicks'),
-         Input('tab-data', 'n_clicks')],
-        [State('theme-store', 'data'),
-         State('active-tab-store', 'data')]
+        [Output('data-overlay', 'style'),
+         Output('data-overlay', 'className')],
+        [Input('open-data-button', 'n_clicks'),
+         Input('open-data-from-optimizer', 'n_clicks'),
+         Input('close-data-button', 'n_clicks'),
+         Input('theme-store', 'data')],
+        [State('data-overlay', 'style')]
     )
-    def switch_panel(backtest_clicks, optimizer_clicks, data_clicks, theme_name, active_tab):
-        """Switch between right panel tabs."""
+    def toggle_data_overlay(open_backtest, open_optimizer, close_clicks, theme_name, current_style):
+        """Open/close the shared Data overlay and keep its theme in sync."""
         theme = get_theme(theme_name or DEFAULT_THEME)
-        styles = get_styles(theme)
-
-        def _styles_for_tab(tab_name):
-            if tab_name == 'optimizer':
-                return (
-                    {'display': 'none'},
-                    {'display': 'block'},
-                    {'display': 'none'},
-                    styles['tab'],
-                    {**styles['tab'], **styles['tab_active']},
-                    styles['tab'],
-                    'panel-tab',
-                    'panel-tab active',
-                    'panel-tab',
-                    'optimizer'
-                )
-            if tab_name == 'data':
-                return (
-                    {'display': 'none'},
-                    {'display': 'none'},
-                    {'display': 'block'},
-                    styles['tab'],
-                    styles['tab'],
-                    {**styles['tab'], **styles['tab_active']},
-                    'panel-tab',
-                    'panel-tab',
-                    'panel-tab active',
-                    'data'
-                )
-            return (
-                {'display': 'block'},
-                {'display': 'none'},
-                {'display': 'none'},
-                {**styles['tab'], **styles['tab_active']},
-                styles['tab'],
-                styles['tab'],
-                'panel-tab active',
-                'panel-tab',
-                'panel-tab',
-                'backtest'
-            )
+        is_open = str((current_style or {}).get('display', 'none')).lower() != 'none'
 
         ctx = callback_context
-        if not ctx.triggered:
-            return _styles_for_tab(active_tab or 'backtest')
+        if ctx.triggered:
+            button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            if button_id in ('open-data-button', 'open-data-from-optimizer'):
+                is_open = True
+            elif button_id == 'close-data-button':
+                is_open = False
 
-        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-
-        if button_id == 'tab-backtest':
-            return _styles_for_tab('backtest')
-        if button_id == 'tab-optimizer':
-            return _styles_for_tab('optimizer')
-        # tab-data
-        return _styles_for_tab('data')
+        style = {
+            'display': 'flex' if is_open else 'none',
+            'position': 'fixed',
+            'inset': '56px 16px 36px 16px',
+            'zIndex': 25,
+            'backgroundColor': theme['bg_primary'],
+            'border': f'1px solid {theme["border_primary"]}',
+            'boxShadow': '0 18px 60px rgba(0, 0, 0, 0.45)',
+            'overflow': 'hidden',
+            'flexDirection': 'column',
+        }
+        return style, 'sfa-data-overlay'
 
     @app.callback(
         [Output('header-status', 'children'),
