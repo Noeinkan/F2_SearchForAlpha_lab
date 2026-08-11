@@ -26,14 +26,17 @@ def register_strategy_callbacks(app) -> None:
         """Show/hide mode-specific options based on selected strategy mode."""
         theme = get_theme(theme_name or DEFAULT_THEME)
 
-        def panel_style(show: bool, color: str) -> dict:
+        # Match Signals / Transaction Costs: neutral chrome, accents only for
+        # interactive focus (CSS), not rainbow option cards.
+        def panel_style(show: bool) -> dict:
             return {
-                'marginBottom': '12px',
+                'marginBottom': '10px',
                 'display': 'block' if show else 'none',
-                'padding': '10px',
-                'backgroundColor': f'{color}10',
-                'borderRadius': BORDER_RADIUS['md'],
-                'border': f'1px solid {color}40',
+                'padding': '0 0 10px 0',
+                'backgroundColor': 'transparent',
+                'borderRadius': BORDER_RADIUS['sm'],
+                'border': 'none',
+                'borderBottom': f'1px solid {theme["border_primary"]}',
                 'color': theme['text_primary'],
             }
 
@@ -41,14 +44,14 @@ def register_strategy_callbacks(app) -> None:
         is_accumulation = strategy_mode == 'accumulation'
         is_rebalancing = strategy_mode == 'rebalancing'
 
-        accumulation_style = panel_style(is_accumulation, theme["accent_green"])
-        rebalancing_style = panel_style(is_rebalancing, theme["accent_blue"])
-        preset_style = panel_style(is_trading, theme["accent_purple"])
-        holding_style = panel_style(is_trading or is_rebalancing, theme["accent_orange"])
-        trailing_style = panel_style(is_trading or is_rebalancing, theme["accent_red"])
-        scaling_style = panel_style(is_trading, theme["accent_cyan"])
-        take_profit_style = panel_style(is_trading or is_rebalancing, theme["accent_green"])
-        kelly_style = panel_style(is_trading, theme["accent_purple"])
+        accumulation_style = panel_style(is_accumulation)
+        rebalancing_style = panel_style(is_rebalancing)
+        preset_style = panel_style(is_trading)
+        holding_style = panel_style(is_trading or is_rebalancing)
+        trailing_style = panel_style(is_trading or is_rebalancing)
+        scaling_style = panel_style(is_trading)
+        take_profit_style = panel_style(is_trading or is_rebalancing)
+        kelly_style = panel_style(is_trading)
 
         return (accumulation_style, rebalancing_style, preset_style,
                 holding_style, trailing_style, scaling_style, take_profit_style,
@@ -111,22 +114,37 @@ def register_strategy_callbacks(app) -> None:
 
         mode = (consecutive_mode or 'scale_in').lower()
         cooldown_style = {'display': 'none'}
-        help_text = "Controls repeated triggers for BUY and SELL signals."
+        help_text = (
+            "When the same buy/sell fires on several bars in a row, this chooses "
+            "whether to act every time or skip repeats."
+        )
 
         if mode == 'edge':
-            help_text = "Edge: triggers only when signals flip 0→1 (no re-entry spam)."
+            help_text = (
+                "Edge: act only the moment a signal turns on (0→1). Ignores bars "
+                "where it stays on — stops piling in on the same run."
+            )
         elif mode == 'cooldown':
             cooldown_style = {'display': 'block'}
-            help_text = "Cooldown: wait N bars after a trigger before allowing another."
+            help_text = (
+                "Cooldown: after you act, wait N bars before another trade can "
+                "fire from the same side."
+            )
             if not cooldown_value or cooldown_value <= 0:
                 cooldown_value = 5
         elif mode == 'reset_cooldown':
             cooldown_style = {'display': 'block'}
-            help_text = "Reset+Cooldown: wait for signal reset plus N bars."
+            help_text = (
+                "Reset + Cooldown: the signal must switch fully off, then wait "
+                "N more bars, before another trade is allowed."
+            )
             if not cooldown_value or cooldown_value <= 0:
                 cooldown_value = 5
         else:
-            help_text = "Scale-in: repeats add to position (default behavior)."
+            help_text = (
+                "Scale-in: every repeat counts. Each accepted buy adds more size "
+                "(default behaviour)."
+            )
             if cooldown_value is None:
                 cooldown_value = 0
 
