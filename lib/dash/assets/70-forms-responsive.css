@@ -1,14 +1,51 @@
 /* =============================================================================
-   Trade-setup stepper inputs (right panel)
-   The numeric inputs (min-holding-period, trailing-stop-pct, take-profit-pct,
-   position-size-pct, position-scaling-pct, signal-cooldown-bars, amount-per-buy,
-   kelly-win-rate, kelly-win-loss-ratio) live inside coloured option cards.
-   Make the value large/tabular so the digit dominates over the chrome.
-
-   Note: the inputs do NOT carry the .bbg-input class — styling is fully inline
-   via the `style=` prop — so we target them by their `id` attribute directly.
-   `!important` is required to beat the inline padding/font-size on `style=`.
+   Trade-setup number fields + custom − / + steppers (right panel)
+   Native browser spin buttons are invisible on dark themes, so we hide them
+   and use .sfa-num-stepper buttons (wired by 25-trade-setup-stepper.js).
+   Inputs use inline `style=` — ID selectors + !important beat that.
    ========================================================================== */
+
+.sfa-num-stepper {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+}
+
+.sfa-num-stepper__btn {
+    flex: 0 0 36px;
+    width: 36px;
+    height: 38px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    background: var(--bg-secondary, var(--bg-tertiary));
+    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sfa-num-stepper__btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.sfa-num-stepper__btn:active {
+    transform: translateY(1px);
+}
+
+.sfa-num-stepper > input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
 
 #min-holding-period,
 #trailing-stop-pct,
@@ -27,58 +64,36 @@
     color: var(--text-primary) !important;
     text-align: center !important;
     height: 38px !important;
-    padding: 4px 32px !important;           /* leave room for native spinners */
+    padding: 4px 10px !important;
     letter-spacing: 0.5px;
+    /* Hide native spinners — custom − / + buttons replace them */
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
 }
 
-/* Re-enable the WebKit native spinner buttons. The earlier global rule hides
-   them with `-webkit-appearance: none`; an ID selector + !important overrides
-   that for these specific inputs so users get a discoverable +/- control. */
-#min-holding-period::-webkit-inner-spin-button,
 #min-holding-period::-webkit-outer-spin-button,
-#trailing-stop-pct::-webkit-inner-spin-button,
+#min-holding-period::-webkit-inner-spin-button,
 #trailing-stop-pct::-webkit-outer-spin-button,
-#take-profit-pct::-webkit-inner-spin-button,
+#trailing-stop-pct::-webkit-inner-spin-button,
 #take-profit-pct::-webkit-outer-spin-button,
-#position-size-pct::-webkit-inner-spin-button,
+#take-profit-pct::-webkit-inner-spin-button,
 #position-size-pct::-webkit-outer-spin-button,
-#position-scaling-pct::-webkit-inner-spin-button,
+#position-size-pct::-webkit-inner-spin-button,
 #position-scaling-pct::-webkit-outer-spin-button,
-#signal-cooldown-bars::-webkit-inner-spin-button,
+#position-scaling-pct::-webkit-inner-spin-button,
 #signal-cooldown-bars::-webkit-outer-spin-button,
-#amount-per-buy::-webkit-inner-spin-button,
+#signal-cooldown-bars::-webkit-inner-spin-button,
 #amount-per-buy::-webkit-outer-spin-button,
-#kelly-win-rate::-webkit-inner-spin-button,
+#amount-per-buy::-webkit-inner-spin-button,
 #kelly-win-rate::-webkit-outer-spin-button,
-#kelly-win-loss-ratio::-webkit-inner-spin-button,
-#kelly-win-loss-ratio::-webkit-outer-spin-button {
-    -webkit-appearance: inner-spin-button !important;
-    appearance: auto !important;
-    opacity: 1 !important;
-    width: 22px !important;
-    height: 100% !important;
-    /* Soft fill so +/- stays readable on dark / light themes */
-    background: color-mix(in srgb, var(--text-secondary) 18%, transparent) !important;
-    border-radius: 3px;
-    cursor: pointer;
-    margin: 0 2px 0 0 !important;
+#kelly-win-rate::-webkit-inner-spin-button,
+#kelly-win-loss-ratio::-webkit-outer-spin-button,
+#kelly-win-loss-ratio::-webkit-inner-spin-button {
+    -webkit-appearance: none !important;
+    margin: 0 !important;
+    display: none !important;
 }
 
-/* Firefox shows the spinner as a faint text-style control — make it visible
-   against the dark card backgrounds. */
-#min-holding-period,
-#trailing-stop-pct,
-#take-profit-pct,
-#position-size-pct,
-#position-scaling-pct,
-#signal-cooldown-bars,
-#amount-per-buy,
-#kelly-win-rate,
-#kelly-win-loss-ratio {
-    -moz-appearance: auto !important;
-}
-
-/* On focus, lift the value to the accent colour so the active input stands out. */
 #min-holding-period:focus,
 #trailing-stop-pct:focus,
 #take-profit-pct:focus,

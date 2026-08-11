@@ -97,15 +97,6 @@ def _trade_setup_field_label(
     })
 
 
-def _trade_setup_blurb(text: str, theme: dict) -> html.Div:
-    return html.Div(text, style={
-        'fontSize': '10px',
-        'color': theme['text_tertiary'],
-        'marginTop': '6px',
-        'lineHeight': '1.4',
-    })
-
-
 def _trade_setup_panel_style(theme: dict, *, visible: bool = False) -> dict:
     """Neutral field block — show/hide only; no rainbow accent cards."""
     return {
@@ -128,6 +119,38 @@ def _trade_setup_input_style(styles: dict) -> dict:
         'padding': '10px 12px',
         'fontSize': FONT_SIZES['base'],
     }
+
+
+def _trade_setup_stepper(input_el) -> html.Div:
+    """Wrap a number input with visible − / + buttons (see 25-trade-setup-stepper.js)."""
+    return html.Div([
+        html.Button(
+            "−",
+            type='button',
+            className='sfa-num-stepper__btn',
+            **{'data-dir': '-1'},
+        ),
+        input_el,
+        html.Button(
+            "+",
+            type='button',
+            className='sfa-num-stepper__btn',
+            **{'data-dir': '1'},
+        ),
+    ], className='sfa-num-stepper')
+
+
+def _tip(text: str, *targets: str) -> list:
+    """One tooltip body attached to every target id (help ? and/or field)."""
+    return [
+        dbc.Tooltip(
+            text,
+            target=target,
+            placement='left',
+            trigger='hover focus',
+        )
+        for target in targets
+    ]
 
 
 def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Div:
@@ -312,17 +335,6 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                 html.Span("TRADE SETUP", style=styles['card_header']),
                                 html.Span("?", id='help-trade-setup', style=help_icon_style),
                             ], style={'display': 'flex', 'alignItems': 'center'}),
-                            html.Div(
-                                "Sizing and exits for the execution mode you picked above. "
-                                "These knobs change how trades are sized and closed — not "
-                                "which indicator signals fire.",
-                                style={
-                                    'fontSize': '10px',
-                                    'color': theme['text_tertiary'],
-                                    'lineHeight': '1.4',
-                                    'margin': '6px 10px 10px',
-                                },
-                            ),
                             html.Div([
                                 html.Div(id='preset-options', children=[
                                     _trade_setup_field_label(
@@ -342,26 +354,19 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         style={'fontSize': FONT_SIZES['sm']},
                                         className='dark-dropdown',
                                     ),
-                                    _trade_setup_blurb(
-                                        "Quick starting points for hold length and stops. "
-                                        "Custom keeps whatever numbers you set yourself.",
-                                        theme,
-                                    ),
                                 ], style=_trade_setup_panel_style(theme, visible=False)),
-                                dbc.Tooltip(
-                                    "Swing / Position / Trend fill sensible defaults for "
-                                    "min hold, trailing stop, scale-in and take-profit. "
-                                    "Custom leaves your values alone.",
-                                    target='help-strategy-preset',
-                                    placement='left',
-                                    trigger='hover focus',
+                                *_tip(
+                                    "Quick starting points for hold length and stops. "
+                                    "Swing / Position / Trend fill min hold, trailing stop, "
+                                    "scale-in and take-profit. Custom keeps your numbers.",
+                                    'help-strategy-preset', 'strategy-preset',
                                 ),
                                 html.Div(id='holding-period-options', children=[
                                     _trade_setup_field_label(
                                         "Min Holding Period", 'help-min-holding',
                                         help_icon_style, theme, unit="bars",
                                     ),
-                                    dcc.Input(
+                                    _trade_setup_stepper(dcc.Input(
                                         id='min-holding-period',
                                         type='number',
                                         value=5,
@@ -369,28 +374,20 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         step=1,
                                         placeholder='bars to hold',
                                         style=_trade_setup_input_style(styles),
-                                    ),
-                                    _trade_setup_blurb(
-                                        "Force the trade to stay open at least this many "
-                                        "candles before a sell or take-profit can fire. "
-                                        "Stops jittery in-and-out churn. Trailing stops "
-                                        "still work during the wait.",
-                                        theme,
-                                    ),
+                                    )),
                                 ], style=_trade_setup_panel_style(theme, visible=False)),
-                                dbc.Tooltip(
-                                    "Minimum bars before a discretionary sell or take-profit "
-                                    "is allowed. Trailing stop ignores this floor.",
-                                    target='help-min-holding',
-                                    placement='left',
-                                    trigger='hover focus',
+                                *_tip(
+                                    "Force the trade to stay open at least this many candles "
+                                    "before a sell or take-profit can fire. Stops jittery "
+                                    "in-and-out churn. Trailing stops still work during the wait.",
+                                    'help-min-holding', 'min-holding-period',
                                 ),
                                 html.Div(id='trailing-stop-options', children=[
                                     _trade_setup_field_label(
                                         "Trailing Stop", 'help-trailing-stop',
                                         help_icon_style, theme, unit="%",
                                     ),
-                                    dcc.Input(
+                                    _trade_setup_stepper(dcc.Input(
                                         id='trailing-stop-pct',
                                         type='number',
                                         value=5,
@@ -399,7 +396,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         step=0.5,
                                         placeholder='% trail',
                                         style=_trade_setup_input_style(styles),
-                                    ),
+                                    )),
                                     html.Div([
                                         dcc.RadioItems(
                                             id='stop-mode',
@@ -425,20 +422,13 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         'padding': '2px 4px',
                                         'display': 'inline-block',
                                     }),
-                                    _trade_setup_blurb(
-                                        "Safety net: auto-sell if price falls this far from "
-                                        "the best point since entry. % TRAIL uses the number "
-                                        "above; ATR uses a volatility-scaled stop instead.",
-                                        theme,
-                                    ),
                                 ], style=_trade_setup_panel_style(theme, visible=False)),
-                                dbc.Tooltip(
-                                    "% TRAIL uses the fixed percentage. ATR uses the "
-                                    "volatility-scaled Chandelier stop from the ATR strategy "
-                                    "(needs ATR signals generated; falls back to % otherwise).",
-                                    target='help-trailing-stop',
-                                    placement='left',
-                                    trigger='hover focus',
+                                *_tip(
+                                    "Safety net: auto-sell if price falls this far from the "
+                                    "best point since entry. % TRAIL uses the number above; "
+                                    "ATR uses a volatility-scaled Chandelier stop (needs ATR "
+                                    "signals; falls back to % otherwise).",
+                                    'help-trailing-stop', 'trailing-stop-pct', 'stop-mode',
                                 ),
                                 html.Div(id='position-scaling-options', children=[
                                     _trade_setup_field_label(
@@ -446,9 +436,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         help_icon_style, theme, unit="%",
                                     ),
                                     # 100% = one signal buys the whole Kelly-sized entry.
-                                    # This defaulted to 25 while the UI claimed the mode
-                                    # bought "100%", so every entry was silently quartered.
-                                    dcc.Input(
+                                    _trade_setup_stepper(dcc.Input(
                                         id='position-scaling-pct',
                                         type='number',
                                         value=100,
@@ -457,22 +445,14 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         step=1,
                                         placeholder='% of target size per signal',
                                         style=_trade_setup_input_style(styles),
-                                    ),
-                                    _trade_setup_blurb(
-                                        "How much of the full Kelly-sized entry each buy "
-                                        "takes. 100% = full size on the first signal. Lower "
-                                        "values ramp in — and keep stacking on repeats.",
-                                        theme,
-                                    ),
+                                    )),
                                 ], style=_trade_setup_panel_style(theme, visible=False)),
-                                dbc.Tooltip(
-                                    "Fraction of the Kelly-sized target each signal buys. "
+                                *_tip(
+                                    "How much of the full Kelly-sized entry each buy takes. "
                                     "100% = full size on the first signal. Lower values ramp "
-                                    "in over consecutive signals — and keep stacking, they do "
-                                    "not stop at 100% of target.",
-                                    target='help-position-scaling',
-                                    placement='left',
-                                    trigger='hover focus',
+                                    "in — and keep stacking on repeats (they do not stop at "
+                                    "100% of target).",
+                                    'help-position-scaling', 'position-scaling-pct',
                                 ),
                                 html.Div(id='consecutive-signal-options', children=[
                                     _trade_setup_field_label(
@@ -492,18 +472,10 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         style={'fontSize': FONT_SIZES['sm']},
                                         className='dark-dropdown',
                                     ),
+                                    # Hidden sink for strategy_ui mode-help callback.
                                     html.Div(
                                         id='consecutive-signal-help',
-                                        children=(
-                                            "Scale-in: every repeat counts. Each accepted buy "
-                                            "adds more size (default behaviour)."
-                                        ),
-                                        style={
-                                            'fontSize': '10px',
-                                            'color': theme['text_tertiary'],
-                                            'marginTop': '6px',
-                                            'lineHeight': '1.4',
-                                        },
+                                        style={'display': 'none'},
                                     ),
                                     html.Div(id='signal-cooldown-container', children=[
                                         html.Div([
@@ -521,7 +493,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                             'marginTop': '8px',
                                             'marginBottom': '4px',
                                         }),
-                                        dcc.Input(
+                                        _trade_setup_stepper(dcc.Input(
                                             id='signal-cooldown-bars',
                                             type='number',
                                             value=5,
@@ -529,36 +501,30 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                             step=1,
                                             placeholder='bars between triggers',
                                             style=_trade_setup_input_style(styles),
-                                        ),
-                                        _trade_setup_blurb(
-                                            "How many bars to wait after a trade before the "
-                                            "same side can fire again. Applies to buys and sells.",
-                                            theme,
-                                        ),
+                                        )),
                                     ], style={'display': 'block'}),
                                 ], style={
                                     **_trade_setup_panel_style(theme, visible=True),
                                 }),
-                                dbc.Tooltip(
-                                    "When the same signal stays on for several bars: Scale-in "
-                                    "acts every time; Edge only on 0→1; Cooldown waits N bars; "
-                                    "Reset+Cooldown also requires the signal to turn fully off.",
-                                    target='help-consecutive-signals',
-                                    placement='left',
-                                    trigger='hover focus',
+                                *_tip(
+                                    "When the same signal stays on for several bars: "
+                                    "Scale-in acts every time; Edge only on 0→1; "
+                                    "Cooldown waits N bars; Reset+Cooldown also requires "
+                                    "the signal to turn fully off first.",
+                                    'help-consecutive-signals', 'consecutive-signal-mode',
                                 ),
-                                dbc.Tooltip(
-                                    "Best-practice defaults: edge=0, cooldown=5, reset+cooldown=5.",
-                                    target='help-signal-cooldown',
-                                    placement='left',
-                                    trigger='hover focus',
+                                *_tip(
+                                    "Bars to wait after a trade before the same side can "
+                                    "fire again. Applies to buys and sells. "
+                                    "Defaults: cooldown=5, reset+cooldown=5.",
+                                    'help-signal-cooldown', 'signal-cooldown-bars',
                                 ),
                                 html.Div(id='take-profit-options', children=[
                                     _trade_setup_field_label(
                                         "Take Profit", 'help-take-profit',
                                         help_icon_style, theme, unit="%",
                                     ),
-                                    dcc.Input(
+                                    _trade_setup_stepper(dcc.Input(
                                         id='take-profit-pct',
                                         type='number',
                                         value=0,
@@ -567,65 +533,32 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         step=0.5,
                                         placeholder='% target',
                                         style=_trade_setup_input_style(styles),
-                                    ),
-                                    _trade_setup_blurb(
-                                        "Lock in gains: exit the whole position once you're "
-                                        "up this % from average entry. 0 = off.",
-                                        theme,
-                                    ),
+                                    )),
                                 ], style=_trade_setup_panel_style(theme, visible=False)),
-                                dbc.Tooltip(
-                                    "Exit the full position when the profit target is reached "
-                                    "(after the min holding period).",
-                                    target='help-take-profit',
-                                    placement='left',
-                                    trigger='hover focus',
+                                *_tip(
+                                    "Lock in gains: exit the whole position once you're up "
+                                    "this % from average entry (after min holding). 0 = off.",
+                                    'help-take-profit', 'take-profit-pct',
                                 ),
                                 html.Div(id='accumulation-options', children=[
                                     _trade_setup_field_label(
                                         "Amount Per Buy", 'help-amount-per-buy',
                                         help_icon_style, theme, unit="$",
                                     ),
-                                    dcc.Input(
+                                    _trade_setup_stepper(dcc.Input(
                                         id='amount-per-buy',
                                         type='number',
                                         value=1000,
                                         min=100,
                                         placeholder='$ per buy signal',
                                         style=_trade_setup_input_style(styles),
-                                    ),
-                                    # Accumulation silently discards sell signals and never
-                                    # sets a stop. Stating it here is the difference between
-                                    # a deliberate choice and a confusing result.
-                                    html.Div([
-                                        html.Div(
-                                            "This mode only ever buys.",
-                                            style={
-                                                'fontWeight': '600',
-                                                'color': theme['text_secondary'],
-                                            },
-                                        ),
-                                        html.Div(
-                                            "Sell signals, trailing stop, take profit and min "
-                                            "holding period are all inactive. Win rate and "
-                                            "profit factor stay blank because the position is "
-                                            "never closed.",
-                                            style={
-                                                'color': theme['text_tertiary'],
-                                                'marginTop': '2px',
-                                            },
-                                        ),
-                                    ], style={
-                                        'fontSize': '10px',
-                                        'marginTop': '8px',
-                                        'lineHeight': '1.4',
-                                    }),
+                                    )),
                                 ], style=_trade_setup_panel_style(theme, visible=False)),
-                                dbc.Tooltip(
-                                    "Dollar amount spent on each buy signal, until cash runs out.",
-                                    target='help-amount-per-buy',
-                                    placement='left',
-                                    trigger='hover focus',
+                                *_tip(
+                                    "Dollar amount spent on each buy signal until cash runs "
+                                    "out. This mode only ever buys — sell signals, trailing "
+                                    "stop, take profit and min holding are inactive.",
+                                    'help-amount-per-buy', 'amount-per-buy',
                                 ),
                                 # Selecting sell signals in Accumulation is dead config —
                                 # populated by callbacks/execution_help.py.
@@ -635,7 +568,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         "Portfolio Weight", 'help-position-size',
                                         help_icon_style, theme, unit="%",
                                     ),
-                                    dcc.Input(
+                                    _trade_setup_stepper(dcc.Input(
                                         id='position-size-pct',
                                         type='number',
                                         value=25,
@@ -643,31 +576,18 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         max=100,
                                         placeholder='% per trade',
                                         style=_trade_setup_input_style(styles),
-                                    ),
-                                    _trade_setup_blurb(
-                                        "Each signal trades this % of total portfolio value — "
-                                        "same size in on a buy and out on a sell, so the third "
-                                        "buy matches the first.",
-                                        theme,
-                                    ),
+                                    )),
                                 ], style=_trade_setup_panel_style(theme, visible=False)),
-                                dbc.Tooltip(
-                                    "Percentage of total portfolio value traded on each signal. "
-                                    "A stop or take-profit hit still exits the whole position.",
-                                    target='help-position-size',
-                                    placement='left',
-                                    trigger='hover focus',
+                                *_tip(
+                                    "Each signal trades this % of total portfolio value — "
+                                    "same size in on a buy and out on a sell. A stop or "
+                                    "take-profit still exits the whole position.",
+                                    'help-position-size', 'position-size-pct',
                                 ),
                                 html.Div(id='kelly-options', children=[
                                     _trade_setup_field_label(
                                         "Kelly Criterion", 'help-kelly',
                                         help_icon_style, theme,
-                                    ),
-                                    _trade_setup_blurb(
-                                        "Bet-sizing formula that sets how large each entry is. "
-                                        "Defaults (0.50 win rate / 1.50 win÷loss) → about 16.7% "
-                                        "of the account. Leave alone unless you know it.",
-                                        theme,
                                     ),
                                     html.Div([
                                         html.Div([
@@ -682,10 +602,9 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                             'display': 'flex',
                                             'alignItems': 'center',
                                             'justifyContent': 'space-between',
-                                            'marginTop': '8px',
                                             'marginBottom': '4px',
                                         }),
-                                        dcc.Input(
+                                        _trade_setup_stepper(dcc.Input(
                                             id='kelly-win-rate',
                                             type='number',
                                             value=0.5,
@@ -694,13 +613,8 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                             step=0.01,
                                             placeholder='0.50',
                                             style=_trade_setup_input_style(styles),
-                                        ),
-                                        _trade_setup_blurb(
-                                            "Assumed chance a trade wins, from 0 to 1 "
-                                            "(0.50 = half the time).",
-                                            theme,
-                                        ),
-                                    ], style={'marginBottom': '4px'}),
+                                        )),
+                                    ], style={'marginBottom': '8px'}),
                                     html.Div([
                                         html.Div([
                                             html.Span("Win/Loss Ratio", style={
@@ -714,10 +628,9 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                             'display': 'flex',
                                             'alignItems': 'center',
                                             'justifyContent': 'space-between',
-                                            'marginTop': '8px',
                                             'marginBottom': '4px',
                                         }),
-                                        dcc.Input(
+                                        _trade_setup_stepper(dcc.Input(
                                             id='kelly-win-loss-ratio',
                                             type='number',
                                             value=1.5,
@@ -725,41 +638,30 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                             step=0.1,
                                             placeholder='1.50',
                                             style=_trade_setup_input_style(styles),
-                                        ),
-                                        _trade_setup_blurb(
-                                            "Average win size ÷ average loss size. 1.50 means "
-                                            "wins are typically 1.5× larger than losses.",
-                                            theme,
-                                        ),
+                                        )),
                                     ]),
                                 ], style=_trade_setup_panel_style(theme, visible=False)),
-                                dbc.Tooltip(
-                                    "Kelly sets entry size from win rate and win/loss ratio. "
-                                    "At defaults, about 16.7% of the account per full entry.",
-                                    target='help-kelly',
-                                    placement='left',
-                                    trigger='hover focus',
+                                *_tip(
+                                    "Bet-sizing formula for entry size. Defaults "
+                                    "(0.50 win rate / 1.50 win÷loss) → about 16.7% of the "
+                                    "account per full entry. Leave alone unless you know it.",
+                                    'help-kelly',
                                 ),
-                                dbc.Tooltip(
-                                    "Probability of a winning trade (0–1).",
-                                    target='help-kelly-win-rate',
-                                    placement='left',
-                                    trigger='hover focus',
+                                *_tip(
+                                    "Assumed chance a trade wins, from 0 to 1 (0.50 = half the time).",
+                                    'help-kelly-win-rate', 'kelly-win-rate',
                                 ),
-                                dbc.Tooltip(
-                                    "Average win ÷ average loss used by Kelly sizing.",
-                                    target='help-kelly-wl',
-                                    placement='left',
-                                    trigger='hover focus',
+                                *_tip(
+                                    "Average win size ÷ average loss size. 1.50 means wins "
+                                    "are typically 1.5× larger than losses.",
+                                    'help-kelly-wl', 'kelly-win-loss-ratio',
                                 ),
-                            ], style={'padding': '0 10px 8px'}),
-                            dbc.Tooltip(
-                                "Fine-tune how much you buy/sell and when exits fire. "
-                                "Does not change which indicator signals light up — only "
-                                "how the backtest acts on them.",
-                                target='help-trade-setup',
-                                placement='left',
-                                trigger='hover focus',
+                            ], style={'padding': '8px 10px'}),
+                            *_tip(
+                                "Sizing and exits for the execution mode above. These knobs "
+                                "change how trades are sized and closed — not which "
+                                "indicator signals fire.",
+                                'help-trade-setup',
                             ),
                         ], style=styles['card'])
                     ],
