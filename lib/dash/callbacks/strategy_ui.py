@@ -6,7 +6,7 @@ from dash import callback_context
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.dash.dash_config import DEFAULT_THEME, BORDER_RADIUS, get_theme
+from lib.dash.dash_config import DEFAULT_THEME, get_theme
 
 
 def register_strategy_callbacks(app) -> None:
@@ -26,19 +26,21 @@ def register_strategy_callbacks(app) -> None:
         """Show/hide mode-specific options based on selected strategy mode."""
         theme = get_theme(theme_name or DEFAULT_THEME)
 
-        # Match Signals / Transaction Costs: neutral chrome, accents only for
-        # interactive focus (CSS), not rainbow option cards.
-        def panel_style(show: bool) -> dict:
-            return {
-                'marginBottom': '10px',
+        # Match Transaction Costs density: no per-field hairlines / extra padding.
+        # Paired rows (hold|trail, scale|tp) keep flex so mode toggles don't stack them.
+        def panel_style(show: bool, *, flex: bool = False) -> dict:
+            style = {
+                'marginBottom': '0' if flex else '8px',
                 'display': 'block' if show else 'none',
-                'padding': '0 0 10px 0',
+                'padding': '0',
                 'backgroundColor': 'transparent',
-                'borderRadius': BORDER_RADIUS['sm'],
                 'border': 'none',
-                'borderBottom': f'1px solid {theme["border_primary"]}',
                 'color': theme['text_primary'],
             }
+            if flex:
+                style['flex'] = '1'
+                style['minWidth'] = 0
+            return style
 
         is_trading = strategy_mode == 'trading'
         is_accumulation = strategy_mode == 'accumulation'
@@ -47,10 +49,10 @@ def register_strategy_callbacks(app) -> None:
         accumulation_style = panel_style(is_accumulation)
         rebalancing_style = panel_style(is_rebalancing)
         preset_style = panel_style(is_trading)
-        holding_style = panel_style(is_trading or is_rebalancing)
-        trailing_style = panel_style(is_trading or is_rebalancing)
-        scaling_style = panel_style(is_trading)
-        take_profit_style = panel_style(is_trading or is_rebalancing)
+        holding_style = panel_style(is_trading or is_rebalancing, flex=True)
+        trailing_style = panel_style(is_trading or is_rebalancing, flex=True)
+        scaling_style = panel_style(is_trading, flex=True)
+        take_profit_style = panel_style(is_trading or is_rebalancing, flex=True)
         kelly_style = panel_style(is_trading)
 
         return (accumulation_style, rebalancing_style, preset_style,

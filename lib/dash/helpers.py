@@ -47,16 +47,18 @@ def fetch_data_with_cache(
     """
     Fetch data with caching support via shared ``fetch_data``.
 
+    Lookup order: in-memory LRU → disk parquet (``state/ohlcv_cache``) → Yahoo.
+    Daily disk entries expire at local midnight; intraday after one hour.
+    ``force=True`` skips both reads and overwrites both stores (header refresh).
+
     Args:
         ticker: Stock ticker symbol
         start_date: Start date string
         end_date: End date string
         interval: Bar size ``1d`` / ``1h`` / ``4h``
-        force: Skip the cache read and overwrite the entry. The cache is a plain
-            LRU with no TTL, and the window is now derived from the interval
-            rather than typed by the user, so the key is stable for a whole
-            trading day — without this a manual refresh would serve the same
-            bars back and never pick up today's new ones.
+        force: Skip cache reads and overwrite entries. The in-memory key is
+            stable for a whole trading day — without this a manual refresh
+            would serve the same bars back and never pick up today's new ones.
 
     Returns:
         DataFrame with OHLCV data
@@ -65,6 +67,7 @@ def fetch_data_with_cache(
         ValueError: If no data available for ticker
     """
     from lib.data_processing import DataFetchError, fetch_data
+    from lib.dash.ohlcv_disk_cache import read_cached, write_cached
     from lib.timeframes import normalize_interval
 
     canon = normalize_interval(interval)
@@ -74,6 +77,14 @@ def fetch_data_with_cache(
     if cached is not None:
         logger.debug(f"Cache hit for {cache_key}")
         return cached
+
+    if not force:
+        disk_hit = read_cached(ticker, canon, start_date, end_date)
+        if disk_hit is not None:
+            if isinstance(disk_hit.columns, pd.MultiIndex):
+                disk_hit.columns = disk_hit.columns.get_level_values(0)
+            dashboard_state.set_cached_data(cache_key, disk_hit)
+            return disk_hit
 
     logger.info(f"Fetching data for {ticker} (interval={canon})")
     try:
@@ -85,6 +96,7 @@ def fetch_data_with_cache(
         df.columns = df.columns.get_level_values(0)
 
     dashboard_state.set_cached_data(cache_key, df)
+    write_cached(ticker, canon, start_date, end_date, df)
     return df
 
 

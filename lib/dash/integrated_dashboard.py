@@ -196,12 +196,12 @@ def run_dashboard(dev_mode: bool = False) -> None:
     logger.info("Bootstrapping default market session (%s)...", "TSLA")
     bootstrap = try_bootstrap_default_session()
 
-    # eager_loading=True embeds plotly.min.js as a <script> tag in the
-    # initial HTML so dcc.Graph can render on first paint. With the Dash
-    # default (eager_loading=False) plotly is marked dynamic and loaded
-    # on-demand via window._dashPlotlyJSURL; if that lazy load loses the
-    # race against dcc.Graph's async chunk (or the suite endpoint 500s),
-    # the chart container stays a dark void with no canvas drawn.
+    # eager_loading=False: the terminal price chart is TradingView Lightweight
+    # Charts (assets/10-sfa-chart.js), not Plotly. Embedding plotly.min.js
+    # (~4 MB) on every first paint hurt slow links; Plotly loads on demand when
+    # fundamentals / flow / optimizer mount dcc.Graph. If a Plotly workspace
+    # ever paints a blank canvas after a lazy-load race, preload Plotly on that
+    # route only — do not re-enable global eager loading.
     # Bootstrap CSS is vendored at lib/dash/assets/00-bootstrap.min.css and
     # auto-served by Dash (no CDN) — avoids Edge Tracking Prevention noise
     # from jsdelivr. dash-bootstrap-components is still used for components.
@@ -212,7 +212,7 @@ def run_dashboard(dev_mode: bool = False) -> None:
         __name__,
         external_stylesheets=[],
         suppress_callback_exceptions=True,
-        eager_loading=True,
+        eager_loading=False,
         update_title=None,  # keep static tab title (clock Interval would flash "Updating...")
         meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}]
     )

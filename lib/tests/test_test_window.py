@@ -143,7 +143,7 @@ def test_unknown_preset_falls_back_to_max():
 
 # --- forced refresh -----------------------------------------------------------
 
-def test_force_bypasses_a_warm_cache_entry():
+def test_force_bypasses_a_warm_cache_entry(tmp_path, monkeypatch):
     """Refresh must re-fetch, not re-serve.
 
     The data cache has no TTL and the key is now derived from the interval
@@ -155,6 +155,7 @@ def test_force_bypasses_a_warm_cache_entry():
     from lib.dash.helpers import fetch_data_with_cache
     from lib.dash.state import dashboard_state
 
+    monkeypatch.setenv("SFA_OHLCV_CACHE_DIR", str(tmp_path / "ohlcv_cache"))
     first = _daily_frame("2024-01-01", 5)
     second = _daily_frame("2024-01-01", 6)
     dashboard_state.clear_cache()

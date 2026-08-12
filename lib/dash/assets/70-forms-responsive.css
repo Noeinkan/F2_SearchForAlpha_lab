@@ -2,27 +2,28 @@
    Trade-setup number fields + custom − / + steppers (right panel)
    Native browser spin buttons are invisible on dark themes, so we hide them
    and use .sfa-num-stepper buttons (wired by 25-trade-setup-stepper.js).
+   Density matches .bbg-input / Transaction Costs (28px), not oversized chrome.
    Inputs use inline `style=` — ID selectors + !important beat that.
    ========================================================================== */
 
 .sfa-num-stepper {
     display: flex;
     align-items: stretch;
-    gap: 6px;
+    gap: 4px;
     width: 100%;
 }
 
 .sfa-num-stepper__btn {
-    flex: 0 0 36px;
-    width: 36px;
-    height: 38px;
+    flex: 0 0 28px;
+    width: 28px;
+    height: 28px;
     margin: 0;
     padding: 0;
     border: 1px solid var(--border-primary);
-    border-radius: 4px;
+    border-radius: 2px;
     background: var(--bg-secondary, var(--bg-tertiary));
     color: var(--text-primary);
-    font-size: 18px;
+    font-size: 14px;
     font-weight: 600;
     line-height: 1;
     cursor: pointer;
@@ -56,16 +57,18 @@
 #amount-per-buy,
 #kelly-win-rate,
 #kelly-win-loss-ratio {
+    /* Match .bbg-input / Transaction Costs density (28px), not oversized steppers */
     font-family: var(--font-mono) !important;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
     font-weight: 600 !important;
-    font-size: 18px !important;
+    font-size: 13px !important;
     color: var(--text-primary) !important;
     text-align: center !important;
-    height: 38px !important;
-    padding: 4px 10px !important;
-    letter-spacing: 0.5px;
+    height: 28px !important;
+    padding: 5px 8px !important;
+    letter-spacing: 0.3px;
+    box-sizing: border-box !important;
     /* Hide native spinners — custom − / + buttons replace them */
     -moz-appearance: textfield !important;
     appearance: textfield !important;

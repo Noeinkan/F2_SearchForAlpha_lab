@@ -9,7 +9,7 @@ import dash_bootstrap_components as dbc
 from dash import dcc, html
 
 from lib.dash.dash_config import (
-    FONT_SIZES, FONT_FAMILY, BORDER_RADIUS, DEFAULT_SIGNAL_WINDOW,
+    FONT_SIZES, FONT_FAMILY, DEFAULT_SIGNAL_WINDOW,
     DEFAULT_OFF_SIGNAL_CATEGORIES, INITIAL_CAPITAL, TEST_WINDOW_PRESETS,
 )
 from lib.dash.components import dense_input
@@ -98,26 +98,24 @@ def _trade_setup_field_label(
 
 
 def _trade_setup_panel_style(theme: dict, *, visible: bool = False) -> dict:
-    """Neutral field block — show/hide only; no rainbow accent cards."""
+    """Neutral field block — match Transaction Costs density (no per-field hairlines)."""
     return {
-        'marginBottom': '10px',
+        'marginBottom': '8px',
         'display': 'block' if visible else 'none',
-        'padding': '0 0 10px 0',
+        'padding': '0',
         'backgroundColor': 'transparent',
-        'borderRadius': BORDER_RADIUS['sm'],
         'border': 'none',
-        'borderBottom': f'1px solid {theme["border_primary"]}',
         'color': theme['text_primary'],
     }
 
 
 def _trade_setup_input_style(styles: dict) -> dict:
+    """Dense 28px input chrome — height/font enforced in 70-forms-responsive.css."""
     return {
         **styles['input'],
         'width': '100%',
         'fontFamily': FONT_FAMILY,
-        'padding': '10px 12px',
-        'fontSize': FONT_SIZES['base'],
+        'textAlign': 'center',
     }
 
 
@@ -361,68 +359,85 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                     "scale-in and take-profit. Custom keeps your numbers.",
                                     'help-strategy-preset', 'strategy-preset',
                                 ),
-                                html.Div(id='holding-period-options', children=[
-                                    _trade_setup_field_label(
-                                        "Min Holding Period", 'help-min-holding',
-                                        help_icon_style, theme, unit="bars",
-                                    ),
-                                    _trade_setup_stepper(dcc.Input(
-                                        id='min-holding-period',
-                                        type='number',
-                                        value=5,
-                                        min=0,
-                                        step=1,
-                                        placeholder='bars to hold',
-                                        style=_trade_setup_input_style(styles),
-                                    )),
-                                ], style=_trade_setup_panel_style(theme, visible=False)),
+                                html.Div([
+                                    html.Div(id='holding-period-options', children=[
+                                        _trade_setup_field_label(
+                                            "Min Holding", 'help-min-holding',
+                                            help_icon_style, theme, unit="bars",
+                                        ),
+                                        _trade_setup_stepper(dcc.Input(
+                                            id='min-holding-period',
+                                            type='number',
+                                            value=5,
+                                            min=0,
+                                            step=1,
+                                            placeholder='bars to hold',
+                                            style=_trade_setup_input_style(styles),
+                                        )),
+                                    ], style={
+                                        **_trade_setup_panel_style(theme, visible=False),
+                                        'flex': '1',
+                                        'minWidth': 0,
+                                        'marginBottom': 0,
+                                    }),
+                                    html.Div(id='trailing-stop-options', children=[
+                                        _trade_setup_field_label(
+                                            "Trailing Stop", 'help-trailing-stop',
+                                            help_icon_style, theme, unit="%",
+                                        ),
+                                        _trade_setup_stepper(dcc.Input(
+                                            id='trailing-stop-pct',
+                                            type='number',
+                                            value=5,
+                                            min=0,
+                                            max=100,
+                                            step=0.5,
+                                            placeholder='% trail',
+                                            style=_trade_setup_input_style(styles),
+                                        )),
+                                        html.Div([
+                                            dcc.RadioItems(
+                                                id='stop-mode',
+                                                options=[
+                                                    {'label': '% TRAIL', 'value': 'percent'},
+                                                    {'label': 'ATR', 'value': 'atr'},
+                                                ],
+                                                value='percent',
+                                                inline=True,
+                                                inputStyle={'marginRight': '4px'},
+                                                labelStyle={
+                                                    'fontSize': FONT_SIZES['xs'],
+                                                    'padding': '2px 6px',
+                                                    'cursor': 'pointer',
+                                                    'marginRight': '2px',
+                                                },
+                                                className='signal-logic-toggle'
+                                            ),
+                                        ], style={
+                                            'marginTop': '4px',
+                                            'backgroundColor': theme['bg_secondary'],
+                                            'borderRadius': '2px',
+                                            'padding': '1px 2px',
+                                            'display': 'inline-block',
+                                        }),
+                                    ], style={
+                                        **_trade_setup_panel_style(theme, visible=False),
+                                        'flex': '1',
+                                        'minWidth': 0,
+                                        'marginBottom': 0,
+                                    }),
+                                ], style={
+                                    'display': 'flex',
+                                    'gap': '8px',
+                                    'marginBottom': '8px',
+                                    'alignItems': 'flex-start',
+                                }),
                                 *_tip(
                                     "Force the trade to stay open at least this many candles "
                                     "before a sell or take-profit can fire. Stops jittery "
                                     "in-and-out churn. Trailing stops still work during the wait.",
                                     'help-min-holding', 'min-holding-period',
                                 ),
-                                html.Div(id='trailing-stop-options', children=[
-                                    _trade_setup_field_label(
-                                        "Trailing Stop", 'help-trailing-stop',
-                                        help_icon_style, theme, unit="%",
-                                    ),
-                                    _trade_setup_stepper(dcc.Input(
-                                        id='trailing-stop-pct',
-                                        type='number',
-                                        value=5,
-                                        min=0,
-                                        max=100,
-                                        step=0.5,
-                                        placeholder='% trail',
-                                        style=_trade_setup_input_style(styles),
-                                    )),
-                                    html.Div([
-                                        dcc.RadioItems(
-                                            id='stop-mode',
-                                            options=[
-                                                {'label': '% TRAIL', 'value': 'percent'},
-                                                {'label': 'ATR', 'value': 'atr'},
-                                            ],
-                                            value='percent',
-                                            inline=True,
-                                            inputStyle={'marginRight': '4px'},
-                                            labelStyle={
-                                                'fontSize': FONT_SIZES['xs'],
-                                                'padding': '2px 8px',
-                                                'cursor': 'pointer',
-                                                'marginRight': '4px',
-                                            },
-                                            className='signal-logic-toggle'
-                                        ),
-                                    ], style={
-                                        'marginTop': '8px',
-                                        'backgroundColor': theme['bg_secondary'],
-                                        'borderRadius': '4px',
-                                        'padding': '2px 4px',
-                                        'display': 'inline-block',
-                                    }),
-                                ], style=_trade_setup_panel_style(theme, visible=False)),
                                 *_tip(
                                     "Safety net: auto-sell if price falls this far from the "
                                     "best point since entry. % TRAIL uses the number above; "
@@ -430,29 +445,67 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                     "signals; falls back to % otherwise).",
                                     'help-trailing-stop', 'trailing-stop-pct', 'stop-mode',
                                 ),
-                                html.Div(id='position-scaling-options', children=[
-                                    _trade_setup_field_label(
-                                        "Scale-in", 'help-position-scaling',
-                                        help_icon_style, theme, unit="%",
-                                    ),
-                                    # 100% = one signal buys the whole Kelly-sized entry.
-                                    _trade_setup_stepper(dcc.Input(
-                                        id='position-scaling-pct',
-                                        type='number',
-                                        value=100,
-                                        min=0,
-                                        max=100,
-                                        step=1,
-                                        placeholder='% of target size per signal',
-                                        style=_trade_setup_input_style(styles),
-                                    )),
-                                ], style=_trade_setup_panel_style(theme, visible=False)),
+                                html.Div([
+                                    html.Div(id='position-scaling-options', children=[
+                                        _trade_setup_field_label(
+                                            "Scale-in", 'help-position-scaling',
+                                            help_icon_style, theme, unit="%",
+                                        ),
+                                        # 100% = one signal buys the whole Kelly-sized entry.
+                                        _trade_setup_stepper(dcc.Input(
+                                            id='position-scaling-pct',
+                                            type='number',
+                                            value=100,
+                                            min=0,
+                                            max=100,
+                                            step=1,
+                                            placeholder='% of target size per signal',
+                                            style=_trade_setup_input_style(styles),
+                                        )),
+                                    ], style={
+                                        **_trade_setup_panel_style(theme, visible=False),
+                                        'flex': '1',
+                                        'minWidth': 0,
+                                        'marginBottom': 0,
+                                    }),
+                                    html.Div(id='take-profit-options', children=[
+                                        _trade_setup_field_label(
+                                            "Take Profit", 'help-take-profit',
+                                            help_icon_style, theme, unit="%",
+                                        ),
+                                        _trade_setup_stepper(dcc.Input(
+                                            id='take-profit-pct',
+                                            type='number',
+                                            value=0,
+                                            min=0,
+                                            max=100,
+                                            step=0.5,
+                                            placeholder='% target',
+                                            style=_trade_setup_input_style(styles),
+                                        )),
+                                    ], style={
+                                        **_trade_setup_panel_style(theme, visible=False),
+                                        'flex': '1',
+                                        'minWidth': 0,
+                                        'marginBottom': 0,
+                                    }),
+                                ], style={
+                                    'display': 'flex',
+                                    'gap': '8px',
+                                    'marginBottom': '8px',
+                                    'alignItems': 'flex-start',
+                                }),
                                 *_tip(
                                     "How much of the full Kelly-sized entry each buy takes. "
                                     "100% = full size on the first signal. Lower values ramp "
                                     "in — and keep stacking on repeats (they do not stop at "
                                     "100% of target).",
                                     'help-position-scaling', 'position-scaling-pct',
+                                ),
+                                *_tip(
+                                    "Lock in gains: exit the whole position once you're up "
+                                    "this % from average entry (after min holding). 0 = off.",
+                                    'help-take-profit', 'take-profit-pct',
                                 ),
                                 html.Div(id='consecutive-signal-options', children=[
                                     _trade_setup_field_label(
@@ -490,7 +543,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                             'display': 'flex',
                                             'alignItems': 'center',
                                             'justifyContent': 'space-between',
-                                            'marginTop': '8px',
+                                            'marginTop': '6px',
                                             'marginBottom': '4px',
                                         }),
                                         _trade_setup_stepper(dcc.Input(
@@ -518,27 +571,6 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                     "fire again. Applies to buys and sells. "
                                     "Defaults: cooldown=5, reset+cooldown=5.",
                                     'help-signal-cooldown', 'signal-cooldown-bars',
-                                ),
-                                html.Div(id='take-profit-options', children=[
-                                    _trade_setup_field_label(
-                                        "Take Profit", 'help-take-profit',
-                                        help_icon_style, theme, unit="%",
-                                    ),
-                                    _trade_setup_stepper(dcc.Input(
-                                        id='take-profit-pct',
-                                        type='number',
-                                        value=0,
-                                        min=0,
-                                        max=100,
-                                        step=0.5,
-                                        placeholder='% target',
-                                        style=_trade_setup_input_style(styles),
-                                    )),
-                                ], style=_trade_setup_panel_style(theme, visible=False)),
-                                *_tip(
-                                    "Lock in gains: exit the whole position once you're up "
-                                    "this % from average entry (after min holding). 0 = off.",
-                                    'help-take-profit', 'take-profit-pct',
                                 ),
                                 html.Div(id='accumulation-options', children=[
                                     _trade_setup_field_label(
@@ -589,57 +621,60 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                         "Kelly Criterion", 'help-kelly',
                                         help_icon_style, theme,
                                     ),
+                                    # Side-by-side like optimizer Min hold | Trail %
                                     html.Div([
                                         html.Div([
-                                            html.Span("Win Rate", style={
-                                                'fontSize': FONT_SIZES['xs'],
-                                                'color': theme['text_secondary'],
-                                                'fontWeight': '600',
+                                            html.Div([
+                                                html.Span("Win Rate", style={
+                                                    'fontSize': FONT_SIZES['xs'],
+                                                    'color': theme['text_secondary'],
+                                                    'fontWeight': '600',
+                                                }),
+                                                html.Span("?", id='help-kelly-win-rate',
+                                                          style=help_icon_style),
+                                            ], style={
+                                                'display': 'flex',
+                                                'alignItems': 'center',
+                                                'justifyContent': 'space-between',
+                                                'marginBottom': '4px',
                                             }),
-                                            html.Span("?", id='help-kelly-win-rate',
-                                                      style=help_icon_style),
-                                        ], style={
-                                            'display': 'flex',
-                                            'alignItems': 'center',
-                                            'justifyContent': 'space-between',
-                                            'marginBottom': '4px',
-                                        }),
-                                        _trade_setup_stepper(dcc.Input(
-                                            id='kelly-win-rate',
-                                            type='number',
-                                            value=0.5,
-                                            min=0,
-                                            max=1,
-                                            step=0.01,
-                                            placeholder='0.50',
-                                            style=_trade_setup_input_style(styles),
-                                        )),
-                                    ], style={'marginBottom': '8px'}),
-                                    html.Div([
+                                            _trade_setup_stepper(dcc.Input(
+                                                id='kelly-win-rate',
+                                                type='number',
+                                                value=0.5,
+                                                min=0,
+                                                max=1,
+                                                step=0.01,
+                                                placeholder='0.50',
+                                                style=_trade_setup_input_style(styles),
+                                            )),
+                                        ], style={'flex': 1, 'minWidth': 0}),
                                         html.Div([
-                                            html.Span("Win/Loss Ratio", style={
-                                                'fontSize': FONT_SIZES['xs'],
-                                                'color': theme['text_secondary'],
-                                                'fontWeight': '600',
+                                            html.Div([
+                                                html.Span("Win/Loss", style={
+                                                    'fontSize': FONT_SIZES['xs'],
+                                                    'color': theme['text_secondary'],
+                                                    'fontWeight': '600',
+                                                }),
+                                                html.Span("?", id='help-kelly-wl',
+                                                          style=help_icon_style),
+                                            ], style={
+                                                'display': 'flex',
+                                                'alignItems': 'center',
+                                                'justifyContent': 'space-between',
+                                                'marginBottom': '4px',
                                             }),
-                                            html.Span("?", id='help-kelly-wl',
-                                                      style=help_icon_style),
-                                        ], style={
-                                            'display': 'flex',
-                                            'alignItems': 'center',
-                                            'justifyContent': 'space-between',
-                                            'marginBottom': '4px',
-                                        }),
-                                        _trade_setup_stepper(dcc.Input(
-                                            id='kelly-win-loss-ratio',
-                                            type='number',
-                                            value=1.5,
-                                            min=0.1,
-                                            step=0.1,
-                                            placeholder='1.50',
-                                            style=_trade_setup_input_style(styles),
-                                        )),
-                                    ]),
+                                            _trade_setup_stepper(dcc.Input(
+                                                id='kelly-win-loss-ratio',
+                                                type='number',
+                                                value=1.5,
+                                                min=0.1,
+                                                step=0.1,
+                                                placeholder='1.50',
+                                                style=_trade_setup_input_style(styles),
+                                            )),
+                                        ], style={'flex': 1, 'minWidth': 0}),
+                                    ], style={'display': 'flex', 'gap': '8px'}),
                                 ], style=_trade_setup_panel_style(theme, visible=False)),
                                 *_tip(
                                     "Bet-sizing formula for entry size. Defaults "
