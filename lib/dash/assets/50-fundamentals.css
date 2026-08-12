@@ -906,6 +906,10 @@
     line-height: 1.4;
 }
 
+.sfa-fundamentals-source-link:hover {
+    opacity: 0.85;
+}
+
 /* Valuation tables — slightly larger type for metric readability */
 .sfa-fundamentals-valuation .dash-spreadsheet td,
 .sfa-fundamentals-valuation .dash-spreadsheet th {

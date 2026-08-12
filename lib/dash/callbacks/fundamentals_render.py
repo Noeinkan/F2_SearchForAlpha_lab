@@ -126,23 +126,13 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
             )),
             html.Div([
                 _panel_title('Analyst Targets', theme, size='sm'),
-                _analyst_targets_caption(theme),
+                _analyst_targets_caption(theme, payload.get('ticker')),
                 (
                     _valuation_table(
                         analyst_rows, theme, table_id='fundamentals-analyst-table'
                     )
                     if analyst_rows
-                    else html.Div(
-                        'No Yahoo consensus targets for this symbol.',
-                        className='sfa-valuation-assumption',
-                        style={
-                            'fontFamily': FONT_FAMILY,
-                            'fontSize': FONT_SIZES['sm'],
-                            'color': theme['text_secondary'],
-                            'lineHeight': '1.4',
-                            'marginBottom': '6px',
-                        },
-                    )
+                    else _analyst_targets_empty(theme, payload.get('ticker'))
                 ),
             ], style=_panel_style(theme), className=(
                 'sfa-fundamentals-panel sfa-fundamentals-valuation '
@@ -499,15 +489,165 @@ def _valuation_metric_style(metric: str, theme: dict) -> dict[str, Any]:
         return {'backgroundColor': f'{theme["accent_blue"]}18'}
     if normalized == 'Sticker Price':
         return {'backgroundColor': f'{theme["accent_blue"]}12'}
+    if normalized == 'DCF Fair Value':
+        return {
+            'backgroundColor': f'{theme["accent_blue"]}1F',
+            'color': theme['accent_blue'],
+            'fontWeight': 700,
+        }
+    if normalized == 'Target Mean':
+        return {
+            'backgroundColor': f'{theme["accent_blue"]}18',
+            'color': theme['accent_blue'],
+            'fontWeight': 700,
+        }
+    if normalized == 'Last Price':
+        return {
+            'backgroundColor': f'{theme["accent_orange"]}1F',
+            'color': theme['accent_orange'],
+            'fontWeight': 700,
+        }
     return {}
+
+
+def _signed_pct_conditionals(metric: str, theme: dict) -> list[dict[str, Any]]:
+    """Color upside/downside pct rows: green when positive, red when negative."""
+    escaped = _escape_filter(metric)
+    # Green first for any %; red overrides when the value is negative.
+    return [
+        {
+            'if': {
+                'filter_query': f'{{metric}} = "{escaped}" && {{value}} contains "%"',
+            },
+            'backgroundColor': f'{theme["accent_green"]}22',
+            'color': theme['accent_green'],
+            'fontWeight': 700,
+        },
+        {
+            'if': {
+                'filter_query': (
+                    f'{{metric}} = "{escaped}" && {{value}} contains "-" '
+                    f'&& {{value}} != "--"'
+                ),
+            },
+            'backgroundColor': f'{theme["accent_red"]}22',
+            'color': theme['accent_red'],
+            'fontWeight': 700,
+        },
+    ]
+
+
+def _recommendation_conditionals(theme: dict) -> list[dict[str, Any]]:
+    buy = ('Strong Buy', 'Buy', 'Outperform', 'Overweight')
+    hold = ('Hold', 'Neutral', 'Equal Weight', 'Market Perform')
+    sell = ('Sell', 'Strong Sell', 'Underperform', 'Underweight')
+    conditionals: list[dict[str, Any]] = []
+    for label in buy:
+        conditionals.append({
+            'if': {'filter_query': f'{{metric}} = "Recommendation" && {{value}} = "{label}"'},
+            'backgroundColor': f'{theme["accent_green"]}22',
+            'color': theme['accent_green'],
+            'fontWeight': 700,
+        })
+    for label in hold:
+        conditionals.append({
+            'if': {'filter_query': f'{{metric}} = "Recommendation" && {{value}} = "{label}"'},
+            'backgroundColor': f'{theme["accent_orange"]}22',
+            'color': theme['accent_orange'],
+            'fontWeight': 700,
+        })
+    for label in sell:
+        conditionals.append({
+            'if': {'filter_query': f'{{metric}} = "Recommendation" && {{value}} = "{label}"'},
+            'backgroundColor': f'{theme["accent_red"]}22',
+            'color': theme['accent_red'],
+            'fontWeight': 700,
+        })
+    return conditionals
 
 
 def _valuation_conditionals(theme: dict) -> list[dict[str, Any]]:
     conditionals = []
+    styled_metrics = set()
     for metric in _VALUATION_EXPLAIN_MAP:
         style = _valuation_metric_style(metric, theme)
         if style:
             conditionals.append({'if': {'filter_query': f'{{metric}} = "{_escape_filter(metric)}"'}, **style})
+            styled_metrics.add(_canonical_metric(metric))
+    for metric in ('DCF Fair Value', 'Target Mean', 'Last Price'):
+        if metric in styled_metrics:
+            continue
+        style = _valuation_metric_style(metric, theme)
+        if style:
+            conditionals.append({'if': {'filter_query': f'{{metric}} = "{_escape_filter(metric)}"'}, **style})
+    conditionals.extend(_signed_pct_conditionals('Upside vs Price', theme))
+    conditionals.extend(_signed_pct_conditionals('Upside vs Last', theme))
+    conditionals.extend(_recommendation_conditionals(theme))
+    conditionals.extend([
+        {'if': {'state': 'active'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
+        {'if': {'state': 'selected'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
+    ])
+    return conditionals
+
+
+def _parse_money_cell(value: Any) -> float | None:
+    text = str(value or '').replace('$', '').replace(',', '').strip()
+    if not text or text in {'--', 'n/a', 'N/A'}:
+        return None
+    try:
+        number = float(text)
+    except ValueError:
+        return None
+    return number if number == number else None
+
+
+def _sensitivity_conditionals(
+    data: list[dict[str, Any]],
+    value_columns: list[str],
+    theme: dict,
+) -> list[dict[str, Any]]:
+    """Soft heatmap vs base-case (center) cell: above = green, below = red."""
+    conditionals: list[dict[str, Any]] = []
+    if not data or not value_columns:
+        return [
+            {'if': {'state': 'active'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
+            {'if': {'state': 'selected'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
+        ]
+
+    mid_row = len(data) // 2
+    mid_col = value_columns[len(value_columns) // 2]
+    base = _parse_money_cell(data[mid_row].get(mid_col))
+
+    # Mark base-case cell so the eye finds the model assumptions.
+    conditionals.append({
+        'if': {'row_index': mid_row, 'column_id': mid_col},
+        'backgroundColor': f'{theme["accent_blue"]}28',
+        'color': theme['accent_blue'],
+        'fontWeight': 700,
+        'border': f'1px solid {theme["accent_blue"]}',
+    })
+
+    if base is not None and base > 0:
+        for row_index, row in enumerate(data):
+            for column_id in value_columns:
+                if row_index == mid_row and column_id == mid_col:
+                    continue
+                value = _parse_money_cell(row.get(column_id))
+                if value is None:
+                    continue
+                if value > base * 1.02:
+                    conditionals.append({
+                        'if': {'row_index': row_index, 'column_id': column_id},
+                        'backgroundColor': f'{theme["accent_green"]}1A',
+                        'color': theme['accent_green'],
+                    })
+                elif value < base * 0.98:
+                    conditionals.append({
+                        'if': {'row_index': row_index, 'column_id': column_id},
+                        'backgroundColor': f'{theme["accent_red"]}1A',
+                        'color': theme['accent_red'],
+                    })
+
     conditionals.extend([
         {'if': {'state': 'active'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
         {'if': {'state': 'selected'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
@@ -557,9 +697,58 @@ def _dcf_assumptions(rows: list[dict[str, Any]], theme: dict) -> html.Div:
     )
 
 
-def _analyst_targets_caption(theme: dict) -> html.Div:
+def _yahoo_analysis_url(ticker: Any) -> str | None:
+    symbol = str(ticker or '').strip().upper()
+    if not symbol:
+        return None
+    return f'https://finance.yahoo.com/quote/{symbol}/analysis/'
+
+
+def _yahoo_source_link(ticker: Any, theme: dict, *, label: str = 'Yahoo Finance') -> Any:
+    url = _yahoo_analysis_url(ticker)
+    if not url:
+        return label
+    return html.A(
+        label,
+        href=url,
+        target='_blank',
+        rel='noopener noreferrer',
+        className='sfa-fundamentals-source-link',
+        style={
+            'color': theme.get('accent_cyan') or theme['accent_blue'],
+            'textDecoration': 'underline',
+            'textUnderlineOffset': '2px',
+        },
+    )
+
+
+def _analyst_targets_caption(theme: dict, ticker: Any = None) -> html.Div:
     return html.Div(
-        'Yahoo Finance consensus — broker price targets, not a model fair value.',
+        [
+            _yahoo_source_link(ticker, theme),
+            ' consensus — broker price targets, not a model fair value. ',
+            _yahoo_source_link(ticker, theme, label='Open analysis ↗'),
+        ],
+        className='sfa-valuation-assumption',
+        style={
+            'fontFamily': FONT_FAMILY,
+            'fontSize': FONT_SIZES['sm'],
+            'color': theme['text_secondary'],
+            'lineHeight': '1.4',
+            'marginBottom': '6px',
+        },
+    )
+
+
+def _analyst_targets_empty(theme: dict, ticker: Any = None) -> html.Div:
+    children: list[Any] = ['No ']
+    children.append(_yahoo_source_link(ticker, theme, label='Yahoo'))
+    children.append(' consensus targets for this symbol.')
+    url = _yahoo_analysis_url(ticker)
+    if url:
+        children.extend([' ', _yahoo_source_link(ticker, theme, label='Open analysis')])
+    return html.Div(
+        children,
         className='sfa-valuation-assumption',
         style={
             'fontFamily': FONT_FAMILY,
@@ -600,9 +789,10 @@ def _dcf_sensitivity_grid(grid: list[dict[str, Any]], theme: dict) -> html.Div:
             record[f'g_{growth:.4f}'] = display
         data.append(record)
 
+    value_columns = [column['id'] for column in columns if column['id'] != 'discount_rate']
     return html.Div([
         html.Div(
-            'Sensitivity (fair value / share)',
+            'Sensitivity (fair value / share) — center = base case',
             style={
                 'fontFamily': FONT_FAMILY,
                 'fontSize': FONT_SIZES['xs'],
@@ -627,7 +817,7 @@ def _dcf_sensitivity_grid(grid: list[dict[str, Any]], theme: dict) -> html.Div:
                     'width': '22%',
                 },
             ],
-            style_data_conditional=_valuation_conditionals(theme),
+            style_data_conditional=_sensitivity_conditionals(data, value_columns, theme),
         ),
     ], className='sfa-dcf-sensitivity')
 
