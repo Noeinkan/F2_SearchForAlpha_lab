@@ -12,6 +12,7 @@ from lib.dash.dash_config import (
     FONT_FAMILY,
     FONT_SIZES,
 )
+from lib.dash.flow_view import wrap_flow_diagram
 
 from .fundamentals_formulas import (
     _VALUATION_EXPLAIN_MAP,
@@ -64,6 +65,7 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
         'quality',
         html.Div([
             _panel_title('Big Five', theme),
+            _big_five_legend(),
             _big_five_note(annual.get('big_five_note', ''), theme),
             _big_five_table(
                 annual.get('big_five', []),
@@ -368,14 +370,21 @@ def _decorate_big_five_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return decorated
 
 
+def _big_five_legend() -> html.Div:
+    return html.Div(
+        '↑ ≥10% · → 0–10% · ↓ ≤0',
+        className='sfa-fundamentals-legend',
+    )
+
+
 def _big_five_note(note: str, theme: dict) -> html.Div:
     if not note:
         return html.Div()
     return html.Div(note, style={
         'fontFamily': FONT_FAMILY,
         'fontSize': FONT_SIZES['xs'],
-        'fontWeight': 700,
-        'color': theme['accent_red'],
+        'fontWeight': 600,
+        'color': theme['text_secondary'],
         'marginBottom': '4px',
         'lineHeight': '1.25',
     })
@@ -656,17 +665,13 @@ def _big_five_value_columns(columns: list[dict[str, Any]] | None) -> list[str]:
 
 
 def _financial_conditionals(theme: dict) -> list[dict[str, Any]]:
+    # Soft category grouping only (not good/bad). Green/red importance fills removed.
     return [
-        {'if': {'filter_query': '{metric} = "Sales (Rev)"'}, 'backgroundColor': f'{theme["accent_green"]}24'},
-        {'if': {'filter_query': '{metric} = "Equity"'}, 'backgroundColor': f'{theme["accent_green"]}24'},
-        {'if': {'filter_query': '{metric} = "EPS"'}, 'backgroundColor': f'{theme["accent_green"]}24'},
-        {'if': {'filter_query': '{metric} = "FCF"'}, 'backgroundColor': f'{theme["accent_green"]}24'},
-        {'if': {'filter_query': '{metric} = "NOPAT"'}, 'backgroundColor': f'{theme["accent_red"]}22'},
-        {'if': {'filter_query': '{metric} contains "Debt"'}, 'backgroundColor': f'{theme["accent_cyan"]}24'},
-        {'if': {'filter_query': '{metric} = "Debt Ratio"'}, 'backgroundColor': f'{theme["accent_cyan"]}28'},
-        {'if': {'filter_query': '{metric} = "PE Ratio"'}, 'backgroundColor': f'{theme["accent_orange"]}24'},
-        {'if': {'filter_query': '{metric} = "Avg. Invested Capital"'}, 'backgroundColor': f'{theme["accent_orange"]}22'},
-        {'if': {'filter_query': '{metric} = "Stock Price (FYE)"'}, 'backgroundColor': f'{theme["accent_orange"]}24', 'fontWeight': 700},
+        {'if': {'filter_query': '{metric} contains "Debt"'}, 'backgroundColor': f'{theme["accent_cyan"]}1F'},
+        {'if': {'filter_query': '{metric} = "Debt Ratio"'}, 'backgroundColor': f'{theme["accent_cyan"]}1F'},
+        {'if': {'filter_query': '{metric} = "PE Ratio"'}, 'backgroundColor': f'{theme["accent_orange"]}1F'},
+        {'if': {'filter_query': '{metric} = "Avg. Invested Capital"'}, 'backgroundColor': f'{theme["accent_orange"]}1F'},
+        {'if': {'filter_query': '{metric} = "Stock Price (FYE)"'}, 'backgroundColor': f'{theme["accent_orange"]}1F', 'fontWeight': 700},
         {'if': {'column_id': 'Last', 'filter_query': '{Last} != "--"'}, 'backgroundColor': f'{theme["accent_orange"]}30', 'color': theme['accent_orange'], 'fontWeight': 700},
         {'if': {'column_id': 'Last', 'filter_query': '{Last} = "--"'}, 'color': theme['text_tertiary']},
         {'if': {'state': 'active'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
@@ -675,19 +680,17 @@ def _financial_conditionals(theme: dict) -> list[dict[str, Any]]:
 
 
 def _big_five_conditionals(theme: dict, value_columns: list[str]) -> list[dict[str, Any]]:
-    conditionals = [{'if': {'filter_query': '{metric} = "ROIC"'}, 'backgroundColor': f'{theme["accent_green"]}24'}]
+    conditionals = [{'if': {'filter_query': '{metric} = "ROIC"'}, 'backgroundColor': f'{theme["accent_green"]}1F'}]
     for column in value_columns:
-        conditionals.extend([
+        conditionals.append(
             {'if': {'column_id': column, 'filter_query': f'{{{column}}} contains "--"'}, 'color': theme['text_tertiary']},
-            {'if': {'column_id': column, 'filter_query': f'{{{column}}} contains "-"'}, 'backgroundColor': f'{theme["accent_red"]}26', 'color': theme['accent_red'], 'fontWeight': 700},
-            {'if': {'column_id': column, 'filter_query': f'{{{column}}} contains "0.00%"'}, 'backgroundColor': f'{theme["accent_red"]}26', 'color': theme['accent_red'], 'fontWeight': 700},
-        ])
+        )
     for summary_label in ('10Y', '5Y', '1Y'):
         status_key = f'status_{summary_label}'
         conditionals.extend([
-            {'if': {'column_id': summary_label, 'filter_query': f'{{{status_key}}} = "good"'}, 'backgroundColor': f'{theme["accent_green"]}30', 'color': theme['accent_green'], 'fontWeight': 700},
-            {'if': {'column_id': summary_label, 'filter_query': f'{{{status_key}}} = "warn"'}, 'backgroundColor': f'{theme["accent_orange"]}30', 'color': theme['accent_orange'], 'fontWeight': 700},
-            {'if': {'column_id': summary_label, 'filter_query': f'{{{status_key}}} = "bad"'}, 'backgroundColor': f'{theme["accent_red"]}30', 'color': theme['accent_red'], 'fontWeight': 700},
+            {'if': {'column_id': summary_label, 'filter_query': f'{{{status_key}}} = "good"'}, 'backgroundColor': f'{theme["accent_green"]}22', 'color': theme['accent_green'], 'fontWeight': 700},
+            {'if': {'column_id': summary_label, 'filter_query': f'{{{status_key}}} = "warn"'}, 'backgroundColor': f'{theme["accent_orange"]}22', 'color': theme['accent_orange'], 'fontWeight': 700},
+            {'if': {'column_id': summary_label, 'filter_query': f'{{{status_key}}} = "bad"'}, 'backgroundColor': f'{theme["accent_red"]}22', 'color': theme['accent_red'], 'fontWeight': 700},
         ])
     conditionals.extend([
         {'if': {'state': 'active'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
@@ -697,10 +700,19 @@ def _big_five_conditionals(theme: dict, value_columns: list[str]) -> list[dict[s
 
 
 def _chart_card(label: str, values: list[float | None], years: list[Any], theme: dict) -> html.Div:
-    return html.Div([
-        _panel_title(label, theme),
-        dcc.Graph(figure=_metric_figure(label, values, years, theme), config={'displayModeBar': False}, style={'height': 'clamp(145px, 19vh, 190px)'}),
-    ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-chart')
+    card = html.Div(
+        [
+            _panel_title(label, theme),
+            dcc.Graph(
+                figure=_metric_figure(label, values, years, theme),
+                config={'displayModeBar': False, 'responsive': True},
+                style={'height': 'clamp(145px, 19vh, 190px)'},
+            ),
+        ],
+        style=_panel_style(theme),
+        className='sfa-fundamentals-panel sfa-fundamentals-chart',
+    )
+    return wrap_flow_diagram(card, index=f'fundamentals-{label}', theme=theme)
 
 
 def _metric_figure(label: str, values: list[float | None], years: list[Any], theme: dict) -> go.Figure:

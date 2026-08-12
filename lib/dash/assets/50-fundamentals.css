@@ -750,7 +750,8 @@
     font-weight: 700;
     letter-spacing: 1.6px;
     text-transform: uppercase;
-    color: var(--text-secondary);
+    color: var(--text-primary);
+    opacity: 0.85;
     padding: 2px 0 0;
     border-top: 1px solid var(--border-primary, #333);
 }
@@ -758,6 +759,16 @@
 .sfa-fundamentals-band-quality .sfa-fundamentals-band-header {
     border-top: none;
     padding-top: 0;
+}
+
+.sfa-fundamentals-legend {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.4px;
+    color: var(--text-tertiary);
+    margin: 0 0 4px;
+    line-height: 1.3;
 }
 
 .sfa-fundamentals-hero {
@@ -868,6 +879,10 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 6px;
+}
+
+.sfa-fundamentals-charts > .sfa-flow-diagram-frame {
+    min-width: 0;
 }
 
 .sfa-valuation-grid {
@@ -1201,6 +1216,25 @@
 .sfa-fundamentals-chart .js-plotly-plot,
 .sfa-fundamentals-chart .plot-container,
 .sfa-fundamentals-chart .svg-container {
+    width: 100% !important;
+}
+
+/* Fundamentals metric charts — fill viewport when wrapped by wrap_flow_diagram */
+.sfa-flow-diagram-frame:fullscreen > .sfa-fundamentals-chart,
+.sfa-flow-diagram-frame:-webkit-full-screen > .sfa-fundamentals-chart {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.sfa-flow-diagram-frame:fullscreen > .sfa-fundamentals-chart > .dash-graph,
+.sfa-flow-diagram-frame:-webkit-full-screen > .sfa-fundamentals-chart > .dash-graph {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100% !important;
     width: 100% !important;
 }
 

@@ -64,6 +64,22 @@ def test_build_substituted_equation_mos_shows_percent_and_multiplier():
     assert '0.50' in text
 
 
+def test_build_substituted_equation_cost_of_equity_uses_numeric_inputs():
+    row_map = {
+        'Beta (clamped)': '2.00',
+        'Cost of Equity': '14.00%',
+    }
+    equation = _build_substituted_equation('Cost of Equity', row_map)
+    assert equation is not None
+    text = str(equation)
+    assert '4.00%' in text
+    assert '2.00' in text
+    assert '5.00%' in text
+    assert '14.00%' in text
+    assert 'r_f' not in text
+    assert 'ERP' not in text
+
+
 def test_build_symbolic_equation_entry_price():
     equation = _build_symbolic_equation('Entry Price')
     assert equation is not None

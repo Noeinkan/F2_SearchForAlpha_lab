@@ -7,7 +7,9 @@ from typing import Any
 
 from dash import callback_context, html
 
+from lib.config_loader import get_config
 from lib.dash.dash_config import FONT_FAMILY, FONT_SIZES
+from lib.dcf import DEFAULT_EQUITY_RISK_PREMIUM, DEFAULT_RISK_FREE
 
 _METRIC_ALIASES = {
     'Current Price': 'Year-end Close',
@@ -309,6 +311,16 @@ def _fmt_pct(value: float | None, places: int = 2) -> str:
     return f'{value * 100:.{places}f}%'
 
 
+def _dcf_capm_inputs() -> tuple[float, float]:
+    """Risk-free rate and ERP from config (same source as build_dcf)."""
+    raw = get_config().get('dcf', {}) or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    risk_free = float(raw.get('risk_free', DEFAULT_RISK_FREE))
+    erp = float(raw.get('equity_risk_premium', DEFAULT_EQUITY_RISK_PREMIUM))
+    return risk_free, erp
+
+
 def _f_op(text: str) -> html.Span:
     return html.Span(text, className='sfa-f-op')
 
@@ -607,11 +619,15 @@ def _build_substituted_equation(metric: str, row_map: dict[str, str]) -> html.Di
 
     if canonical == 'Cost of Equity':
         rate = num('Cost of Equity')
-        if rate is None:
+        beta = num('Beta (clamped)')
+        if rate is None or beta is None:
             return None
-        return _f_equation(
+        risk_free, erp = _dcf_capm_inputs()
+        return with_result(
             _f_var('r', 'e'), _f_op(' = '),
-            _f_text('r_f + β × ERP'), _f_op(' = '), _f_val(_fmt_pct(rate)),
+            _f_val(_fmt_pct(risk_free)), _f_op(' + '),
+            _f_val(_fmt_decimal(beta)), _f_op(' × '),
+            _f_val(_fmt_pct(erp)),
         )
 
     if canonical == 'DCF Fair Value':
