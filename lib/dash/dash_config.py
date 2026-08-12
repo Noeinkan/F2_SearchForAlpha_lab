@@ -358,18 +358,43 @@ MAX_DATA_CACHE_SIZE = 50         # Maximum number of cached DataFrames
 # CHECKLIST OPTIONS
 # =============================================================================
 CHART_ELEMENT_DEFINITIONS = [
-    {'label': 'Candlesticks', 'value': 'candlesticks'},
-    {'label': 'Bollinger Bands', 'value': 'bollinger'},
-    {'label': 'SMA', 'value': 'sma'},
-    {'label': 'EMA', 'value': 'ema'},
-    {'label': 'Buy/Sell Signals', 'value': 'signals'},
-    {'label': 'Legend', 'value': 'legend'},
+    {
+        'label': 'Candlesticks',
+        'value': 'candlesticks',
+        'help': 'OHLC price bars on the main pane (body = open→close, wicks = high/low).',
+    },
+    {
+        'label': 'Bollinger Bands',
+        'value': 'bollinger',
+        'help': 'Volatility envelope around a moving average. Price near the outer bands often marks stretches; a squeeze can precede a breakout.',
+    },
+    {
+        'label': 'SMA',
+        'value': 'sma',
+        'help': 'Simple moving averages — lagging trend levels. Price above/below longer SMAs is a common trend filter.',
+    },
+    {
+        'label': 'EMA',
+        'value': 'ema',
+        'help': 'Exponential moving averages — weight recent bars more, so they react faster than SMAs to new price.',
+    },
+    {
+        'label': 'Buy/Sell Signals',
+        'value': 'signals',
+        'help': 'Strategy entry/exit markers drawn on price when the selected signals fire.',
+    },
+    {
+        'label': 'Legend',
+        'value': 'legend',
+        'help': 'Show series labels for overlays and panes on the chart.',
+    },
 ]
 
 INDICATOR_DEFINITIONS = [
     {
         'key': 'volume',
         'label': 'Volume',
+        'help': 'Shares/contracts traded each bar. Rising volume often confirms moves; a volume MA highlights participation trends.',
         'defaults': {'ma_period': 20},
         'fields': [
             {'key': 'ma_period', 'label': 'Volume MA Period', 'step': 1, 'min': 1}
@@ -378,6 +403,7 @@ INDICATOR_DEFINITIONS = [
     {
         'key': 'rsi',
         'label': 'RSI',
+        'help': 'Relative Strength Index (0–100) — momentum oscillator. High readings suggest overbought; low suggest oversold.',
         'defaults': {'period': 14, 'overbought': 70, 'oversold': 30},
         'fields': [
             {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
@@ -388,6 +414,7 @@ INDICATOR_DEFINITIONS = [
     {
         'key': 'bollinger',
         'label': 'Bollinger Bands',
+        'help': 'Volatility bands around a moving average. Outer bands flag price stretches; narrow bands (squeeze) can precede expansion.',
         'defaults': {
             'window': 20,
             'window_dev': 2,
@@ -404,6 +431,7 @@ INDICATOR_DEFINITIONS = [
     {
         'key': 'sma',
         'label': 'SMA',
+        'help': 'Simple moving averages — equal-weighted trend levels across short/medium/long windows.',
         'defaults': {'short_window': 5, 'medium_window': 20, 'long_window': 50, 'trend_window': 200},
         'fields': [
             {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1},
@@ -415,6 +443,7 @@ INDICATOR_DEFINITIONS = [
     {
         'key': 'ema',
         'label': 'EMA',
+        'help': 'Exponential moving averages — faster than SMAs because recent price gets more weight.',
         'defaults': {'short_window': 12, 'medium_window': 26, 'long_window': 50, 'atr_window': 14},
         'fields': [
             {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1},
@@ -426,6 +455,7 @@ INDICATOR_DEFINITIONS = [
     {
         'key': 'cci',
         'label': 'CCI',
+        'help': 'Commodity Channel Index — how far price is from its statistical mean. Extremes above/below the ceiling/floor flag stretches.',
         'defaults': {'period': 20, 'ceiling': 150, 'floor': -150},
         'fields': [
             {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
@@ -436,6 +466,7 @@ INDICATOR_DEFINITIONS = [
     {
         'key': 'macd',
         'label': 'MACD',
+        'help': 'Moving Average Convergence Divergence — trend/momentum from fast vs slow EMAs. Histogram and signal-line crosses mark shifts.',
         'defaults': {'fast': 12, 'slow': 26, 'signal': 9},
         'fields': [
             {'key': 'fast', 'label': 'Fast EMA', 'step': 1, 'min': 1},
@@ -446,6 +477,7 @@ INDICATOR_DEFINITIONS = [
     {
         'key': 'vwap',
         'label': 'VWAP',
+        'help': 'Volume-Weighted Average Price — institutional fair-value reference. Price above VWAP is often treated as bullish bias.',
         'defaults': {'window': 20},
         'fields': [
             {'key': 'window', 'label': 'Window', 'step': 1, 'min': 1}
@@ -454,6 +486,7 @@ INDICATOR_DEFINITIONS = [
     {
         'key': 'adx',
         'label': 'ADX',
+        'help': 'Average Directional Index — trend strength (not direction). Rising ADX means a stronger trend; +DI/−DI show which side leads.',
         'defaults': {'period': 14, 'threshold': 25, 'range_threshold': 20},
         'fields': [
             {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
@@ -464,6 +497,7 @@ INDICATOR_DEFINITIONS = [
     {
         'key': 'atr',
         'label': 'ATR',
+        'help': 'Average True Range — volatility scale from high/low/gap range. Used for stop distance and expansion/compression regime checks.',
         'defaults': {
             'period': 14,
             'expansion_lookback': 20,
@@ -482,6 +516,7 @@ INDICATOR_DEFINITIONS = [
     {
         'key': 'obv',
         'label': 'OBV',
+        'help': 'On-Balance Volume — cumulative up/down volume flow. Divergences vs price can flag weakening moves before price turns.',
         'defaults': {'ma_period': 20, 'divergence_lookback': 20, 'confirmation_lookback': 5},
         'fields': [
             {'key': 'ma_period', 'label': 'OBV MA Period', 'step': 1, 'min': 1},
@@ -490,6 +525,19 @@ INDICATOR_DEFINITIONS = [
         ],
     },
 ]
+
+# Hover copy for Chart Settings checklists (sidebar). Candlestick is plot-only.
+CHART_PLOT_HELP = {
+    'candlestick': (
+        'OHLC candlestick pane — open/high/low/close for each bar. '
+        'The main price view other indicators hang off.'
+    ),
+    **{definition['key']: definition['help'] for definition in INDICATOR_DEFINITIONS},
+}
+CHART_OVERLAY_HELP = {
+    definition['value']: definition['help']
+    for definition in CHART_ELEMENT_DEFINITIONS
+}
 
 # Signal categories that stay unticked in the SIGNALS panel on first load.
 # Default-on set is BB / MACD / RSI / CCI only. SMA/EMA/VWAP stay opt-in to

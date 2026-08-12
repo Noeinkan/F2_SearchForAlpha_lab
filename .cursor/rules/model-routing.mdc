@@ -15,3 +15,9 @@ On model switch, hand off: goal, attempts, errors, files changed, constraints.
 - Verify before marking complete (tests/lint relevant to change)
 - Minimal diffs; preserve public APIs unless requested
 - Each iteration must reduce real failures, not rewrite broadly
+
+## Pre-merge Opus read (cheap guardrail)
+Any diff over ~300 lines **or** 3+ files gets an Opus review before merge.
+- Few expensive calls per week by design — do not skip for "small" multi-file refactors
+- Launch via the Security Review or Bugbot subagent (or an explicit Opus pass) on the branch/PR diff
+- Fix clear findings before merge; leave ambiguous nits for human judgment

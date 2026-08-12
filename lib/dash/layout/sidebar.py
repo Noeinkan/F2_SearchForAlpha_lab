@@ -19,9 +19,16 @@ from lib.dash.dash_config import (
     FONT_SIZES,
     PLOT_INDICATOR_OPTIONS, CHART_ELEMENT_OPTIONS, SIGNAL_OPTIONS,
     INDICATOR_SETTING_SCHEMA,
+    CHART_PLOT_HELP, CHART_OVERLAY_HELP,
 )
 from lib.dash.components import bloomberg_section
 from lib.dash.layout.symbol_search import build_symbol_search_trigger
+
+# Buy/Sell marker toggles under Chart Settings → Signals
+_SIGNAL_HELP = {
+    'buy': 'Show buy markers on the chart when selected strategies fire an entry.',
+    'sell': 'Show sell markers on the chart when selected strategies fire an exit.',
+}
 
 
 def _default_ticker_option() -> list[dict[str, str]]:
@@ -158,31 +165,42 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
             html.Div(
                 [
                     html.Div([
-                        html.Div([
-                            dcc.Checklist(
-                                id={'type': 'plot-toggle', 'indicator': value},
-                                options=[{'label': html.Span(label, style={'fontSize': FONT_SIZES['sm']}), 'value': value}],
-                                value=[value] if value in {'candlestick', 'volume', 'rsi', 'cci', 'macd'} else [],
-                                style={'flex': 1, 'minWidth': 0},
-                                inputStyle={'cursor': 'pointer'},
-                                labelStyle={
-                                    'display': 'flex',
-                                    'alignItems': 'center',
-                                    'gap': '4px',
-                                    'cursor': 'pointer',
-                                    'color': theme['text_primary'],
-                                },
-                            ),
-                            html.Button(
-                                "\u2699",
-                                id={'type': 'indicator-gear', 'indicator': value},
-                                n_clicks=0,
-                                n_clicks_timestamp=0,
-                                type='button',
-                                style=styles['indicator_gear_button'],
-                                title=f"{label} settings",
-                            ) if (value in INDICATOR_SETTING_SCHEMA and value not in {opt[1] for opt in CHART_ELEMENT_OPTIONS}) else html.Span(style={'width': '20px', 'flexShrink': 0})
-                        ], style=styles['indicator_row']),
+                        html.Div(
+                            [
+                                dcc.Checklist(
+                                    id={'type': 'plot-toggle', 'indicator': value},
+                                    options=[{
+                                        'label': html.Span(
+                                            label,
+                                            title=CHART_PLOT_HELP.get(value, label),
+                                            style={'fontSize': FONT_SIZES['sm']},
+                                        ),
+                                        'value': value,
+                                    }],
+                                    value=[value] if value in {'candlestick', 'volume', 'rsi', 'cci', 'macd'} else [],
+                                    style={'flex': 1, 'minWidth': 0},
+                                    inputStyle={'cursor': 'pointer'},
+                                    labelStyle={
+                                        'display': 'flex',
+                                        'alignItems': 'center',
+                                        'gap': '4px',
+                                        'cursor': 'help',
+                                        'color': theme['text_primary'],
+                                    },
+                                ),
+                                html.Button(
+                                    "\u2699",
+                                    id={'type': 'indicator-gear', 'indicator': value},
+                                    n_clicks=0,
+                                    n_clicks_timestamp=0,
+                                    type='button',
+                                    style=styles['indicator_gear_button'],
+                                    title=f"{label} settings",
+                                ) if (value in INDICATOR_SETTING_SCHEMA and value not in {opt[1] for opt in CHART_ELEMENT_OPTIONS}) else html.Span(style={'width': '20px', 'flexShrink': 0})
+                            ],
+                            style=styles['indicator_row'],
+                            title=CHART_PLOT_HELP.get(value, label),
+                        ),
                         html.Div(
                             id={'type': 'indicator-settings-panel', 'indicator': value},
                             style=styles['indicator_settings_panel']
@@ -203,6 +221,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                 options=[{
                     'label': html.Span(
                         _overlay_label.get(value, label),
+                        title=CHART_OVERLAY_HELP.get(value, label),
                         style={'marginLeft': '6px', 'fontSize': FONT_SIZES['sm']},
                     ),
                     'value': value,
@@ -214,14 +233,18 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                     'display': 'flex',
                     'alignItems': 'center',
                     'padding': '1px 0',
-                    'cursor': 'pointer',
+                    'cursor': 'help',
                     'color': theme['text_primary'],
                 },
             ),
             html.Div(
                 [
                     html.Div([
-                        html.Span(short, className='sfa-overlay-gear-strip-label'),
+                        html.Span(
+                            short,
+                            className='sfa-overlay-gear-strip-label',
+                            title=CHART_OVERLAY_HELP.get(key, title),
+                        ),
                         html.Button(
                             "\u2699",
                             id={'type': 'indicator-gear', 'indicator': key},
@@ -256,15 +279,21 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
             ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '6px'}),
             dcc.Checklist(
                 id='signal-checklist',
-                options=[{'label': html.Span(label, style={'marginLeft': '6px', 'fontSize': FONT_SIZES['sm']}), 'value': value}
-                        for label, value in SIGNAL_OPTIONS],
+                options=[{
+                    'label': html.Span(
+                        label,
+                        title=_SIGNAL_HELP.get(value, label),
+                        style={'marginLeft': '6px', 'fontSize': FONT_SIZES['sm']},
+                    ),
+                    'value': value,
+                } for label, value in SIGNAL_OPTIONS],
                 value=['buy', 'sell'],
                 style={'display': 'flex', 'gap': '12px'},
                 inputStyle={'cursor': 'pointer'},
                 labelStyle={
                     'display': 'flex',
                     'alignItems': 'center',
-                    'cursor': 'pointer',
+                    'cursor': 'help',
                     'color': theme['text_primary'],
                 },
             ),
@@ -276,7 +305,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
             trigger='hover focus',
         ),
         dbc.Tooltip(
-            "Select price and indicator panels to plot.",
+            "Select price and indicator panels to plot. Hover a name for what it tracks.",
             target='help-chart-indicators',
             placement='right',
             trigger='hover focus',
@@ -288,7 +317,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
             trigger='hover focus',
         ),
         dbc.Tooltip(
-            "Toggle moving averages, bands, and visual overlays.",
+            "Toggle moving averages, bands, and visual overlays. Hover a name for what it tracks.",
             target='help-chart-overlays',
             placement='right',
             trigger='hover focus',

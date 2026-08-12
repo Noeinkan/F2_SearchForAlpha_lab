@@ -569,3 +569,14 @@ class TestPlotIndicatorOptions:
         plot_keys = {value for _, value in PLOT_INDICATOR_OPTIONS}
         assert plot_keys.issubset(legacy_keys)
         assert legacy_keys - plot_keys == OVERLAY_ONLY_INDICATOR_KEYS
+
+    def test_chart_help_covers_plot_and_overlay_toggles(self):
+        """Every Chart Settings toggle has hover explanation copy."""
+        from lib.dash.dash_config import CHART_PLOT_HELP, CHART_OVERLAY_HELP
+
+        plot_keys = {value for _, value in PLOT_INDICATOR_OPTIONS}
+        overlay_keys = {value for _, value in CHART_ELEMENT_OPTIONS}
+        assert plot_keys.issubset(CHART_PLOT_HELP)
+        assert overlay_keys.issubset(CHART_OVERLAY_HELP)
+        assert all(text.strip() for text in CHART_PLOT_HELP.values())
+        assert all(text.strip() for text in CHART_OVERLAY_HELP.values())

@@ -48,17 +48,17 @@ def fetch_data_with_cache(
     Fetch data with caching support via shared ``fetch_data``.
 
     Lookup order: in-memory LRU → disk parquet (``state/ohlcv_cache``) → Yahoo.
-    Daily disk entries expire at local midnight; intraday after one hour.
-    ``force=True`` skips both reads and overwrites both stores (header refresh).
+    Disk keys are ``{ticker}_{interval}``. Soft-fresh files return immediately;
+    soft-expired / hard-OK files return stale and schedule a background
+    incremental Yahoo append (SWR). Past hard TTL blocks on an incremental
+    (or full) fetch. ``force=True`` does a blocking full-window refetch.
 
     Args:
         ticker: Stock ticker symbol
         start_date: Start date string
         end_date: End date string
         interval: Bar size ``1d`` / ``1h`` / ``4h``
-        force: Skip cache reads and overwrite entries. The in-memory key is
-            stable for a whole trading day — without this a manual refresh
-            would serve the same bars back and never pick up today's new ones.
+        force: Skip cache reads and overwrite entries (header refresh).
 
     Returns:
         DataFrame with OHLCV data
@@ -67,7 +67,7 @@ def fetch_data_with_cache(
         ValueError: If no data available for ticker
     """
     from lib.data_processing import DataFetchError, fetch_data
-    from lib.dash.ohlcv_disk_cache import read_cached, write_cached
+    from lib.dash import ohlcv_disk_cache as ohlcv_cache
     from lib.timeframes import normalize_interval
 
     canon = normalize_interval(interval)
@@ -78,26 +78,68 @@ def fetch_data_with_cache(
         logger.debug(f"Cache hit for {cache_key}")
         return cached
 
-    if not force:
-        disk_hit = read_cached(ticker, canon, start_date, end_date)
-        if disk_hit is not None:
-            if isinstance(disk_hit.columns, pd.MultiIndex):
-                disk_hit.columns = disk_hit.columns.get_level_values(0)
-            dashboard_state.set_cached_data(cache_key, disk_hit)
-            return disk_hit
+    def _yahoo(start: str, end: str) -> pd.DataFrame:
+        logger.info(f"Fetching data for {ticker} (interval={canon})")
+        frame = fetch_data(ticker, start, end, interval=canon)
+        if isinstance(frame.columns, pd.MultiIndex):
+            frame.columns = frame.columns.get_level_values(0)
+        return frame
 
-    logger.info(f"Fetching data for {ticker} (interval={canon})")
+    def _store(df: pd.DataFrame) -> pd.DataFrame:
+        windowed = ohlcv_cache.slice_window(df, start_date, end_date)
+        if windowed is None or windowed.empty:
+            raise ValueError(f"No data available for {ticker}")
+        dashboard_state.set_cached_data(cache_key, windowed)
+        return windowed
+
+    path = ohlcv_cache.cache_path(ticker, canon)
+    disk_frame = None if force else ohlcv_cache.load_frame(ticker, canon)
+    freshness = (
+        "missing"
+        if force
+        else ohlcv_cache.classify_freshness(path, canon)
+    )
+
+    if not force and disk_frame is not None and freshness == "fresh":
+        return _store(disk_frame)
+
+    if not force and disk_frame is not None and freshness == "stale":
+        ohlcv_cache.schedule_revalidate(
+            ticker,
+            canon,
+            end_date,
+            lambda start, end: _yahoo(start, end),
+        )
+        return _store(disk_frame)
+
+    # force, missing, or expired → blocking fetch
     try:
-        df = fetch_data(ticker, start_date, end_date, interval=canon)
-    except DataFetchError as exc:
-        raise ValueError(str(exc)) from exc
+        if force or disk_frame is None:
+            df = _yahoo(start_date, end_date)
+            ohlcv_cache.write_frame(ticker, canon, df)
+            return _store(df)
 
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-
-    dashboard_state.set_cached_data(cache_key, df)
-    write_cached(ticker, canon, start_date, end_date, df)
-    return df
+        # expired but file exists → incremental
+        start = ohlcv_cache.incremental_start(disk_frame)
+        try:
+            tail = _yahoo(start, end_date)
+            df = ohlcv_cache.merge_ohlcv(disk_frame, tail)
+        except DataFetchError:
+            # Tail fetch failed — fall back to full window once.
+            df = _yahoo(start_date, end_date)
+        ohlcv_cache.write_frame(ticker, canon, df)
+        return _store(df)
+    except (DataFetchError, ValueError) as exc:
+        if disk_frame is not None and not disk_frame.empty:
+            logger.warning(
+                "Yahoo fetch failed for %s; serving stale disk cache: %s",
+                ticker,
+                exc,
+            )
+            return _store(disk_frame)
+        if isinstance(exc, DataFetchError):
+            raise ValueError(str(exc)) from exc
+        raise
 
 
 def extract_signals(df: pd.DataFrame) -> Tuple[List[str], List[str]]:
