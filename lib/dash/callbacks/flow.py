@@ -108,19 +108,18 @@ def register_flow_callbacks(app) -> None:
     @app.callback(
         Output("app-url", "pathname", allow_duplicate=True),
         [
-            Input("open-flow-button", "n_clicks"),
             Input("close-flow-button", "n_clicks"),
             Input("nav-workspace-flow", "n_clicks"),
         ],
         State("ticker-dropdown", "value"),
         prevent_initial_call=True,
     )
-    def navigate_to_flow(open_clicks, close_clicks, nav_flow, ticker):
+    def navigate_to_flow(close_clicks, nav_flow, ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
         trigger = ctx.triggered[0]["prop_id"].split(".")[0]
-        if trigger in ("open-flow-button", "nav-workspace-flow"):
+        if trigger == "nav-workspace-flow":
             symbol = str(ticker or DEFAULT_TICKER).strip().upper()
             return build_flow_path(symbol)
         if trigger == "close-flow-button":

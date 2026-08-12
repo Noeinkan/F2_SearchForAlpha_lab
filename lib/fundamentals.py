@@ -4,7 +4,8 @@ Fundamental analysis helpers for the dashboard.
 Fetch strategy:
   1. SEC EDGAR XBRL (free, no API key, long annual history) — primary for U.S. stocks.
   2. yfinance — fallback for non-U.S. / tickers not found in EDGAR, and supplemental
-     source for analyst estimates (forwardPE, earningsGrowth) not available in filings.
+     source for analyst estimates (forwardPE, earningsGrowth, consensus price targets)
+     not available in filings.
   3. yfinance quarterly statements — quarterly financials + charts only (no SEC
      quarterly XBRL in this release). Valuation and Big Five remain annual.
 
@@ -104,6 +105,7 @@ class FundamentalResult:
     valuation: list[dict[str, Any]]
     dcf: list[dict[str, Any]]
     dcf_sensitivity: list[dict[str, Any]]
+    analyst_targets: list[dict[str, Any]]
     chart_series: dict[str, list[float | None]]
     quality_notes: list[str]
     as_of: str
@@ -121,6 +123,7 @@ class FundamentalResult:
             "valuation": self.valuation,
             "dcf": self.dcf,
             "dcf_sensitivity": self.dcf_sensitivity,
+            "analyst_targets": self.analyst_targets,
             "chart_series": self.chart_series,
             "quality_notes": self.quality_notes,
             "as_of": self.as_of,
@@ -153,7 +156,8 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
     Primary source: SEC EDGAR XBRL (free, long annual history for U.S. stocks).
     Fallback: yfinance statements (used when the ticker is not found in EDGAR).
     yfinance is always queried for supplemental analyst estimates (forwardPE,
-    earningsGrowth, trailingEps) which are not available in SEC filings.
+    earningsGrowth, trailingEps, consensus price targets) which are not available
+    in SEC filings.
     Quarterly financials are sourced from yfinance only.
     Price history for period-end closes is always sourced from yfinance.
     """
@@ -242,6 +246,7 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
             "valuation": [],
             "dcf": [],
             "dcf_sensitivity": [],
+            "analyst_targets": [],
             "chart_series": {},
             "quality_notes": [str(exc)],
             "as_of": annual_result["as_of"],
@@ -263,6 +268,7 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
         "valuation": annual_result["valuation"],
         "dcf": annual_result["dcf"],
         "dcf_sensitivity": annual_result["dcf_sensitivity"],
+        "analyst_targets": annual_result["analyst_targets"],
         "chart_series": annual_result["chart_series"],
         "quality_notes": [f"Data source: {data_source}"] + annual_result["quality_notes"],
     }
@@ -364,6 +370,7 @@ def build_fundamentals_result(
         valuation: list[dict[str, Any]] = []
         dcf: list[dict[str, Any]] = []
         dcf_sensitivity: list[dict[str, Any]] = []
+        analyst_targets: list[dict[str, Any]] = []
     else:
         big_five = _build_big_five(financial_map, all_periods)
         valuation = _build_valuation(info, financial_map, all_periods, marr, margin_of_safety)
@@ -374,6 +381,7 @@ def build_fundamentals_result(
             notes_extra = list(dcf_result.notes)
         except ValueError as exc:
             dcf, dcf_sensitivity, notes_extra = [], [], [f"DCF unavailable: {exc}"]
+        analyst_targets = _build_analyst_targets(info, live_price)
     notes = _quality_notes(financial_map, all_periods, period=period) + notes_extra
     financials = _attach_live_price(
         _rows_from_map(financial_map, all_periods), live_price
@@ -391,6 +399,7 @@ def build_fundamentals_result(
         valuation=valuation,
         dcf=dcf,
         dcf_sensitivity=dcf_sensitivity,
+        analyst_targets=analyst_targets,
         chart_series=_chart_series(financial_map, all_periods),
         quality_notes=notes,
         as_of=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1088,6 +1097,56 @@ def _build_valuation(
         ("Year-end Close", _format_money(price)),
         ("Entry Price", _format_money(entry_price)),
         ("Close/Entry price ratio", _format_number(current_entry_ratio, 1)),
+    ]
+    return [{"metric": metric, "value": value} for metric, value in rows]
+
+
+def _build_analyst_targets(
+    info: dict[str, Any],
+    last_price: float | None = None,
+) -> list[dict[str, Any]]:
+    """Yahoo Finance consensus price targets from an already-fetched info dict.
+
+    Returns [] when no target prices are present (thin coverage / non-US names).
+    """
+    target_low = _number(info.get("targetLowPrice"))
+    target_mean = _number(info.get("targetMeanPrice"))
+    target_median = _number(info.get("targetMedianPrice"))
+    target_high = _number(info.get("targetHighPrice"))
+    has_target = any(_is_number(v) for v in (target_low, target_mean, target_median, target_high))
+    if not has_target:
+        return []
+
+    price = _number(last_price)
+    if not _is_number(price):
+        price = _number(info.get("currentPrice"))
+    if not _is_number(price):
+        price = _number(info.get("regularMarketPrice"))
+
+    upside = (
+        (target_mean / price) - 1.0
+        if _is_number(target_mean) and _is_number(price) and price
+        else np.nan
+    )
+    opinions = _number(info.get("numberOfAnalystOpinions"))
+    rec_mean = _number(info.get("recommendationMean"))
+    rec_key = info.get("recommendationKey")
+    recommendation = (
+        str(rec_key).replace("_", " ").strip().title()
+        if rec_key not in (None, "", "none")
+        else "--"
+    )
+
+    rows = [
+        ("Recommendation", recommendation),
+        ("Recommendation Score", _format_number(rec_mean)),
+        ("Analysts Covering", _format_number(opinions, 0)),
+        ("Target Low", _format_money(target_low)),
+        ("Target Mean", _format_money(target_mean)),
+        ("Target Median", _format_money(target_median)),
+        ("Target High", _format_money(target_high)),
+        ("Upside vs Last", _format_pct(upside)),
+        ("Last Price", _format_money(price)),
     ]
     return [{"metric": metric, "value": value} for metric, value in rows]
 

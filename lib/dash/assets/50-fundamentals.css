@@ -731,9 +731,7 @@
     display: grid;
     grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr));
     gap: 6px;
-    position: sticky;
-    top: 0;
-    z-index: 5;
+    /* Not sticky: sticking overlaid the Financials table on scroll. */
     padding: 4px 0 6px;
     background: var(--bg-primary, #0a0a0a);
     border-bottom: 1px solid var(--border-primary, #333);
@@ -827,7 +825,7 @@
 
 .sfa-fundamentals-valuation-band {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
     gap: 6px;
     align-items: start;
 }

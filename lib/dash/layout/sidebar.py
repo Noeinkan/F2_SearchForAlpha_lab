@@ -1,12 +1,13 @@
 """
 Left sidebar with three collapsible Bloomberg-style sections:
-- Market Data (ticker + fundamentals/flow entry buttons)
+- Market Data (ticker / symbol search)
 - Saved Configurations (presets CRUD)
 - Chart Settings (indicator toggles + gear icons, overlays, signal kinds)
 
 "Market Data" is deliberately thin: symbol picks the instrument, the chart
 toolbar picks the bar size, and everything else about *which period* is being
-studied belongs to the backtest panel's test window.
+studied belongs to the backtest panel's test window. Fundamentals and flow
+workspaces open from the header nav (and G F / G O shortcuts).
 """
 
 from dash import dcc, html
@@ -63,36 +64,11 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                     style={'display': 'none'},
                 ),
             ], style={'marginBottom': '12px'}),
-
             # No date range and no capital here any more. Both were backtest
             # inputs wearing a market-data hat: the fetch now always pulls the
             # widest window Yahoo will serve, and the period under test lives
             # with the rest of the backtest parameters in the right panel.
-            html.Button(
-                "OPEN FUNDAMENTALS",
-                id='open-fundamentals-button',
-                style={**styles['button_outline'], 'width': '100%', 'marginTop': '8px', 'padding': '7px 10px'},
-                n_clicks=0,
-            ),
-            dbc.Tooltip("Open 10-year fundamentals and Rule #1 valuation for the selected symbol", target='open-fundamentals-button', placement='right'),
-            html.Button(
-                "OPEN FLOW",
-                id='open-flow-button',
-                style={
-                    **styles['button_outline'],
-                    'width': '100%',
-                    'marginTop': '8px',
-                    'padding': '7px 10px',
-                    'borderColor': theme['accent_purple'],
-                    'color': theme['accent_purple'],
-                },
-                n_clicks=0,
-            ),
-            dbc.Tooltip(
-                "Cheddar-Flow-style unusual options activity scanner",
-                target='open-flow-button',
-                placement='right',
-            ),
+            # Fundamentals / Flow entry points live in the header workspace nav.
         ])
 
     presets_section = html.Div([
@@ -165,12 +141,20 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
         html.Div(id='preset-status', style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary']}),
     ])
 
+    # Shorter overlay labels for the 2-col grid (values unchanged).
+    _overlay_label = {'signals': 'Signals'}
+    _overlay_gear_items = (
+        ('BB', 'bollinger', 'Bollinger Bands settings'),
+        ('SMA', 'sma', 'SMA settings'),
+        ('EMA', 'ema', 'EMA settings'),
+    )
+
     chart_section = html.Div([
         html.Div([
             html.Div([
                 html.Label("Indicators", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': 0, 'display': 'block'}),
                 html.Span("?", id='help-chart-indicators', style=help_icon_style),
-            ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '8px'}),
+            ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '6px'}),
             html.Div(
                 [
                     html.Div([
@@ -179,15 +163,15 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                                 id={'type': 'plot-toggle', 'indicator': value},
                                 options=[{'label': html.Span(label, style={'fontSize': FONT_SIZES['sm']}), 'value': value}],
                                 value=[value] if value in {'candlestick', 'volume', 'rsi', 'cci', 'macd'} else [],
-                                style={'flex': 1},
+                                style={'flex': 1, 'minWidth': 0},
                                 inputStyle={'cursor': 'pointer'},
-                            labelStyle={
-                                'display': 'flex',
-                                'alignItems': 'center',
-                                'gap': '8px',
-                                'cursor': 'pointer',
-                                'color': theme['text_primary']
-                            }
+                                labelStyle={
+                                    'display': 'flex',
+                                    'alignItems': 'center',
+                                    'gap': '4px',
+                                    'cursor': 'pointer',
+                                    'color': theme['text_primary'],
+                                },
                             ),
                             html.Button(
                                 "\u2699",
@@ -197,7 +181,7 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                                 type='button',
                                 style=styles['indicator_gear_button'],
                                 title=f"{label} settings",
-                            ) if (value in INDICATOR_SETTING_SCHEMA and value not in {opt[1] for opt in CHART_ELEMENT_OPTIONS}) else html.Span(style={'width': '22px'})
+                            ) if (value in INDICATOR_SETTING_SCHEMA and value not in {opt[1] for opt in CHART_ELEMENT_OPTIONS}) else html.Span(style={'width': '20px', 'flexShrink': 0})
                         ], style=styles['indicator_row']),
                         html.Div(
                             id={'type': 'indicator-settings-panel', 'indicator': value},
@@ -206,98 +190,83 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                     ])
                     for label, value in PLOT_INDICATOR_OPTIONS
                 ],
-                style={'display': 'flex', 'flexDirection': 'column', 'gap': '4px'}
+                className='sfa-chart-toggle-grid',
             ),
-        ], style={'marginBottom': '16px'}),
+        ], style={'marginBottom': '12px'}),
         html.Div([
             html.Div([
                 html.Label("Overlays", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': 0, 'display': 'block'}),
                 html.Span("?", id='help-chart-overlays', style=help_icon_style),
-            ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '8px'}),
+            ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '6px'}),
             dcc.Checklist(
                 id='chart-elements-checklist',
-                options=[{'label': html.Span(label, style={'marginLeft': '8px', 'fontSize': FONT_SIZES['sm']}), 'value': value}
-                        for label, value in CHART_ELEMENT_OPTIONS],
+                options=[{
+                    'label': html.Span(
+                        _overlay_label.get(value, label),
+                        style={'marginLeft': '6px', 'fontSize': FONT_SIZES['sm']},
+                    ),
+                    'value': value,
+                } for label, value in CHART_ELEMENT_OPTIONS],
                 value=['candlesticks', 'signals', 'bollinger'],
-                style={'display': 'flex', 'flexDirection': 'column', 'gap': '4px'},
+                className='sfa-chart-toggle-grid',
                 inputStyle={'cursor': 'pointer'},
                 labelStyle={
                     'display': 'flex',
                     'alignItems': 'center',
-                    'padding': '4px 0',
+                    'padding': '1px 0',
                     'cursor': 'pointer',
-                    'color': theme['text_primary']
-                }
+                    'color': theme['text_primary'],
+                },
             ),
-            html.Div([
-                html.Div([
-                    html.Span("Bollinger Bands", style={'fontSize': FONT_SIZES['sm'], 'color': theme['text_primary']}),
-                    html.Button(
-                        "\u2699",
-                        id={'type': 'indicator-gear', 'indicator': 'bollinger'},
-                        n_clicks=0,
-                        n_clicks_timestamp=0,
-                        type='button',
-                        style=styles['indicator_gear_button'],
-                        title="Bollinger Bands settings",
-                    ),
-                ], style=styles['indicator_row']),
-                html.Div(
-                    id={'type': 'indicator-settings-panel', 'indicator': 'bollinger'},
-                    style=styles['indicator_settings_panel']
-                ),
-                html.Div([
-                    html.Span("SMA", style={'fontSize': FONT_SIZES['sm'], 'color': theme['text_primary']}),
-                    html.Button(
-                        "\u2699",
-                        id={'type': 'indicator-gear', 'indicator': 'sma'},
-                        n_clicks=0,
-                        n_clicks_timestamp=0,
-                        type='button',
-                        style=styles['indicator_gear_button'],
-                        title="SMA settings",
-                    ),
-                ], style=styles['indicator_row']),
-                html.Div(
-                    id={'type': 'indicator-settings-panel', 'indicator': 'sma'},
-                    style=styles['indicator_settings_panel']
-                ),
-                html.Div([
-                    html.Span("EMA", style={'fontSize': FONT_SIZES['sm'], 'color': theme['text_primary']}),
-                    html.Button(
-                        "\u2699",
-                        id={'type': 'indicator-gear', 'indicator': 'ema'},
-                        n_clicks=0,
-                        n_clicks_timestamp=0,
-                        type='button',
-                        style=styles['indicator_gear_button'],
-                        title="EMA settings",
-                    ),
-                ], style=styles['indicator_row']),
-                html.Div(
-                    id={'type': 'indicator-settings-panel', 'indicator': 'ema'},
-                    style=styles['indicator_settings_panel']
-                ),
-            ], style={'display': 'flex', 'flexDirection': 'column', 'gap': '4px', 'marginTop': '6px'}),
-        ], style={'marginBottom': '16px', 'marginTop': '16px'}),
+            html.Div(
+                [
+                    html.Div([
+                        html.Span(short, className='sfa-overlay-gear-strip-label'),
+                        html.Button(
+                            "\u2699",
+                            id={'type': 'indicator-gear', 'indicator': key},
+                            n_clicks=0,
+                            n_clicks_timestamp=0,
+                            type='button',
+                            style=styles['overlay_gear_button'],
+                            title=title,
+                        ),
+                    ], className='sfa-overlay-gear-strip-item')
+                    for short, key, title in _overlay_gear_items
+                ],
+                className='sfa-overlay-gear-strip',
+            ),
+            html.Div(
+                id={'type': 'indicator-settings-panel', 'indicator': 'bollinger'},
+                style=styles['indicator_settings_panel'],
+            ),
+            html.Div(
+                id={'type': 'indicator-settings-panel', 'indicator': 'sma'},
+                style=styles['indicator_settings_panel'],
+            ),
+            html.Div(
+                id={'type': 'indicator-settings-panel', 'indicator': 'ema'},
+                style=styles['indicator_settings_panel'],
+            ),
+        ], style={'marginBottom': '12px', 'marginTop': '12px'}),
         html.Div([
             html.Div([
                 html.Label("Signals", style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'marginBottom': 0, 'display': 'block'}),
                 html.Span("?", id='help-chart-signals', style=help_icon_style),
-            ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '8px'}),
+            ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'marginBottom': '6px'}),
             dcc.Checklist(
                 id='signal-checklist',
-                options=[{'label': html.Span(label, style={'marginLeft': '8px', 'fontSize': FONT_SIZES['sm']}), 'value': value}
+                options=[{'label': html.Span(label, style={'marginLeft': '6px', 'fontSize': FONT_SIZES['sm']}), 'value': value}
                         for label, value in SIGNAL_OPTIONS],
                 value=['buy', 'sell'],
-                style={'display': 'flex', 'gap': '16px'},
+                style={'display': 'flex', 'gap': '12px'},
                 inputStyle={'cursor': 'pointer'},
                 labelStyle={
                     'display': 'flex',
                     'alignItems': 'center',
                     'cursor': 'pointer',
-                    'color': theme['text_primary']
-                }
+                    'color': theme['text_primary'],
+                },
             ),
         ]),
         dbc.Tooltip(

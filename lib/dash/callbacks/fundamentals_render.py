@@ -43,6 +43,7 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
     valuation_rows = annual.get('valuation', [])
     dcf_rows = annual.get('dcf', [])
     dcf_sensitivity = annual.get('dcf_sensitivity', [])
+    analyst_rows = annual.get('analyst_targets', [])
     chart_labels = _period_column_labels(active.get('years', []))
 
     if active_period == 'quarterly' and not active.get('financials'):
@@ -120,6 +121,30 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
             ], style=_panel_style(theme), className=(
                 'sfa-fundamentals-panel sfa-fundamentals-valuation '
                 'sfa-fundamentals-valuation-dcf'
+            )),
+            html.Div([
+                _panel_title('Analyst Targets', theme, size='sm'),
+                _analyst_targets_caption(theme),
+                (
+                    _valuation_table(
+                        analyst_rows, theme, table_id='fundamentals-analyst-table'
+                    )
+                    if analyst_rows
+                    else html.Div(
+                        'No Yahoo consensus targets for this symbol.',
+                        className='sfa-valuation-assumption',
+                        style={
+                            'fontFamily': FONT_FAMILY,
+                            'fontSize': FONT_SIZES['sm'],
+                            'color': theme['text_secondary'],
+                            'lineHeight': '1.4',
+                            'marginBottom': '6px',
+                        },
+                    )
+                ),
+            ], style=_panel_style(theme), className=(
+                'sfa-fundamentals-panel sfa-fundamentals-valuation '
+                'sfa-fundamentals-valuation-analyst'
             )),
         ], className='sfa-fundamentals-valuation-band'),
     )
@@ -518,6 +543,20 @@ def _dcf_assumptions(rows: list[dict[str, Any]], theme: dict) -> html.Div:
             'color': theme['text_secondary'],
             'lineHeight': '1.4',
             'marginTop': '10px',
+            'marginBottom': '6px',
+        },
+    )
+
+
+def _analyst_targets_caption(theme: dict) -> html.Div:
+    return html.Div(
+        'Yahoo Finance consensus — broker price targets, not a model fair value.',
+        className='sfa-valuation-assumption',
+        style={
+            'fontFamily': FONT_FAMILY,
+            'fontSize': FONT_SIZES['sm'],
+            'color': theme['text_secondary'],
+            'lineHeight': '1.4',
             'marginBottom': '6px',
         },
     )

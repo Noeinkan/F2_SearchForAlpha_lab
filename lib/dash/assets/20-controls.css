@@ -203,6 +203,74 @@
 }
 
 /* =============================================================================
+   Chart Settings — dense two-column toggles (left sidebar)
+   ========================================================================== */
+
+.sfa-chart-toggle-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 8px;
+    align-items: start;
+    /* Kill dropdown-list chrome if Dash 4 mounts Checklist as .dash-options-list */
+    background: transparent !important;
+    margin-top: 0 !important;
+    border-top: none !important;
+}
+
+/* className may land on a wrapper; push the same grid onto the inner list */
+.sfa-chart-toggle-grid > .dash-options-list {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 8px;
+    align-items: start;
+    background: transparent !important;
+    margin-top: 0 !important;
+    border-top: none !important;
+}
+
+.sfa-chart-toggle-grid > .dash-options-list-option,
+.sfa-chart-toggle-grid > label,
+.sfa-chart-toggle-grid > .dash-options-list > .dash-options-list-option,
+.sfa-chart-toggle-grid > .dash-options-list > label {
+    background: transparent !important;
+    border-bottom: none !important;
+    padding: 1px 0 !important;
+    margin: 0 !important;
+    min-width: 0;
+}
+
+.sfa-chart-toggle-grid > .dash-options-list-option:hover,
+.sfa-chart-toggle-grid > .dash-options-list-option[aria-selected="true"],
+.sfa-chart-toggle-grid > .dash-options-list-option[data-state="checked"],
+.sfa-chart-toggle-grid > .dash-options-list > .dash-options-list-option:hover,
+.sfa-chart-toggle-grid > .dash-options-list > .dash-options-list-option[aria-selected="true"],
+.sfa-chart-toggle-grid > .dash-options-list > .dash-options-list-option[data-state="checked"] {
+    background: transparent !important;
+    color: var(--text-primary) !important;
+}
+
+.sfa-overlay-gear-strip {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-top: 6px;
+}
+
+.sfa-overlay-gear-strip-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sfa-overlay-gear-strip-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+/* =============================================================================
    Section primitives (sidebar / right panel)
    ========================================================================== */
 

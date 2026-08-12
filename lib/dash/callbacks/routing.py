@@ -83,21 +83,20 @@ def register_routing_callbacks(app) -> None:
 
     @app.callback(
         Output('app-url', 'pathname', allow_duplicate=True),
-        [Input('open-fundamentals-button', 'n_clicks'),
-         Input('close-fundamentals-button', 'n_clicks'),
+        [Input('close-fundamentals-button', 'n_clicks'),
          Input('nav-workspace-sfa', 'n_clicks'),
          Input('nav-workspace-fundamentals', 'n_clicks')],
         State('ticker-dropdown', 'value'),
         prevent_initial_call=True,
     )
-    def navigate_between_routes(open_clicks, close_clicks, nav_sfa, nav_fund, ticker):
+    def navigate_between_routes(close_clicks, nav_sfa, nav_fund, ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
 
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         symbol = str(ticker or DEFAULT_TICKER).strip().upper()
-        if trigger_id in ('open-fundamentals-button', 'nav-workspace-fundamentals'):
+        if trigger_id == 'nav-workspace-fundamentals':
             return build_fundamentals_path(symbol)
         if trigger_id in ('close-fundamentals-button', 'nav-workspace-sfa'):
             return build_ticker_terminal_path(symbol)

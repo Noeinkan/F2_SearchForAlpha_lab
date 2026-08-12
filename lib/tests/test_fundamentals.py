@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from lib.fundamentals import (
+    _build_analyst_targets,
     _build_sec_statement,
     _clean_period_prices,
     _clean_statement,
@@ -81,8 +82,43 @@ class TestFundamentalsResult(unittest.TestCase):
         self.assertIn("ROIC", payload["chart_series"])
         self.assertIn("dcf", payload)
         self.assertIn("dcf_sensitivity", payload)
+        self.assertIn("analyst_targets", payload)
         self.assertEqual(payload["dcf"], [])  # no sharesOutstanding in info
+        self.assertEqual(payload["analyst_targets"], [])  # no Yahoo target fields
         self.assertTrue(any("DCF unavailable" in note for note in payload["quality_notes"]))
+
+    def test_annual_analyst_targets_populated_from_info(self):
+        result = build_fundamentals_result(
+            ticker="TEST",
+            info={
+                "longName": "Test Corp",
+                "financialCurrency": "USD",
+                "earningsGrowth": 0.10,
+                "targetMeanPrice": 120.0,
+                "targetMedianPrice": 118.0,
+                "targetHighPrice": 150.0,
+                "targetLowPrice": 90.0,
+                "numberOfAnalystOpinions": 12,
+                "recommendationKey": "buy",
+                "recommendationMean": 2.1,
+                "currentPrice": 100.0,
+            },
+            income=self.income,
+            balance=self.balance,
+            cashflow=self.cashflow,
+            yearly_prices=self.prices,
+            live_price=100.0,
+        )
+        targets = {row["metric"]: row["value"] for row in result.analyst_targets}
+        self.assertEqual(targets["Recommendation"], "Buy")
+        self.assertEqual(targets["Recommendation Score"], "2.10")
+        self.assertEqual(targets["Analysts Covering"], "12")
+        self.assertEqual(targets["Target Mean"], "$120.00")
+        self.assertEqual(targets["Target Median"], "$118.00")
+        self.assertEqual(targets["Target Low"], "$90.00")
+        self.assertEqual(targets["Target High"], "$150.00")
+        self.assertEqual(targets["Upside vs Last"], "20.00%")
+        self.assertEqual(targets["Last Price"], "$100.00")
 
     def test_annual_dcf_populated_when_shares_present(self):
         result = build_fundamentals_result(
@@ -267,6 +303,7 @@ class TestQuarterlyFundamentals(unittest.TestCase):
         self.assertEqual(payload["valuation"], [])
         self.assertEqual(payload["dcf"], [])
         self.assertEqual(payload["dcf_sensitivity"], [])
+        self.assertEqual(payload["analyst_targets"], [])
         self.assertEqual(payload["big_five"], [])
         self.assertEqual(len(payload["financials"]), 13)
         self.assertIn("Sales", payload["chart_series"])
@@ -758,6 +795,48 @@ class TestIncompleteAnnualPeriods(unittest.TestCase):
         )
         self.assertAlmostEqual(prices[2025], 100.0)
         self.assertAlmostEqual(prices[2026], 110.0)
+
+
+
+
+class TestAnalystTargets(unittest.TestCase):
+    def test_build_analyst_targets_formats_rows_and_upside(self):
+        rows = _build_analyst_targets(
+            {
+                "targetMeanPrice": 110.0,
+                "targetMedianPrice": 108.0,
+                "targetHighPrice": 130.0,
+                "targetLowPrice": 95.0,
+                "numberOfAnalystOpinions": 8,
+                "recommendationKey": "overweight",
+                "recommendationMean": 1.8,
+                "currentPrice": 100.0,
+            },
+            last_price=100.0,
+        )
+        by_metric = {row["metric"]: row["value"] for row in rows}
+        self.assertEqual(by_metric["Recommendation"], "Overweight")
+        self.assertEqual(by_metric["Target Mean"], "$110.00")
+        self.assertEqual(by_metric["Upside vs Last"], "10.00%")
+        self.assertEqual(by_metric["Last Price"], "$100.00")
+        self.assertEqual(by_metric["Analysts Covering"], "8")
+
+    def test_build_analyst_targets_empty_without_prices(self):
+        self.assertEqual(
+            _build_analyst_targets({"recommendationKey": "buy", "recommendationMean": 2.0}),
+            [],
+        )
+
+    def test_build_analyst_targets_falls_back_to_info_price(self):
+        rows = _build_analyst_targets(
+            {
+                "targetMeanPrice": 50.0,
+                "currentPrice": 40.0,
+            }
+        )
+        by_metric = {row["metric"]: row["value"] for row in rows}
+        self.assertEqual(by_metric["Upside vs Last"], "25.00%")
+        self.assertEqual(by_metric["Last Price"], "$40.00")
 
 
 if __name__ == "__main__":
