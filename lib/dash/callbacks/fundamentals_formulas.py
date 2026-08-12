@@ -255,6 +255,65 @@ for _valuation_metric, _details in _VALUATION_EXPLAIN_MAP.items():
             _REVERSE_DEPENDENCY_MAP.setdefault(_source_metric, []).append(_valuation_metric)
 
 
+# Hover copy for FINANCIALS / Big Five metric-name cells (not the valuation formula panel).
+_FINANCIAL_EXPLAIN_MAP: dict[str, dict[str, str]] = {
+    'Stock Price (FYE)': {
+        'what': 'Fiscal year-end closing price for that period. The Last column is the live quote for comparison.',
+    },
+    'Sales (Rev)': {
+        'what': 'Total revenue / sales from the income statement, shown in millions of dollars.',
+    },
+    'Equity': {
+        'what': "Shareholders' equity (book value of equity) from the balance sheet, in millions.",
+    },
+    'EPS': {
+        'what': 'Earnings per share for the period from financial statements.',
+    },
+    'FCF': {
+        'what': 'Free cash flow: operating cash flow minus capital expenditure (or the Free Cash Flow line when reported), in millions.',
+    },
+    'NOPAT': {
+        'what': 'Net operating profit after tax: operating income × (1 − effective tax rate).',
+    },
+    'Net Income (Profit)': {
+        'what': 'Bottom-line net income (profit) from the income statement, in millions.',
+    },
+    'Avg. Invested Capital': {
+        'what': 'Average invested capital for the year: mean of beginning and ending (equity + total debt − cash).',
+    },
+    'Current Debt (Liab)': {
+        'what': 'Short-term / current debt liabilities from the balance sheet, in millions.',
+    },
+    'Long-term debt (Liab)': {
+        'what': 'Long-term debt from the balance sheet, in millions.',
+    },
+    'Total Debt (Liab)': {
+        'what': 'Total interest-bearing debt (current + long-term when a total line is missing), in millions.',
+    },
+    'Debt Ratio': {
+        'what': 'Years of free cash flow needed to cover long-term debt (long-term debt ÷ FCF). Unit is years.',
+    },
+    'PE Ratio': {
+        'what': 'Price-to-earnings for the period: Stock Price (FYE) ÷ EPS.',
+    },
+    'ROIC': {
+        'what': 'Return on invested capital: NOPAT ÷ average invested capital. Big Five summaries use period averages.',
+    },
+    'Equity-GR': {
+        'what': "Year-over-year growth in shareholders' equity. Big Five 10Y/5Y/1Y columns use CAGR.",
+    },
+    'EPS-GR': {
+        'what': 'Year-over-year growth in EPS. Big Five 10Y/5Y/1Y columns use CAGR.',
+    },
+    'Sales-GR': {
+        'what': 'Year-over-year growth in sales/revenue. Big Five 10Y/5Y/1Y columns use CAGR.',
+    },
+    'FCF-GR': {
+        'what': 'Year-over-year growth in free cash flow. Big Five 10Y/5Y/1Y columns use CAGR.',
+    },
+}
+
+
 _VALUATION_COL_A_SIZE = 10
 
 

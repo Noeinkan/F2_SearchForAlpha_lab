@@ -11,10 +11,12 @@ from lib.dash.dash_config import (
     DEFAULT_FUNDAMENTALS_PERIOD,
     FONT_FAMILY,
     FONT_SIZES,
+    FUNDAMENTALS_PERIOD_OPTIONS,
 )
 from lib.dash.flow_view import wrap_flow_diagram
 
 from .fundamentals_formulas import (
+    _FINANCIAL_EXPLAIN_MAP,
     _VALUATION_EXPLAIN_MAP,
     _canonical_metric,
     _escape_filter,
@@ -96,6 +98,7 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
                 last_price=payload.get('last_price'),
             ),
         ], style=_panel_style(theme), className='sfa-fundamentals-panel sfa-fundamentals-main'),
+        header_extra=_period_toggle(active_period),
     )
 
     valuation_band = _section_band(
@@ -151,14 +154,37 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
     ], style={'width': '100%', 'minWidth': 0}, className='sfa-fundamentals-root')
 
 
-def _section_band(title: str, slug: str, body: Any) -> html.Section:
+def _section_band(title: str, slug: str, body: Any, header_extra: Any = None) -> html.Section:
+    header_children: list[Any] = [
+        html.Div(title, className='sfa-fundamentals-band-title'),
+    ]
+    if header_extra is not None:
+        header_children.append(header_extra)
     return html.Section(
         [
-            html.Div(title, className='sfa-fundamentals-band-header'),
+            html.Div(header_children, className='sfa-fundamentals-band-header'),
             body,
         ],
         className=f'sfa-fundamentals-band sfa-fundamentals-band-{slug}',
     )
+
+
+def _period_toggle(period: str, *, hidden: bool = False) -> dcc.RadioItems:
+    active = period if period in {'annual', 'quarterly'} else DEFAULT_FUNDAMENTALS_PERIOD
+    kwargs: dict[str, Any] = {
+        'id': 'fundamentals-period-toggle',
+        'options': FUNDAMENTALS_PERIOD_OPTIONS,
+        'value': active,
+        'inline': True,
+        'className': 'bbg-radio-seg sfa-fundamentals-period-toggle',
+        'inputClassName': 'bbg-radio-seg-input',
+        'labelClassName': 'bbg-radio-seg-label',
+        'persistence': True,
+        'persistence_type': 'session',
+    }
+    if hidden:
+        kwargs['style'] = {'display': 'none'}
+    return dcc.RadioItems(**kwargs)
 
 
 def _summary_strip(
@@ -296,6 +322,9 @@ def _financial_table(
         'style_header': _table_header_style(theme),
         'style_data_conditional': _financial_conditionals(theme),
         'fixed_columns': {'headers': True, 'data': 1},
+        'tooltip_data': _financial_tooltips(enriched_rows, columns),
+        'tooltip_delay': 0,
+        'tooltip_duration': None,
     }
     return dash_table.DataTable(**props)
 
@@ -337,6 +366,9 @@ def _big_five_table(rows: list[dict[str, Any]], years: list[str], theme: dict) -
         ],
         'style_header': _table_header_style(theme),
         'style_data_conditional': _big_five_conditionals(theme, years + ['10Y', '5Y', '1Y']),
+        'tooltip_data': _financial_tooltips(rows, columns),
+        'tooltip_delay': 0,
+        'tooltip_duration': None,
     }
     return dash_table.DataTable(**props)
 
@@ -844,6 +876,31 @@ def _valuation_tooltips(rows: list[dict[str, Any]]) -> list[dict[str, dict[str, 
     return tooltip_rows
 
 
+def _financial_tooltip_text(metric: str) -> str:
+    canonical = _canonical_metric(metric)
+    explain = _FINANCIAL_EXPLAIN_MAP.get(canonical) or _VALUATION_EXPLAIN_MAP.get(canonical)
+    if not explain:
+        return canonical
+    what = str(explain.get('what') or explain.get('explanation') or canonical).strip()
+    if len(what) > 160:
+        what = what[:157].rstrip() + '...'
+    return what
+
+
+def _financial_tooltips(
+    rows: list[dict[str, Any]],
+    columns: list[dict[str, Any]],
+) -> list[dict[str, dict[str, str]]]:
+    """Hover help for each row; mirrored across columns so fixed metric clones still tip."""
+    column_ids = [str(col.get('id')) for col in columns if col.get('id')] or ['metric']
+    tooltip_rows: list[dict[str, dict[str, str]]] = []
+    for row in rows:
+        metric = str(row.get('metric', '')).strip()
+        tip = {'value': _financial_tooltip_text(metric), 'type': 'text'}
+        tooltip_rows.append({cid: tip for cid in column_ids})
+    return tooltip_rows
+
+
 def _big_five_value_columns(columns: list[dict[str, Any]] | None) -> list[str]:
     if not columns:
         return ['10Y', '5Y', '1Y']
@@ -979,10 +1036,14 @@ def _quality_notes(notes: list[str], theme: dict) -> html.Div:
 
 
 def _empty_state(theme: dict, message: str) -> html.Div:
-    return html.Div(message, style={
-        'fontFamily': FONT_FAMILY,
-        'fontSize': FONT_SIZES['sm'],
-        'color': theme['text_secondary'],
-        'padding': '18px',
-    })
+    return html.Div([
+        html.Div(message, style={
+            'fontFamily': FONT_FAMILY,
+            'fontSize': FONT_SIZES['sm'],
+            'color': theme['text_secondary'],
+            'padding': '18px',
+        }),
+        # Keep the period Input mounted when Financials is unavailable.
+        _period_toggle(DEFAULT_FUNDAMENTALS_PERIOD, hidden=True),
+    ])
 

@@ -166,3 +166,11 @@ def test_render_payload_quarterly_keeps_annual_valuation_and_big_five():
     assert text.find('Big Five') < text.find('sfa-fundamentals-charts')
     assert text.find('sfa-fundamentals-charts') < text.find('fundamentals-financial-table')
     assert text.find('fundamentals-financial-table') < text.find('DCF (FCFE)')
+
+    # Period toggle sits in the Financials band header (not page toolbar).
+    financials_band = next(
+        child for child in rendered.children
+        if 'sfa-fundamentals-band-financials' in (getattr(child, 'className', '') or '')
+    )
+    header = financials_band.children[0]
+    assert any(getattr(node, 'id', None) == 'fundamentals-period-toggle' for node in header.children)

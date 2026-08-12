@@ -745,6 +745,11 @@
 }
 
 .sfa-fundamentals-band-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
     font-family: var(--font-sans);
     font-size: 10px;
     font-weight: 700;
@@ -754,6 +759,21 @@
     opacity: 0.85;
     padding: 2px 0 0;
     border-top: 1px solid var(--border-primary, #333);
+}
+
+.sfa-fundamentals-band-title {
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    color: inherit;
+}
+
+.sfa-fundamentals-band-header .sfa-fundamentals-period-toggle {
+    flex: 0 0 auto;
+    opacity: 1;
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 500;
 }
 
 .sfa-fundamentals-band-quality .sfa-fundamentals-band-header {
@@ -873,6 +893,13 @@
 .sfa-fundamentals-panel .dash-spreadsheet td.cell--selected.focused .dash-cell-value {
     color: var(--text-primary) !important;
     opacity: 1 !important;
+}
+
+.sfa-fundamentals-overlay .dash-table-tooltip,
+.sfa-fundamentals-panel .dash-table-tooltip {
+    max-width: 340px !important;
+    white-space: normal !important;
+    padding: 8px 10px !important;
 }
 
 .sfa-fundamentals-charts {

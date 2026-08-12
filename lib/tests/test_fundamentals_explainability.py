@@ -64,6 +64,65 @@ def test_selected_highlight_rule_adds_selected_border_color():
     assert selected_rules[0]['border'] == f"1px solid {theme['accent_blue']}"
 
 
+def test_financial_explain_map_covers_financials_and_big_five_labels():
+    from lib.dash.callbacks.fundamentals_formulas import _FINANCIAL_EXPLAIN_MAP
+
+    required = {
+        'Stock Price (FYE)',
+        'Sales (Rev)',
+        'Equity',
+        'EPS',
+        'FCF',
+        'NOPAT',
+        'Net Income (Profit)',
+        'Avg. Invested Capital',
+        'Current Debt (Liab)',
+        'Long-term debt (Liab)',
+        'Total Debt (Liab)',
+        'Debt Ratio',
+        'PE Ratio',
+        'ROIC',
+        'Equity-GR',
+        'EPS-GR',
+        'Sales-GR',
+        'FCF-GR',
+    }
+    assert required.issubset(_FINANCIAL_EXPLAIN_MAP.keys())
+    for metric in required:
+        assert _FINANCIAL_EXPLAIN_MAP[metric].get('what')
+
+
+def test_financial_table_attaches_tooltip_for_every_row_metric():
+    from lib.dash.callbacks.fundamentals_render import _financial_table, _big_five_table
+    from lib.dash.dash_config import get_theme
+
+    theme = get_theme('bloomberg')
+    financial_rows = [
+        {'metric': 'Stock Price (FYE)', 'unit': '$', '2024': '100.00'},
+        {'metric': 'Sales (Rev)', 'unit': '$mil', '2024': '1,000'},
+        {'metric': 'Equity', 'unit': '$mil', '2024': '500'},
+    ]
+    table = _financial_table(financial_rows, ['2024'], theme, last_price=101.5)
+    tips = table.tooltip_data
+    assert tips is not None
+    assert len(tips) == 3
+    assert 'fiscal year-end' in tips[0]['metric']['value'].lower()
+    assert 'revenue' in tips[1]['metric']['value'].lower()
+    assert 'equity' in tips[2]['metric']['value'].lower()
+    # Mirrored onto year cells so fixed-column clones still tip.
+    assert tips[0]['2024']['value'] == tips[0]['metric']['value']
+
+    big_five_rows = [
+        {'metric': 'ROIC', 'unit': '%', '2024': '12.00%', '10Y': '11.00%', '5Y': '12.00%', '1Y': '12.00%'},
+        {'metric': 'Equity-GR', 'unit': '%', '2024': '8.00%', '10Y': '7.00%', '5Y': '8.00%', '1Y': '8.00%'},
+    ]
+    big_five = _big_five_table(big_five_rows, ['2024'], theme)
+    bf_tips = big_five.tooltip_data
+    assert bf_tips is not None
+    assert 'invested capital' in bf_tips[0]['metric']['value'].lower()
+    assert 'equity' in bf_tips[1]['metric']['value'].lower()
+
+
 def test_resolve_selected_metric_survives_sibling_table_clear():
     """Clearing DCF/table-b after selecting PEG must keep PEG as the metric.
 
