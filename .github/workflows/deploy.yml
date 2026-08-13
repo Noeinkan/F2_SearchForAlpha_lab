@@ -1,0 +1,158 @@
+name: Deploy to production
+
+# Mirrors deploy.ps1 server-side logic, but runs on GitHub's Linux runner so a
+# deploy can be triggered from anywhere (including a tablet) without a local
+# PowerShell / SSH setup. Every push to the working branch deploys; you can also
+# trigger it by hand from the Actions tab (workflow_dispatch).
+#
+# Required repository secret (Settings -> Secrets and variables -> Actions):
+#   SSH_PRIVATE_KEY  - the private key that authorises root@77.42.70.26
+#                      (same key deploy.ps1 uses: ~/.ssh/id_ed25519)
+#
+# Optional repository variables (Settings -> Secrets and variables -> Actions -> Variables):
+#   PUSH_CONFIG      - set to "1" to also upload config/strategy_config.yaml
+#                      (off by default, exactly like deploy.ps1)
+
+on:
+  push:
+    branches:
+      - claude/github-repo-connection-n8kgf2
+    paths:
+      - "lib/**"
+      - "scripts/**"
+      - "config/**"
+      - "requirements.txt"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      push_config:
+        description: "Also upload config/strategy_config.yaml"
+        type: boolean
+        default: false
+      force_pip_install:
+        description: "Force pip install even if requirements.txt is unchanged"
+        type: boolean
+        default: false
+
+# Never run two deploys at once; cancel an in-flight one if a newer push lands.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+env:
+  SERVER: root@77.42.70.26
+  REMOTE: /opt/searchforalpha
+  SERVICE: searchforalpha-dashboard.service
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Match deploy.ps1: it uses StrictHostKeyChecking=no. Pin the host key
+          # on first contact so later steps reuse it.
+          ssh-keyscan -H 77.42.70.26 >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Sync code (lib/, scripts/, config/)
+        run: |
+          SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15"
+
+          # Excludes mirror deploy.ps1 $EXCLUDES.
+          EXCLUDES=(
+            --exclude=__pycache__/
+            --exclude=*.pyc
+            --exclude=*.pyo
+            --exclude=.pytest_cache/
+            --exclude=*.egg-info/
+            --exclude=.git/
+            --exclude=results/
+            --exclude=export/
+            --exclude=state/
+            --exclude=strategy_config.yaml
+            --exclude=fix_openclaw_server_perms.sh
+            --exclude=*.ps1
+            --exclude=flow_report.html
+            --exclude=flow_state.json
+          )
+
+          for dir in lib scripts; do
+            echo "==> syncing $dir/"
+            rsync -av --delete -e "$SSH" "${EXCLUDES[@]}" "$dir/" "$SERVER:$REMOTE/$dir/"
+          done
+
+          # config/ is per-file (never --delete the whole dir; strategy_config.yaml
+          # and server-managed files must survive). These ship every deploy.
+          CONFIG_ALWAYS=(agent.yaml ui_presets.json param_history.yaml tickers_universe.csv tickers_curated.csv)
+          present=()
+          for f in "${CONFIG_ALWAYS[@]}"; do
+            [ -f "config/$f" ] && present+=("config/$f")
+          done
+          if [ ${#present[@]} -gt 0 ]; then
+            echo "==> uploading config files: ${present[*]}"
+            rsync -av -e "$SSH" "${present[@]}" "$SERVER:$REMOTE/config/"
+          fi
+
+      - name: Push strategy_config.yaml (opt-in)
+        if: ${{ github.event.inputs.push_config == 'true' || vars.PUSH_CONFIG == '1' }}
+        run: |
+          SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15"
+          if [ -f config/strategy_config.yaml ]; then
+            echo "==> uploading config/strategy_config.yaml"
+            rsync -av -e "$SSH" config/strategy_config.yaml "$SERVER:$REMOTE/config/strategy_config.yaml"
+          fi
+
+      - name: Install requirements (checksum-gated)
+        run: |
+          SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30"
+          if [ ! -f requirements.txt ]; then
+            echo "requirements.txt not found; skipping"
+            exit 0
+          fi
+          echo "==> uploading requirements.txt"
+          rsync -av -e "$SSH" requirements.txt "$SERVER:$REMOTE/requirements.txt"
+
+          FORCE="${{ github.event.inputs.force_pip_install == 'true' && '1' || '' }}"
+          # Checksum gate mirrors deploy.ps1: only reinstall when requirements.txt
+          # changed (or a fresh venv has no marker), so unchanged deploys skip the
+          # ~5-30s resolve. Marker written only after a successful install.
+          $SSH "$SERVER" "FORCE='$FORCE' bash -s" <<'REMOTE_EOF'
+          set -e
+          set -o pipefail
+          cd /opt/searchforalpha
+          newsum=$(sha256sum requirements.txt | awk '{print $1}')
+          oldsum=$(cat .venv/.requirements.sha256 2>/dev/null || echo none)
+          if [ -z "$FORCE" ] && [ "$newsum" = "$oldsum" ]; then
+            echo "requirements unchanged (sha ${newsum:0:12}) - skipping pip install"
+          else
+            .venv/bin/python -m ensurepip --upgrade >/dev/null 2>&1 || true
+            .venv/bin/python -m pip install -r requirements.txt 2>&1 | tail -20
+            echo "$newsum" > .venv/.requirements.sha256
+          fi
+          REMOTE_EOF
+
+      - name: Fix permissions and restart dashboard
+        run: |
+          SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30"
+          # The bulk scripts/ sync excludes this helper (matching deploy.ps1), so
+          # upload it explicitly — LF endings on the Linux runner, no clobber risk.
+          $SSH "$SERVER" "mkdir -p $REMOTE/scripts"
+          rsync -av -e "$SSH" scripts/fix_openclaw_server_perms.sh "$SERVER:$REMOTE/scripts/fix_openclaw_server_perms.sh"
+          # Run the perms helper, then restart the systemd unit — same as
+          # deploy.ps1's Invoke-PostDeploy.
+          $SSH "$SERVER" bash -s <<'REMOTE_EOF'
+          set -e
+          export SFA_APP=/opt/searchforalpha
+          /bin/bash /opt/searchforalpha/scripts/fix_openclaw_server_perms.sh
+          systemctl restart searchforalpha-dashboard.service
+          systemctl is-active --quiet searchforalpha-dashboard.service && echo "service active"
+          REMOTE_EOF
+
+      - name: Done
+        run: echo "Deploy complete -> $SERVER:$REMOTE"
