@@ -6,8 +6,12 @@ name: Deploy to production
 # trigger it by hand from the Actions tab (workflow_dispatch).
 #
 # Required repository secret (Settings -> Secrets and variables -> Actions):
-#   SSH_PRIVATE_KEY  - the private key that authorises root@77.42.70.26
-#                      (same key deploy.ps1 uses: ~/.ssh/id_ed25519)
+#   SSH_PRIVATE_KEY_B64 - the private key that authorises root@77.42.70.26
+#                      (same key deploy.ps1 uses: ~/.ssh/id_ed25519),
+#                      base64-encoded to a SINGLE line so copy/paste can't
+#                      corrupt it. Produce it on Windows with:
+#                        [Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.ssh\id_ed25519")) | Set-Clipboard
+#   SSH_PRIVATE_KEY  - (fallback) the raw multi-line private key, if you prefer.
 #
 # Optional repository variables (Settings -> Secrets and variables -> Actions -> Variables):
 #   PUSH_CONFIG      - set to "1" to also upload config/strategy_config.yaml
@@ -54,9 +58,16 @@ jobs:
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
-          # Strip CR: a key pasted from Windows (CRLF) makes OpenSSH's libcrypto
-          # reject it with "error in libcrypto". Also guarantees a trailing newline.
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/id_deploy
+          # Preferred: SSH_PRIVATE_KEY_B64 — the key base64-encoded to a single
+          # line on the source machine. A single line survives copy/paste intact
+          # (no wrapping, no CRLF, no lost characters), which raw multi-line keys
+          # do not. Fall back to the raw multi-line secret if the b64 one is unset.
+          B64="${{ secrets.SSH_PRIVATE_KEY_B64 }}"
+          if [ -n "$B64" ]; then
+            echo "$B64" | tr -d ' \r\n' | base64 -d > ~/.ssh/id_deploy
+          else
+            printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/id_deploy
+          fi
           chmod 600 ~/.ssh/id_deploy
           # Fail fast with an actionable message if the secret is empty/malformed,
           # instead of a cryptic rsync exit 255 three steps later. Print safe
