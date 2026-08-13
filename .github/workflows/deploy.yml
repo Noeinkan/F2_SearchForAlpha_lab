@@ -54,8 +54,16 @@ jobs:
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_deploy
+          # Strip CR: a key pasted from Windows (CRLF) makes OpenSSH's libcrypto
+          # reject it with "error in libcrypto". Also guarantees a trailing newline.
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
+          # Fail fast with an actionable message if the secret is empty/malformed,
+          # instead of a cryptic rsync exit 255 three steps later.
+          if ! ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1; then
+            echo "::error::SSH_PRIVATE_KEY is not a valid OpenSSH private key. Re-copy the FULL private key including the BEGIN/END lines (the file WITHOUT .pub)."
+            exit 1
+          fi
           # Match deploy.ps1: it uses StrictHostKeyChecking=no. Pin the host key
           # on first contact so later steps reuse it.
           ssh-keyscan -H 77.42.70.26 >> ~/.ssh/known_hosts 2>/dev/null || true
