@@ -12,6 +12,10 @@ import {
 } from './game/render/asteroidView';
 import { Camera } from './game/render/camera';
 import { GraphView } from './game/render/graphView';
+import {
+  applySceneToDocument,
+  createScenePalette,
+} from './game/render/palette';
 import { SeedlingLayer } from './game/render/seedlingView';
 import { SendPreview } from './game/render/sendPreview';
 import {
@@ -33,15 +37,20 @@ async function boot(): Promise<void> {
   const hud = document.createElement('div');
   hud.className = 'hud';
   hud.innerHTML =
-    '<div><strong>Asterbloom</strong></div><div id="hud-stats">…</div><div class="hint">drag to send · wheel for count · click a gold slot (10) to plant</div>';
+    '<div><strong>Asterbloom</strong></div><div id="hud-stats">…</div><div class="hint">drag to send · wheel for count · click a glowing slot (10) to plant</div>';
   host.appendChild(hud);
   const hudStats = hud.querySelector('#hud-stats')!;
+
+  const world = createCoreLoopWorld();
+  const scene = createScenePalette(world.seed);
+  applySceneToDocument(scene);
+  const home = [...world.asteroids.values()].find((a) => a.owner === 'player')!;
 
   const app = new Application();
   await app.init({
     resizeTo: window,
     antialias: true,
-    backgroundColor: 0xf2e6d4,
+    backgroundColor: scene.bg,
     autoDensity: true,
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     preference: 'webgl',
@@ -60,21 +69,18 @@ async function boot(): Promise<void> {
     { once: true },
   );
 
-  const world = createCoreLoopWorld();
-  const home = [...world.asteroids.values()].find((a) => a.owner === 'player')!;
-
   const camera = new Camera();
   app.stage.addChild(camera.world);
 
-  const starfield = createStarfield(world.seed);
+  const starfield = createStarfield(world.seed, scene);
   camera.world.addChild(starfield);
 
-  const graphView = new GraphView();
+  const graphView = new GraphView(scene);
   camera.world.addChild(graphView.root);
 
   const asteroidViews = new Map<number, AsteroidView>();
   for (const a of world.asteroids.values()) {
-    const view = new AsteroidView(a);
+    const view = new AsteroidView(a, scene);
     asteroidViews.set(a.id, view);
     camera.world.addChild(view.root);
   }
@@ -83,11 +89,11 @@ async function boot(): Promise<void> {
   starfield.zIndex = 0;
   graphView.root.zIndex = 1;
   for (const view of asteroidViews.values()) view.root.zIndex = 3;
-  const seedlings = new SeedlingLayer();
+  const seedlings = new SeedlingLayer(scene);
   seedlings.root.zIndex = 5;
   camera.world.addChild(seedlings.root);
 
-  const preview = new SendPreview();
+  const preview = new SendPreview(scene);
   preview.root.zIndex = 6;
   camera.world.addChild(preview.root);
 
@@ -97,7 +103,7 @@ async function boot(): Promise<void> {
       if (treeViews.has(tree.id)) continue;
       const asteroid = world.asteroids.get(tree.asteroidId);
       if (!asteroid) continue;
-      const view = new TreeView(tree, asteroid);
+      const view = new TreeView(tree, asteroid, scene);
       view.roots.zIndex = 2;
       view.canopy.zIndex = 4;
       treeViews.set(tree.id, view);

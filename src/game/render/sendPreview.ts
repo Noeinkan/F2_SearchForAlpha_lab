@@ -1,11 +1,14 @@
 import { Container, Graphics, Text } from 'pixi.js';
+import type { ScenePalette } from './palette';
 
 export class SendPreview {
   readonly root = new Container();
   private line = new Graphics();
   private label: Text;
+  private scene: ScenePalette;
 
-  constructor() {
+  constructor(scene: ScenePalette) {
+    this.scene = scene;
     this.root.eventMode = 'none';
     this.root.visible = false;
     this.root.addChild(this.line);
@@ -14,7 +17,7 @@ export class SendPreview {
       style: {
         fontFamily: 'Georgia, serif',
         fontSize: 15,
-        fill: 0x7a3040,
+        fill: scene.ink,
         fontStyle: 'italic',
       },
     });
@@ -48,16 +51,19 @@ export class SendPreview {
     this.line.quadraticCurveTo(cx, cy, toX, toY);
     this.line.stroke({
       width: valid ? 1.8 : 1.2,
-      color: valid ? 0x7a3040 : 0xb8a0a0,
+      color: valid ? this.scene.ink : this.scene.inkSoft,
       alpha: valid ? 0.7 : 0.28,
       cap: 'round',
     });
     this.line.circle(toX, toY, valid ? 5 : 3);
-    this.line.fill({ color: valid ? 0xc44a42 : 0xb8a0a0, alpha: valid ? 0.55 : 0.22 });
+    this.line.fill({
+      color: valid ? this.scene.ink : this.scene.inkSoft,
+      alpha: valid ? 0.55 : 0.22,
+    });
 
     this.label.text = String(count);
     this.label.position.set(cx, cy - 12);
-    this.label.style.fill = valid ? 0x7a3040 : 0xa08080;
+    this.label.style.fill = valid ? this.scene.ink : this.scene.inkSoft;
     this.label.alpha = valid ? 0.95 : 0.4;
   }
 }

@@ -2,9 +2,11 @@ import { Container, Graphics, Text } from 'pixi.js';
 import { mulberry32, range } from '../sim/rng';
 import type { Asteroid, World } from '../sim/types';
 import { getOccupiedSlots, slotPosition } from '../sim/world';
-import { PAL } from './palette';
-
-const ROCKS = [PAL.rockA, PAL.rockB, PAL.rockC, 0xd8c8ce, 0xc0c4c8] as const;
+import {
+  floraPalette,
+  type FloraPalette,
+  type ScenePalette,
+} from './palette';
 
 export class AsteroidView {
   readonly root = new Container();
@@ -13,13 +15,15 @@ export class AsteroidView {
   private slotsGfx: Graphics;
   private selectionRing: Graphics;
   private label: Text;
+  private pal: FloraPalette;
   private lastSelected = false;
   private lastPlantKey = '';
 
-  constructor(asteroid: Asteroid) {
+  constructor(asteroid: Asteroid, scene: ScenePalette) {
     this.asteroidId = asteroid.id;
+    this.pal = floraPalette(asteroid.stats, asteroid.seed, scene);
     this.root.position.set(asteroid.x, asteroid.y);
-    this.root.addChild(drawRock(asteroid));
+    this.root.addChild(drawRock(asteroid, this.pal));
 
     this.core = new Graphics();
     this.root.addChild(this.core);
@@ -36,7 +40,7 @@ export class AsteroidView {
         fontFamily: 'Georgia, "Times New Roman", serif',
         fontSize: 13,
         fontStyle: 'italic',
-        fill: 0x5a4850,
+        fill: scene.inkSoft,
         align: 'center',
       },
     });
@@ -72,19 +76,23 @@ export class AsteroidView {
     const g = this.core;
     g.clear();
     const owned = asteroid.owner === 'player';
-    const glow = owned ? PAL.core : 0xb8b0b8;
-    const hot = owned ? PAL.coreHot : 0x9a9098;
+    const glow = owned ? this.pal.core : this.pal.rockLit;
+    const hot = owned ? this.pal.coreHot : this.pal.rockShadow;
     g.circle(0, 0, asteroid.radius * 0.34);
     g.fill({ color: hot, alpha: selected ? 0.22 : 0.12 });
     g.circle(0, 0, asteroid.radius * 0.16);
     g.fill({ color: glow, alpha: selected ? 0.7 : 0.5 });
     g.circle(0, 0, asteroid.radius * 0.055);
-    g.fill({ color: 0xfff6d8, alpha: 0.95 });
+    g.fill({ color: this.pal.coreWhite, alpha: 0.95 });
 
     this.selectionRing.clear();
     if (selected) {
       this.selectionRing.circle(0, 0, asteroid.radius + 9);
-      this.selectionRing.stroke({ width: 1.2, color: PAL.magenta, alpha: 0.35 });
+      this.selectionRing.stroke({
+        width: 1.2,
+        color: this.pal.ring,
+        alpha: 0.35,
+      });
     }
   }
 
@@ -103,7 +111,7 @@ export class AsteroidView {
       g.circle(lx, ly, plantable ? 6 : 3);
       g.stroke({
         width: plantable ? 1.4 : 0.9,
-        color: plantable ? PAL.flower : PAL.magenta,
+        color: plantable ? this.pal.flower : this.pal.tuft,
         alpha: plantable ? 0.85 : selected ? 0.35 : 0.18,
       });
     }
@@ -126,28 +134,30 @@ export function plantableEmptySlots(
   return empty;
 }
 
-function drawRock(asteroid: Asteroid): Graphics {
+function drawRock(asteroid: Asteroid, pal: FloraPalette): Graphics {
   const rng = mulberry32(asteroid.seed);
-  const body = ROCKS[Math.floor(rng() * ROCKS.length)]!;
   const g = new Graphics();
   const r = asteroid.radius;
 
   g.circle(0, 0, r);
-  g.fill({ color: body, alpha: 0.78 });
+  g.fill({ color: pal.rock, alpha: 0.78 });
 
   for (let i = 0; i < 9; i++) {
     const a = rng() * Math.PI * 2;
     const d = rng() * r * 0.62;
     g.circle(Math.cos(a) * d, Math.sin(a) * d, range(rng, 6, 16));
-    g.fill({ color: rng() > 0.5 ? 0xb8b0b8 : 0xd8d0d4, alpha: 0.18 });
+    g.fill({
+      color: rng() > 0.5 ? pal.rockShadow : pal.rockLit,
+      alpha: 0.18,
+    });
   }
 
   g.circle(r * 0.18, r * 0.22, r * 0.72);
-  g.fill({ color: 0x8a8088, alpha: 0.1 });
+  g.fill({ color: pal.rockShadow, alpha: 0.1 });
   g.circle(-r * 0.22, -r * 0.28, r * 0.4);
-  g.fill({ color: 0xf4eef0, alpha: 0.14 });
+  g.fill({ color: pal.rockLit, alpha: 0.14 });
 
   g.circle(0, 0, r);
-  g.stroke({ width: 1.35, color: PAL.outline, alpha: 0.55 });
+  g.stroke({ width: 1.35, color: pal.outline, alpha: 0.55 });
   return g;
 }

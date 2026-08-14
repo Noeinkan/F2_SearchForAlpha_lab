@@ -10,7 +10,7 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #f2e6d4;
+  background: var(--ab-bg, #f2e6d4);
 }
 
 canvas {
@@ -23,14 +23,14 @@ canvas {
   left: 18px;
   top: 16px;
   z-index: 10;
-  color: rgba(74, 40, 48, 0.72);
+  color: var(--ab-ink-soft, rgba(74, 40, 48, 0.72));
   font: italic 13px/1.5 Georgia, "Times New Roman", serif;
   pointer-events: none;
   letter-spacing: 0.02em;
 }
 
 .hud strong {
-  color: #7a3040;
+  color: var(--ab-ink, #7a3040);
   font-weight: normal;
   font-style: italic;
 }

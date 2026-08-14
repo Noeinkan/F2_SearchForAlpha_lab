@@ -1,13 +1,15 @@
 import { Container, Graphics } from 'pixi.js';
 import type { World } from '../sim/types';
-import { PAL } from './palette';
+import type { ScenePalette } from './palette';
 
 export class GraphView {
   readonly root = new Container();
   private rings = new Graphics();
   private selectedRing = new Graphics();
+  private scene: ScenePalette;
 
-  constructor() {
+  constructor(scene: ScenePalette) {
+    this.scene = scene;
     this.root.eventMode = 'none';
     this.root.addChild(this.rings, this.selectedRing);
   }
@@ -23,7 +25,7 @@ export class GraphView {
         a.x,
         a.y,
         a.travelRadius,
-        isSel ? PAL.magenta : 0x8a7080,
+        isSel ? this.scene.ink : this.scene.inkSoft,
         isSel ? 0.28 : 0.1,
         isSel ? 7 : 5,
       );
@@ -33,7 +35,11 @@ export class GraphView {
       const a = world.asteroids.get(selectedId);
       if (a) {
         this.selectedRing.circle(a.x, a.y, a.radius + 12);
-        this.selectedRing.stroke({ width: 1, color: PAL.magenta, alpha: 0.28 });
+        this.selectedRing.stroke({
+          width: 1,
+          color: this.scene.ink,
+          alpha: 0.28,
+        });
       }
     }
   }
@@ -52,7 +58,7 @@ function dashCircle(
   const n = Math.max(24, Math.floor(circ / (dash * 3)));
   for (let i = 0; i < n; i++) {
     const a0 = (i / n) * Math.PI * 2;
-    const a1 = a0 + (Math.PI * 2) / n * 0.38;
+    const a1 = a0 + ((Math.PI * 2) / n) * 0.38;
     g.moveTo(x + Math.cos(a0) * radius, y + Math.sin(a0) * radius);
     g.lineTo(x + Math.cos(a1) * radius, y + Math.sin(a1) * radius);
     g.stroke({ width: 1, color, alpha, cap: 'round' });

@@ -1,10 +1,15 @@
 import { Container, Graphics } from 'pixi.js';
 import type { Seedling } from '../sim/types';
-import { PAL } from './palette';
+import { seedlingColors, type ScenePalette } from './palette';
 
 export class SeedlingLayer {
   readonly root = new Container();
   private sprites = new Map<number, Graphics>();
+  private scene: ScenePalette;
+
+  constructor(scene: ScenePalette) {
+    this.scene = scene;
+  }
 
   sync(seedlings: Map<number, Seedling>): void {
     const seen = new Set<number>();
@@ -13,7 +18,7 @@ export class SeedlingLayer {
       seen.add(s.id);
       let g = this.sprites.get(s.id);
       if (!g) {
-        g = drawSeedling(s);
+        g = drawSeedling(s, this.scene);
         this.sprites.set(s.id, g);
         this.root.addChild(g);
       }
@@ -34,15 +39,16 @@ export class SeedlingLayer {
   }
 }
 
-/** Three olive-yellow petals around a maroon body — the Eufloria seed. */
-function drawSeedling(s: Seedling): Graphics {
+/** Three petals around a body — hue comes from the seedling’s stats. */
+function drawSeedling(s: Seedling, scene: ScenePalette): Graphics {
   const g = new Graphics();
+  const { wing, body: bodyColor } = seedlingColors(s.stats, scene);
   const energy = s.stats.energy / 200;
   const petal = 4.2 + energy * 3.2;
   const body = 1.15 + energy * 0.9;
 
   g.circle(0, 0, petal * 1.15);
-  g.fill({ color: PAL.wing, alpha: 0.12 });
+  g.fill({ color: wing, alpha: 0.12 });
 
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2 - Math.PI / 2;
@@ -66,11 +72,11 @@ function drawSeedling(s: Seedling): Graphics {
       sn * body * 0.4,
     );
     g.closePath();
-    g.fill({ color: PAL.wing, alpha: 0.92 });
-    g.stroke({ width: 0.4, color: PAL.seedBody, alpha: 0.35 });
+    g.fill({ color: wing, alpha: 0.92 });
+    g.stroke({ width: 0.4, color: bodyColor, alpha: 0.35 });
   }
 
   g.circle(0, 0, body);
-  g.fill({ color: PAL.seedBody, alpha: 0.95 });
+  g.fill({ color: bodyColor, alpha: 0.95 });
   return g;
 }
