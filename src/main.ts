@@ -36,7 +36,6 @@ import { Camera } from './game/render/camera';
 import { GraphView } from './game/render/graphView';
 import {
   applySceneToDocument,
-  bucketHue,
   createScenePalette,
   sceneAtTime,
   themeAt,
@@ -295,8 +294,6 @@ async function boot(): Promise<void> {
   let combatSnap = fillCombatSnap(world, emptyCombatSnap());
   let combatSnapB = emptyCombatSnap();
   let lastHueKey = -1;
-let lastAppliedHueBucket = -1;
-let lastAppliedContrastBucket = -1;
   let fpsSampleStarted = performance.now();
   let fpsSampleFrames = 0;
 

@@ -840,20 +840,6 @@ type PollenGrain = {
   settle: number;
 };
 
-/**
- * Per-tree radial front for the pollen film. Reach is a half-arc from the
- * planting scar; pending drains as the front grows. The model was retired
- * in favour of the per-substrate-bin Float32Array; the type is kept here as
- * a paper trail in case the model is ever revived.
- */
-type FilmFront = {
-  treeId: number;
-  angle: number;
-  maturity: number;
-  reach: number;
-  pending: number;
-};
-
 /** Match TreeView canopy breeze so grains leave the moving blooms. */
 function canopyPose(tree: Tree, time: number): { rot: number; scale: number } {
   const phase = (tree.seed % 1000) * 0.017;

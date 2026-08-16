@@ -29,7 +29,7 @@ import {
 } from './palette';
 import { paintCalyx, paintSeedHull } from './seedlingPaint';
 
-const TREE_REDRAW_INTERVAL = 1 / 30;
+const TREE_REDRAW_INTERVAL = 1 / 15;
 
 function seedlingDepartureSignature(sprouts: readonly Seedling[]): number {
   let h = 0;

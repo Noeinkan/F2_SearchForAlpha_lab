@@ -467,7 +467,7 @@ export class GameAudio {
       const def = VOICES[i]!;
       const osc = ctx.createOscillator();
       osc.type = def.type;
-      osc.frequency.value = hz(rootSemi + def.semi, r);
+      osc.frequency.value = hz(rootSemi + def.semis, r);
       // Per-voice detune (±3 to ±14 cents) for "beating" warmth.
       const cents = rand(3, 14) * (Math.random() < 0.5 ? -1 : 1);
       osc.detune.value = cents;
@@ -490,7 +490,7 @@ export class GameAudio {
       this.voiceLfos.push(ampLfo);
       this.beds.push(ampLfo.osc);
 
-      this.voices.push({ osc, gain: g, baseSemi: def.semi, baseGain: def.gain });
+      this.voices.push({ osc, gain: g, baseSemi: def.semis, baseGain: def.gain });
     }
 
     filter.connect(dry);
