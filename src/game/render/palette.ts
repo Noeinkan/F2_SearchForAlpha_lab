@@ -9,9 +9,13 @@
  *   4. Structure (wood, ink) sits on the complement, muted (dusty, mid value).
  *   5. Energy / Strength / Speed mix as yellow / red / green, then pull
  *      toward the scene hue and pastelize — so every asteroid’s flora differs.
+ *   6. Roots glow: bioluminescent filaments seeking the energy well. Warm amber
+ *      bloom reads on dark rock; a slightly deeper spine keeps them from
+ *      dissolving into coreWhite. Never mint-wash, never umber-into-rock.
+ *      Sap rises from the nucleus through roots, trunk, branches, then crust grass.
  */
 import { mulberry32 } from '../sim/rng';
-import type { Stats } from '../sim/types';
+import type { FactionId, SeedlingKind, Stats } from '../sim/types';
 
 export type Hex = number;
 
@@ -32,6 +36,8 @@ export interface ScenePalette {
 export interface FloraPalette {
   wood: Hex;
   tuft: Hex;
+  leaf: Hex;
+  grass: Hex;
   flower: Hex;
   root: Hex;
   rootSoft: Hex;
@@ -43,8 +49,11 @@ export interface FloraPalette {
   rock: Hex;
   rockShadow: Hex;
   rockLit: Hex;
+  stain: Hex;
   outline: Hex;
   ring: Hex;
+  /** Living crust film — pollen stain, planet-colored, not generic green. */
+  film: Hex;
 }
 
 const PASTEL_S = { min: 0.22, max: 0.46 };
@@ -63,6 +72,14 @@ export function rgbToHex(r: number, g: number, b: number): Hex {
   const G = Math.round(clamp(g, 0, 1) * 255);
   const B = Math.round(clamp(b, 0, 1) * 255);
   return (R << 16) | (G << 8) | B;
+}
+
+/** Linear blend of two hex colors in RGB (t=0 → a, t=1 → b). */
+export function mixHex(a: Hex, b: Hex, t: number): Hex {
+  const u = clamp(t, 0, 1);
+  const [ar, ag, ab] = hexToRgb(a);
+  const [br, bg, bb] = hexToRgb(b);
+  return rgbToHex(ar + (br - ar) * u, ag + (bg - ag) * u, ab + (bb - ab) * u);
 }
 
 /** h in 0–360, s/l in 0–1 */
@@ -157,25 +174,116 @@ export function accentHue(stats: Stats, sceneHue: number): number {
   return lerpHue(h, sceneHue, 0.35);
 }
 
-export function createScenePalette(seed: number): ScenePalette {
-  const rng = mulberry32(seed >>> 0);
-  const hue = rng() * 360;
-  // Odd seeds → dark void (in-game), even → light paper (title).
-  const dark = (seed & 1) === 1;
+/** Seconds for one full hue wheel. Gameplay stays in the dark void. */
+export const HUE_CYCLE_SECONDS = 180;
 
-  const bgA = dark ? hslToHex(hue, 0.2, 0.08) : hslToHex(hue, 0.12, 0.88);
+/** Seconds for one sap rise: core → roots → trunk → branches → crust. */
+export const SAP_RISE_SECONDS = 5.55;
+
+/** Normalized windows along `sapRiseU` (overlaps so the pulse never jumps). */
+export const SAP_WINDOW = {
+  core: [0, 0.14],
+  roots: [0, 0.4],
+  trunk: [0.26, 0.56],
+  twig: [0.44, 0.76],
+  grass: [0.58, 0.9],
+} as const;
+
+/** 0..1 position in the sap-rise cycle for this plant. */
+export function sapRiseU(time: number, seed: number): number {
+  const phase = (seed % 997) * 0.0017;
+  const x = (time + phase) / SAP_RISE_SECONDS;
+  return x - Math.floor(x);
+}
+
+/**
+ * How far a pulse has traveled through a stage, plus leftover vein glow
+ * after the head has passed.
+ */
+export function sapStage(
+  u: number,
+  start: number,
+  end: number,
+  fade = 0.32,
+): { progress: number; glow: number; rising: boolean } {
+  if (u < start) return { progress: 0, glow: 0, rising: false };
+  const span = Math.max(1e-4, end - start);
+  if (u <= end) {
+    const p = (u - start) / span;
+    return { progress: p, glow: 0.38 + 0.62 * p, rising: true };
+  }
+  const fadeT = Math.max(0, 1 - (u - end) / fade);
+  return { progress: 1, glow: 0.3 * fadeT, rising: false };
+}
+
+export function buildScene(hue: number, dark: boolean): ScenePalette {
+  const h = ((hue % 360) + 360) % 360;
+  const bgA = dark ? hslToHex(h, 0.26, 0.04) : hslToHex(h, 0.12, 0.88);
   const bgB = dark
-    ? hslToHex(hue + 26, 0.14, 0.13)
-    : hslToHex(hue + 18, 0.1, 0.92);
+    ? hslToHex(h + 32, 0.18, 0.085)
+    : hslToHex(h + 18, 0.1, 0.92);
   const bgC = dark
-    ? hslToHex(hue - 38, 0.18, 0.09)
-    : hslToHex(hue - 16, 0.14, 0.86);
-  const ink = dark ? hslToHex(hue, 0.16, 0.82) : hslToHex(hue + 160, 0.42, 0.28);
-  const inkSoft = dark ? hslToHex(hue, 0.12, 0.7) : hslToHex(hue + 160, 0.28, 0.38);
-  const mist = toPastel(hslToHex(hue, 0.4, 0.7));
-  const dust = toPastel(hslToHex(hue + 50, 0.45, 0.72));
+    ? hslToHex(h - 48, 0.24, 0.05)
+    : hslToHex(h - 16, 0.14, 0.86);
+  const ink = dark ? hslToHex(h, 0.16, 0.82) : hslToHex(h + 160, 0.42, 0.28);
+  const inkSoft = dark ? hslToHex(h, 0.12, 0.7) : hslToHex(h + 160, 0.28, 0.38);
+  const mist = toPastel(hslToHex(h, 0.4, 0.7));
+  const dust = toPastel(hslToHex(h + 50, 0.45, 0.72));
+  return { hue: h, dark, bg: bgB, bgA, bgB, bgC, ink, inkSoft, mist, dust };
+}
 
-  return { hue, dark, bg: bgB, bgA, bgB, bgC, ink, inkSoft, mist, dust };
+export function createScenePalette(seed: number): ScenePalette {
+  return sceneAtTime(seed, 0);
+}
+
+/**
+ * Slow ambient cycle: hue drifts through every pastel family.
+ * In-game wash stays a dark space void (paper is title-only via buildScene).
+ */
+export function sceneAtTime(seed: number, time: number): ScenePalette {
+  const rng = mulberry32(seed >>> 0);
+  const baseHue = rng() * 360;
+  const t = Math.max(0, time);
+  const laps = t / HUE_CYCLE_SECONDS;
+  const hue = (baseHue + laps * 360) % 360;
+  return buildScene(hue, true);
+}
+
+export function writeScene(dst: ScenePalette, src: ScenePalette): void {
+  dst.hue = src.hue;
+  dst.dark = src.dark;
+  dst.bg = src.bg;
+  dst.bgA = src.bgA;
+  dst.bgB = src.bgB;
+  dst.bgC = src.bgC;
+  dst.ink = src.ink;
+  dst.inkSoft = src.inkSoft;
+  dst.mist = src.mist;
+  dst.dust = src.dust;
+}
+
+export function floraEquals(a: FloraPalette, b: FloraPalette): boolean {
+  return (
+    a.wood === b.wood &&
+    a.tuft === b.tuft &&
+    a.leaf === b.leaf &&
+    a.grass === b.grass &&
+    a.flower === b.flower &&
+    a.root === b.root &&
+    a.rootSoft === b.rootSoft &&
+    a.wing === b.wing &&
+    a.seedBody === b.seedBody &&
+    a.core === b.core &&
+    a.coreHot === b.coreHot &&
+    a.coreWhite === b.coreWhite &&
+    a.rock === b.rock &&
+    a.rockShadow === b.rockShadow &&
+    a.rockLit === b.rockLit &&
+    a.stain === b.stain &&
+    a.outline === b.outline &&
+    a.ring === b.ring &&
+    a.film === b.film
+  );
 }
 
 export function floraPalette(
@@ -192,22 +300,34 @@ export function floraPalette(
   const seedBody = hslToHex(h, 0.42, 0.4);
   const wood = hslToHex(woodH, 0.38, scene.dark ? 0.52 : 0.34);
   const tuft = hslToHex(woodH, 0.4, scene.dark ? 0.58 : 0.4);
-  const root = hslToHex(woodH, 0.48, 0.46);
-  const rootSoft = hslToHex(woodH, 0.32, 0.68);
+  const leafH = lerpHue(woodH, 118, 0.42);
+  const leaf = hslToHex(leafH, 0.48, scene.dark ? 0.62 : 0.5);
+  const grassH = lerpHue(h, leafH, 0.62);
+  const grass = hslToHex(grassH, 0.4, scene.dark ? 0.52 : 0.5);
+  const filmH = lerpHue(grassH, h, 0.45);
+  const film = hslToHex(filmH, 0.46, scene.dark ? 0.5 : 0.54);
   const core = hslToHex(h, 0.42, 0.72);
   const coreHot = hslToHex(h, 0.5, 0.62);
   const coreWhite = hslToHex(h, 0.12, 0.94);
-  const rockH = lerpHue(scene.hue, h, 0.25);
-  const rockL = 0.62 + rng() * 0.12;
-  const rock = hslToHex(rockH, 0.06 + rng() * 0.05, rockL);
-  const rockShadow = hslToHex(rockH, 0.08, rockL - 0.14);
-  const rockLit = hslToHex(rockH, 0.05, Math.min(0.88, rockL + 0.12));
-  const outline = hslToHex(woodH, 0.18, scene.dark ? 0.28 : 0.26);
+  // Rule 6: glowing roots — saturated warm amber; bloom is color, not chalk.
+  const rootH = lerpHue(38, h, 0.18);
+  const root = hslToHex(rootH, 0.72, 0.55);
+  const rootSoft = hslToHex(rootH, 0.55, 0.68);
+  const rockH = lerpHue(scene.hue, h, 0.42);
+  const rockL = scene.dark ? 0.2 + rng() * 0.1 : 0.7 + rng() * 0.1;
+  const rockS = (scene.dark ? 0.2 : 0.16) + rng() * 0.1;
+  const rock = hslToHex(rockH, rockS, rockL);
+  const rockShadow = hslToHex(rockH, rockS + 0.04, rockL - (scene.dark ? 0.08 : 0.14));
+  const rockLit = hslToHex(rockH, rockS * 0.7, Math.min(0.9, rockL + 0.12));
+  const stain = hslToHex(h, 0.28, scene.dark ? 0.42 : 0.62);
+  const outline = hslToHex(woodH, 0.18, scene.dark ? 0.22 : 0.32);
   const ring = tuft;
 
   return {
     wood,
     tuft,
+    leaf,
+    grass,
     flower,
     root,
     rootSoft,
@@ -219,20 +339,42 @@ export function floraPalette(
     rock,
     rockShadow,
     rockLit,
+    stain,
     outline,
     ring,
+    film,
   };
 }
 
 export function seedlingColors(
   stats: Stats,
   scene: ScenePalette,
+  extras?: { faction?: FactionId; kind?: SeedlingKind },
 ): { wing: Hex; body: Hex } {
-  const h = accentHue(stats, scene.hue);
+  let h = accentHue(stats, scene.hue);
+  let s = extras?.kind === 'sentinel' ? 0.4 : 0.3;
+  let l = extras?.kind === 'sentinel' ? 0.7 : 0.74;
+  if (extras?.faction === 'grey') {
+    s *= 0.35;
+    l = 0.62;
+  } else if (extras?.faction === 'enemy') {
+    h = lerpHue(h, 12, 0.55);
+    s = Math.min(0.48, s + 0.08);
+  }
   return {
-    wing: hslToHex(h, 0.3, 0.74),
-    body: hslToHex(h, 0.42, 0.4),
+    wing: hslToHex(h, s, l),
+    body: hslToHex(
+      h,
+      Math.min(0.52, s + 0.12),
+      extras?.kind === 'sentinel' ? 0.34 : 0.4,
+    ),
   };
+}
+
+export function factionCoreHue(faction: FactionId, floraHue: number): number {
+  if (faction === 'enemy') return lerpHue(floraHue, 8, 0.7);
+  if (faction === 'grey') return lerpHue(floraHue, 40, 0.25);
+  return floraHue;
 }
 
 export function applySceneToDocument(scene: ScenePalette): void {

@@ -1,16 +1,21 @@
 import { shortestPath } from './graph';
 import {
+  canPlantKind,
   PLANT_COST,
   PLANT_STAGGER,
   SEND_STAGGER,
   type FactionId,
   type PendingPlant,
+  type SeedlingKind,
+  type TreeKind,
   type World,
 } from './types';
 import {
   allocId,
   countSendReady,
   getOccupiedSlots,
+  hasHostileOrbiters,
+  hasHostileTrees,
   slotPosition,
   spawnOrbiters,
 } from './world';
@@ -18,6 +23,18 @@ import {
 export type CommandResult =
   | { ok: true; count?: number }
   | { ok: false; reason: string };
+
+function destLooksHostile(
+  world: World,
+  toId: number,
+  faction: FactionId,
+): boolean {
+  const dest = world.asteroids.get(toId);
+  if (!dest) return false;
+  if (hasHostileOrbiters(world, toId, faction)) return true;
+  if (dest.owner !== faction && dest.owner !== 'neutral') return true;
+  return false;
+}
 
 export function sendSeedlings(
   world: World,
@@ -44,6 +61,15 @@ export function sendSeedlings(
   }
   if (available.length === 0) return { ok: false, reason: 'no seedlings' };
 
+  const raid = destLooksHostile(world, toId, faction);
+  available.sort((a, b) => {
+    const sa = world.seedlings.get(a)!;
+    const sb = world.seedlings.get(b)!;
+    const aSent = sa.kind === 'sentinel' ? 1 : 0;
+    const bSent = sb.kind === 'sentinel' ? 1 : 0;
+    return raid ? bSent - aSent : aSent - bSent;
+  });
+
   const n = Math.min(count, available.length);
   for (let i = 0; i < n; i++) {
     const s = world.seedlings.get(available[i]!)!;
@@ -55,27 +81,33 @@ export function sendSeedlings(
   return { ok: true, count: n };
 }
 
-export function plantDyson(
+export function plantTree(
   world: World,
   asteroidId: number,
   slotIndex: number,
   faction: FactionId,
+  kind: TreeKind = 'dyson',
 ): CommandResult {
   const asteroid = world.asteroids.get(asteroidId);
   if (!asteroid) return { ok: false, reason: 'no asteroid' };
   if (slotIndex < 0 || slotIndex >= asteroid.treeSlots) {
     return { ok: false, reason: 'bad slot' };
   }
+  if (!canPlantKind(asteroid.stats.energy, kind)) {
+    return {
+      ok: false,
+      reason: kind === 'energy' ? 'need energy-rich rock' : 'need energy for shields',
+    };
+  }
+  if (hasHostileOrbiters(world, asteroidId, faction)) {
+    return { ok: false, reason: 'contested' };
+  }
+  if (hasHostileTrees(world, asteroidId, faction)) {
+    return { ok: false, reason: 'enemy trees' };
+  }
 
   const occupied = getOccupiedSlots(world, asteroidId);
   if (occupied.has(slotIndex)) return { ok: false, reason: 'slot taken' };
-
-  // Block if another pending plant already targets this slot
-  for (const p of world.pendingPlants.values()) {
-    if (p.asteroidId === asteroidId && p.slotIndex === slotIndex) {
-      return { ok: false, reason: 'slot taken' };
-    }
-  }
 
   const candidates: number[] = [];
   for (const s of world.seedlings.values()) {
@@ -99,6 +131,7 @@ export function plantDyson(
     asteroidId,
     slotIndex,
     faction,
+    kind,
     seedlingIds: chosen,
     arrived: 0,
   };
@@ -116,6 +149,15 @@ export function plantDyson(
   return { ok: true, count: PLANT_COST };
 }
 
+export function plantDyson(
+  world: World,
+  asteroidId: number,
+  slotIndex: number,
+  faction: FactionId,
+): CommandResult {
+  return plantTree(world, asteroidId, slotIndex, faction, 'dyson');
+}
+
 export function countFactionOrbiting(
   world: World,
   asteroidId: number,
@@ -130,6 +172,7 @@ export function debugSpawnOrbiters(
   asteroidId: number,
   faction: FactionId,
   n: number,
+  kind: SeedlingKind = 'basic',
 ): void {
-  spawnOrbiters(world, asteroidId, faction, n);
+  spawnOrbiters(world, asteroidId, faction, n, kind);
 }

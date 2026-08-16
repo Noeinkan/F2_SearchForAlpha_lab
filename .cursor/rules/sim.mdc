@@ -1,0 +1,21 @@
+---
+description: Pure simulation — tick, combat, commands, AI, layout
+globs: src/game/sim/**/*.ts
+alwaysApply: false
+---
+
+# Simulation
+
+No `pixi.js` imports. `World` is Maps of asteroids, trees, seedlings, pending plants. New entities use `allocId`.
+
+Ownership:
+
+- `world.ts` `tick()` — growth, spawn, travel, energy, upkeep, tree burn
+- `commands.ts` — player/AI intent (`sendSeedlings`, `plantTree`); returns `CommandResult`
+- `combat.ts` — `resolveCombat` only
+- `ai.ts` — enemy empire via commands; do not duplicate combat or tick
+- `layout.ts` — map setup; travel graph must stay connected
+- `graph.ts` — reachability / shortest path
+- `lsystem.ts` — tree geometry for tips/planting, not game rules
+
+Travel uses outbound `travelRadius`. Combat is mass + type (`basic` vs `sentinel`). Capture: clear garrison, burn enemy trees, then plant (`PLANT_COST` orbiters).

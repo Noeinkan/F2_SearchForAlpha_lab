@@ -1,0 +1,14 @@
+---
+description: Vitest coverage for simulation behavior
+globs: tests/**/*.ts
+alwaysApply: false
+---
+
+# Tests
+
+Vitest. Import sim from `src/game/sim`. Do not import Pixi.
+
+- Unit: `createEmptyWorld` + `addAsteroid` (and `debugSpawnOrbiters` when you need orbiters).
+- Layout / core loop: `createCoreLoopWorld`.
+- Drive the game with `tick`, `sendSeedlings`, `plantTree`. Assert world state, not renderer output.
+- Put new specs next to the domain (`tests/sim/`, `tests/render/` for pure palette helpers).

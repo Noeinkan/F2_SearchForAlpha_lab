@@ -1,10 +1,11 @@
 {
   "name": "asterbloom",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "field": "vite --open /field.html",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest"

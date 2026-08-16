@@ -50,4 +50,20 @@ export class Camera {
     this.y = viewH / 2 - worldY * this.zoom;
     this.apply();
   }
+
+  /** Soft lerp toward centering world coords in the view (t in 0..1). */
+  followToward(
+    worldX: number,
+    worldY: number,
+    viewW: number,
+    viewH: number,
+    t: number,
+  ): void {
+    const k = Math.min(1, Math.max(0, t));
+    const tx = viewW / 2 - worldX * this.zoom;
+    const ty = viewH / 2 - worldY * this.zoom;
+    this.x += (tx - this.x) * k;
+    this.y += (ty - this.y) * k;
+    this.apply();
+  }
 }

@@ -1,13 +1,39 @@
 import type { Camera } from '../render/camera';
+import { isCoarsePointer } from './sendCount';
+
+type PointerSample = { x: number; y: number };
 
 export function bindCameraControls(
   canvas: HTMLCanvasElement,
   camera: Camera,
+  opts?: {
+    onUserCamera?: () => void;
+    /** When true, left button on this down may start one-finger pan (coarse). */
+    shouldLeftPan?: (e: PointerEvent) => boolean;
+    /** Abort gameplay send when multi-touch starts. */
+    onMultiTouch?: () => void;
+  },
 ): () => void {
   const keys = new Set<string>();
-  let dragging = false;
+  const pointers = new Map<number, PointerSample>();
+  let buttonPan = false;
   let lastX = 0;
   let lastY = 0;
+  let pinchDist = 0;
+  let pinchMidX = 0;
+  let pinchMidY = 0;
+  const onUserCamera = opts?.onUserCamera;
+
+  const twoFingerMetrics = () => {
+    const pts = [...pointers.values()];
+    if (pts.length < 2) return null;
+    const a = pts[0]!;
+    const b = pts[1]!;
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    return { midX, midY, dist };
+  };
 
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
@@ -16,28 +42,110 @@ export function bindCameraControls(
     const sy = e.clientY - rect.top;
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
     camera.zoomAt(sx, sy, factor);
+    onUserCamera?.();
   };
 
   const onPointerDown = (e: PointerEvent) => {
-    // Middle (1) or right (2) — left reserved for send-gesture later
-    if (e.button !== 1 && e.button !== 2) return;
-    dragging = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
-    canvas.setPointerCapture(e.pointerId);
+    const pos = { x: e.clientX, y: e.clientY };
+    pointers.set(e.pointerId, pos);
+
+    if (pointers.size === 2) {
+      opts?.onMultiTouch?.();
+      buttonPan = false;
+      const m = twoFingerMetrics();
+      if (m) {
+        pinchDist = m.dist;
+        pinchMidX = m.midX;
+        pinchMidY = m.midY;
+      }
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+
+    // Middle (1) or right (2) — always pan
+    if (e.button === 1 || e.button === 2) {
+      buttonPan = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    // Coarse left: pan empty space
+    if (
+      e.button === 0 &&
+      isCoarsePointer() &&
+      opts?.shouldLeftPan?.(e)
+    ) {
+      buttonPan = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (!dragging) return;
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointers.size >= 2) {
+      const m = twoFingerMetrics();
+      if (!m) return;
+      const dx = m.midX - pinchMidX;
+      const dy = m.midY - pinchMidY;
+      if (dx || dy) {
+        camera.pan(dx, dy);
+        onUserCamera?.();
+      }
+      if (pinchDist > 8 && m.dist > 8) {
+        const factor = m.dist / pinchDist;
+        if (factor > 0.01 && factor < 100) {
+          const rect = canvas.getBoundingClientRect();
+          camera.zoomAt(m.midX - rect.left, m.midY - rect.top, factor);
+          onUserCamera?.();
+        }
+      }
+      pinchDist = m.dist;
+      pinchMidX = m.midX;
+      pinchMidY = m.midY;
+      return;
+    }
+
+    if (!buttonPan) return;
     const dx = e.clientX - lastX;
     const dy = e.clientY - lastY;
     lastX = e.clientX;
     lastY = e.clientY;
     camera.pan(dx, dy);
+    onUserCamera?.();
   };
 
   const onPointerUp = (e: PointerEvent) => {
-    if (e.button === 1 || e.button === 2) dragging = false;
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) {
+      pinchDist = 0;
+    }
+    if (pointers.size === 1) {
+      const remaining = [...pointers.values()][0]!;
+      lastX = remaining.x;
+      lastY = remaining.y;
+      // After pinch, do not resume left-pan unless middle/right started it
+      if (e.button === 0 && isCoarsePointer()) buttonPan = false;
+    }
+    if (pointers.size === 0) {
+      buttonPan = false;
+    }
+    if (e.button === 1 || e.button === 2) {
+      if (pointers.size === 0) buttonPan = false;
+    }
   };
 
   const onContextMenu = (e: Event) => e.preventDefault();
@@ -74,6 +182,7 @@ export function bindCameraControls(
     if (dx || dy) {
       const len = Math.hypot(dx, dy) || 1;
       camera.pan((dx / len) * panSpeed * dt, (dy / len) * panSpeed * dt);
+      onUserCamera?.();
     }
     raf = requestAnimationFrame(tickKeys);
   };

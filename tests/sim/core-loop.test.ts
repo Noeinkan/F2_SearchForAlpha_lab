@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   debugSpawnOrbiters,
   plantDyson,
+  plantTree,
   sendSeedlings,
 } from '../../src/game/sim/commands';
 import {
@@ -11,39 +12,19 @@ import {
 } from '../../src/game/sim/graph';
 import { createCoreLoopWorld } from '../../src/game/sim/layout';
 import {
+  ENERGY_TREE_MIN_ENERGY,
   LOCAL_SEEDLING_CAP,
   PLANT_COST,
-  type Asteroid,
-  type World,
+  mineralsToSlots,
 } from '../../src/game/sim/types';
 import {
-  allocId,
+  addAsteroid,
+  countOrbitingKind,
   countOrbitingSeedlings,
   createEmptyWorld,
   createSandboxWorld,
   tick,
 } from '../../src/game/sim/world';
-
-function addAsteroid(
-  world: World,
-  partial: Partial<Asteroid> & Pick<Asteroid, 'x' | 'y' | 'travelRadius'>,
-): Asteroid {
-  const id = allocId(world);
-  const a: Asteroid = {
-    id,
-    name: `A${id}`,
-    radius: 60,
-    treeSlots: 4,
-    stats: { energy: 50, strength: 50, speed: 80 },
-    owner: 'neutral',
-    seed: id,
-    coreEnergy: 100,
-    maxCoreEnergy: 100,
-    ...partial,
-  };
-  world.asteroids.set(id, a);
-  return a;
-}
 
 describe('graph', () => {
   it('links asteroids within outbound travel radius', () => {
@@ -76,7 +57,17 @@ describe('graph', () => {
     expect(isGraphConnected(world)).toBe(true);
     const home = [...world.asteroids.values()].find((a) => a.owner === 'player');
     expect(home).toBeTruthy();
-    expect(world.trees.size).toBe(1);
+    expect(world.trees.size).toBeGreaterThanOrEqual(1);
+    const wild = [...world.asteroids.values()].find((a) => a.owner === 'grey');
+    expect(wild).toBeTruthy();
+    const enemy = [...world.asteroids.values()].find((a) => a.owner === 'enemy');
+    expect(enemy).toBeTruthy();
+  });
+
+  it('maps minerals to tree slots', () => {
+    expect(mineralsToSlots(20)).toBe(2);
+    expect(mineralsToSlots(74)).toBeGreaterThanOrEqual(4);
+    expect(mineralsToSlots(200)).toBe(6);
   });
 });
 
@@ -160,6 +151,34 @@ describe('plant', () => {
     expect(plantDyson(world, rock.id, 0, 'player').ok).toBe(false);
     expect(PLANT_COST).toBe(10);
   });
+
+  it('refuses Energy trees on low-energy rocks', () => {
+    const world = createEmptyWorld(22);
+    const rock = addAsteroid(world, {
+      x: 0,
+      y: 0,
+      travelRadius: 200,
+      owner: 'player',
+      stats: { energy: ENERGY_TREE_MIN_ENERGY - 10, strength: 40, speed: 40 },
+    });
+    debugSpawnOrbiters(world, rock.id, 'player', 12);
+    expect(plantTree(world, rock.id, 0, 'player', 'energy').ok).toBe(false);
+    rock.stats.energy = ENERGY_TREE_MIN_ENERGY;
+    expect(plantTree(world, rock.id, 0, 'player', 'energy').ok).toBe(true);
+  });
+
+  it('blocks planting while wild defenders remain', () => {
+    const world = createEmptyWorld(23);
+    const rock = addAsteroid(world, {
+      x: 0,
+      y: 0,
+      travelRadius: 200,
+      owner: 'grey',
+    });
+    debugSpawnOrbiters(world, rock.id, 'grey', 4);
+    debugSpawnOrbiters(world, rock.id, 'player', 12);
+    expect(plantDyson(world, rock.id, 0, 'player').ok).toBe(false);
+  });
 });
 
 describe('production cap with travelers', () => {
@@ -168,7 +187,6 @@ describe('production cap with travelers', () => {
     const home = [...world.asteroids.values()][0]!;
     home.travelRadius = 500;
 
-    // Grow until near cap
     for (let i = 0; i < 60 * 80; i++) tick(world, 1 / 60);
     expect(countOrbitingSeedlings(world, home.id)).toBe(LOCAL_SEEDLING_CAP);
 
@@ -185,5 +203,33 @@ describe('production cap with travelers', () => {
 
     for (let i = 0; i < 60 * 40; i++) tick(world, 1 / 60);
     expect(countOrbitingSeedlings(world, home.id)).toBe(LOCAL_SEEDLING_CAP);
+  });
+});
+
+describe('energy trees', () => {
+  it('spawns Sentinels from an Energy tree', () => {
+    const world = createEmptyWorld(30);
+    const rock = addAsteroid(world, {
+      x: 0,
+      y: 0,
+      travelRadius: 200,
+      owner: 'player',
+      minerals: 80,
+      stats: { energy: 140, strength: 60, speed: 60 },
+    });
+    world.trees.set(1, {
+      id: 1,
+      asteroidId: rock.id,
+      slotIndex: 0,
+      kind: 'energy',
+      seed: 1,
+      maturity: 1,
+      faction: 'player',
+      spawnAccumulator: 0,
+      coreFeed: 0,
+    });
+    world.nextId = 2;
+    for (let i = 0; i < 60 * 20; i++) tick(world, 1 / 60);
+    expect(countOrbitingKind(world, rock.id, 'player', 'sentinel')).toBeGreaterThan(0);
   });
 });

@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   accentHue,
+  ATMOSPHERES,
+  buildFromRecipe,
+  buildScene,
   createScenePalette,
   floraPalette,
   hexToRgb,
   hueDistance,
+  HUE_CYCLE_SECONDS,
   isPastel,
   mixStatsRgb,
+  PALETTE_STEP_SECONDS,
   rgbToHsl,
+  sceneAtTime,
   seedlingColors,
   toPastel,
 } from '../../src/game/render/palette';
@@ -28,15 +34,47 @@ describe('pastel rule', () => {
     }
   });
 
-  it('odd seeds wash a dark void; even seeds wash light paper', () => {
-    const dark = createScenePalette(0xc0a1f00d);
-    const light = createScenePalette(0xc0a1f00e);
-    expect(dark.dark).toBe(true);
+  it('gameplay palettes stay a dark space void for any seed', () => {
+    const odd = createScenePalette(0xc0a1f00d);
+    const even = createScenePalette(0xc0a1f00e);
+    expect(odd.dark).toBe(true);
+    expect(even.dark).toBe(true);
+    const [, , lOdd] = rgbToHsl(...hexToRgb(odd.bg));
+    const [, , lEven] = rgbToHsl(...hexToRgb(even.bg));
+    expect(lOdd).toBeLessThan(0.22);
+    expect(lEven).toBeLessThan(0.22);
+  });
+
+  it('buildScene can still mix a light paper wash', () => {
+    const light = buildScene(40, false);
     expect(light.dark).toBe(false);
-    const [, , lDark] = rgbToHsl(...hexToRgb(dark.bg));
-    const [, , lLight] = rgbToHsl(...hexToRgb(light.bg));
-    expect(lDark).toBeLessThan(0.22);
-    expect(lLight).toBeGreaterThan(0.8);
+    const [, , l] = rgbToHsl(...hexToRgb(light.bg));
+    expect(l).toBeGreaterThan(0.8);
+  });
+
+  it('sceneAtTime walks named atmospheres and stays a dark void', () => {
+    const a = sceneAtTime(1, 0);
+    const b = sceneAtTime(1, PALETTE_STEP_SECONDS);
+    const c = sceneAtTime(1, HUE_CYCLE_SECONDS);
+    expect(a.dark).toBe(true);
+    expect(b.dark).toBe(true);
+    expect(c.dark).toBe(true);
+    expect(b.atmosphere).not.toBe(a.atmosphere);
+    expect(c.atmosphere).toBe(a.atmosphere);
+    expect(hueDistance(a.hue, c.hue)).toBeLessThan(2);
+  });
+
+  it('named atmospheres are distinct dark families', () => {
+    const hues = ATMOSPHERES.map((r) => r.hue);
+    expect(new Set(hues).size).toBe(ATMOSPHERES.length);
+    expect(ATMOSPHERES.length).toBeGreaterThanOrEqual(12);
+    for (const recipe of ATMOSPHERES) {
+      const scene = buildFromRecipe(recipe);
+      expect(scene.dark).toBe(true);
+      const [, , l] = rgbToHsl(...hexToRgb(scene.bg));
+      expect(l).toBeLessThan(0.22);
+      expect(recipe.woodOffset).toBeGreaterThanOrEqual(130);
+    }
   });
 
   it('Energy/Strength/Speed mix as yellow/red/green before pastelizing', () => {
@@ -72,6 +110,26 @@ describe('pastel rule', () => {
     expect(hueDistance(flowerH, woodH)).toBeGreaterThan(80);
     expect(isPastel(pal.flower)).toBe(true);
     expect(isPastel(pal.wing)).toBe(true);
+  });
+
+  it('roots glow warm amber — visible on rock, distinct from coreWhite', () => {
+    const scene = createScenePalette(0xc0a1f00d);
+    for (const seed of [1, 42, 99, 0x85ebca6b]) {
+      const pal = floraPalette(
+        { energy: 100, strength: 50, speed: 80 },
+        seed,
+        scene,
+      );
+      const [, rootS, rootL] = rgbToHsl(...hexToRgb(pal.root));
+      const [, , softL] = rgbToHsl(...hexToRgb(pal.rootSoft));
+      const [, , rockL] = rgbToHsl(...hexToRgb(pal.rock));
+      const [, , whiteL] = rgbToHsl(...hexToRgb(pal.coreWhite));
+      expect(rootL).toBeGreaterThan(rockL + 0.18);
+      expect(rootL).toBeGreaterThan(0.45);
+      expect(rootS).toBeGreaterThan(0.55);
+      expect(softL).toBeGreaterThan(rootL);
+      expect(whiteL - rootL).toBeGreaterThan(0.2);
+    }
   });
 
   it('seedling wings follow the same pastel operator', () => {

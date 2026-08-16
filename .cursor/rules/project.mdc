@@ -1,0 +1,19 @@
+---
+description: Asterbloom project identity and layering
+alwaysApply: true
+---
+
+# Asterbloom
+
+Original Eufloria-inspired browser strategy game. No ripped assets, names, or trademarks.
+
+Stack: TypeScript, Vite, Pixi.js v8, Vitest. Do not add dependencies unless asked.
+
+Layers:
+
+- `src/game/sim/` — pure simulation, no Pixi
+- `src/game/render/` — views only; do not mutate `World`
+- `src/game/input/` — pointer/camera → `commands.ts`
+- `src/main.ts` — boot, ticker, HUD
+
+Balance constants live in `src/game/sim/types.ts`. Change them there.

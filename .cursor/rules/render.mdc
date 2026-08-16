@@ -1,0 +1,17 @@
+---
+description: Pixi views and main loop — read World, don't write it
+globs: src/game/render/**/*.ts,src/main.ts,src/game/input/**/*.ts,src/game/audio/**/*.ts
+alwaysApply: false
+---
+
+# Render and input
+
+Views read `World` and draw. Mutation goes through `commands.ts` (or `tick` / `tickAi` in the ticker).
+
+- Sim step is fixed `1/60` in `src/main.ts`. Do not tick the sim from a view.
+- `update()` every frame; `retheme()` only when the scene palette changes.
+- Keep Pixi in `render/` (and `main.ts`). Input may import view types for preview/camera only.
+- Palette/scene colors live in `palette.ts`. Faction look comes from `floraPalette` / `factionCoreHue`.
+- Roots glow (palette rule 6): warm amber bloom on dark rock; darker understroke so they still read on the core.
+- Trees are one z-layer above rock (rock 3, tree 4, seedlings 5). Draw roots then wood in
+  the same container so the collar shares one transform — do not split roots vs canopy.
