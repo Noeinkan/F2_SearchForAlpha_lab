@@ -38,7 +38,7 @@ npm test
 Each asteroid holds trees. Trees make seedlings over time.
 Select an asteroid, then drag to send seedlings to another.
 
-- **Empty rock** — seedlings land and orbit. Click a glowing slot (10 seedlings) to plant.
+- **Empty rock** — seedlings land and orbit. Right-click (or hold) the crust to plant a tree (10 seedlings).
 - **Wild or enemy rock** — your seedlings fight the defenders in real time. Mass and type decide. After the garrison is gone, enemy trees burn, then you can plant.
 
 ## Seedling types
@@ -74,8 +74,8 @@ Early asteroid choice matters: size and minerals do not change.
 - **New map** — skirmish only: generate a fresh seed
 - **Next grove** — campaign win: advance to the next authored map
 - **Title** — return to Play / Campaign / Settings
-- **Wheel** (idle) / **pinch** — zoom
-- **Empty-space drag** (touch) / **middle / right mouse drag** / **WASD** — pan
+- **Wheel** (idle) / **pinch** — zoom (up to 8× for inspecting tree detail)
+- **Empty-space drag** (touch) / **middle / right mouse drag** / **WASD** / **mouse to screen edge** — pan
 - First click starts ambient audio
 - Hiding the browser tab pauses the match (does not auto-resume)
 

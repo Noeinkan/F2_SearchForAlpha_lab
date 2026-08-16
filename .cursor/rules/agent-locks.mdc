@@ -1,0 +1,25 @@
+---
+description: Cooperative file semaphores so parallel agents do not overwrite each other
+alwaysApply: true
+---
+
+# Agent file locks
+
+Cursor has no kernel mutex. Before any `Write` / `StrReplace` / `Delete`, acquire a lock. A busy lock is a **queue**, not a stop.
+
+**Never abandon remaining work because a path is held.** Keep a checklist of unfinished objectives. Loop until every item is done or the user cancels. Do not report the task complete, failed, or blocked-forever after a `busy` line.
+
+Pick one `--holder` slug for this chat and reuse it.
+
+```
+node tools/agent-lock.mjs acquire --any --wait --holder <slug> -- <remaining-paths>
+```
+
+Run that with a long `block_until_ms` (at least 600000). `--wait` with default `--timeout 0` waits **forever**. If the shell backgrounds, keep waiting on that command — do not kill it and do not drop the checklist.
+
+- Work only the paths listed in `acquired …`.
+- Finish that batch, then `release` those paths (or the holder).
+- If the CLI printed `pending …`, those objectives are **not** done: acquire again with `--any --wait` and continue.
+- If acquire exits `2` (only without `--wait`), immediately retry with `--any --wait`. Do not skip those files.
+
+Heartbeat if a held lock lasts more than 2 minutes. Never `--force` unless `status` shows a dead holder.

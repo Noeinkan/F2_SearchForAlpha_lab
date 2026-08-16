@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Agent file semaphores (live locks, not source)
+.cursor/locks/*
+!.cursor/locks/.gitkeep
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

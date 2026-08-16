@@ -4,7 +4,8 @@ import {
   startCampaignMap,
 } from '../../src/game/sim/campaign';
 import { isGraphConnected } from '../../src/game/sim/graph';
-import { aiKnobs } from '../../src/game/sim/types';
+import { aiKnobs, PLAYER_START_SEEDLINGS } from '../../src/game/sim/types';
+import { countOrbitingSeedlings } from '../../src/game/sim/world';
 
 describe('campaign maps', () => {
   it('defines eight authored maps', () => {
@@ -19,6 +20,9 @@ describe('campaign maps', () => {
         (a) => a.owner === 'player',
       );
       expect(home).toBeTruthy();
+      expect(countOrbitingSeedlings(started.world, home!.id, 'player')).toBe(
+        PLAYER_START_SEEDLINGS,
+      );
       expect(started.config.win).toBeTruthy();
       expect(started.title).toBe(CAMPAIGN_MAPS[i]!.title);
     }

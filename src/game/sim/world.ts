@@ -1,14 +1,15 @@
 import { generateAsteroidName } from './names';
 import {
   buildAdultTree,
-  FLOWER_SPAWN_READY,
+  FLOWER_POLLEN_OPEN,
   measureRootFeed,
   rootFeedActive,
   spawnReadiness,
   treeFlowersWorld,
+  treeTipsWorld,
 } from './lsystem';
 import { mulberry32, range } from './rng';
-import { pickRockRadius, rockRadiusAt, slotPolar } from './rock';
+import { crustPolar, pickRockRadius, rockRadiusAt, slotPolar } from './rock';
 import { resolveCombat, seedlingMaxHp } from './combat';
 import {
   DEFENSE_GROWTH_SECONDS,
@@ -19,9 +20,11 @@ import {
   ENERGY_SPAWN_INTERVAL,
   LOCAL_SEEDLING_CAP,
   orbitBand,
+  PLANT_CRUISE_SPEED,
+  PLANT_DIVE_ANGLE,
   PLANT_DIVE_SPEED,
   ROCK_RADIUS_DEFAULT,
-  ROCK_SURFACE_INSET,
+  SURFACE_CLEARANCE,
   ROOT_FEED_REGEN,
   ROOT_FEED_SPAWN_BONUS,
   SENTINEL_SPAWN_ENERGY,
@@ -146,15 +149,30 @@ export function createSandboxWorld(seed = 0xa57eb100): World {
   return world;
 }
 
-export function slotPosition(
+/** Collar pose for a slot, or a free crust bearing when `plantAngle` is set. */
+export function plantPose(
   asteroid: Asteroid,
   slotIndex: number,
-): { x: number; y: number; angle: number } {
-  const { angle, dist } = slotPolar(asteroid, slotIndex);
+  plantAngle?: number,
+): {
+  x: number;
+  y: number;
+  angle: number;
+  dist: number;
+  rim: number;
+  surfaceY: number;
+} {
+  const polar =
+    plantAngle !== undefined
+      ? crustPolar(asteroid, plantAngle)
+      : slotPolar(asteroid, slotIndex);
   return {
-    x: asteroid.x + Math.cos(angle) * dist,
-    y: asteroid.y + Math.sin(angle) * dist,
-    angle,
+    x: asteroid.x + Math.cos(polar.angle) * polar.dist,
+    y: asteroid.y + Math.sin(polar.angle) * polar.dist,
+    angle: polar.angle,
+    dist: polar.dist,
+    rim: polar.rim,
+    surfaceY: polar.surfaceY,
   };
 }
 
@@ -164,18 +182,44 @@ export function computeTreeCoreFeed(
   treeSeed: number,
   slotIndex: number,
   kind: TreeKind,
+  plantAngle?: number,
 ): number {
   const scale = treeVisualScale(asteroid.radius, asteroid.seed);
-  const polar = slotPolar(asteroid, slotIndex);
-  const surfaceY = -(asteroid.radius * ROCK_SURFACE_INSET);
-  const adult = buildAdultTree(
-    treeSeed,
-    scale,
-    polar.dist,
-    surfaceY,
-    kind,
-  );
-  return measureRootFeed(adult, polar.dist);
+  const pose = plantPose(asteroid, slotIndex, plantAngle);
+  const adult = buildAdultTree(treeSeed, scale, pose.dist, pose.surfaceY, kind);
+  return measureRootFeed(adult, pose.dist);
+}
+
+/** Spawn interval including root-feed bonus (for tests). */
+export function treeSpawnInterval(tree: Tree, asteroid: Asteroid): number {
+  return spawnInterval(tree, asteroid);
+}
+
+/** Extra energy regen from one tree's active root feed (for tests). */
+export function treeRootRegen(tree: Tree): number {
+  return ROOT_FEED_REGEN * rootFeedActive(tree.maturity, tree.coreFeed);
+}
+
+export function slotPosition(
+  asteroid: Asteroid,
+  slotIndex: number,
+  plantAngle?: number,
+): { x: number; y: number; angle: number } {
+  const pose = plantPose(asteroid, slotIndex, plantAngle);
+  return { x: pose.x, y: pose.y, angle: pose.angle };
+}
+
+export function nextEmptySlot(
+  world: World,
+  asteroidId: number,
+): number | null {
+  const asteroid = world.asteroids.get(asteroidId);
+  if (!asteroid) return null;
+  const occupied = getOccupiedSlots(world, asteroidId);
+  for (let i = 0; i < asteroid.treeSlots; i++) {
+    if (!occupied.has(i)) return i;
+  }
+  return null;
 }
 
 export function getOccupiedSlots(
@@ -284,20 +328,23 @@ function orbitFacing(angle: number, orbitSpeed: number): number {
   return angle + (orbitSpeed >= 0 ? Math.PI / 2 : -Math.PI / 2);
 }
 
-/** Project a spherical orbit into the XY plane; +z is toward the camera. */
-function spherePoint(
-  ax: number,
-  ay: number,
+/**
+ * Polar crust orbit. Inclination is camera-depth only; XY is clamped to the
+ * lumpy rim so seeds skim the surface instead of cutting through the hollow.
+ */
+function surfaceOrbitPoint(
+  asteroid: Asteroid,
   radius: number,
   longitude: number,
   node: number,
   inclination: number,
 ): { x: number; y: number; z: number } {
   const lat = Math.sin(longitude - node) * inclination;
-  const c = Math.cos(lat);
+  const floor = rockRadiusAt(asteroid, longitude) + SURFACE_CLEARANCE;
+  const xyR = Math.max(floor, radius * Math.cos(lat));
   return {
-    x: ax + radius * c * Math.cos(longitude),
-    y: ay + radius * c * Math.sin(longitude),
+    x: asteroid.x + xyR * Math.cos(longitude),
+    y: asteroid.y + xyR * Math.sin(longitude),
     z: radius * Math.sin(lat),
   };
 }
@@ -334,11 +381,13 @@ function makeSeedling(
 
 function spawnSeedling(world: World, tree: Tree, asteroid: Asteroid): void {
   const rng = mulberry32((world.seed ^ tree.id ^ (world.nextId * 9973)) >>> 0);
-  const pos = slotPosition(asteroid, tree.slotIndex);
+  const pos = plantPose(asteroid, tree.slotIndex, tree.plantAngle);
   const rot = pos.angle + Math.PI / 2;
   const scale = treeVisualScale(asteroid.radius, asteroid.seed);
-  const polar = slotPolar(asteroid, tree.slotIndex);
-  const surfaceY = -(asteroid.radius * ROCK_SURFACE_INSET);
+  const polar = pos;
+
+  // Blooms are the visible source of seedlings. Pick an open flower first;
+  // fall back to a branch tip only if the tree has no bloomed flowers yet.
   const flowers = treeFlowersWorld(
     tree.seed,
     tree.maturity,
@@ -347,40 +396,53 @@ function spawnSeedling(world: World, tree: Tree, asteroid: Asteroid): void {
     pos.y,
     rot,
     polar.dist,
-    surfaceY,
+    polar.surfaceY,
     tree.kind,
-    FLOWER_SPAWN_READY,
+    FLOWER_POLLEN_OPEN,
   );
-  if (flowers.length === 0) return;
+  const tips = treeTipsWorld(
+    tree.seed,
+    tree.maturity,
+    scale,
+    pos.x,
+    pos.y,
+    rot,
+    polar.dist,
+    polar.surfaceY,
+  );
+  if (flowers.length === 0 && tips.length === 0) return;
 
-  const flower = flowers[Math.floor(rng() * flowers.length)]!;
+  const tip = (
+    flowers.length > 0
+      ? flowers[Math.floor(rng() * flowers.length)]!
+      : tips[Math.floor(rng() * tips.length)]!
+  ) as { x: number; y: number; angle: number };
 
   const kind: SeedlingKind = tree.kind === 'energy' ? 'sentinel' : 'basic';
   const stats = { ...asteroid.stats };
   const orbitSpeed = 0.28 + stats.speed / 560;
-  const orbitAngle = Math.atan2(flower.y - asteroid.y, flower.x - asteroid.x);
+  const orbitAngle = Math.atan2(tip.y - asteroid.y, tip.x - asteroid.x);
   makeSeedling(world, asteroid, tree.faction, kind, {
     stats,
     state: 'sprout',
     angle: orbitAngle,
     orbitRadius: rockRadiusAt(asteroid, orbitAngle) + orbitBand(asteroid.radius) + range(rng, -4, 6),
     orbitSpeed,
-    x: flower.x,
-    y: flower.y,
+    x: tip.x,
+    y: tip.y,
     z: 0,
-    facing: flower.angle,
+    facing: tip.angle,
     phase: rng() * Math.PI * 2,
     orbitBias: range(rng, -5, 7),
     inclination: 0.34 + rng() * 0.28,
     orbitNode: orbitAngle,
     sproutAge: 0,
     sproutDuration: SPROUT_DURATION * (0.85 + rng() * 0.3),
-    sproutFromX: flower.x,
-    sproutFromY: flower.y,
-    sproutTipAngle: flower.angle,
+    sproutFromX: tip.x,
+    sproutFromY: tip.y,
+    sproutTipAngle: tip.angle,
   });
 }
-
 
 export function spawnOrbiters(
   world: World,
@@ -402,7 +464,7 @@ export function spawnOrbiters(
     const speed = orbitSpeed * (0.88 + rng() * 0.24);
     const inc = 0.3 + rng() * 0.3;
     const node = angle + range(rng, -0.5, 0.5);
-    const p = spherePoint(asteroid.x, asteroid.y, orbitRadius, angle, node, inc);
+    const p = surfaceOrbitPoint(asteroid, orbitRadius, angle, node, inc);
     makeSeedling(world, asteroid, faction, kind, {
       state: 'orbit',
       angle,
@@ -428,7 +490,10 @@ function enterOrbit(s: Seedling, asteroid: Asteroid): void {
   s.wait = undefined;
   s.heading = undefined;
   s.angle = Math.atan2(s.y - asteroid.y, s.x - asteroid.x);
-  s.orbitRadius = Math.hypot(s.x - asteroid.x, s.y - asteroid.y);
+  s.orbitRadius = Math.max(
+    rockRadiusAt(asteroid, s.angle) + SURFACE_CLEARANCE,
+    Math.hypot(s.x - asteroid.x, s.y - asteroid.y),
+  );
   s.orbitSpeed = 0.28 + s.stats.speed / 560;
   if (s.inclination === undefined) {
     s.inclination = 0.28 + Math.abs(Math.sin(s.phase)) * 0.24;
@@ -448,11 +513,11 @@ function applyOrbit(s: Seedling, asteroid: Asteroid, dt: number, time: number): 
   const breezeR =
     Math.sin(time * 0.62 + ph) * 5.8 + Math.sin(time * 1.18 + ph * 1.37) * 2.6;
   const breezeT = Math.sin(time * 0.41 + ph * 0.73) * 0.07;
-  const r = s.orbitRadius + breezeR;
   const a = s.angle + breezeT;
-  const p = spherePoint(
-    asteroid.x,
-    asteroid.y,
+  const floor = rockRadiusAt(asteroid, a) + SURFACE_CLEARANCE;
+  const r = Math.max(floor, s.orbitRadius + breezeR);
+  const p = surfaceOrbitPoint(
+    asteroid,
     r,
     a,
     s.orbitNode ?? a,
@@ -539,8 +604,11 @@ function applySproutGlide(s: Seedling, world: World, dt: number): void {
 
     const helix = turn * (0.7 + Math.cos(s.phase) * 0.12) * (u * u * (3 - 2 * u));
     const a = fromA + helix;
-    const r = Math.max(rockRadiusAt(asteroid, a) + 8, s.orbitRadius + phugoid * 0.35);
-    const planet = spherePoint(ax, ay, r, a, node, inc);
+    const r = Math.max(
+      rockRadiusAt(asteroid, a) + SURFACE_CLEARANCE,
+      s.orbitRadius + phugoid * 0.35,
+    );
+    const planet = surfaceOrbitPoint(asteroid, r, a, node, inc);
 
     const handoff = u < 0.36 ? 0 : (u - 0.36) / 0.64;
     const w = handoff * handoff * (3 - 2 * handoff);
@@ -549,6 +617,16 @@ function applySproutGlide(s: Seedling, world: World, dt: number): void {
     s.x = treeX + (planet.x - treeX) * w;
     s.y = treeY + (planet.y - treeY) * w;
     s.z = treeZ + (planet.z - treeZ) * w;
+    if (w > 0.15) {
+      const d = Math.hypot(s.x - ax, s.y - ay);
+      const ang = Math.atan2(s.y - ay, s.x - ax);
+      const floor = rockRadiusAt(asteroid, ang) + SURFACE_CLEARANCE;
+      if (d > 1e-4 && d < floor) {
+        const k = floor / d;
+        s.x = ax + (s.x - ax) * k;
+        s.y = ay + (s.y - ay) * k;
+      }
+    }
 
     const vx = s.x - px;
     const vy = s.y - py;
@@ -594,6 +672,87 @@ function glideToward(
   s.facing = lerpAngle(s.facing, s.heading, 2.8 * dt);
 }
 
+function applyPlantCruise(
+  s: Seedling,
+  asteroid: Asteroid,
+  dt: number,
+  angErr: number,
+): void {
+  const maxTurn = PLANT_CRUISE_SPEED * dt;
+  s.angle += Math.abs(angErr) <= maxTurn ? angErr : Math.sign(angErr) * maxTurn;
+  s.inclination = (s.inclination ?? 0.3) * Math.exp(-2.4 * dt);
+  const hug = rockRadiusAt(asteroid, s.angle) + SURFACE_CLEARANCE + 6;
+  s.orbitRadius += (hug - s.orbitRadius) * Math.min(1, 2.8 * dt);
+  const p = surfaceOrbitPoint(
+    asteroid,
+    s.orbitRadius,
+    s.angle,
+    s.orbitNode ?? s.angle,
+    s.inclination ?? 0,
+  );
+  s.x = p.x;
+  s.y = p.y;
+  s.z += (p.z - s.z) * Math.min(1, 4.2 * dt);
+  const tangent = s.angle + (angErr >= 0 ? Math.PI / 2 : -Math.PI / 2);
+  s.facing = lerpAngle(s.facing, tangent, 4.2 * dt);
+}
+
+function finishPlantArrival(
+  s: Seedling,
+  world: World,
+  toDelete: number[],
+  completedPlants: Set<number>,
+): void {
+  const plantId = s.plantId;
+  if (plantId === undefined) {
+    toDelete.push(s.id);
+    return;
+  }
+  const pending = world.pendingPlants.get(plantId);
+  if (!pending) {
+    toDelete.push(s.id);
+    return;
+  }
+  pending.arrived += 1;
+  toDelete.push(s.id);
+  if (pending.arrived >= pending.seedlingIds.length) {
+    completedPlants.add(plantId);
+  }
+}
+
+function applyPlantDip(
+  s: Seedling,
+  asteroid: Asteroid,
+  dt: number,
+  time: number,
+  tx: number,
+  ty: number,
+  world: World,
+  toDelete: number[],
+  completedPlants: Set<number>,
+): void {
+  const dx = tx - s.x;
+  const dy = ty - s.y;
+  const dist = Math.hypot(dx, dy);
+  const pulse = 0.88 + 0.12 * Math.sin(time * 1.7 + s.phase);
+  const step = PLANT_DIVE_SPEED * pulse * dt;
+  if (dist <= Math.max(step, 8)) {
+    s.x = tx;
+    s.y = ty;
+    s.z = 0;
+    finishPlantArrival(s, world, toDelete, completedPlants);
+    return;
+  }
+  const inv = 1 / Math.max(dist, 1e-4);
+  s.x += dx * inv * step;
+  s.y += dy * inv * step;
+  s.z += (0 - s.z) * Math.min(1, 4.2 * dt);
+  s.heading = Math.atan2(dy, dx);
+  s.facing = lerpAngle(s.facing, s.heading, 5.2 * dt);
+  s.angle = Math.atan2(s.y - asteroid.y, s.x - asteroid.x);
+  s.orbitRadius = Math.hypot(s.x - asteroid.x, s.y - asteroid.y);
+}
+
 function completePlant(world: World, plantId: number): void {
   const pending = world.pendingPlants.get(plantId);
   if (!pending) return;
@@ -614,6 +773,7 @@ function completePlant(world: World, plantId: number): void {
     id: treeId,
     asteroidId: pending.asteroidId,
     slotIndex: pending.slotIndex,
+    plantAngle: pending.plantAngle,
     kind: pending.kind,
     seed: treeSeed,
     maturity: 0,
@@ -624,6 +784,7 @@ function completePlant(world: World, plantId: number): void {
       treeSeed,
       pending.slotIndex,
       pending.kind,
+      pending.plantAngle,
     ),
   });
 
@@ -662,16 +823,23 @@ function tickEnergy(world: World, dt: number): void {
     );
   }
 
+  const rootRegenByRock = new Map<number, number>();
+  for (const tree of world.trees.values()) {
+    const bonus = treeRootRegen(tree);
+    if (bonus <= 0) continue;
+    rootRegenByRock.set(
+      tree.asteroidId,
+      (rootRegenByRock.get(tree.asteroidId) ?? 0) + bonus,
+    );
+  }
+
   for (const asteroid of world.asteroids.values()) {
     asteroid.maxEnergyPool = energyCapacity(asteroid.stats.energy);
-    let rootRegen = 0;
-    for (const tree of world.trees.values()) {
-      if (tree.asteroidId !== asteroid.id) continue;
-      rootRegen +=
-        ROOT_FEED_REGEN * rootFeedActive(tree.maturity, tree.coreFeed);
-    }
     const regen =
-      (ENERGY_REGEN_BASE + asteroid.stats.energy / 40 + rootRegen) * dt;
+      (ENERGY_REGEN_BASE +
+        asteroid.stats.energy / 40 +
+        (rootRegenByRock.get(asteroid.id) ?? 0)) *
+      dt;
     asteroid.energyPool = Math.min(
       asteroid.maxEnergyPool,
       asteroid.energyPool + regen,
@@ -730,7 +898,10 @@ function tickTrees(world: World, dt: number): void {
     if (!asteroid) continue;
 
     if (tree.maturity < 1) {
-      tree.maturity = Math.min(1, tree.maturity + dt / growthSeconds(tree.kind));
+      tree.maturity = Math.min(
+        1,
+        tree.maturity + dt / growthSeconds(tree.kind),
+      );
     }
 
     if (tree.kind === 'defense') continue;
@@ -898,38 +1069,36 @@ export function tick(world: World, dt: number): void {
 
     if (s.state === 'plant') {
       const home = world.asteroids.get(s.asteroidId);
+      if (!home) continue;
       if ((s.wait ?? 0) > 0) {
         s.wait = (s.wait ?? 0) - dt;
-        if (home) applyOrbit(s, home, dt, time);
-        if ((s.wait ?? 0) <= 0) s.heading = s.facing;
+        applyOrbit(s, home, dt, time);
+        if ((s.wait ?? 0) <= 0) {
+          s.heading = s.facing;
+          s.angle = Math.atan2(s.y - home.y, s.x - home.x);
+        }
         continue;
       }
       const tx = s.plantTargetX ?? s.x;
       const ty = s.plantTargetY ?? s.y;
-      const dx = tx - s.x;
-      const dy = ty - s.y;
-      const dist = Math.hypot(dx, dy);
-      const pulse = 0.88 + 0.12 * Math.sin(time * 1.7 + s.phase);
-      const step = PLANT_DIVE_SPEED * pulse * dt;
-      if (dist <= Math.max(step, 10)) {
-        s.x = tx;
-        s.y = ty;
-        const plantId = s.plantId;
-        if (plantId !== undefined) {
-          const pending = world.pendingPlants.get(plantId);
-          if (pending) {
-            pending.arrived += 1;
-            toDelete.push(s.id);
-            if (pending.arrived >= pending.seedlingIds.length) {
-              completedPlants.add(plantId);
-            }
-          } else {
-            toDelete.push(s.id);
-          }
-        }
+      const slotAngle = Math.atan2(ty - home.y, tx - home.x);
+      const visualAngle = Math.atan2(s.y - home.y, s.x - home.x);
+      const angErr = shortestAngle(s.angle, slotAngle);
+      const visualErr = shortestAngle(visualAngle, slotAngle);
+      if (Math.abs(visualErr) > PLANT_DIVE_ANGLE) {
+        applyPlantCruise(s, home, dt, angErr);
       } else {
-        glideToward(s, tx, ty, dist, dx, dy, step, dt, time, 0.32);
-        s.z += (0 - s.z) * Math.min(1, 3.2 * dt);
+        applyPlantDip(
+          s,
+          home,
+          dt,
+          time,
+          tx,
+          ty,
+          world,
+          toDelete,
+          completedPlants,
+        );
       }
     }
   }

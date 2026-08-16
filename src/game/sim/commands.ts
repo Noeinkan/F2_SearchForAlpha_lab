@@ -1,9 +1,12 @@
 import { shortestPath } from './graph';
+import { shortestAngle } from './life';
+import { slotPolar } from './rock';
 import {
   canPlantKind,
   PLANT_COST,
   PLANT_STAGGER,
   SEND_STAGGER,
+  type Asteroid,
   type FactionId,
   type PendingPlant,
   type SeedlingKind,
@@ -16,13 +19,34 @@ import {
   getOccupiedSlots,
   hasHostileOrbiters,
   hasHostileTrees,
-  slotPosition,
+  plantPose,
   spawnOrbiters,
 } from './world';
 
 export type CommandResult =
   | { ok: true; count?: number }
   | { ok: false; reason: string };
+
+function crustAngleTaken(
+  world: World,
+  asteroid: Asteroid,
+  angle: number,
+): boolean {
+  const minSep = ((Math.PI * 2) / Math.max(2, asteroid.treeSlots)) * 0.5;
+  const taken: number[] = [];
+  for (const t of world.trees.values()) {
+    if (t.asteroidId !== asteroid.id) continue;
+    taken.push(t.plantAngle ?? slotPolar(asteroid, t.slotIndex).angle);
+  }
+  for (const p of world.pendingPlants.values()) {
+    if (p.asteroidId !== asteroid.id) continue;
+    taken.push(p.plantAngle ?? slotPolar(asteroid, p.slotIndex).angle);
+  }
+  for (const other of taken) {
+    if (Math.abs(shortestAngle(angle, other)) < minSep) return true;
+  }
+  return false;
+}
 
 function destLooksHostile(
   world: World,
@@ -87,6 +111,7 @@ export function plantTree(
   slotIndex: number,
   faction: FactionId,
   kind: TreeKind = 'dyson',
+  plantAngle?: number,
 ): CommandResult {
   const asteroid = world.asteroids.get(asteroidId);
   if (!asteroid) return { ok: false, reason: 'no asteroid' };
@@ -108,6 +133,12 @@ export function plantTree(
 
   const occupied = getOccupiedSlots(world, asteroidId);
   if (occupied.has(slotIndex)) return { ok: false, reason: 'slot taken' };
+  if (
+    plantAngle !== undefined &&
+    crustAngleTaken(world, asteroid, plantAngle)
+  ) {
+    return { ok: false, reason: 'too close' };
+  }
 
   const candidates: number[] = [];
   for (const s of world.seedlings.values()) {
@@ -123,13 +154,14 @@ export function plantTree(
     return { ok: false, reason: 'need 10 seedlings' };
   }
 
-  const pos = slotPosition(asteroid, slotIndex);
+  const pos = plantPose(asteroid, slotIndex, plantAngle);
   const chosen = candidates.slice(0, PLANT_COST);
   const plantId = allocId(world);
   const pending: PendingPlant = {
     id: plantId,
     asteroidId,
     slotIndex,
+    plantAngle,
     faction,
     kind,
     seedlingIds: chosen,

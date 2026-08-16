@@ -85,16 +85,49 @@ export function slotAngle(
   return base + range(rng, -1, 1) * span * 0.16;
 }
 
-export function slotPolar(
-  rock: RockBody & { treeSlots: number },
-  slotIndex: number,
-): { angle: number; rim: number; dist: number } {
-  const angle = slotAngle(slotIndex, rock.treeSlots, rock.seed);
+/** Collar pose on the crust at an arbitrary bearing. */
+export function crustPolar(
+  rock: RockBody,
+  angle: number,
+): { angle: number; rim: number; dist: number; surfaceY: number } {
   const rim = rockRadiusAt(rock, angle);
   const inset = rock.radius * ROCK_SURFACE_INSET;
+  const dist = Math.max(rim * 0.55, rim - inset);
   return {
     angle,
     rim,
-    dist: Math.max(rim * 0.55, rim - inset),
+    dist,
+    /** Tree-local Y of the lumpy rim. Collar at this Y sits on the crust. */
+    surfaceY: dist - rim,
   };
+}
+
+export function slotPolar(
+  rock: RockBody & { treeSlots: number },
+  slotIndex: number,
+): { angle: number; rim: number; dist: number; surfaceY: number } {
+  return crustPolar(rock, slotAngle(slotIndex, rock.treeSlots, rock.seed));
+}
+
+/** Nearest rock whose lumpy rim sits within `pad` world units of (wx, wy). */
+export function hitRockCrust(
+  rocks: Iterable<RockBody & { id: number; x: number; y: number }>,
+  wx: number,
+  wy: number,
+  pad: number,
+): { id: number; angle: number } | null {
+  let best: { id: number; angle: number } | null = null;
+  let bestErr = pad;
+  for (const rock of rocks) {
+    const dx = wx - rock.x;
+    const dy = wy - rock.y;
+    const dist = Math.hypot(dx, dy);
+    const angle = Math.atan2(dy, dx);
+    const err = Math.abs(dist - rockRadiusAt(rock, angle));
+    if (err <= bestErr) {
+      bestErr = err;
+      best = { id: rock.id, angle };
+    }
+  }
+  return best;
 }

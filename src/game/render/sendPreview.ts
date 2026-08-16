@@ -92,7 +92,7 @@ export class SendPreview {
       alpha: valid ? 0.7 : 0.25,
     });
 
-    this.label.text = String(count);
+    this.label.text = count <= 0 ? '0' : `${count} seedling${count === 1 ? '' : 's'}`;
     this.label.position.set(cx, cy - 12);
     this.label.style.fill = valid ? this.scene.ink : this.scene.inkSoft;
     this.label.alpha = valid ? 0.95 : 0.4;

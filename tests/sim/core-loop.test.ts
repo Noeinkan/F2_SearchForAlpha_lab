@@ -11,6 +11,7 @@ import {
   shortestPath,
 } from '../../src/game/sim/graph';
 import { createCoreLoopWorld } from '../../src/game/sim/layout';
+import { rockRadiusAt } from '../../src/game/sim/rock';
 import {
   ENERGY_TREE_MIN_ENERGY,
   LOCAL_SEEDLING_CAP,
@@ -23,6 +24,7 @@ import {
   countOrbitingSeedlings,
   createEmptyWorld,
   createSandboxWorld,
+  slotPosition,
   tick,
 } from '../../src/game/sim/world';
 
@@ -135,6 +137,36 @@ describe('plant', () => {
     expect(countOrbitingSeedlings(world, rock.id, 'player')).toBeGreaterThanOrEqual(2);
   });
 
+  it('skims the crust then dips at the slot instead of cutting through', () => {
+    const world = createEmptyWorld(24);
+    const rock = addAsteroid(world, {
+      x: 0,
+      y: 0,
+      travelRadius: 200,
+      owner: 'player',
+    });
+    debugSpawnOrbiters(world, rock.id, 'player', 12);
+    expect(plantDyson(world, rock.id, 0, 'player').ok).toBe(true);
+    const slot = slotPosition(rock, 0);
+    const slotAngle = slot.angle;
+    for (let i = 0; i < 60 * 10 && world.pendingPlants.size > 0; i++) {
+      tick(world, 1 / 60);
+      for (const s of world.seedlings.values()) {
+        if (s.state !== 'plant' || (s.wait ?? 0) > 0) continue;
+        const dist = Math.hypot(s.x - rock.x, s.y - rock.y);
+        const ang = Math.atan2(s.y - rock.y, s.x - rock.x);
+        let err = ang - slotAngle;
+        while (err > Math.PI) err -= Math.PI * 2;
+        while (err < -Math.PI) err += Math.PI * 2;
+        if (Math.abs(err) > 0.28) {
+          expect(dist).toBeGreaterThan(rockRadiusAt(rock, ang) - 2);
+        }
+      }
+    }
+    expect(world.trees.size).toBe(1);
+    expect(world.pendingPlants.size).toBe(0);
+  });
+
   it('fails below 10 or on occupied slot', () => {
     const world = createEmptyWorld(21);
     const rock = addAsteroid(world, {
@@ -165,6 +197,50 @@ describe('plant', () => {
     expect(plantTree(world, rock.id, 0, 'player', 'energy').ok).toBe(false);
     rock.stats.energy = ENERGY_TREE_MIN_ENERGY;
     expect(plantTree(world, rock.id, 0, 'player', 'energy').ok).toBe(true);
+  });
+
+  it('plants at a chosen crust angle', () => {
+    const world = createEmptyWorld(25);
+    const rock = addAsteroid(world, {
+      x: 0,
+      y: 0,
+      travelRadius: 200,
+      owner: 'player',
+    });
+    debugSpawnOrbiters(world, rock.id, 'player', 12);
+    const angle = 0.85;
+    expect(plantTree(world, rock.id, 0, 'player', 'dyson', angle).ok).toBe(
+      true,
+    );
+    const pending = [...world.pendingPlants.values()][0]!;
+    expect(pending.plantAngle).toBe(angle);
+    const target = slotPosition(rock, 0, angle);
+    for (const s of world.seedlings.values()) {
+      if (s.state !== 'plant') continue;
+      expect(s.plantTargetX).toBeCloseTo(target.x, 5);
+      expect(s.plantTargetY).toBeCloseTo(target.y, 5);
+    }
+    for (let i = 0; i < 60 * 8 && world.pendingPlants.size > 0; i++) {
+      tick(world, 1 / 60);
+    }
+    const tree = [...world.trees.values()][0]!;
+    expect(tree.plantAngle).toBe(angle);
+  });
+
+  it('rejects a crust plant too close to another tree', () => {
+    const world = createEmptyWorld(26);
+    const rock = addAsteroid(world, {
+      x: 0,
+      y: 0,
+      travelRadius: 200,
+      owner: 'player',
+      treeSlots: 4,
+    });
+    debugSpawnOrbiters(world, rock.id, 'player', 24);
+    expect(plantTree(world, rock.id, 0, 'player', 'dyson', 0).ok).toBe(true);
+    expect(plantTree(world, rock.id, 1, 'player', 'dyson', 0.05).ok).toBe(
+      false,
+    );
   });
 
   it('blocks planting while wild defenders remain', () => {

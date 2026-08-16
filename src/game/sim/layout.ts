@@ -5,12 +5,19 @@ import { mulberry32, range, rangeInt, type Rng } from './rng';
 import {
   ENERGY_TREE_MIN_ENERGY,
   HOME_RADIUS_SCALE,
+  PLAYER_START_SEEDLINGS,
   ROCK_GAP,
   ROCK_RADIUS_MAX,
   ROCK_RADIUS_MIN,
   type World,
 } from './types';
-import { addAsteroid, allocId, computeTreeCoreFeed, createEmptyWorld, spawnOrbiters } from './world';
+import {
+  addAsteroid,
+  allocId,
+  computeTreeCoreFeed,
+  createEmptyWorld,
+  spawnOrbiters,
+} from './world';
 
 /**
  * 5 connected asteroids. Home at origin with one pre-planted Dyson.
@@ -70,13 +77,13 @@ function tryCoreLayout(seed: number, forceConnected = false): World {
     slotIndex: 0,
     kind: 'dyson',
     seed: homeTreeSeed,
-    maturity: 0.62,
+    maturity: 0.4,
     faction: 'player',
     spawnAccumulator: 0,
     coreFeed: computeTreeCoreFeed(home, homeTreeSeed, 0, 'dyson'),
   });
 
-  spawnOrbiters(world, home.id, 'player', 8);
+  spawnOrbiters(world, home.id, 'player', PLAYER_START_SEEDLINGS);
 
   const roles = ['empty', 'wild', 'energy', 'enemy'] as const;
   const angles = [0.2, 1.4, 2.6, 4.0];
@@ -116,19 +123,19 @@ function tryCoreLayout(seed: number, forceConnected = false): World {
     } else if (role === 'enemy') {
       world.aiHomeId = rock.id;
       const treeId = allocId(world);
-      const treeSeed = (seed ^ 0xc2b2ae35) >>> 0;
+      const enemyTreeSeed = (seed ^ 0xc2b2ae35) >>> 0;
       world.trees.set(treeId, {
         id: treeId,
         asteroidId: rock.id,
         slotIndex: 0,
         kind: 'dyson',
-        seed: treeSeed,
-        maturity: 0.7,
+        seed: enemyTreeSeed,
+        maturity: 0.45,
         faction: 'enemy',
         spawnAccumulator: 0,
-        coreFeed: computeTreeCoreFeed(rock, treeSeed, 0, 'dyson'),
+        coreFeed: computeTreeCoreFeed(rock, enemyTreeSeed, 0, 'dyson'),
       });
-      spawnOrbiters(world, rock.id, 'enemy', 9);
+      spawnOrbiters(world, rock.id, 'enemy', 12);
     }
   }
 
@@ -282,34 +289,34 @@ function trySkirmishLayout(seed: number, forceConnected: boolean): World | null 
 
     if (role === 'home') {
       const treeId = allocId(world);
-      const treeSeed = (seed ^ 0x85ebca6b) >>> 0;
+      const homeTreeSeed = (seed ^ 0x85ebca6b) >>> 0;
       world.trees.set(treeId, {
         id: treeId,
         asteroidId: rock.id,
         slotIndex: 0,
         kind: 'dyson',
-        seed: treeSeed,
-        maturity: 0.62,
+        seed: homeTreeSeed,
+        maturity: 0.4,
         faction: 'player',
         spawnAccumulator: 0,
-        coreFeed: computeTreeCoreFeed(rock, treeSeed, 0, 'dyson'),
+        coreFeed: computeTreeCoreFeed(rock, homeTreeSeed, 0, 'dyson'),
       });
-      spawnOrbiters(world, rock.id, 'player', 8);
+      spawnOrbiters(world, rock.id, 'player', PLAYER_START_SEEDLINGS);
     } else if (role === 'enemy') {
       const treeId = allocId(world);
-      const treeSeed = (seed ^ (0xc2b2ae35 + i)) >>> 0;
-      world.trees.set(treeId, {
-        id: treeId,
-        asteroidId: rock.id,
-        slotIndex: 0,
-        kind: 'dyson',
-        seed: treeSeed,
-        maturity: 0.7,
-        faction: 'enemy',
+        const enemyTreeSeed = (seed ^ (0xc2b2ae35 + i)) >>> 0;
+        world.trees.set(treeId, {
+          id: treeId,
+          asteroidId: rock.id,
+          slotIndex: 0,
+          kind: 'dyson',
+          seed: enemyTreeSeed,
+          maturity: 0.45,
+          faction: 'enemy',
         spawnAccumulator: 0,
-        coreFeed: computeTreeCoreFeed(rock, treeSeed, 0, 'dyson'),
+        coreFeed: computeTreeCoreFeed(rock, enemyTreeSeed, 0, 'dyson'),
       });
-      spawnOrbiters(world, rock.id, 'enemy', 8 + rangeInt(rng, 0, 2));
+      spawnOrbiters(world, rock.id, 'enemy', 10 + rangeInt(rng, 0, 4));
     } else if (role === 'energy') {
       spawnOrbiters(world, rock.id, 'grey', 5 + rangeInt(rng, 0, 3));
     } else if (role === 'wild') {

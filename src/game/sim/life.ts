@@ -9,9 +9,11 @@
 /** Angular reach (radians) of the grass front from the planting scar. */
 export function lifeReach(maturity: number): number {
   const m = Math.min(1, Math.max(0, maturity));
-  const delayed = Math.max(0, (m - 0.22) / 0.78);
-  const ease = Math.pow(delayed, 4.8);
-  return 0.12 + 0.9 * ease;
+  const delayed = Math.max(0, (m - 0.18) / 0.82);
+  // Gentler curve so the sward visibly creeps outward from mid-growth on,
+  // instead of waiting until the canopy is fully mature.
+  const ease = Math.pow(delayed, 2.8);
+  return 0.16 + 1.05 * ease;
 }
 
 export function lifeSpread(
@@ -46,17 +48,18 @@ export function lifeProximity(angleDelta: number): number {
 /** Length/width scale from proximity: tall at origin, stubby far away. */
 export function lifeLushScale(proximity: number): number {
   const p = Math.min(1, Math.max(0, proximity));
-  return 0.1 + 1.7 * Math.pow(p, 1.55);
+  return 0.18 + 1.85 * Math.pow(p, 1.35);
 }
 
 /**
  * Fraction of potential blades that should show.
- * Near the tree almost every bit draws; the far rim stays thin.
+ * Near the tree almost every bit draws; the far rim keeps a generous
+ * floor so the sward reads as continuous, only thinning to its outer edge.
  */
 export function lifeDensity(proximity: number, grow: number): number {
   const p = Math.min(1, Math.max(0, proximity));
   const g = Math.min(1, Math.max(0, grow));
-  return g * (0.52 + 0.48 * Math.pow(p, 0.55));
+  return g * (0.78 + 0.22 * Math.pow(p, 0.5));
 }
 
 export function shortestAngle(from: number, to: number): number {

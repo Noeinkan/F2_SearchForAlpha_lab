@@ -3,6 +3,7 @@ import {
   commandReasonCopy,
   factionLabel,
   FIRST_RUN_STEPS,
+  inspectorStatLabel,
   treeKindLockReason,
 } from '../../src/game/hud/copy';
 import {
@@ -24,12 +25,34 @@ describe('factionLabel', () => {
   });
 });
 
+describe('inspectorStatLabel', () => {
+  it('uses short player-facing labels without grey', () => {
+    expect(inspectorStatLabel('seedlings')).toBe('Seedlings');
+    expect(inspectorStatLabel('sentinels')).toBe('Sentinels');
+    expect(inspectorStatLabel('minerals')).toBe('Minerals');
+    expect(inspectorStatLabel('energy')).toBe('Energy');
+    expect(inspectorStatLabel('shield')).toBe('Shield');
+    expect(inspectorStatLabel('trees')).toBe('Trees');
+    for (const key of [
+      'seedlings',
+      'sentinels',
+      'minerals',
+      'energy',
+      'shield',
+      'trees',
+    ] as const) {
+      expect(inspectorStatLabel(key).toLowerCase()).not.toContain('grey');
+    }
+  });
+});
+
 describe('FIRST_RUN_STEPS', () => {
   it('uses tap/drag language that works for touch and mouse', () => {
     expect(FIRST_RUN_STEPS).toHaveLength(3);
     expect(FIRST_RUN_STEPS[0]).toMatch(/Tap a rock/i);
     expect(FIRST_RUN_STEPS[1]).toMatch(/Drag/i);
-    expect(FIRST_RUN_STEPS[2]).toMatch(/Tap a glowing slot/i);
+    expect(FIRST_RUN_STEPS[2]).toMatch(/crust/i);
+    expect(FIRST_RUN_STEPS[2]).toMatch(/plant/i);
   });
 });
 
@@ -43,6 +66,7 @@ describe('commandReasonCopy', () => {
     expect(commandReasonCopy('need energy-rich rock')).toBe(
       'Not energy-rich enough for Energy trees',
     );
+    expect(commandReasonCopy('too close')).toBe('Too close to another tree');
   });
 
   it('passes through unknown reasons', () => {

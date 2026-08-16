@@ -1,23 +1,24 @@
 ﻿import { Container, Graphics } from 'pixi.js';
 import {
   buildAdultTree,
+  FLOWER_POLLEN_OPEN,
   growTree,
   rootFeedActive,
+  treeFlowersWorld,
   type TreeGeom,
   type TreeStroke,
 } from '../sim/lsystem';
 import {
-  ROCK_SURFACE_INSET,
   TREE_BURN_SECONDS,
   treeVisualScale,
   type Asteroid,
+  type Seedling,
   type Tree,
   type TreeKind,
 } from '../sim/types';
-import { slotPolar } from '../sim/rock';
-import { slotPosition } from '../sim/world';
+import { plantPose } from '../sim/world';
 import {
-  floraEquals,
+  bucketHue,
   floraPalette,
   mixHex,
   sapRiseU,
@@ -26,47 +27,83 @@ import {
   type FloraPalette,
   type ScenePalette,
 } from './palette';
+import { paintCalyx, paintSeedHull } from './seedlingPaint';
+
+const TREE_REDRAW_INTERVAL = 1 / 30;
+
+function seedlingDepartureSignature(sprouts: readonly Seedling[]): number {
+  let h = 0;
+  for (let i = 0; i < sprouts.length; i++) {
+    const s = sprouts[i];
+    if (s.state !== 'sprout') continue;
+    h = (Math.imul(h, 31) + s.id) | 0;
+  }
+  return h;
+}
 
 export class TreeView {
-  /** Single plant container - roots, wood, then sap. Above rock. */
-  readonly root = new Container();
+  readonly canopy = new Container();
+  readonly roots = new Container();
   private wood = new Graphics();
   private wash = new Graphics();
+  private blooms = new Graphics();
   private rootGfx = new Graphics();
-  private sap = new Graphics();
-  private lastMaturity = -1;
+  private rootSap = new Graphics();
+  private woodSap = new Graphics();
+  private sapPainted = false;
   private treeId: number;
   private treeSeed: number;
   private kind: TreeKind;
   private pal: FloraPalette;
+  private scene: ScenePalette;
   private swayPhase: number;
   private baseRot = 0;
   private adult: TreeGeom | null = null;
   private adultKey = '';
   private grown: TreeGeom | null = null;
   private coreY = 0;
+  private bloomDescriptors: {
+    faction: import('../sim/types').FactionId;
+    facing: number;
+    hasSeedling: boolean;
+  }[] = [];
+  private lastHueBucket = -1;
+  private lastTheme: ScenePalette['theme'] | undefined;
+  private lastRedrawTime = -Infinity;
+  private lastRedrawMaturity = 0;
+  private needsRedraw = true;
+  private lastDepartureSignature = -1;
 
   constructor(tree: Tree, asteroid: Asteroid, scene: ScenePalette) {
     this.treeId = tree.id;
     this.treeSeed = tree.seed;
     this.kind = tree.kind;
     this.pal = floraPalette(asteroid.stats, asteroid.seed, scene);
+    this.scene = scene;
     this.swayPhase = (tree.seed % 1000) * 0.017;
-    this.sap.blendMode = 'add';
-    this.root.addChild(this.rootGfx, this.wash, this.wood, this.sap);
+    this.rootSap.blendMode = 'add';
+    this.woodSap.blendMode = 'add';
+    this.canopy.addChild(this.wash, this.wood, this.blooms, this.woodSap);
+    this.roots.addChild(this.rootGfx, this.rootSap);
     this.layout(tree, asteroid);
     this.redraw(tree, asteroid);
+    this.needsRedraw = false;
+    this.lastRedrawTime = performance.now() / 1000;
+    this.lastRedrawMaturity = tree.maturity;
   }
 
   destroy(): void {
-    this.root.destroy({ children: true });
+    this.canopy.destroy({ children: true });
+    this.roots.destroy({ children: true });
   }
 
   private layout(tree: Tree, asteroid: Asteroid): void {
-    const pos = slotPosition(asteroid, tree.slotIndex);
+    const pos = plantPose(asteroid, tree.slotIndex, tree.plantAngle);
     this.baseRot = pos.angle + Math.PI / 2;
-    this.root.position.set(pos.x, pos.y);
-    this.root.rotation = this.baseRot;
+    this.canopy.position.set(pos.x, pos.y);
+    this.canopy.rotation = this.baseRot;
+    this.roots.position.set(pos.x, pos.y);
+    this.roots.rotation = this.baseRot;
   }
 
   update(tree: Tree, asteroid: Asteroid): void {
@@ -79,89 +116,206 @@ export class TreeView {
         Math.sin(t * 1.08 + this.swayPhase * 1.37) * 0.022 +
         Math.sin(t * 1.84 + this.swayPhase * 0.71) * 0.01) *
       (1 + young * 1.35);
-    this.root.rotation = this.baseRot + breeze;
-    if (tree.maturity !== this.lastMaturity) {
-      this.redraw(tree, asteroid);
+    this.canopy.rotation = this.baseRot + breeze;
+    this.roots.rotation = this.baseRot;
+    this.canopy.scale.set(1 + Math.sin(t * 0.85 + this.swayPhase) * 0.014);
+    // Throttle the geometry rebuild to ~30 Hz and only retrigger if
+    // maturity moved enough that the per-frame interpolation would read
+    // as a jump. The leaf transform above keeps the motion smooth at the
+    // full 60 Hz redraw.
+    const matureDelta = Math.abs(tree.maturity - this.lastRedrawMaturity);
+    if (
+      this.needsRedraw ||
+      t - this.lastRedrawTime >= TREE_REDRAW_INTERVAL ||
+      matureDelta > 0.004
+    ) {
+      this.redraw(tree, asteroid, t);
+      this.needsRedraw = false;
+      this.lastRedrawTime = t;
+      this.lastRedrawMaturity = tree.maturity;
     }
-    this.paintSap(tree, t);
 
     const burn =
       asteroid.burnTimer > 0
         ? Math.min(1, asteroid.burnTimer / TREE_BURN_SECONDS)
         : 0;
-    this.root.alpha = 1 - burn * 0.65;
+    const alpha = 1 - burn * 0.65;
+    this.canopy.alpha = alpha;
+    this.roots.alpha = alpha;
   }
 
   retheme(tree: Tree, asteroid: Asteroid, scene: ScenePalette): void {
-    const next = floraPalette(asteroid.stats, asteroid.seed, scene);
-    if (floraEquals(this.pal, next) && this.lastMaturity === tree.maturity) {
+    const bucket = bucketHue(scene.hue);
+    const themeChanged = scene.theme !== undefined && scene.theme !== this.lastTheme;
+    if (bucket === this.lastHueBucket && !themeChanged) {
+      this.scene = scene;
       return;
     }
-    this.pal = next;
+    this.lastHueBucket = bucket;
+    this.lastTheme = scene.theme;
+    this.pal = floraPalette(asteroid.stats, asteroid.seed, scene);
+    this.scene = scene;
     this.redraw(tree, asteroid);
   }
 
+  /**
+   * Mark which blooms are currently occupied by a sprout that hasn't left
+   * the tree yet. The bloom with index `i` (matching `geom.flowers` order)
+   * skips redrawing the hull, since the seedling sprite is already flying
+   * that exact same hull from the same world coordinates.
+   */
+  setDepartingSeedlings(
+    sprouts: readonly Seedling[],
+    tree: Tree,
+    asteroid: Asteroid,
+  ): void {
+    if (this.bloomDescriptors.length === 0) return;
+    const signature = seedlingDepartureSignature(sprouts);
+    if (signature === this.lastDepartureSignature) return;
+    this.lastDepartureSignature = signature;
+    const scale = treeVisualScale(asteroid.radius, asteroid.seed);
+    const pose = plantPose(asteroid, tree.slotIndex, tree.plantAngle);
+    const flowers = treeFlowersWorld(
+      tree.seed,
+      tree.maturity,
+      scale,
+      pose.x,
+      pose.y,
+      pose.angle + Math.PI / 2,
+      pose.dist,
+      pose.surfaceY,
+      tree.kind,
+      FLOWER_POLLEN_OPEN,
+    );
+    const tol = 5;
+    let changed = false;
+    for (let i = 0; i < this.bloomDescriptors.length; i++) {
+      const desc = this.bloomDescriptors[i]!;
+      const flower = flowers[i];
+      const wasOcc = desc.hasSeedling;
+      let isOcc = false;
+      if (flower) {
+        for (const sp of sprouts) {
+          if (sp.state !== 'sprout') continue;
+          if (
+            Math.hypot(sp.x - flower.x, sp.y - flower.y) < tol &&
+            Math.hypot(sp.x - flower.x, sp.y - flower.y) > 0.01
+          ) {
+            // Sprout en route, bloom is open.
+            isOcc = true;
+            break;
+          }
+        }
+      }
+      if (wasOcc !== isOcc) {
+        desc.hasSeedling = isOcc;
+        changed = true;
+      }
+    }
+    if (changed) this.repaintBlooms();
+  }
+
+  private repaintBlooms(): void {
+    if (!this.grown) return;
+    this.blooms.clear();
+    for (let i = 0; i < this.grown.flowers.length; i++) {
+      const f = this.grown.flowers[i]!;
+      const desc = this.bloomDescriptors[i];
+      if (!desc) continue;
+      const facing = f.angle;
+      this.blooms.save();
+      this.blooms.position.set(f.x, f.y);
+      this.blooms.rotation = facing;
+      drawBloom(
+        this.blooms,
+        0,
+        0,
+        bloomSize(f.size, this.kind),
+        this.pal,
+        this.scene,
+        this.kind,
+        this.treeSeed,
+        i,
+        desc.faction,
+        desc.hasSeedling,
+      );
+      this.blooms.restore();
+    }
+    // Sap is repainted every frame now, so nothing extra to schedule here —
+    // the next update() tick will redraw the sap halo over the new blooms.
+  }
+
   private adultGeom(tree: Tree, asteroid: Asteroid): TreeGeom {
-    const polar = slotPolar(asteroid, tree.slotIndex);
-    const key = `${this.treeSeed}:${asteroid.radius}:${polar.dist.toFixed(2)}:${this.kind}`;
+    const polar = plantPose(asteroid, tree.slotIndex, tree.plantAngle);
+    const key = `${this.treeSeed}:${asteroid.radius}:${polar.dist.toFixed(2)}:${polar.surfaceY.toFixed(2)}:${this.kind}`;
     if (this.adult && this.adultKey === key) return this.adult;
     const scale = treeVisualScale(asteroid.radius, asteroid.seed);
-    const surfaceY = -asteroid.radius * ROCK_SURFACE_INSET;
     this.adult = buildAdultTree(
       this.treeSeed,
       scale,
       polar.dist,
-      surfaceY,
+      polar.surfaceY,
       this.kind,
     );
     this.adultKey = key;
     return this.adult;
   }
 
-  private redraw(tree: Tree, asteroid: Asteroid): void {
-    this.lastMaturity = tree.maturity;
-    const polar = slotPolar(asteroid, tree.slotIndex);
-    this.coreY = polar.dist;
+  private redraw(tree: Tree, asteroid: Asteroid, time: number = performance.now() / 1000): void {
+    const pose = plantPose(asteroid, tree.slotIndex, tree.plantAngle);
+    this.coreY = pose.dist;
     const geom = growTree(this.adultGeom(tree, asteroid), tree.maturity);
     this.grown = geom;
     const wood = this.wood;
     const wash = this.wash;
+    const blooms = this.blooms;
     const rootGfx = this.rootGfx;
     wood.clear();
     wash.clear();
+    blooms.clear();
     rootGfx.clear();
 
     const c = geom.collar;
-    const join = mixHex(this.pal.wood, this.pal.root, 0.5);
-    const joinSoft = mixHex(this.pal.wood, this.pal.rootSoft, 0.48);
+    const coreY = this.coreY;
+    const pal = this.pal;
+    const wellSpan = Math.max(1, coreY - geom.surfaceY);
+    const wellR = Math.max(12, coreY * 0.18);
+    const canopySpine = longestFromCollar(geom.strokes, c, false);
+    const inwardSpine = longestFromCollar(geom.strokes, c, true);
+    paintThroughCrust(wood, canopySpine, inwardSpine, pal, false);
+    paintThroughCrust(rootGfx, canopySpine, inwardSpine, pal, true);
 
-    const wellR = Math.max(12, this.coreY * 0.18);
-    for (const r of geom.roots) {
-      // Dark understroke so filaments still read on the bright core.
+    const join = mixHex(pal.wood, pal.root, 0.5);
+    const joinSoft = mixHex(pal.wood, pal.rootSoft, 0.48);
+    for (const r of geom.strokes) {
+      if (r.kind !== 'root') continue;
       ribbon(
         rootGfx,
         r.points,
         r.widthStart * 1.2,
         r.widthEnd * 1.2,
-        mixHex(this.pal.outline, join, 0.5),
+        mixHex(pal.outline, join, 0.5),
         0.7,
-        1,
-        this.pal.outline,
+        2,
+        pal.outline,
         0.18,
         0.78,
+        false,
+        true,
       );
-      // Soft bloom â€” hold join longer so the crown matches the trunk base.
       ribbon(
         rootGfx,
         r.points,
-        r.widthStart * 2.4 + 2.8,
-        r.widthEnd * 2.4 + 2.0,
+        r.widthStart * 1.85 + 1.4,
+        r.widthEnd * 1.85 + 1.0,
         joinSoft,
-        0.4,
-        1,
-        this.pal.rootSoft,
+        0.32,
+        2,
+        pal.rootSoft,
         0.2,
         0.82,
+        false,
+        true,
       );
       ribbon(
         rootGfx,
@@ -170,26 +324,30 @@ export class TreeView {
         r.widthEnd,
         join,
         1,
-        1,
-        this.pal.root,
+        2,
+        pal.root,
         0.22,
         0.84,
+        false,
+        true,
       );
       ribbon(
         rootGfx,
         r.points,
         Math.max(0.6, r.widthStart * 0.42),
         Math.max(0.45, r.widthEnd * 0.42),
-        mixHex(join, this.pal.coreHot, 0.3),
+        mixHex(join, pal.coreHot, 0.3),
         0.85,
-        1,
-        this.pal.coreHot,
+        2,
+        pal.coreHot,
         0.24,
         0.86,
+        false,
+        true,
       );
       const tip = r.points[r.points.length - 1];
       if (!tip) continue;
-      const d = Math.hypot(tip.x, tip.y - this.coreY);
+      const d = Math.hypot(tip.x, tip.y - coreY);
       const near = d < wellR * 1.6;
       const glow = near ? 1 - d / (wellR * 1.6) : 0.2;
       rootGfx.circle(
@@ -198,14 +356,28 @@ export class TreeView {
         (2.2 + glow * 3.2) * (0.75 + tree.maturity * 0.35),
       );
       rootGfx.fill({
-        color: near ? this.pal.core : this.pal.rootSoft,
+        color: near ? pal.core : pal.rootSoft,
         alpha: 0.22 + glow * 0.4,
       });
       rootGfx.circle(tip.x, tip.y, 0.85 + glow * 1.1);
       rootGfx.fill({
-        color: near ? this.pal.coreWhite : this.pal.root,
+        color: near ? pal.coreWhite : pal.root,
         alpha: 0.55 + glow * 0.35,
       });
+    }
+
+    for (const s of geom.strokes) {
+      if (s.kind === 'tuft' || s.kind === 'grass' || s.kind === 'root') continue;
+      const tip = s.points[s.points.length - 1];
+      const isIn = tip != null && tip.y > geom.surfaceY + 2;
+      paintWoodBands(
+        isIn ? rootGfx : wood,
+        s,
+        pal,
+        isIn,
+        geom.surfaceY,
+        wellSpan,
+      );
     }
 
     for (const b of geom.blobs) {
@@ -232,51 +404,6 @@ export class TreeView {
       );
     }
 
-    for (const s of geom.strokes) {
-      if (s.kind === 'tuft' || s.kind === 'grass') continue;
-      const isTrunk = s.kind === 'wood';
-      const color = s.kind === 'twig' ? this.pal.tuft : this.pal.wood;
-      const startColor = isTrunk ? join : color;
-      ribbon(
-        wood,
-        s.points,
-        s.widthStart + 1.15,
-        s.widthEnd + 0.6,
-        startColor,
-        0.2,
-        2,
-        color,
-        isTrunk ? 0.18 : 0,
-        isTrunk ? 0.72 : 1,
-      );
-      ribbon(
-        wood,
-        s.points,
-        s.widthStart,
-        s.widthEnd,
-        startColor,
-        0.96,
-        2,
-        color,
-        isTrunk ? 0.2 : 0,
-        isTrunk ? 0.74 : 1,
-      );
-      if (isTrunk) {
-        ribbon(
-          wood,
-          s.points,
-          s.widthStart * 0.42,
-          s.widthEnd * 0.34,
-          mixHex(join, this.pal.tuft, 0.35),
-          0.26,
-          2,
-          this.pal.tuft,
-          0.22,
-          0.76,
-        );
-      }
-    }
-
     for (const leaf of geom.leaves) {
       drawLeaf(
         wood,
@@ -290,20 +417,40 @@ export class TreeView {
       );
     }
 
-    for (const f of geom.flowers) {
-      const size =
-        this.kind === 'energy'
-          ? f.size * 1.35
-          : this.kind === 'defense'
-            ? f.size * 0.78
-            : f.size;
-      drawBloom(wood, f.x, f.y, f.angle, size, this.pal, this.kind);
+    this.bloomDescriptors = geom.flowers.map((f) => ({
+      faction: tree.faction,
+      facing: f.angle,
+      hasSeedling: false,
+    }));
+    for (let i = 0; i < geom.flowers.length; i++) {
+      const f = geom.flowers[i]!;
+      const desc = this.bloomDescriptors[i]!;
+      blooms.save();
+      blooms.position.set(f.x, f.y);
+      blooms.rotation = f.angle;
+      drawBloom(
+        blooms,
+        0,
+        0,
+        bloomSize(f.size, this.kind),
+        this.pal,
+        this.scene,
+        this.kind,
+        this.treeSeed,
+        i,
+        desc.faction,
+        desc.hasSeedling,
+      );
+      blooms.restore();
     }
 
     const scale = treeVisualScale(asteroid.radius, asteroid.seed);
     if (this.kind === 'energy') {
       wash.ellipse(c.x, c.y - 14 * scale, 22 * scale, 16 * scale);
-      wash.fill({ color: this.pal.core, alpha: 0.12 * Math.min(1, tree.maturity * 1.4) });
+      wash.fill({
+        color: this.pal.core,
+        alpha: 0.12 * Math.min(1, tree.maturity * 1.4),
+      });
     }
     if (this.kind === 'defense') {
       wood.ellipse(c.x, c.y - 10 * scale, 18 * scale, 10 * scale);
@@ -314,19 +461,30 @@ export class TreeView {
       });
     }
 
-    this.paintSap(tree, performance.now() / 1000);
+    this.paintSap(tree, time);
   }
 
   private paintSap(tree: Tree, time: number): void {
-    const sap = this.sap;
-    sap.clear();
+    const rootSap = this.rootSap;
+    const woodSap = this.woodSap;
     const geom = this.grown;
     if (!geom) return;
 
     let feed = rootFeedActive(tree.maturity, tree.coreFeed);
     if (this.kind === 'energy') feed = Math.min(1, feed * 1.25);
     if (this.kind === 'defense') feed = feed * 0.85;
-    if (feed <= 0.02) return;
+    if (feed <= 0.02) {
+      if (this.sapPainted) {
+        rootSap.clear();
+        woodSap.clear();
+        this.sapPainted = false;
+      }
+      return;
+    }
+
+    rootSap.clear();
+    woodSap.clear();
+    this.sapPainted = true;
 
     const u = sapRiseU(time, tree.seed);
     const breathe = 0.88 + 0.12 * Math.sin(time * 1.41 + this.swayPhase);
@@ -337,59 +495,71 @@ export class TreeView {
     const twig = sapStage(u, SAP_WINDOW.twig[0], SAP_WINDOW.twig[1]);
     const grass = sapStage(u, SAP_WINDOW.grass[0], SAP_WINDOW.grass[1], 0.2);
 
-    // Nucleus â€” sap launches from here.
+    // Nucleus — sap launches from here. Stacked soft rings instead of
+    // hard concentric circles so the silhouette never reads as a disc.
     const wellR = Math.max(14, this.coreY * 0.2);
     const launch = Math.max(core.glow, roots.glow * 0.45) * strength;
     if (launch > 0.02) {
       const throb = 1 + core.progress * 0.22;
-      sap.circle(0, this.coreY, wellR * (1.85 + 0.7 * throb) * (0.75 + launch));
-      sap.fill({ color: this.pal.core, alpha: 0.16 * launch });
-      sap.circle(0, this.coreY, wellR * 1.05 * throb);
-      sap.fill({ color: this.pal.coreHot, alpha: 0.22 * launch });
-      sap.circle(0, this.coreY, wellR * 0.48 * throb);
-      sap.fill({ color: this.pal.coreWhite, alpha: 0.18 * launch });
+      const r = wellR * (1.85 + 0.7 * throb) * (0.75 + launch);
+      paintSoftRing(rootSap, 0, this.coreY, r, -1, this.pal.core, 0.16 * launch, 5);
+      paintSoftRing(
+        rootSap,
+        0,
+        this.coreY,
+        wellR * 1.05 * throb,
+        -1,
+        this.pal.coreHot,
+        0.22 * launch,
+        4,
+      );
+      paintSoftRing(
+        rootSap,
+        0,
+        this.coreY,
+        wellR * 0.48 * throb,
+        -1,
+        this.pal.coreWhite,
+        0.18 * launch,
+        3,
+      );
     }
 
-    // Roots: stored collar â†’ core; reverse so sap rises toward the surface.
+    // Roots: stored collar → core; reverse so sap rises toward the surface.
     if (roots.glow > 0.02) {
-      for (const r of geom.roots) {
-        paintSapStroke(sap, r, roots, strength, this.pal, true);
+      for (const r of geom.strokes) {
+        if (r.kind !== 'root') continue;
+        paintSapStroke(rootSap, r, roots, strength, this.pal, true);
       }
-    }
-
-    // Soft collar pulse as sap crosses into the trunk.
-    const seam = Math.max(trunk.glow * 0.85, roots.rising ? 0 : roots.glow);
-    if (seam > 0.04) {
-      const c = geom.collar;
-      const k = seam * strength;
-      sap.circle(c.x, c.y, c.rx * (1.8 + 0.8 * k));
-      sap.fill({ color: this.pal.core, alpha: 0.12 * k });
     }
 
     for (const s of geom.strokes) {
+      const tip = s.points[s.points.length - 1];
+      const inward = tip != null && tip.y > geom.surfaceY + 2;
+      const layer = inward ? rootSap : woodSap;
       if (s.kind === 'wood' && trunk.glow > 0.02) {
-        paintSapStroke(sap, s, trunk, strength, this.pal, false);
+        paintSapStroke(layer, s, trunk, strength, this.pal, false);
         continue;
       }
-      // Branches fade as sap leaves the trunk â€” only a short haze at the join.
+      // Branches fade as sap leaves the trunk — only a short haze at the join.
       if (s.kind === 'twig' && twig.glow > 0.02) {
-        paintSapStroke(sap, s, twig, strength * 0.22, this.pal, false, 0.28);
+        paintSapStroke(layer, s, twig, strength * 0.22, this.pal, false, 0.28);
         continue;
       }
       if ((s.kind === 'grass' || s.kind === 'tuft') && grass.glow > 0.02) {
-        paintSapStroke(sap, s, grass, strength * 0.8, this.pal, false);
+        paintSapStroke(woodSap, s, grass, strength * 0.8, this.pal, false);
       }
     }
 
-    // Small leftover glow in the blooms once sap would have reached the canopy.
-    if (twig.glow > 0.03) {
+    // Continuous ambient glow over the canopy — keeps the transition
+    // between trunk and twig stages luminous instead of snapping dark.
+    const ambient = trunk.glow * 0.18 + twig.glow * 0.42;
+    if (ambient > 0.02) {
       for (const f of geom.flowers) {
-        const k = twig.glow * strength * 0.45;
-        const r = f.size * (1.15 + twig.progress * 0.35);
-        sap.circle(f.x, f.y, r * 2.1);
-        sap.fill({ color: this.pal.core, alpha: 0.12 * k });
-        sap.circle(f.x, f.y, r * 0.85);
-        sap.fill({ color: this.pal.coreHot, alpha: 0.16 * k });
+        const k = ambient * strength;
+        const r = f.size * (1.15 + Math.max(trunk.progress, twig.progress) * 0.35);
+        paintSoftRing(woodSap, f.x, f.y, r * 2.1, -1, this.pal.core, 0.12 * k, 5);
+        paintSoftRing(woodSap, f.x, f.y, r * 0.85, -1, this.pal.coreHot, 0.16 * k, 4);
       }
     }
   }
@@ -457,6 +627,38 @@ function paintSapStroke(
   }
 }
 
+/**
+ * Soft-edged glow approximated by stacked concentric shapes of decreasing
+ * alpha. Avoids the hard silhouette a single `g.fill({color, alpha})` would
+ * leave at low alpha, especially over additive blending. Pass `ry < 0` to
+ * use a circle of radius `r`; otherwise the rings are ellipses with axes
+ * (r, ry).
+ */
+function paintSoftRing(
+  g: Graphics,
+  x: number,
+  y: number,
+  r: number,
+  ry: number,
+  color: number,
+  alpha: number,
+  rings: number,
+): void {
+  if (alpha <= 0.002 || r <= 0.05) return;
+  const n = Math.max(2, rings | 0);
+  const useCircle = ry < 0;
+  for (let i = 0; i < n; i++) {
+    const u = 1 - i / n;
+    const e = u * u;
+    if (useCircle) {
+      g.circle(x, y, r * u);
+    } else {
+      g.ellipse(x, y, r * u, ry * u);
+    }
+    g.fill({ color, alpha: alpha * e });
+  }
+}
+
 function reversePts(pts: { x: number; y: number }[]): { x: number; y: number }[] {
   const out: { x: number; y: number }[] = [];
   for (let i = pts.length - 1; i >= 0; i--) out.push(pts[i]!);
@@ -516,8 +718,11 @@ function sapVein(
 ): void {
   if (pts.length < 2 || strength <= 0.02) return;
   const k = hot ? 1 : 0.7;
-  ribbon(g, pts, w0 * 4.4 + 7.2, w1 * 4.4 + 6.2, pal.core, 0.14 * strength * k, 1);
-  ribbon(g, pts, w0 * 2.2 + 3.2, w1 * 2.2 + 2.6, pal.coreHot, 0.2 * strength * k, 1);
+  // Outer halo: very wide, very faint, more Chaikin passes — diffuses the
+  // ribbon outline so the vein reads as light, not a tube.
+  ribbon(g, pts, w0 * 6.5 + 12, w1 * 6.5 + 10, pal.core, 0.09 * strength * k, 4);
+  ribbon(g, pts, w0 * 4.4 + 7.2, w1 * 4.4 + 6.2, pal.core, 0.14 * strength * k, 3);
+  ribbon(g, pts, w0 * 2.2 + 3.2, w1 * 2.2 + 2.6, pal.coreHot, 0.2 * strength * k, 2);
   ribbon(
     g,
     pts,
@@ -539,14 +744,135 @@ function sapHead(
 ): void {
   if (strength <= 0.04) return;
   const r = Math.max(3.8, width * 1.35);
-  g.circle(x, y, r * 3.2);
-  g.fill({ color: pal.core, alpha: 0.16 * strength });
-  g.circle(x, y, r * 1.85);
-  g.fill({ color: pal.coreHot, alpha: 0.2 * strength });
-  g.circle(x, y, r * 0.85);
-  g.fill({ color: pal.coreWhite, alpha: 0.18 * strength });
+  paintSoftRing(g, x, y, r * 3.2, -1, pal.core, 0.16 * strength, 5);
+  paintSoftRing(g, x, y, r * 1.85, -1, pal.coreHot, 0.2 * strength, 4);
+  paintSoftRing(g, x, y, r * 0.85, -1, pal.coreWhite, 0.18 * strength, 3);
 }
 
+function nearPt(
+  a: { x: number; y: number } | undefined,
+  b: { x: number; y: number },
+  r: number,
+): boolean {
+  if (!a) return false;
+  return Math.hypot(a.x - b.x, a.y - b.y) < r;
+}
+
+function polylineLen(pts: { x: number; y: number }[]): number {
+  let n = 0;
+  for (let i = 1; i < pts.length; i++) {
+    n += Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.y - pts[i - 1]!.y);
+  }
+  return n;
+}
+
+function prefixUntil(
+  pts: { x: number; y: number }[],
+  dist: number,
+): { x: number; y: number }[] {
+  if (pts.length < 2) return pts.slice();
+  const out = [{ x: pts[0]!.x, y: pts[0]!.y }];
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    acc += Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.y - pts[i - 1]!.y);
+    out.push({ x: pts[i]!.x, y: pts[i]!.y });
+    if (acc >= dist) break;
+  }
+  return out;
+}
+
+function longestFromCollar(
+  strokes: TreeStroke[],
+  collar: { x: number; y: number },
+  inward: boolean,
+): TreeStroke | null {
+  let best: TreeStroke | null = null;
+  let bestLen = 0;
+  for (const s of strokes) {
+    if (inward) {
+      if (s.kind !== 'root') continue;
+    } else if (s.kind !== 'wood' && s.kind !== 'twig') continue;
+    if (!nearPt(s.points[0], collar, 2.8)) continue;
+    const tip = s.points[s.points.length - 1];
+    if (!tip) continue;
+    const isIn = tip.y > collar.y + 2;
+    if (isIn !== inward) continue;
+    const len = polylineLen(s.points);
+    if (len > bestLen) {
+      best = s;
+      bestLen = len;
+    }
+  }
+  return best;
+}
+
+function paintThroughCrust(
+  g: Graphics,
+  canopy: TreeStroke | null,
+  inward: TreeStroke | null,
+  pal: FloraPalette,
+  inwardLayer: boolean,
+): void {
+  if (!canopy || !inward) return;
+  const w = Math.max(canopy.widthStart, inward.widthStart);
+  const nick = Math.max(2.2, w * 0.38);
+  const reach = Math.max(6.5, w * 1.15);
+  const down = prefixUntil(inward.points, inwardLayer ? reach : nick);
+  const up = prefixUntil(canopy.points, inwardLayer ? nick : reach);
+  const plug = [...down.slice().reverse(), ...up.slice(1)];
+  if (plug.length < 2) return;
+  // Plug geometry: t=0 sits at the deepest root tip, t=1 climbs into the
+  // canopy. Anchor the root hue at the deep end and wood hue at the top so
+  // the surface (midpoint) gets a wide, soft crossover instead of a hard
+  // line. The wood-layer plug is almost entirely canopy, so both anchors
+  // collapse to wood and the blend stays invisible.
+  const from = inwardLayer ? pal.root : pal.wood;
+  const to = pal.wood;
+  const join = mixHex(from, to, 0.5);
+  // Feathered outer halo: spread the gradient across almost the whole plug.
+  ribbon(g, plug, w * 1.18, w * 1.02, join, 0.18, 3, join, 0, 1, false, false);
+  // Wide mid-body wash: keeps wood and root visible at their ends while
+  // blending smoothly through the join.
+  ribbon(g, plug, w * 1.02, w * 0.94, from, 0.38, 3, to, 0.1, 0.9, false, false);
+  // Inner definition: a narrower crossover band gives the eye something
+  // to land on without snapping the colour.
+  ribbon(g, plug, w * 0.92, w * 0.82, from, 0.82, 3, to, 0.3, 0.7, false, false);
+}
+
+function paintWoodBands(
+  g: Graphics,
+  s: TreeStroke,
+  pal: FloraPalette,
+  inward: boolean,
+  surfaceY: number,
+  wellSpan: number,
+): void {
+  let midY = 0;
+  for (const p of s.points) midY += p.y;
+  midY /= Math.max(1, s.points.length);
+  const depth = Math.min(1, Math.max(0, (midY - surfaceY) / wellSpan));
+  const tint = inward ? Math.max(0, depth - 0.18) * 0.4 : 0;
+  const base = s.kind === 'twig' ? pal.tuft : pal.wood;
+  const color = mixHex(base, pal.root, tint);
+  ribbon(g, s.points, s.widthStart + 0.9, s.widthEnd + 0.45, color, 0.16, 3, color, 0, 1, false, true);
+  ribbon(g, s.points, s.widthStart, s.widthEnd, color, 0.96, 3, color, 0, 1, false, true);
+  if (s.kind === 'wood') {
+    ribbon(
+      g,
+      s.points,
+      s.widthStart * 0.4,
+      s.widthEnd * 0.32,
+      mixHex(pal.tuft, pal.root, tint * 0.7),
+      0.24,
+      3,
+      mixHex(pal.tuft, pal.root, tint * 0.7),
+      0,
+      1,
+      false,
+      true,
+    );
+  }
+}
 
 function chaikin(
   points: { x: number; y: number }[],
@@ -584,21 +910,22 @@ function ribbon(
   widthEnd: number,
   color: number,
   alpha: number,
-  chaikinIters = 2,
+  chaikinPasses = 3,
   colorEnd?: number,
-  /** Hold start color until this t, then ramp (smoothstep). */
   blendFrom = 0,
-  /** Reach end color by this t. */
   blendTo = 1,
+  capStart = true,
+  capEnd = true,
 ): void {
-  const pts = chaikin(points, chaikinIters);
+  const pts = chaikin(points, chaikinPasses);
   if (pts.length < 2) return;
 
   const left: { x: number; y: number }[] = [];
   const right: { x: number; y: number }[] = [];
   for (let i = 0; i < pts.length; i++) {
     const t = i / (pts.length - 1);
-    const w = (widthStart + (widthEnd - widthStart) * t) * 0.5;
+    const u = t ** 0.68;
+    const w = (widthStart + (widthEnd - widthStart) * u) * 0.5;
     let dx: number;
     let dy: number;
     if (i === 0) {
@@ -648,10 +975,14 @@ function ribbon(
     }
   }
 
-  g.circle(pts[0]!.x, pts[0]!.y, widthStart * 0.5);
-  g.fill({ color, alpha });
-  g.circle(pts[pts.length - 1]!.x, pts[pts.length - 1]!.y, widthEnd * 0.5);
-  g.fill({ color: end, alpha });
+  if (capStart) {
+    g.circle(pts[0]!.x, pts[0]!.y, widthStart * 0.5);
+    g.fill({ color, alpha });
+  }
+  if (capEnd) {
+    g.circle(pts[pts.length - 1]!.x, pts[pts.length - 1]!.y, widthEnd * 0.5);
+    g.fill({ color: end, alpha });
+  }
 }
 
 function drawLeaf(
@@ -687,36 +1018,73 @@ function drawLeaf(
   g.fill({ color, alpha });
 }
 
+function bloomSize(base: number, kind: TreeKind): number {
+  return kind === 'energy' ? base * 1.35 : kind === 'defense' ? base * 0.9 : base;
+}
+
+function hashBloomId(treeSeed: number, index: number): number {
+  return (treeSeed ^ Math.imul(index + 1, 0x9e3779b9)) >>> 0;
+}
+
 function drawBloom(
   g: Graphics,
   x: number,
   y: number,
-  angle: number,
   size: number,
   pal: FloraPalette,
-  kind: TreeKind = 'dyson',
+  scene: ScenePalette,
+  kind: TreeKind,
+  treeSeed: number,
+  index: number,
+  faction: import('../sim/types').FactionId,
+  hasSeedling: boolean,
 ): void {
-  const n = kind === 'energy' ? 7 : kind === 'defense' ? 5 : 6;
-  const petalColor = kind === 'energy' ? pal.core : pal.flower;
-  g.circle(x, y, size * 1.85);
-  g.fill({ color: petalColor, alpha: 0.2 });
-  for (let i = 0; i < n; i++) {
-    const a = angle + (i / n) * Math.PI * 2;
-    drawLeaf(
-      g,
-      x,
-      y,
-      a,
-      kind === 'defense' ? size * 0.95 : size * 1.15,
-      size * (kind === 'defense' ? 0.38 : 0.48),
-      petalColor,
-      0.82,
-    );
+  const seedlingKind: import('../sim/types').SeedlingKind =
+    kind === 'energy' ? 'sentinel' : 'basic';
+  const hullId = hashBloomId(treeSeed, index);
+  // Pod color must read against the leaf green wash behind it.
+  const podColor =
+    kind === 'energy'
+      ? mixHex(pal.core, pal.coreWhite, 0.35)
+      : pal.core;
+  const podTip = pal.coreWhite;
+  const open = hasSeedling ? 0.95 : 0.55;
+
+  // Approximate hull size for the calyx brackets.
+  const approxHull = {
+    bodyLength: size * 0.36,
+    bodyWidth: size * 0.13,
+  };
+
+  // Faint glow halo behind the pod — soft rings, not a hard ellipse edge.
+  // Sized wide enough that the bloom dominates the leaf blob sitting at
+  // the same point instead of being eaten by it.
+  paintSoftRing(g, x, y, size * 1.4, size * 0.85, podColor, 0.22, 5);
+  paintSoftRing(g, x, y, size * 1.0, size * 0.62, podColor, 0.32, 4);
+
+  // Calyx brackets.
+  paintCalyx(g, approxHull, size, podColor, podTip, open, kind === 'defense');
+
+  // The seed hull drawn through the same painter as the flying seedling.
+  // Sized so the bodyLength of the bloom ≈ the flying hull. When the seed
+  // has departed, the seedling sprite owns this hull — drawing it again
+  // here produced a doubled silhouette where the two layers disagreed.
+  if (!hasSeedling) {
+    const hullScale = size * 0.2;
+    paintSeedHull(g, {
+      stats: { energy: 100, strength: 70, speed: 90 },
+      scene,
+      faction,
+      kind: seedlingKind,
+      id: hullId,
+      scale: hullScale,
+      open,
+      departure: 0.5,
+    });
   }
-  g.circle(x, y, kind === 'energy' ? size * 0.38 : size * 0.28);
-  g.fill({ color: pal.seedBody, alpha: 0.88 });
+
+  // Energy trees get an extra rim of light around the pod — also softened.
   if (kind === 'energy') {
-    g.circle(x, y, size * 0.16);
-    g.fill({ color: pal.coreWhite, alpha: 0.9 });
+    paintSoftRing(g, x, y, size * 0.55, size * 0.38, pal.core, 0.22, 4);
   }
 }

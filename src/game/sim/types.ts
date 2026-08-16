@@ -46,13 +46,15 @@ export interface Tree {
   id: number;
   asteroidId: number;
   slotIndex: number;
+  /** Crust bearing when planted from a click; omit to use the slot default. */
+  plantAngle?: number;
   kind: TreeKind;
   seed: number;
   /** 0..1 growth progress */
   maturity: number;
   faction: FactionId;
   spawnAccumulator: number;
-  /** How well adult roots reached the core well (0..1), baked at plant time. */
+  /** How well inward wood reached the core well (0..1), baked at plant time. */
   coreFeed: number;
 }
 
@@ -105,6 +107,8 @@ export interface PendingPlant {
   id: number;
   asteroidId: number;
   slotIndex: number;
+  /** Crust bearing when planted from a click; omit to use the slot default. */
+  plantAngle?: number;
   faction: FactionId;
   kind: TreeKind;
   seedlingIds: number[];
@@ -137,8 +141,11 @@ export const HOME_RADIUS_SCALE = 1.3;
 export const ROCK_RADIUS_DEFAULT = 124;
 /** Minimum rim gap kept between discs when laying out a map. */
 export const ROCK_GAP = 48;
-/** Tree collar sits this fraction of mean radius in from the local rim. */
-export const ROCK_SURFACE_INSET = 0.18;
+/**
+ * Tree collar nestles this fraction of mean radius into the living crust.
+ * Keep it inside the film (about 3–10% of r), not hanging in the hollow.
+ */
+export const ROCK_SURFACE_INSET = 0.026;
 /**
  * Adult spine height at scale 1 (`buildAdultTree`). Groves are sized as a
  * fraction of disc radius so the rock stays the larger body.
@@ -158,17 +165,25 @@ export function treeVisualScale(radius: number, seed = 0): number {
 }
 
 /** Phase 4 pacing: opening scout, mid wells/chokes, late fights not mopping. */
-export const LOCAL_SEEDLING_CAP = 24;
-export const DYSON_GROWTH_SECONDS = 20;
-export const ENERGY_GROWTH_SECONDS = 24;
-export const DEFENSE_GROWTH_SECONDS = 16;
+export const LOCAL_SEEDLING_CAP = 35;
+/** Player home always starts with this many orbiting seedlings. */
+export const PLAYER_START_SEEDLINGS = 35;
+export const DYSON_GROWTH_SECONDS = 32;
+export const ENERGY_GROWTH_SECONDS = 38;
+export const DEFENSE_GROWTH_SECONDS = 24;
 export const DYSON_SPAWN_INTERVAL = 1.7;
 export const ENERGY_SPAWN_INTERVAL = 2.0;
-/** Maturity when canopy blooms open and seedlings may begin to drop. */
-export const SPAWN_START_MATURITY = 0.55;
+/** Maturity when side-branch tips exist and seedlings may begin to drop. */
+export const SPAWN_START_MATURITY = 0.4;
 export const PLANT_COST = 10;
 export const TRAVEL_BASE_SPEED = 96;
 export const PLANT_DIVE_SPEED = 78;
+/** Stay this far outside the lumpy rim so orbit never clips the hollow. */
+export const SURFACE_CLEARANCE = 8;
+/** Angular speed while skimming the crust toward a plant slot. */
+export const PLANT_CRUISE_SPEED = 2.15;
+/** Start the inward dip once this close to the slot bearing (radians). */
+export const PLANT_DIVE_ANGLE = 0.2;
 export const ORBIT_BAND = 16;
 
 export function orbitBand(radius: number): number {
@@ -184,10 +199,10 @@ export const SENTINEL_UPKEEP = 2.2;
 export const SENTINEL_SPAWN_ENERGY = 6;
 export const SENTINEL_STARVE_DPS = 4;
 export const ENERGY_REGEN_BASE = 2.4;
-/** Max spawn-rate boost when roots fully feed from the core. */
+/** Max spawn-rate boost when inward wood fully feeds from the core. */
 export const ROOT_FEED_SPAWN_BONUS = 0.18;
 /** Extra energy-pool regen per second from one fully fed mature tree. */
-export const ROOT_FEED_REGEN = 0.35;
+export const ROOT_FEED_REGEN = 0.45;
 export const COMBAT_RANGE = 28;
 export const BASIC_HP = 12;
 export const SENTINEL_HP = 34;

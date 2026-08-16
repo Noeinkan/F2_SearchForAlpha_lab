@@ -2,7 +2,7 @@ import { Container, Graphics } from 'pixi.js';
 import { rockRadiusAt } from '../sim/rock';
 import { allEdges } from '../sim/graph';
 import type { World } from '../sim/types';
-import type { ScenePalette } from './palette';
+import { bucketHue, type ScenePalette } from './palette';
 
 export class GraphView {
   readonly root = new Container();
@@ -10,6 +10,10 @@ export class GraphView {
   private rings = new Graphics();
   private selectedRing = new Graphics();
   private scene: ScenePalette;
+  private cachedWorld: World | null = null;
+  private cachedSel: number | null | undefined = undefined;
+  private lastHueBucket = -1;
+  private lastTheme: ScenePalette['theme'] | undefined;
 
   constructor(scene: ScenePalette) {
     this.scene = scene;
@@ -17,7 +21,21 @@ export class GraphView {
     this.root.addChild(this.links, this.rings, this.selectedRing);
   }
 
+  retheme(scene: ScenePalette): void {
+    const bucket = bucketHue(scene.hue);
+    const themeChanged = scene.theme !== undefined && scene.theme !== this.lastTheme;
+    this.scene = scene;
+    if (bucket === this.lastHueBucket && !themeChanged) return;
+    this.lastHueBucket = bucket;
+    this.lastTheme = scene.theme;
+    this.cachedWorld = null;
+  }
+
   sync(world: World, selectedId: number | null): void {
+    if (this.cachedWorld === world && this.cachedSel === selectedId) return;
+    this.cachedWorld = world;
+    this.cachedSel = selectedId;
+
     this.links.clear();
     this.rings.clear();
     this.selectedRing.clear();

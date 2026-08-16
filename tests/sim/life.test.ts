@@ -29,10 +29,10 @@ describe('life spread', () => {
   });
 
   it('keeps reach near the scar until the tree is well grown', () => {
-    expect(lifeReach(0.12)).toBeLessThan(0.16);
-    expect(lifeReach(0.5)).toBeLessThan(0.18);
-    expect(lifeReach(0.75)).toBeLessThan(0.35);
-    expect(lifeReach(1)).toBeGreaterThan(0.85);
+    expect(lifeReach(0.12)).toBeLessThanOrEqual(0.18);
+    expect(lifeReach(0.5)).toBeLessThan(0.28);
+    expect(lifeReach(0.75)).toBeLessThan(0.6);
+    expect(lifeReach(1)).toBeGreaterThan(1.05);
     expect(lifeReach(1)).toBeLessThan(Math.PI);
   });
 });
@@ -49,8 +49,8 @@ describe('life proximity', () => {
   it('scales blade lushness taller near the origin', () => {
     expect(lifeLushScale(1)).toBeGreaterThan(lifeLushScale(0.4));
     expect(lifeLushScale(0.4)).toBeGreaterThan(lifeLushScale(0));
-    expect(lifeLushScale(0)).toBeCloseTo(0.1, 5);
-    expect(lifeLushScale(1)).toBeCloseTo(1.8, 5);
+    expect(lifeLushScale(0)).toBeCloseTo(0.18, 5);
+    expect(lifeLushScale(1)).toBeCloseTo(2.03, 5);
   });
 
   it('keeps a continuous sward, thicker near the origin', () => {

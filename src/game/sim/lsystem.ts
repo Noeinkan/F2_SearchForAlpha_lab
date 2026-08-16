@@ -21,6 +21,13 @@ export interface TreeFlower {
   span?: number;
 }
 
+/**
+ * Unscaled bloom size (× tree scale). Petals span about this in world units.
+ * Must stay larger than a flying seed hull (~3.6 in seedlingView).
+ */
+export const FLOWER_SIZE_MIN = 11;
+export const FLOWER_SIZE_SPREAD = 5;
+
 export interface TreeTip {
   x: number;
   y: number;
@@ -58,20 +65,21 @@ export interface TreeGeom {
   strokes: TreeStroke[];
   flowers: TreeFlower[];
   tips: TreeTip[];
-  roots: TreeStroke[];
   blobs: TreeBlob[];
   leaves: TreeLeaf[];
   collar: TreeCollar;
+  /** Tree-local core well Y (for live feed during reveal). */
+  coreY: number;
+  /** Tree-local surface Y. */
+  surfaceY: number;
 }
 
 type Pt = { x: number; y: number };
 
 /**
- * One living plant: a slender spine, then an upward fan of
- * asymmetric side-shoots. Roots search the core separately.
- *
- * Topology is always the adult form. `maturity` only reveals it —
- * roots first, then the shoot, laterals, grass, then canopy.
+ * One living plant: wood grows from the collar into the canopy, while
+ * searching roots hunt the core. `maturity` extends length and thickens
+ * wood/roots toward the baked adult silhouette.
  */
 export function buildTree(
   seed: number,
@@ -79,7 +87,7 @@ export function buildTree(
   scale = 1,
   coreDepth = 70,
   surfaceY = 0,
-  kind: TreeKind = 'dyson',
+  kind?: TreeKind,
 ): TreeGeom {
   return growTree(
     buildAdultTree(seed, scale, coreDepth, surfaceY, kind),
@@ -92,39 +100,42 @@ export function buildAdultTree(
   scale = 1,
   coreDepth = 70,
   surfaceY = 0,
-  kind: TreeKind = 'dyson',
+  kind?: TreeKind,
 ): TreeGeom {
   const rng = mulberry32(seed >>> 0);
   const strokes: TreeStroke[] = [];
   const flowers: TreeFlower[] = [];
   const tips: TreeTip[] = [];
-  const roots: TreeStroke[] = [];
   const blobs: TreeBlob[] = [];
   const leaves: TreeLeaf[] = [];
 
-  const curl = range(rng, 0.1, 0.22);
-  const droop = range(rng, 0.05, 0.2);
-  const spread = range(rng, 0.55, 0.95);
-  const lean = range(rng, -0.22, 0.22);
+  const curl = range(rng, 0.07, 0.15);
+  const droop = range(rng, 0.03, 0.14);
+  const spread = range(rng, 0.4, 0.62);
+  const lean = range(rng, -0.16, 0.16);
   const bend = range(rng, 0.05, 0.3);
   const height = scale * 148;
-  const collarW = 8.4 * scale;
-  const twigW = Math.max(0.7, 0.95 * scale);
+  const collarW = 5.2 * scale;
+  const twigW = Math.max(0.45, 0.52 * scale);
   const woodDepth = 4;
   const coreY = coreDepth;
-  const energyRich = kind === 'energy';
+  const collarX = range(rng, -1.8, 1.8);
+  const collarPt: Pt = { x: collarX, y: surfaceY };
 
-  const spine = growSpine(rng, surfaceY, height, lean, curl, bend);
-  const surfIdx = spine.surfaceIndex;
-  const woodPts = spine.points;
-
+  const woodEmerge = 0;
+  const woodSpan = 0.58;
   const rootEmerge = 0;
   const rootSpan = 0.45;
-  const woodEmerge = 0.07;
-  const woodSpan = 0.58;
+  const canopyPts = growRay(rng, collarPt, height, lean, curl, bend, false);
 
-  const collarX = spine.points[surfIdx]?.x ?? 0;
-  const collarPt: Pt = { x: collarX, y: surfaceY };
+  strokes.push({
+    points: canopyPts,
+    widthStart: collarW * 1.55,
+    widthEnd: Math.max(twigW * 1.8, collarW * 0.22),
+    kind: 'wood',
+    emerge: woodEmerge,
+    span: woodSpan,
+  });
 
   growNervousRoots(
     rng,
@@ -132,28 +143,17 @@ export function buildAdultTree(
     { x: range(rng, -2.2, 2.2) * scale, y: coreY },
     collarW,
     scale,
-    energyRich,
+    kind === 'energy',
     rootEmerge,
     rootSpan,
-    roots,
+    strokes,
   );
 
-  strokes.push({
-    points: woodPts,
-    widthStart: collarW,
-    widthEnd: Math.max(twigW * 1.8, collarW * 0.38),
-    kind: 'wood',
-    emerge: woodEmerge,
-    span: woodSpan,
-  });
-
-  const woodLaterals = 3 + Math.floor(rng() * 2);
+  const laterals = 2 + Math.floor(rng() * 2);
   spawnLaterals(
     rng,
-    spine.points,
-    surfIdx,
-    spine.points.length - 1,
-    woodLaterals,
+    canopyPts,
+    laterals,
     spread,
     curl,
     droop,
@@ -163,10 +163,29 @@ export function buildAdultTree(
     scale,
     woodEmerge,
     woodSpan,
+    coreY,
     strokes,
     flowers,
     tips,
-    roots,
+    leaves,
+  );
+
+  forkTip(
+    rng,
+    canopyPts,
+    height * (0.34 + rng() * 0.1),
+    Math.max(twigW * 2.2, collarW * 0.42),
+    curl,
+    droop,
+    false,
+    woodDepth,
+    scale,
+    woodEmerge + woodSpan * 0.55,
+    Math.max(0.18, woodSpan * 0.48),
+    coreY,
+    strokes,
+    flowers,
+    tips,
     leaves,
   );
 
@@ -177,42 +196,47 @@ export function buildAdultTree(
   const collar: TreeCollar = {
     x: collarX,
     y: surfaceY,
-    rx: collarW * 1.15,
-    ry: collarW * 1.55,
+    rx: collarW * 1.35,
+    ry: collarW * 1.15,
   };
 
-  return { strokes, flowers, tips, roots, blobs, leaves, collar };
+  return {
+    strokes,
+    flowers,
+    tips,
+    blobs,
+    leaves,
+    collar,
+    coreY,
+    surfaceY,
+  };
 }
 
-/**
- * How close adult roots came to the energy well (0..1).
- * Full feed inside the core glow radius; falloff outside.
- */
-export function measureRootFeed(
-  geom: TreeGeom,
-  coreY: number,
-  coreX = 0,
-): number {
+/** Searching roots that grew from the collar toward the core well. */
+export function coreSeekingStrokes(geom: TreeGeom): TreeStroke[] {
+  return geom.strokes.filter((s) => s.kind === 'root');
+}
+
+/** 0..1 from how close the nearest inward wood tip gets to the well. */
+export function measureRootFeed(geom: TreeGeom, coreY: number): number {
   let best = Infinity;
-  for (const r of geom.roots) {
-    if (r.points.length === 0) continue;
-    const tip = r.points[r.points.length - 1]!;
-    const d = Math.hypot(tip.x - coreX, tip.y - coreY);
-    if (d < best) best = d;
+  for (const r of coreSeekingStrokes(geom)) {
+    const tip = r.points[r.points.length - 1];
+    if (!tip) continue;
+    best = Math.min(best, Math.hypot(tip.x, tip.y - coreY));
   }
   if (!Number.isFinite(best)) return 0;
-  const fullR = Math.max(12, Math.abs(coreY) * 0.18);
-  const falloff = fullR * 2.6;
+  const fullR = 14;
+  const falloff = 36;
   if (best <= fullR) return 1;
-  if (best >= falloff) return 0;
-  return 1 - (best - fullR) / (falloff - fullR);
+  return Math.max(0, 1 - (best - fullR) / falloff);
 }
 
-/** Maturity-gated feed strength used by spawn/regen multipliers. */
+/** Maturity-gated feed: roots must reach the well before energy flows. */
 export function rootFeedActive(maturity: number, coreFeed: number): number {
   const m = Math.min(1, Math.max(0, maturity));
   const feed = Math.min(1, Math.max(0, coreFeed));
-  return smoothstep(0.2, 0.55, m) * feed;
+  return feed * smoothstep(0.32, 0.72, m);
 }
 
 /**
@@ -228,38 +252,34 @@ export function spawnReadiness(
   return smoothstep(startMaturity, 1, m);
 }
 
-/** Reveal the adult plant from root-tip to canopy as maturity rises. */
+/** Reveal the adult plant from the collar in both directions. */
 export function growTree(adult: TreeGeom, maturity: number): TreeGeom {
   const m = Math.min(1, Math.max(0, maturity));
   if (m >= 0.999) return adult;
 
+  /** Global cambium: thickens wood/roots for the whole maturity span. */
+  const girth = smoothstep(0.04, 1, m);
+
   const strokes: TreeStroke[] = [];
   for (const s of adult.strokes) {
-    const grown = clipStroke(s, growthProgress(m, s.emerge ?? 0.12, s.span ?? 0.28));
+    const grown = clipStroke(
+      s,
+      growthProgress(m, s.emerge ?? 0, s.span ?? 0.58),
+      girth,
+    );
     if (grown) strokes.push(grown);
-  }
-  const roots: TreeStroke[] = [];
-  for (const s of adult.roots) {
-    const grown = clipStroke(s, growthProgress(m, s.emerge ?? 0, s.span ?? 0.32));
-    if (grown) roots.push(grown);
   }
 
   const tips: TreeTip[] = [];
-  for (const s of strokes) {
-    if (s.kind !== 'wood' && s.kind !== 'twig') continue;
-    const end = s.points[s.points.length - 1];
-    const pre = s.points[s.points.length - 2];
-    if (!end || !pre) continue;
-    tips.push({
-      x: end.x,
-      y: end.y,
-      angle: Math.atan2(end.y - pre.y, end.x - pre.x),
-    });
+  for (const t of adult.tips) {
+    const ready = growthProgress(m, t.emerge ?? 0.62, 0.2);
+    if (ready <= 0.02) continue;
+    tips.push(t);
   }
 
   const flowers: TreeFlower[] = [];
   for (const f of adult.flowers) {
-    const t = growthProgress(m, f.emerge ?? 0.72, f.span ?? 0.2);
+    const t = growthProgress(m, f.emerge ?? 0.72, f.span ?? 0.22);
     if (t <= 0.02) continue;
     flowers.push({
       x: f.x,
@@ -294,15 +314,23 @@ export function growTree(adult: TreeGeom, maturity: number): TreeGeom {
     });
   }
 
-  const ct = smoothstep(0.02, 0.26, m);
   const collar: TreeCollar = {
     x: adult.collar.x,
     y: adult.collar.y,
-    rx: adult.collar.rx * (0.28 + 0.72 * ct),
-    ry: adult.collar.ry * (0.22 + 0.78 * ct),
+    rx: adult.collar.rx * (0.18 + 0.82 * girth),
+    ry: adult.collar.ry * (0.16 + 0.84 * girth),
   };
 
-  return { strokes, flowers, tips, roots, blobs, leaves, collar };
+  return {
+    strokes,
+    flowers,
+    tips,
+    blobs,
+    leaves,
+    collar,
+    coreY: adult.coreY,
+    surfaceY: adult.surfaceY,
+  };
 }
 
 function growScarFlora(
@@ -316,88 +344,133 @@ function growScarFlora(
     const a = -Math.PI / 2 + range(rng, -0.7, 0.7);
     const len = (2.2 + rng() * 4.2) * scale;
     const ox = range(rng, -3.2, 3.2) * scale;
-    const base: Pt = { x: ox, y: surfaceY + 0.6 * scale };
+    const base: Pt = { x: ox, y: surfaceY };
     const pts = curveStroke(rng, base, a, len, 7, 0.48, 0.08, false);
     strokes.push({
       points: pts,
       widthStart: 1.25 * scale,
       widthEnd: 0.45 * scale,
       kind: 'tuft',
-      emerge: 0.12 + rng() * 0.18,
+      emerge: 0.38 + rng() * 0.18,
       span: 0.16 + rng() * 0.1,
     });
   }
 
-  const grasses = 8 + Math.floor(rng() * 6);
+  const grasses = 5 + Math.floor(rng() * 4);
   for (let i = 0; i < grasses; i++) {
     const side = i % 2 === 0 ? -1 : 1;
     const a = -Math.PI / 2 + side * range(rng, 0.55, 1.42);
     const len = (3.4 + rng() * 6.8) * scale;
     const ox = side * range(rng, 1.1, 7.8) * scale;
-    const base: Pt = { x: ox, y: surfaceY + 0.85 * scale };
+    const base: Pt = { x: ox, y: surfaceY };
     const pts = curveStroke(rng, base, a, len, 9, 0.62, 0.22, false);
     strokes.push({
       points: pts,
       widthStart: 1.08 * scale,
       widthEnd: 0.28 * scale,
       kind: 'grass',
-      emerge: 0.16 + rng() * 0.38,
+      emerge: 0.42 + rng() * 0.28,
       span: 0.16 + rng() * 0.18,
     });
   }
 }
 
-/** Wood spine: collar stub, then a 5–30% height S-curve toward the canopy. */
-function growSpine(
+function growRay(
   rng: Rng,
-  surfaceY: number,
-  height: number,
+  origin: Pt,
+  length: number,
   lean: number,
   curl: number,
   bend: number,
-): { points: Pt[]; surfaceIndex: number } {
-  const stub = 5.5;
-  const total = height + stub;
-  const steps = Math.max(28, Math.round(total / 3.2));
+  inward: boolean,
+  coreY?: number,
+): Pt[] {
+  const steps = Math.max(20, Math.round(length / 3.6));
   const points: Pt[] = [];
-  const x0 = range(rng, -2.2, 2.2);
-  let wander = range(rng, -curl, curl) * 0.2;
-  let surfaceIndex = 0;
-  let bestSurf = Infinity;
-
-  const tSurf = stub / total;
-  const waves = range(rng, 0.45, 0.95);
-  const phase = range(rng, 0, Math.PI * 2);
-  const amp = bend * height;
-  const leanAmp = lean * height * 0.2;
+  let x = origin.x;
+  let y = origin.y;
+  let wander = 0;
+  const dir = rng() < 0.5 ? -1 : 1;
+  const waves = range(rng, 0.45, 0.82);
+  const phase = range(rng, 0.2, 0.55) * Math.PI;
+  const tropism = inward ? Math.PI / 2 : -Math.PI / 2;
 
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    wander += range(rng, -curl, curl) * 0.18;
-    wander *= 0.94;
-    const above = t < tSurf ? 0 : (t - tSurf) / Math.max(1e-4, 1 - tSurf);
-    const env = above * above * (3 - 2 * above);
-    const x =
-      x0 +
-      wander * 3.5 +
-      leanAmp * above +
-      Math.sin(above * waves * Math.PI * 2 + phase) * amp * env;
-    const y = surfaceY + stub - t * total;
     points.push({ x, y });
-    const dist = Math.abs(y - surfaceY);
-    if (dist < bestSurf) {
-      bestSurf = dist;
-      surfaceIndex = i;
+    if (i === steps) break;
+
+    wander += range(rng, -curl, curl) * 0.14;
+    wander *= 0.95;
+    const sweep = Math.sin(t * waves * Math.PI + phase) * bend * 1.8 * dir;
+    let angle = tropism + lean * (0.1 + 0.55 * t) + sweep + wander;
+    if (inward && coreY != null) {
+      const toCore = Math.atan2(coreY - y, -x);
+      const dist = Math.hypot(x, y - coreY);
+      const closeness = 1 - Math.min(1, dist / Math.max(1, length));
+      angle += shortestAngle(angle, toCore) * (0.05 + 0.22 * closeness * closeness);
+    }
+    const step = length / steps;
+    x += Math.cos(angle) * step;
+    y += Math.sin(angle) * step;
+    if (inward && y < origin.y) y = origin.y;
+    if (inward && coreY != null && y > coreY - 1.2) {
+      y = coreY - 1.2;
+      points.push({ x, y });
+      break;
     }
   }
 
-  return { points, surfaceIndex };
+  return points;
 }
 
-/**
- * Dendritic roots that leave the collar and chemotax toward the core.
- * Dichotomous forks + terminal arbor near the well.
- */
+function forkTip(
+  rng: Rng,
+  spine: Pt[],
+  length: number,
+  width: number,
+  curl: number,
+  droop: number,
+  inward: boolean,
+  maxDepth: number,
+  scale: number,
+  emerge: number,
+  span: number,
+  coreY: number,
+  strokes: TreeStroke[],
+  flowers: TreeFlower[],
+  tips: TreeTip[],
+  leaves: TreeLeaf[],
+): void {
+  if (spine.length < 2) return;
+  const tip = spine[spine.length - 1]!;
+  const pre = spine[spine.length - 2]!;
+  const tipA = Math.atan2(tip.y - pre.y, tip.x - pre.x);
+  const open = 0.28 + rng() * 0.2;
+  for (const side of [-1, 1] as const) {
+    growBranch(
+      rng,
+      tip,
+      tipA + side * open * (0.88 + rng() * 0.24),
+      length * (0.9 + rng() * 0.16),
+      width,
+      curl,
+      droop,
+      inward,
+      0,
+      maxDepth,
+      scale,
+      emerge,
+      span,
+      coreY,
+      strokes,
+      flowers,
+      tips,
+      leaves,
+    );
+  }
+}
+
 function growNervousRoots(
   rng: Rng,
   collar: Pt,
@@ -411,16 +484,15 @@ function growNervousRoots(
 ): void {
   const reach = Math.hypot(core.x - collar.x, core.y - collar.y);
   const baseAngle = Math.atan2(core.y - collar.y, core.x - collar.x);
-  const axonCount = (energyRich ? 6 : 5) + Math.floor(rng() * 3);
-  const maxDepth = energyRich ? 4 : 3;
+  const axonCount = (energyRich ? 6 : 4) + Math.floor(rng() * 2);
+  const maxDepth = energyRich ? 3 : 2;
 
-  // Slightly thicker tap axon aimed at the well.
   growNeuronAxon(
     rng,
     collar,
-    baseAngle + range(rng, -0.12, 0.12),
-    reach * range(rng, 0.92, 1.08),
-    collarW * 0.78,
+    baseAngle + range(rng, -0.08, 0.08),
+    reach * range(rng, 0.94, 1.04),
+    collarW * 1.42,
     0,
     maxDepth,
     core,
@@ -429,23 +501,25 @@ function growNervousRoots(
     emerge,
     span * 0.92,
     true,
-    energyRich,
     roots,
   );
 
+  // Side roots fan out well beyond the tap axis: wider angles, with a
+  // gentler radial reach so they skirt the crust rather than dropping
+  // straight into the well.
+  const fanSpread = 1.35;
+  const fanBase = 0.45;
   for (let i = 0; i < axonCount; i++) {
     const side = i % 2 === 0 ? -1 : 1;
-    const cone = (0.28 + (i / Math.max(1, axonCount - 1)) * 0.95) * side;
-    const wobble = range(rng, -0.18, 0.18);
+    const t = axonCount > 1 ? i / (axonCount - 1) : 0.5;
+    const dive = (fanBase + t * fanSpread) * side + range(rng, -0.06, 0.06);
+    const radial = 0.5 + t * 0.45;
     growNeuronAxon(
       rng,
-      {
-        x: collar.x + range(rng, -1.4, 1.4) * scale,
-        y: collar.y + range(rng, 0.2, 1.6) * scale,
-      },
-      baseAngle + cone + wobble,
-      reach * range(rng, 0.55, 0.98),
-      collarW * range(rng, 0.32, 0.55),
+      { x: collar.x, y: collar.y },
+      baseAngle + dive,
+      reach * (0.48 + radial * 0.42) * range(rng, 0.88, 1.08),
+      collarW * range(rng, 0.5, 0.72),
       0,
       maxDepth,
       core,
@@ -454,7 +528,6 @@ function growNervousRoots(
       emerge + span * (0.04 + (i / axonCount) * 0.12),
       Math.max(0.16, span * (0.55 + rng() * 0.3)),
       false,
-      energyRich,
       roots,
     );
   }
@@ -474,60 +547,18 @@ function growNeuronAxon(
   emerge: number,
   span: number,
   isTap: boolean,
-  energyRich: boolean,
   roots: TreeStroke[],
 ): void {
   if (length < 4 * scale || widthStart < 0.28 * scale) return;
 
-  const stepLen = Math.max(2.4, (isTap ? 3.6 : 3.1) * scale);
-  const maxSteps = Math.max(6, Math.round(length / stepLen));
-  const pts: Pt[] = [{ x: origin.x, y: origin.y }];
-  let x = origin.x;
-  let y = origin.y;
-  let a = angle;
-  let wander = range(rng, -0.2, 0.2);
-  let stoppedNearCore = false;
-
-  for (let i = 1; i <= maxSteps; i++) {
-    const dist = Math.hypot(core.x - x, core.y - y);
-    const proximity = 1 - Math.min(1, dist / Math.max(1e-3, reach));
-    const tropismK = 0.06 + 0.42 * proximity * proximity;
-    const toCore = Math.atan2(core.y - y, core.x - x);
-
-    wander += range(rng, -0.38, 0.38) * (1.05 - proximity * 0.7);
-    wander *= 0.82;
-    a += wander;
-    a += shortestAngle(a, toCore) * tropismK;
-
-    const step = Math.min(stepLen, dist * 0.55 + 1.2);
-    const nx = x + Math.cos(a) * step;
-    const ny = y + Math.sin(a) * step;
-    const nextDist = Math.hypot(core.x - nx, core.y - ny);
-
-    // Stop before overshooting the well.
-    if (nextDist > dist && proximity > 0.72) {
-      stoppedNearCore = true;
-      break;
-    }
-    if (nextDist < Math.max(3.5, 5 * scale)) {
-      pts.push({ x: nx, y: ny });
-      x = nx;
-      y = ny;
-      stoppedNearCore = true;
-      break;
-    }
-
-    pts.push({ x: nx, y: ny });
-    x = nx;
-    y = ny;
-  }
-
+  const pts = traceRoot(rng, origin, angle, length, core, reach, scale, isTap);
   if (pts.length < 2) return;
 
-  const tipW = Math.max(
-    0.32 * scale,
-    widthStart * (stoppedNearCore ? 0.2 : 0.12),
-  );
+  const end = pts[pts.length - 1]!;
+  const tipDist = Math.hypot(core.x - end.x, core.y - end.y);
+  const wellR = Math.max(3.5, 5 * scale);
+  const reached = tipDist < wellR * 1.8;
+  const tipW = Math.max(0.32 * scale, widthStart * (reached ? 0.22 : 0.14));
   roots.push({
     points: pts,
     widthStart,
@@ -537,54 +568,26 @@ function growNeuronAxon(
     span,
   });
 
-  const end = pts[pts.length - 1]!;
-  const pre = pts[pts.length - 2] ?? origin;
-  const endAngle = Math.atan2(end.y - pre.y, end.x - pre.x);
-  const tipDist = Math.hypot(core.x - end.x, core.y - end.y);
-  const nearCore = tipDist < reach * 0.28;
-
-  if (nearCore || stoppedNearCore) {
-    const arborN = (energyRich ? 3 : 2) + Math.floor(rng() * (energyRich ? 3 : 2));
-    for (let k = 0; k < arborN; k++) {
-      const side = k % 2 === 0 ? -1 : 1;
-      const filamentLen = (6 + rng() * 10) * scale * (energyRich ? 1.15 : 1);
-      growNeuronAxon(
-        rng,
-        end,
-        endAngle + side * (0.55 + rng() * 1.1) + range(rng, -0.2, 0.2),
-        filamentLen,
-        Math.max(0.28 * scale, tipW * 0.7),
-        maxDepth,
-        maxDepth,
-        core,
-        reach,
-        scale,
-        emerge + span * 0.72,
-        Math.max(0.1, span * 0.35),
-        false,
-        energyRich,
-        roots,
-      );
-    }
+  if (reached) {
+    growTipFan(rng, pts, tipW, scale, emerge, span, roots);
     return;
   }
 
   if (depth >= maxDepth) return;
 
-  // Dichotomous fork.
-  const forkCount = depth === 0 && rng() > 0.35 ? 2 : rng() > 0.22 ? 2 : 1;
+  const pre = pts[pts.length - 2] ?? origin;
+  const endAngle = Math.atan2(end.y - pre.y, end.x - pre.x);
+  const forkCount = depth === 0 ? 2 : rng() > 0.45 ? 2 : 1;
   for (let k = 0; k < forkCount; k++) {
     const side = k === 0 ? -1 : 1;
-    const forkAngle =
-      endAngle +
-      side * (0.35 + rng() * 0.75) * (forkCount === 1 ? (rng() > 0.5 ? 1 : -1) : 1);
-    const childLen = length * (0.42 + rng() * 0.32) * (isTap ? 0.9 : 1);
+    const open =
+      (0.16 + rng() * 0.22) * (forkCount === 1 ? (rng() > 0.5 ? 1 : -1) : side);
     growNeuronAxon(
       rng,
       end,
-      forkAngle,
-      childLen,
-      Math.max(0.3 * scale, widthStart * (0.42 + rng() * 0.18)),
+      endAngle + open,
+      length * (0.4 + rng() * 0.28) * (isTap ? 0.92 : 1),
+      Math.max(0.3 * scale, widthStart * (0.44 + rng() * 0.14)),
       depth + 1,
       maxDepth,
       core,
@@ -593,47 +596,146 @@ function growNeuronAxon(
       emerge + span * (0.45 + rng() * 0.2),
       Math.max(0.12, span * (0.4 + rng() * 0.2)),
       false,
-      energyRich,
       roots,
     );
   }
 }
 
+/** Gentle S-curve toward the well. Turn is capped so tips cannot orbit. */
+function traceRoot(
+  rng: Rng,
+  origin: Pt,
+  angle: number,
+  length: number,
+  core: Pt,
+  reach: number,
+  scale: number,
+  isTap: boolean,
+): Pt[] {
+  const stepLen = Math.max(2.8, (isTap ? 4.2 : 3.6) * scale);
+  const maxSteps = Math.max(8, Math.round(length / stepLen));
+  const pts: Pt[] = [{ x: origin.x, y: origin.y }];
+  const waves = range(rng, 0.35, 0.7);
+  const phase = range(rng, 0, Math.PI * 2);
+  const waveAmp = range(rng, 0.05, 0.12) * (rng() < 0.5 ? -1 : 1);
+  const wellR = Math.max(3.5, 5 * scale);
+  let x = origin.x;
+  let y = origin.y;
+  let a = angle;
+  let wander = 0;
+
+  for (let i = 1; i <= maxSteps; i++) {
+    const t = i / maxSteps;
+    const dist = Math.hypot(core.x - x, core.y - y);
+    if (dist < wellR) break;
+
+    const proximity = 1 - Math.min(1, dist / Math.max(1e-3, reach));
+    const toCore = Math.atan2(core.y - y, core.x - x);
+    wander += range(rng, -0.045, 0.045);
+    wander *= 0.9;
+    const wave = Math.sin(t * waves * Math.PI * 2 + phase) * waveAmp * (1 - proximity);
+    let desired = a + wander + wave;
+    desired += shortestAngle(desired, toCore) * (0.18 + 0.55 * proximity);
+
+    const maxOff = 0.72 - 0.42 * proximity;
+    const off = shortestAngle(toCore, desired);
+    if (Math.abs(off) > maxOff) desired = toCore + Math.sign(off) * maxOff;
+
+    const maxTurn = 0.11 + 0.04 * proximity;
+    a += clampTurn(shortestAngle(a, desired), maxTurn);
+
+    const step = Math.min(stepLen, dist * 0.42 + 1.4);
+    const nx = x + Math.cos(a) * step;
+    const ny = Math.max(origin.y, y + Math.sin(a) * step);
+    const nextDist = Math.hypot(core.x - nx, core.y - ny);
+    if (nextDist > dist && proximity > 0.7) break;
+    if (nextDist < wellR) {
+      pts.push({ x: nx, y: ny });
+      break;
+    }
+    pts.push({ x: nx, y: ny });
+    x = nx;
+    y = ny;
+  }
+  return pts;
+}
+
+function growTipFan(
+  rng: Rng,
+  parent: Pt[],
+  width: number,
+  scale: number,
+  emerge: number,
+  span: number,
+  roots: TreeStroke[],
+): void {
+  if (parent.length < 2) return;
+  const end = parent[parent.length - 1]!;
+  const pre = parent[parent.length - 2]!;
+  const endAngle = Math.atan2(end.y - pre.y, end.x - pre.x);
+  const n = 2 + Math.floor(rng() * 2);
+  for (let k = 0; k < n; k++) {
+    const side = k % 2 === 0 ? -1 : 1;
+    const a = endAngle + side * (0.18 + rng() * 0.22) + range(rng, -0.05, 0.05);
+    const len = (5 + rng() * 7) * scale;
+    const bend = range(rng, -0.12, 0.12);
+    const steps = 5;
+    const pts: Pt[] = [{ x: end.x, y: end.y }];
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const heading = a + bend * t;
+      pts.push({
+        x: end.x + Math.cos(heading) * len * t,
+        y: end.y + Math.sin(heading) * len * t,
+      });
+    }
+    roots.push({
+      points: pts,
+      widthStart: Math.max(0.28 * scale, width * 0.7),
+      widthEnd: Math.max(0.22 * scale, width * 0.28),
+      kind: 'root',
+      emerge: emerge + span * 0.72,
+      span: Math.max(0.1, span * 0.28),
+    });
+  }
+}
+
+function clampTurn(delta: number, max: number): number {
+  if (delta > max) return max;
+  if (delta < -max) return -max;
+  return delta;
+}
+
 function spawnLaterals(
   rng: Rng,
   spine: Pt[],
-  fromIdx: number,
-  toIdx: number,
   count: number,
   spread: number,
   curl: number,
   droop: number,
-  isRoot: boolean,
+  inward: boolean,
   depth: number,
   maxDepth: number,
   scale: number,
   parentEmerge: number,
   parentSpan: number,
+  coreY: number,
   strokes: TreeStroke[],
   flowers: TreeFlower[],
   tips: TreeTip[],
-  roots: TreeStroke[],
   leaves: TreeLeaf[],
 ): void {
-  const idxSpan = Math.max(1, toIdx - fromIdx);
+  const last = Math.max(1, spine.length - 1);
   for (let k = 0; k < count; k++) {
-    const t = 0.34 + ((k + 0.2 + rng() * 0.32) / count) * 0.56;
-    const idx = Math.max(
-      fromIdx + 1,
-      Math.min(toIdx - 1, fromIdx + Math.round(t * idxSpan)),
-    );
+    const t = 0.22 + ((k + 0.35 + rng() * 0.4) / count) * 0.62;
+    const idx = Math.max(1, Math.min(last - 1, Math.round(t * last)));
     const p = spine[idx]!;
     const prev = spine[Math.max(0, idx - 1)]!;
     const stemA = Math.atan2(p.y - prev.y, p.x - prev.x);
     const side = k % 2 === 0 ? -1 : 1;
-    const fork = side * (0.34 + t * 0.18 + rng() * spread * 0.28);
-    const len = (isRoot ? 20 : 30 + t * 18) * scale * (0.72 + rng() * 0.32);
-    const w = (isRoot ? 2.1 : 3.15) * scale * (1 - t * 0.38);
+    const fork = side * (0.26 + rng() * spread * 0.65);
+    const len = 24 * scale * (0.5 + rng() * 0.4);
+    const w = 1.85 * scale * (1 - t * 0.42);
     const emerge = parentEmerge + parentSpan * t * 0.82 + rng() * 0.03;
     const span = Math.max(0.14, parentSpan * (0.48 + rng() * 0.22));
     growBranch(
@@ -641,19 +743,19 @@ function spawnLaterals(
       p,
       stemA + fork,
       len,
-      Math.max(0.7, w),
-      curl * (1.02 + rng() * 0.22),
+      Math.max(0.65, w),
+      curl * (1.02 + rng() * 0.2),
       droop,
-      isRoot,
+      inward,
       depth,
       maxDepth,
       scale,
       emerge,
       span,
+      coreY,
       strokes,
       flowers,
       tips,
-      roots,
       leaves,
     );
   }
@@ -667,165 +769,118 @@ function growBranch(
   widthStart: number,
   curl: number,
   droop: number,
-  isRoot: boolean,
+  inward: boolean,
   depth: number,
   maxDepth: number,
   scale: number,
   emerge: number,
   span: number,
+  coreY: number,
   strokes: TreeStroke[],
   flowers: TreeFlower[],
   tips: TreeTip[],
-  roots: TreeStroke[],
   leaves: TreeLeaf[],
 ): void {
   if (length < 5 * scale) return;
 
-  const steps = Math.max(8, Math.round(length / (isRoot ? 4.4 : 3.2)));
+  const steps = Math.max(7, Math.round(length / 3.3));
   const pts = curveStroke(
     rng,
     origin,
     angle,
     length,
     steps,
-    curl * (1 + depth * 0.05),
+    curl * (1 + depth * 0.04),
     droop,
-    isRoot,
+    inward,
+    coreY,
   );
-  const widthEnd = Math.max(0.55, widthStart * (depth >= maxDepth ? 0.28 : 0.46));
-  const kind: TreeStroke['kind'] = isRoot
-    ? 'root'
-    : depth >= maxDepth - 1 || widthStart < 1.15 * scale
-      ? 'twig'
-      : 'wood';
-  const stroke: TreeStroke = {
+  const widthEnd = Math.max(0.38, widthStart * (depth >= maxDepth ? 0.2 : 0.44));
+  const kind: TreeStroke['kind'] =
+    depth >= maxDepth - 1 || widthStart < 1.0 * scale ? 'twig' : 'wood';
+  strokes.push({
     points: pts,
     widthStart,
     widthEnd,
     kind,
     emerge,
     span,
-  };
-  if (isRoot) roots.push(stroke);
-  else strokes.push(stroke);
-
-  if (!isRoot && depth <= 1 && rng() < 0.42) {
-    sprinkleLeaves(rng, pts, scale, emerge, span, leaves);
-  }
+  });
 
   const end = pts[pts.length - 1]!;
   const pre = pts[pts.length - 2] ?? origin;
   const endAngle = Math.atan2(end.y - pre.y, end.x - pre.x);
-  const tipEmerge = emerge + span * 0.9;
+  const tipEmerge = emerge + span * 0.88;
+  const join: Pt = {
+    x: end.x * 0.84 + pre.x * 0.16,
+    y: end.y * 0.84 + pre.y * 0.16,
+  };
 
-  if (!isRoot && (depth >= maxDepth || length < 14 * scale)) {
+  const finishTip = (): void => {
+    if (inward) return;
     tips.push({ x: end.x, y: end.y, angle: endAngle, emerge: tipEmerge });
-    if (rng() < 0.85) {
+    if (rng() < 0.9) {
       flowers.push({
         x: end.x,
         y: end.y,
         angle: endAngle,
-        size: (6.5 + rng() * 3.5) * scale,
-        emerge: Math.min(0.4, emerge + span * 0.5),
-        span: 0.16,
+        size: (FLOWER_SIZE_MIN + rng() * FLOWER_SIZE_SPREAD) * scale,
+        emerge: tipEmerge + 0.03,
+        span: 0.15,
       });
     }
-    if (rng() < 0.55 && length > 8 * scale) {
-      const twigLen = length * (0.28 + rng() * 0.22);
-      growBranch(
-        rng,
-        end,
-        endAngle + range(rng, -0.42, 0.42),
-        twigLen,
-        Math.max(0.5, widthEnd),
-        curl * 1.1,
-        droop * 1.12,
-        false,
-        depth + 1,
-        maxDepth,
-        scale,
-        emerge + span * 0.86,
-        Math.max(0.12, span * 0.55),
-        strokes,
-        flowers,
-        tips,
-        roots,
-        leaves,
-      );
-    }
+  };
+
+  if (depth >= maxDepth || length < 9 * scale) {
+    finishTip();
     return;
   }
 
-  if (depth >= maxDepth) {
-    if (isRoot) return;
-    tips.push({ x: end.x, y: end.y, angle: endAngle, emerge: tipEmerge });
-    return;
-  }
+  const open = (0.22 + rng() * 0.2) * (1 - depth * 0.04);
+  const leaderSide = rng() < 0.5 ? -1 : 1;
+  const childSpan = Math.max(0.12, span * (0.48 + rng() * 0.16));
+  const childEmerge = emerge + span * 0.76;
 
-  const nLat = depth === 0 ? 2 : rng() < 0.62 ? 1 : rng() < 0.45 ? 2 : 0;
-  for (let k = 0; k < nLat; k++) {
-    const t = 0.48 + rng() * 0.4;
-    const idx = Math.max(1, Math.min(pts.length - 2, Math.round(t * (pts.length - 1))));
-    const p = pts[idx]!;
-    const p0 = pts[idx - 1]!;
-    const a = Math.atan2(p.y - p0.y, p.x - p0.x);
-    const side = nLat === 1 ? (rng() > 0.5 ? 1 : -1) : k === 0 ? -1 : 1;
-    growBranch(
-      rng,
-      p,
-      a + side * (0.32 + rng() * 0.38),
-      length * (0.5 + rng() * 0.22),
-      Math.max(0.55, widthStart * (1 - t * 0.55) * 0.7),
-      curl * 1.08,
-      droop,
-      isRoot,
-      depth + 1,
-      maxDepth,
-      scale,
-      emerge + span * t * 0.8,
-      Math.max(0.12, span * (0.45 + rng() * 0.2)),
-      strokes,
-      flowers,
-      tips,
-      roots,
-      leaves,
-    );
-  }
-
-  if (!isRoot && rng() < 0.7) {
-    growBranch(
-      rng,
-      end,
-      endAngle + range(rng, -0.28, 0.28),
-      length * (0.38 + rng() * 0.18),
-      widthEnd,
-      curl * 1.15,
-      droop * 1.08,
-      false,
-      depth + 1,
-      maxDepth,
-      scale,
-      emerge + span * 0.88,
-      Math.max(0.12, span * 0.5),
-      strokes,
-      flowers,
-      tips,
-      roots,
-      leaves,
-    );
-  } else if (!isRoot) {
-    tips.push({ x: end.x, y: end.y, angle: endAngle, emerge: tipEmerge });
-    if (rng() < 0.8) {
-      flowers.push({
-        x: end.x,
-        y: end.y,
-        angle: endAngle,
-        size: (6.5 + rng() * 3.5) * scale,
-        emerge: Math.min(0.4, emerge + span * 0.5),
-        span: 0.18,
-      });
-    }
-  }
+  growBranch(
+    rng,
+    join,
+    endAngle + leaderSide * open * 0.38,
+    length * (0.62 + rng() * 0.14),
+    Math.max(0.4, widthEnd * 0.92),
+    curl,
+    droop,
+    inward,
+    depth + 1,
+    maxDepth,
+    scale,
+    childEmerge,
+    childSpan,
+    coreY,
+    strokes,
+    flowers,
+    tips,
+    leaves,
+  );
+  growBranch(
+    rng,
+    join,
+    endAngle - leaderSide * open * 0.95,
+    length * (0.46 + rng() * 0.14),
+    Math.max(0.38, widthEnd * 0.58),
+    curl,
+    droop,
+    inward,
+    depth + 1,
+    maxDepth,
+    scale,
+    childEmerge + 0.02,
+    childSpan,
+    coreY,
+    strokes,
+    flowers,
+    tips,
+    leaves,
+  );
 }
 
 function curveStroke(
@@ -836,64 +891,46 @@ function curveStroke(
   steps: number,
   curl: number,
   droop: number,
-  isRoot: boolean,
+  inward: boolean,
+  coreY?: number,
 ): Pt[] {
   const pts: Pt[] = [{ x: origin.x, y: origin.y }];
   let x = origin.x;
   let y = origin.y;
   let wander = range(rng, -curl, curl) * 0.28;
-  const tropism = isRoot ? Math.PI / 2 : -Math.PI / 2;
-  const tropismK = isRoot ? 0.13 : 0.04;
-  const waves = range(rng, isRoot ? 0.9 : 0.35, isRoot ? 1.7 : 0.9);
+  const tropism = inward ? Math.PI / 2 : -Math.PI / 2;
+  const tropismK = inward ? 0.085 : 0.045;
+  const waves = range(rng, 0.32, 0.7);
   const phase = range(rng, 0, Math.PI * 2);
-  const waveAmp = curl * range(rng, 1.05, 1.85);
-  const arc = range(rng, -1, 1) * curl * 1.55;
-  const tipCurl = isRoot ? range(rng, -curl, curl) * 0.7 : range(rng, -1, 1) * curl * 1.05;
-  const n = Math.max(steps, 4);
+  const waveAmp = curl * range(rng, 0.85, 1.4);
+  const arc = range(rng, -1, 1) * curl * 1.15;
+  const n = Math.max(steps, 5);
   for (let i = 1; i <= n; i++) {
     const t = i / n;
-    wander += range(rng, -curl, curl) * (isRoot ? 0.72 : 0.18);
-    wander *= isRoot ? 0.86 : 0.94;
-    const env = isRoot ? 0.5 + 0.5 * t : 0.28 + 0.72 * t;
-    const wave = Math.sin(t * waves * Math.PI * 2 + phase) * waveAmp * env;
-    const droopBend = droop * t * t * (isRoot ? 0.35 : 1.35);
-    const tendril = tipCurl * Math.max(0, (t - 0.78) / 0.22);
-    let a = angle + arc * t + wave + wander + droopBend + tendril;
+    wander += range(rng, -curl, curl) * 0.1;
+    wander *= 0.95;
+    const wave = Math.sin(t * waves * Math.PI * 2 + phase) * waveAmp * (0.25 + 0.75 * t);
+    const droopBend = droop * t * t * 1.1;
+    let a = angle + arc * t + wave + wander + droopBend;
     a += shortestAngle(a, tropism) * tropismK;
+    if (inward && coreY != null) {
+      const toCore = Math.atan2(coreY - y, -x);
+      const dist = Math.hypot(x, y - coreY);
+      const closeness = 1 - Math.min(1, dist / Math.max(1, length));
+      a += shortestAngle(a, toCore) * (0.04 + 0.18 * closeness * closeness);
+    }
     const step = length / n;
     x += Math.cos(a) * step;
     y += Math.sin(a) * step;
+    if (inward && y < origin.y) y = origin.y;
+    if (inward && coreY != null && y > coreY - 1.2) {
+      y = coreY - 1.2;
+      pts.push({ x, y });
+      break;
+    }
     pts.push({ x, y });
   }
   return pts;
-}
-
-function sprinkleLeaves(
-  rng: Rng,
-  pts: Pt[],
-  scale: number,
-  emerge: number,
-  span: number,
-  leaves: TreeLeaf[],
-): void {
-  if (pts.length < 3) return;
-  const n = rng() > 0.55 ? 2 : 1;
-  for (let i = 0; i < n; i++) {
-    const t = 0.4 + rng() * 0.55;
-    const idx = Math.max(1, Math.min(pts.length - 1, Math.round(t * (pts.length - 1))));
-    const p = pts[idx]!;
-    const p0 = pts[idx - 1]!;
-    const a = Math.atan2(p.y - p0.y, p.x - p0.x);
-    leaves.push({
-      x: p.x + range(rng, -1.15, 1.15) * scale,
-      y: p.y + range(rng, -1.15, 1.15) * scale,
-      angle: a + range(rng, -0.95, 0.95) + 0.32,
-      length: (4.6 + rng() * 7.2) * scale,
-      width: (1.12 + rng() * 1.28) * scale,
-      emerge: emerge + span * t * 0.65,
-      span: 0.16 + rng() * 0.08,
-    });
-  }
 }
 
 function paintCanopy(
@@ -913,39 +950,37 @@ function paintCanopy(
   }
   cx /= tips.length;
   cy /= tips.length;
-  let spanR = 0;
-  for (const t of tips) {
-    spanR = Math.max(spanR, Math.hypot(t.x - cx, t.y - cy));
-  }
 
   blobs.push({
     x: cx,
     y: cy,
-    r: Math.max(36 * scale, spanR * 1.08 + 10 * scale),
-    alpha: 0.16,
-    emerge: 0.48,
-    span: 0.38,
+    r: 22 * scale,
+    alpha: 0.1,
+    emerge: 0.5,
+    span: 0.36,
   });
   for (const t of tips) {
     const tipEmerge = t.emerge ?? 0.62;
     blobs.push({
-      x: t.x + range(rng, -4, 4) * scale,
-      y: t.y + range(rng, -4, 4) * scale,
-      r: (5 + rng() * 9) * scale,
-      alpha: 0.07 + rng() * 0.09,
-      emerge: tipEmerge - 0.06,
-      span: 0.28,
+      x: t.x + range(rng, -2.5, 2.5) * scale,
+      y: t.y + range(rng, -2.5, 2.5) * scale,
+      r: (3.2 + rng() * 5.5) * scale,
+      alpha: 0.05 + rng() * 0.07,
+      emerge: tipEmerge - 0.05,
+      span: 0.24,
     });
-    const n = 2 + (rng() > 0.4 ? 1 : 0);
-    for (let i = 0; i < n; i++) {
+    // Two leaves per tip, opposite sides — a real leaf pair instead of a coin flip.
+    const baseAngle = t.angle + range(rng, -0.3, 0.3);
+    for (let s = 0; s < 2; s++) {
+      const side = s === 0 ? -1 : 1;
       leaves.push({
-        x: t.x + range(rng, -2.2, 2.2) * scale,
-        y: t.y + range(rng, -2.2, 2.2) * scale,
-        angle: t.angle + range(rng, -0.65, 0.65) + 0.32,
-        length: (5.2 + rng() * 7.4) * scale,
-        width: (1.22 + rng() * 1.28) * scale,
-        emerge: tipEmerge + rng() * 0.08,
-        span: 0.18 + rng() * 0.08,
+        x: t.x + Math.cos(baseAngle + Math.PI / 2) * side * 0.8 * scale,
+        y: t.y + Math.sin(baseAngle + Math.PI / 2) * side * 0.8 * scale,
+        angle: baseAngle + side * (0.85 + rng() * 0.35),
+        length: (5.2 + rng() * 4.6) * scale,
+        width: (1.4 + rng() * 1.2) * scale,
+        emerge: tipEmerge + rng() * 0.06,
+        span: 0.16 + rng() * 0.06,
       });
     }
   }
@@ -953,7 +988,7 @@ function paintCanopy(
     blobs.push({
       x: f.x,
       y: f.y,
-      r: f.size * 2.2,
+      r: f.size * 0.9,
       alpha: 0.16,
       emerge: (f.emerge ?? 0.72) - 0.04,
       span: 0.22,
@@ -971,53 +1006,91 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-function clipStroke(stroke: TreeStroke, t: number): TreeStroke | null {
+function isWoodyStroke(kind: TreeStroke['kind']): boolean {
+  return kind === 'wood' || kind === 'root' || kind === 'twig';
+}
+/**
+ * Length progress `t` and global `girth` are independent for wood/roots:
+ * incomplete tips stay young-thin while the base thickens toward adult.
+ * Scar flora (tuft/grass) keeps the old length-tied width curve.
+ */
+function clipStroke(
+  stroke: TreeStroke,
+  t: number,
+  girth: number,
+): TreeStroke | null {
   if (t <= 0.012) return null;
-  if (t >= 0.999) return stroke;
 
   const pts = stroke.points;
   if (pts.length < 2) return null;
 
-  const lens: number[] = [0];
-  let total = 0;
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1]!;
-    const b = pts[i]!;
-    total += Math.hypot(b.x - a.x, b.y - a.y);
-    lens.push(total);
-  }
-  if (total < 1e-4) return null;
+  const woody = isWoodyStroke(stroke.kind);
+  const fullLength = t >= 0.999;
 
-  const eased = t;
-  const target = Math.max(total * eased, Math.min(1.4, total * 0.04));
-  const clipped: Pt[] = [{ x: pts[0]!.x, y: pts[0]!.y }];
-  for (let i = 1; i < pts.length; i++) {
-    if (lens[i]! <= target) {
-      clipped.push(pts[i]!);
-      continue;
+  let clipped: Pt[] = pts;
+  if (!fullLength) {
+    const lens: number[] = [0];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]!;
+      const b = pts[i]!;
+      total += Math.hypot(b.x - a.x, b.y - a.y);
+      lens.push(total);
     }
-    const prev = pts[i - 1]!;
-    const next = pts[i]!;
-    const seg = lens[i]! - lens[i - 1]!;
-    const u = seg > 1e-6 ? (target - lens[i - 1]!) / seg : 1;
-    clipped.push({
-      x: prev.x + (next.x - prev.x) * u,
-      y: prev.y + (next.y - prev.y) * u,
-    });
-    break;
+    if (total < 1e-4) return null;
+
+    const eased = 1 - (1 - t) ** 3;
+    const target = Math.max(total * eased, Math.min(1.4, total * 0.04));
+    clipped = [{ x: pts[0]!.x, y: pts[0]!.y }];
+    for (let i = 1; i < pts.length; i++) {
+      if (lens[i]! <= target) {
+        clipped.push(pts[i]!);
+        continue;
+      }
+      const prev = pts[i - 1]!;
+      const next = pts[i]!;
+      const seg = lens[i]! - lens[i - 1]!;
+      const u = seg > 1e-6 ? (target - lens[i - 1]!) / seg : 1;
+      clipped.push({
+        x: prev.x + (next.x - prev.x) * u,
+        y: prev.y + (next.y - prev.y) * u,
+      });
+      break;
+    }
+
+    if (clipped.length < 2) {
+      const d = pts[1]!;
+      const len = Math.hypot(d.x - pts[0]!.x, d.y - pts[0]!.y) || 1;
+      clipped.push({
+        x: pts[0]!.x + ((d.x - pts[0]!.x) / len) * target,
+        y: pts[0]!.y + ((d.y - pts[0]!.y) / len) * target,
+      });
+    }
   }
 
-  if (clipped.length < 2) {
-    const d = pts[1]!;
-    const len = Math.hypot(d.x - pts[0]!.x, d.y - pts[0]!.y) || 1;
-    clipped.push({
-      x: pts[0]!.x + ((d.x - pts[0]!.x) / len) * target,
-      y: pts[0]!.y + ((d.y - pts[0]!.y) / len) * target,
-    });
+  let widthStart: number;
+  let widthEnd: number;
+  if (woody) {
+    const sproutFrac = 0.16;
+    const baseFloor = Math.max(0.35, stroke.widthStart * sproutFrac);
+    widthStart = baseFloor + (stroke.widthStart - baseFloor) * girth;
+    if (fullLength) {
+      const tipFloor = Math.max(0.35, stroke.widthEnd * sproutFrac);
+      widthEnd = tipFloor + (stroke.widthEnd - tipFloor) * girth;
+    } else {
+      // Growing tip stays young; only the established base thickens.
+      const tipYoung = Math.max(0.35, widthStart * (0.22 + 0.18 * t));
+      widthEnd = tipYoung;
+    }
+  } else {
+    widthStart = stroke.widthStart * (0.38 + 0.62 * t);
+    widthEnd =
+      widthStart *
+      (0.18 + 0.82 * t) *
+      (stroke.widthEnd / Math.max(stroke.widthStart, 0.01));
+    widthEnd = Math.max(0.35, widthEnd);
   }
 
-  const widthStart = stroke.widthStart * (0.38 + 0.62 * t);
-  const widthEnd = widthStart * (0.18 + 0.82 * t) * (stroke.widthEnd / Math.max(stroke.widthStart, 0.01));
   return {
     points: clipped,
     widthStart,
@@ -1035,12 +1108,10 @@ function shortestAngle(from: number, to: number): number {
 
 /** Min bloom growth (0..1) before a flower sheds pollen. */
 export const FLOWER_POLLEN_OPEN = 0.22;
-/** Min bloom growth (0..1) before a flower may drop a seedling. */
-export const FLOWER_SPAWN_READY = 0.45;
 
 /**
- * World-space flowers open enough for pollen or seedling spawn.
- * Uses adult bloom positions so effects leave the blooms, not clipped tips.
+ * World-space flowers open enough to shed pollen.
+ * Uses adult bloom positions so grains leave the blooms, not the scar.
  */
 export function treeFlowersWorld(
   seed: number,
@@ -1105,7 +1176,7 @@ export function buildLSystemSegments(
 ): { x0: number; y0: number; x1: number; y1: number }[] {
   const geom = buildTree(seed, maturity, scale);
   const segs: { x0: number; y0: number; x1: number; y1: number }[] = [];
-  for (const st of [...geom.strokes, ...geom.roots]) {
+  for (const st of geom.strokes) {
     for (let i = 1; i < st.points.length; i++) {
       const a = st.points[i - 1]!;
       const b = st.points[i]!;

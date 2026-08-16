@@ -34,6 +34,7 @@ const REASON_COPY: Record<string, string> = {
   'enemy trees': 'Enemy trees still stand — wait for them to burn',
   'slot taken': 'That slot already has a tree',
   'need 10 seedlings': 'Need 10 seedlings to plant',
+  'too close': 'Too close to another tree',
 };
 
 export function commandReasonCopy(reason: string): string {
@@ -59,16 +60,48 @@ export function plantKindLabel(kind: TreeKind): string {
   return 'Dyson';
 }
 
-export const CONTROLS_HINT =
-  'tap or click a rock · drag to send · tap a glowing slot (10) to plant · pause / Esc · M mute · F follow';
+/** Short labels for the selected-rock inspector (Cities-style rows). */
+export type InspectorStatKey =
+  | 'seedlings'
+  | 'sentinels'
+  | 'minerals'
+  | 'energy'
+  | 'shield'
+  | 'trees';
 
-export const FIRST_RUN_STORAGE_KEY = 'asterbloom.firstRun.v1';
+export function inspectorStatLabel(key: InspectorStatKey): string {
+  switch (key) {
+    case 'seedlings':
+      return 'Seedlings';
+    case 'sentinels':
+      return 'Sentinels';
+    case 'minerals':
+      return 'Minerals';
+    case 'energy':
+      return 'Energy';
+    case 'shield':
+      return 'Shield';
+    case 'trees':
+      return 'Trees';
+  }
+}
+
+export const CONTROLS_HINT =
+  'tap or click a rock · drag to send · right-click or hold the crust (10) to plant · pause / Esc · M mute · F follow';
+
+export const FIRST_RUN_STORAGE_KEY = 'asterbloom.firstRun.v2';
 
 export const FIRST_RUN_STEPS = [
   'Tap a rock to select it',
   'Drag to another rock to send seedlings',
-  'Tap a glowing slot to plant (needs 10)',
+  'Right-click or hold the crust to plant (needs 10)',
 ] as const;
+
+export const CRUST_MENU_ASK = 'What now?';
+
+export function crustPlantActionLabel(kind: TreeKind): string {
+  return `Plant ${plantKindLabel(kind)}`;
+}
 
 export function difficultyLabel(d: 'easy' | 'normal' | 'hard'): string {
   if (d === 'easy') return 'Easy';

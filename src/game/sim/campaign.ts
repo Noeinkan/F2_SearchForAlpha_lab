@@ -7,6 +7,7 @@ import { pickRockRadius } from './rock';
 import { mulberry32 } from './rng';
 import {
   ENERGY_TREE_MIN_ENERGY,
+  PLAYER_START_SEEDLINGS,
   ROCK_GAP,
   type Difficulty,
   type FactionId,
@@ -121,7 +122,7 @@ function buildFromSpecs(seed: number, specs: RockSpec[]): {
 
     if (role === 'home') {
       plantStarter(world, rock.id, 'player', seed, spec.treeMaturity ?? 0.62);
-      spawnOrbiters(world, rock.id, 'player', spec.orbiters ?? 8);
+      spawnOrbiters(world, rock.id, 'player', spec.orbiters ?? PLAYER_START_SEEDLINGS);
     } else if (role === 'enemy') {
       if (world.aiHomeId === null) world.aiHomeId = rock.id;
       plantStarter(world, rock.id, 'enemy', seed, spec.treeMaturity ?? 0.7);
@@ -257,7 +258,7 @@ function lastStand(seed: number): { world: World; win: WinRule } {
   // Dense enemy home with extra orbiters; skirmish-scale but fixed seed feel.
   const travel = 480;
   const specs: RockSpec[] = [
-    { x: 0, y: 0, role: 'home', travelRadius: travel, orbiters: 8 },
+    { x: 0, y: 0, role: 'home', travelRadius: travel },
     { x: 450, y: 80, role: 'wild', travelRadius: travel, orbiters: 8 },
     { x: 900, y: 0, role: 'empty', travelRadius: travel },
     { x: 1350, y: -120, role: 'energy', travelRadius: travel, orbiters: 5 },

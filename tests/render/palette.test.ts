@@ -1,22 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
   accentHue,
-  ATMOSPHERES,
-  buildFromRecipe,
+  BACKGROUND_THEMES,
+  bucketHue,
   buildScene,
+  buildSceneForTheme,
   createScenePalette,
   floraPalette,
   hexToRgb,
-  hueDistance,
   HUE_CYCLE_SECONDS,
+  hueDistance,
+  interpolateScene,
   isPastel,
   mixStatsRgb,
-  PALETTE_STEP_SECONDS,
   rgbToHsl,
   sceneAtTime,
   seedlingColors,
+  themeAt,
+  THEME_CYCLE_SECONDS,
+  THEME_FADE_SECONDS,
   toPastel,
 } from '../../src/game/render/palette';
+import type { BackgroundTheme } from '../../src/game/render/palette';
 import type { Stats } from '../../src/game/sim/types';
 
 const red = 0xff0000;
@@ -34,15 +39,18 @@ describe('pastel rule', () => {
     }
   });
 
-  it('gameplay palettes stay a dark space void for any seed', () => {
+  it('gameplay palette defaults to a dark theme at t=0', () => {
     const odd = createScenePalette(0xc0a1f00d);
     const even = createScenePalette(0xc0a1f00e);
-    expect(odd.dark).toBe(true);
-    expect(even.dark).toBe(true);
-    const [, , lOdd] = rgbToHsl(...hexToRgb(odd.bg));
-    const [, , lEven] = rgbToHsl(...hexToRgb(even.bg));
-    expect(lOdd).toBeLessThan(0.22);
-    expect(lEven).toBeLessThan(0.22);
+    // Different seeds pick a different starting theme, but every theme in
+    // the rotation is intentionally dark-ish so gameplay readability stays
+    // consistent. Specifically `void`, `aurora`, and `nebula` are dark.
+    expect(['void', 'aurora', 'nebula']).toContain(odd.theme);
+    expect(['void', 'aurora', 'nebula']).toContain(even.theme);
+    if (odd.theme === 'void') {
+      const [, , lOdd] = rgbToHsl(...hexToRgb(odd.bg));
+      expect(lOdd).toBeLessThan(0.22);
+    }
   });
 
   it('buildScene can still mix a light paper wash', () => {
@@ -52,29 +60,14 @@ describe('pastel rule', () => {
     expect(l).toBeGreaterThan(0.8);
   });
 
-  it('sceneAtTime walks named atmospheres and stays a dark void', () => {
+  it('sceneAtTime drifts hue and stays within the theme rotation', () => {
     const a = sceneAtTime(1, 0);
-    const b = sceneAtTime(1, PALETTE_STEP_SECONDS);
+    const b = sceneAtTime(1, HUE_CYCLE_SECONDS / 2);
     const c = sceneAtTime(1, HUE_CYCLE_SECONDS);
-    expect(a.dark).toBe(true);
-    expect(b.dark).toBe(true);
-    expect(c.dark).toBe(true);
-    expect(b.atmosphere).not.toBe(a.atmosphere);
-    expect(c.atmosphere).toBe(a.atmosphere);
+    expect(hueDistance(a.hue, b.hue)).toBeGreaterThan(150);
     expect(hueDistance(a.hue, c.hue)).toBeLessThan(2);
-  });
-
-  it('named atmospheres are distinct dark families', () => {
-    const hues = ATMOSPHERES.map((r) => r.hue);
-    expect(new Set(hues).size).toBe(ATMOSPHERES.length);
-    expect(ATMOSPHERES.length).toBeGreaterThanOrEqual(12);
-    for (const recipe of ATMOSPHERES) {
-      const scene = buildFromRecipe(recipe);
-      expect(scene.dark).toBe(true);
-      const [, , l] = rgbToHsl(...hexToRgb(scene.bg));
-      expect(l).toBeLessThan(0.22);
-      expect(recipe.woodOffset).toBeGreaterThanOrEqual(130);
-    }
+    expect(a.theme).toBeDefined();
+    expect(BACKGROUND_THEMES).toContain(a.theme);
   });
 
   it('Energy/Strength/Speed mix as yellow/red/green before pastelizing', () => {
@@ -112,29 +105,162 @@ describe('pastel rule', () => {
     expect(isPastel(pal.wing)).toBe(true);
   });
 
-  it('roots glow warm amber — visible on rock, distinct from coreWhite', () => {
-    const scene = createScenePalette(0xc0a1f00d);
-    for (const seed of [1, 42, 99, 0x85ebca6b]) {
-      const pal = floraPalette(
-        { energy: 100, strength: 50, speed: 80 },
-        seed,
-        scene,
-      );
-      const [, rootS, rootL] = rgbToHsl(...hexToRgb(pal.root));
-      const [, , softL] = rgbToHsl(...hexToRgb(pal.rootSoft));
-      const [, , rockL] = rgbToHsl(...hexToRgb(pal.rock));
-      const [, , whiteL] = rgbToHsl(...hexToRgb(pal.coreWhite));
-      expect(rootL).toBeGreaterThan(rockL + 0.18);
-      expect(rootL).toBeGreaterThan(0.45);
-      expect(rootS).toBeGreaterThan(0.55);
-      expect(softL).toBeGreaterThan(rootL);
-      expect(whiteL - rootL).toBeGreaterThan(0.2);
-    }
-  });
-
   it('seedling wings follow the same pastel operator', () => {
     const scene = createScenePalette(7);
     const { wing } = seedlingColors({ energy: 80, strength: 50, speed: 90 }, scene);
     expect(isPastel(wing)).toBe(true);
+  });
+});
+
+describe('background themes', () => {
+  it('every theme in the rotation builds a distinct palette', () => {
+    const seen = new Set<BackgroundTheme>();
+    for (const theme of BACKGROUND_THEMES) {
+      const scene = buildSceneForTheme(42, theme);
+      expect(scene.theme).toBe(theme);
+      if (scene.theme) seen.add(scene.theme);
+    }
+    expect(seen.size).toBe(BACKGROUND_THEMES.length);
+    // Paper should produce a non-dark palette; the rest stay dark.
+    const paper = buildSceneForTheme(42, 'paper');
+    expect(paper.dark).toBe(false);
+    expect(buildSceneForTheme(42, 'void').dark).toBe(true);
+  });
+
+  it('themeAt reports the current pair and crossfade mix', () => {
+    const slotSeconds = THEME_CYCLE_SECONDS / BACKGROUND_THEMES.length;
+    const start = themeAt(1, 0);
+    const mid = themeAt(1, slotSeconds * 0.5);
+    const atFade = themeAt(
+      1,
+      slotSeconds - THEME_FADE_SECONDS / 2,
+    );
+    expect(BACKGROUND_THEMES).toContain(start.themeA);
+    expect(BACKGROUND_THEMES).toContain(start.themeB);
+    // Mid-slot is fully on themeA (mix = 0).
+    expect(mid.mix).toBe(0);
+    expect(mid.themeA).toBe(start.themeA);
+    // At the crossfade window the next theme begins fading in.
+    expect(atFade.mix).toBeGreaterThan(0);
+    expect(atFade.mix).toBeLessThan(1);
+  });
+
+  it('themes rotate through every entry over a full cycle', () => {
+    const seen = new Set<BackgroundTheme>();
+    for (let i = 0; i < BACKGROUND_THEMES.length; i++) {
+      const t = (i + 0.5) * (THEME_CYCLE_SECONDS / BACKGROUND_THEMES.length);
+      const mid = themeAt(0x1234, t);
+      // Use themeA (or themeB if mid is inside the crossfade window)
+      seen.add(mid.mix >= 0.5 ? mid.themeB : mid.themeA);
+    }
+    expect(seen.size).toBe(BACKGROUND_THEMES.length);
+  });
+});
+
+describe('palette interpolation', () => {
+  it('interpolateScene at t=0 returns scene A; at t=1 returns scene B', () => {
+    const a = buildSceneForTheme(20, 'void');
+    const b = buildSceneForTheme(220, 'paper');
+    const lo = interpolateScene(a, b, 0);
+    const hi = interpolateScene(a, b, 1);
+    expect(lo.bg).toBe(a.bg);
+    expect(lo.bgA).toBe(a.bgA);
+    expect(hi.bg).toBe(b.bg);
+    expect(hi.bgA).toBe(b.bgA);
+  });
+
+  it('interpolateScene midpoint sits between the two palettes', () => {
+    const a = buildSceneForTheme(0, 'void');
+    const b = buildSceneForTheme(120, 'void');
+    const mid = interpolateScene(a, b, 0.5);
+    const [ha] = rgbToHsl(...hexToRgb(a.mist));
+    const [hb] = rgbToHsl(...hexToRgb(b.mist));
+    const [hm] = rgbToHsl(...hexToRgb(mid.mist));
+    // Mist midpoint hue should be near the shorter arc midpoint.
+    expect(hueDistance(hm, (ha + hb) / 2)).toBeLessThan(20);
+  });
+});
+
+describe('hue bucket cache', () => {
+  it('bucketHue rounds to the nearest degree', () => {
+    expect(bucketHue(0.4)).toBe(0);
+    expect(bucketHue(0.6)).toBe(1);
+    expect(bucketHue(359.6)).toBe(0);
+    expect(bucketHue(180.49)).toBe(180);
+  });
+
+  it('sceneAtTime reports a different bucket every degree', () => {
+    const lastBucket = bucketHue(sceneAtTime(7, 0).hue);
+    let changed = 0;
+    // Step through 10 seconds at 60 fps — at least one bucket boundary.
+    for (let i = 1; i <= 600; i++) {
+      const b = bucketHue(sceneAtTime(7, i / 60).hue);
+      if (b !== lastBucket) changed++;
+      if (changed > 0) break;
+    }
+    expect(changed).toBeGreaterThan(0);
+  });
+});
+
+describe('theme contrast', () => {
+  it('void theme has zero contrast; paper theme has full contrast', () => {
+    const v = buildSceneForTheme(42, 'void');
+    const p = buildSceneForTheme(42, 'paper');
+    expect(v.contrast).toBe(0);
+    expect(p.contrast).toBe(1);
+  });
+
+  it('sceneAtTime blends contrast across the theme crossfade', () => {
+    const slotSeconds = THEME_CYCLE_SECONDS / BACKGROUND_THEMES.length;
+    // Pick a time inside the crossfade window between two arbitrary themes
+    // and confirm the blended contrast is between the two endpoints.
+    const before = sceneAtTime(1, slotSeconds - THEME_FADE_SECONDS);
+    const after = sceneAtTime(1, slotSeconds);
+    const mid = sceneAtTime(
+      1,
+      slotSeconds - THEME_FADE_SECONDS / 2,
+    );
+    expect(mid.contrast).toBeGreaterThanOrEqual(0);
+    expect(mid.contrast).toBeLessThanOrEqual(1);
+    // The mid crossfade must sit between the two adjacent theme contrasts.
+    const lo = Math.min(before.contrast, after.contrast);
+    const hi = Math.max(before.contrast, after.contrast);
+    expect(mid.contrast).toBeGreaterThanOrEqual(lo - 0.001);
+    expect(mid.contrast).toBeLessThanOrEqual(hi + 0.001);
+  });
+
+  it('paper-theme flora lifts the rock away from wash-out', () => {
+    // Before the contrast fix the paper theme used scene.dark=false to pick
+    // a near-white rock lightness (~0.7) which disappeared into the paper
+    // bg (~0.88). The fix pulls the paper rock into a mid-tone (~0.4) so
+    // it reads as a silhouette against the wash.
+    const light = buildSceneForTheme(80, 'paper');
+    const floraLight = floraPalette(
+      { energy: 80, strength: 60, speed: 90 },
+      123,
+      light,
+    );
+    const [, , lBg] = rgbToHsl(...hexToRgb(light.bg));
+    const [, , rockLight] = rgbToHsl(...hexToRgb(floraLight.rock));
+    // Rock lightness must be at least 0.3 *below* the bg lightness so it
+    // reads as a clear silhouette.
+    expect(lBg - rockLight).toBeGreaterThan(0.3);
+  });
+
+  it('paper-theme seedling wings drop to a darker silhouette tone', () => {
+    const light = buildSceneForTheme(120, 'paper');
+    const dark = buildSceneForTheme(120, 'void');
+    const wingDark = seedlingColors(
+      { energy: 60, strength: 50, speed: 80 },
+      dark,
+    );
+    const wingLight = seedlingColors(
+      { energy: 60, strength: 50, speed: 80 },
+      light,
+    );
+    const [, , lDark] = rgbToHsl(...hexToRgb(wingDark.wing));
+    const [, , lLight] = rgbToHsl(...hexToRgb(wingLight.wing));
+    // Wings get ~0.28 darker on paper so they don't dissolve into the wash.
+    expect(lDark - lLight).toBeGreaterThan(0.2);
   });
 });

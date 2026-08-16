@@ -1,6 +1,7 @@
 import { Container, Graphics } from 'pixi.js';
 import type { Seedling, SeedlingState } from '../sim/types';
-import { seedlingColors, type ScenePalette } from './palette';
+import { bucketHue, type ScenePalette } from './palette';
+import { paintSeedHull } from './seedlingPaint';
 
 interface TrackedSprite {
   gfx: Graphics;
@@ -28,11 +29,11 @@ export class SeedlingLayer {
   private moteLayer = new Container();
   private scene: ScenePalette;
   private units: Map<number, Seedling> | null = null;
+  private lastHueBucket = -1;
+  private lastTheme: ScenePalette['theme'] | undefined;
 
   constructor(scene: ScenePalette) {
     this.scene = scene;
-    this.back.sortableChildren = true;
-    this.front.sortableChildren = true;
     this.front.addChild(this.moteLayer);
   }
 
@@ -42,11 +43,20 @@ export class SeedlingLayer {
   }
 
   retheme(scene: ScenePalette): void {
+    const bucket = bucketHue(scene.hue);
+    const themeChanged = scene.theme !== undefined && scene.theme !== this.lastTheme;
     this.scene = scene;
+    if (bucket === this.lastHueBucket && !themeChanged) return;
+    this.lastHueBucket = bucket;
+    this.lastTheme = scene.theme;
     if (!this.units) return;
     for (const [id, tracked] of this.sprites) {
       const s = this.units.get(id);
-      if (s) paintSeedling(tracked.gfx, s, scene);
+      if (s) {
+        tracked.gfx.cacheAsTexture(false);
+        paintSeedling(tracked.gfx, s, scene);
+        tracked.gfx.cacheAsTexture(true);
+      }
     }
   }
 
@@ -72,6 +82,7 @@ export class SeedlingLayer {
         };
         this.sprites.set(s.id, tracked);
         this.front.addChild(gfx);
+        gfx.cacheAsTexture(true);
       }
 
       if (s.hp < tracked.lastHp - 0.01) {
@@ -89,7 +100,6 @@ export class SeedlingLayer {
       tracked.z = z;
       const bucket = z < 0 ? this.back : this.front;
       if (g.parent !== bucket) bucket.addChild(g);
-      g.zIndex = z;
       g.position.set(s.x, s.y);
       g.rotation = visualFacing(s, t);
       const flashing = now < tracked.flashUntil;
@@ -170,8 +180,8 @@ function clamp01(v: number): number {
 }
 
 function depthScale(z: number): number {
-  const zc = Math.max(-90, Math.min(90, z));
-  return 220 / (220 - zc);
+  const zc = Math.max(-70, Math.min(70, z));
+  return 1 + zc / 280;
 }
 
 function visualFacing(s: Seedling, t: number): number {
@@ -180,88 +190,25 @@ function visualFacing(s: Seedling, t: number): number {
 }
 
 function visualScale(s: Seedling, t: number): number {
-  const kindScale = s.kind === 'sentinel' ? 1.12 : 1;
+  const kindScale = s.kind === 'sentinel' ? 1.1 : 1;
+  const energyScale = 0.94 + (s.stats.energy / 200) * 0.1;
   const breathe = 1 + Math.sin(t * 1.35 + s.phase * 0.8) * 0.03;
   let unfurl = 1;
   if (s.state === 'sprout') {
     const dur = Math.max(0.01, s.sproutDuration ?? 3.2);
     unfurl = 0.18 + Math.min(1, (s.sproutAge ?? 0) / dur) * 0.82;
   }
-  return unfurl * kindScale * breathe;
+  return unfurl * kindScale * energyScale * breathe;
 }
 
-/**
- * Plump seed hull with two swept membrane wings — organic fighter, not a
- * flying triangle. Span follows speed, hull energy, nose strength.
- */
 function paintSeedling(g: Graphics, s: Seedling, scene: ScenePalette): void {
   g.clear();
-  const { wing, body: bodyColor } = seedlingColors(s.stats, scene, {
+  paintSeedHull(g, {
+    stats: s.stats,
+    scene,
     faction: s.faction,
     kind: s.kind,
+    id: s.id,
+    open: 1,
   });
-  const energy = s.stats.energy / 200;
-  const strength = s.stats.strength / 200;
-  const speed = s.stats.speed / 200;
-  const sentinel = s.kind === 'sentinel';
-  const k = sentinel ? 1.14 : 1;
-
-  const span = (3.5 + speed * 2.65) * k;
-  const bodyL = (3.75 + energy * 1.3 + strength * 0.28) * k;
-  const bodyW = (1.6 + energy * 0.7) * k;
-  const nose = bodyL * 0.5;
-  const rump = -bodyL * 0.46;
-
-  g.circle(0, 0, Math.max(span * 0.55, bodyL * 0.42));
-  g.fill({ color: wing, alpha: sentinel ? 0.12 : 0.07 });
-
-  const rootLead = bodyL * 0.06;
-  const rootTrail = rump * 0.55;
-  const tipX = -bodyL * 0.08;
-  paintWing(g, rootLead, rootTrail, tipX, span, bodyW, wing, sentinel);
-  paintWing(g, rootLead, rootTrail, tipX, -span, bodyW, wing, sentinel);
-
-  g.moveTo(nose, 0);
-  g.quadraticCurveTo(nose * 0.28, bodyW * 1.02, 0, bodyW);
-  g.quadraticCurveTo(rump * 0.58, bodyW * 0.98, rump, 0);
-  g.quadraticCurveTo(rump * 0.58, -bodyW * 0.98, 0, -bodyW);
-  g.quadraticCurveTo(nose * 0.28, -bodyW * 1.02, nose, 0);
-  g.closePath();
-  g.fill({ color: bodyColor, alpha: 0.96 });
-
-  g.ellipse(bodyL * 0.02, 0, bodyL * 0.22, bodyW * 0.38);
-  g.fill({ color: wing, alpha: 0.16 });
-
-  const stem = 0.82 + strength * 0.6;
-  g.moveTo(rump * 0.72, 0);
-  g.quadraticCurveTo(rump - stem * 0.35, bodyW * 0.22, rump - stem, 0);
-  g.quadraticCurveTo(rump - stem * 0.35, -bodyW * 0.22, rump * 0.72, 0);
-  g.closePath();
-  g.fill({ color: bodyColor, alpha: 0.9 });
-
-  g.ellipse(bodyL * 0.12, -bodyW * 0.08, bodyW * 0.32, bodyW * 0.24);
-  g.fill({ color: wing, alpha: 0.92 });
-}
-
-function paintWing(
-  g: Graphics,
-  rootLead: number,
-  rootTrail: number,
-  tipX: number,
-  tipY: number,
-  bodyW: number,
-  color: number,
-  sentinel: boolean,
-): void {
-  const side = tipY < 0 ? -1 : 1;
-  g.moveTo(rootLead, side * bodyW * 0.35);
-  g.quadraticCurveTo(
-    (rootLead + tipX) * 0.45,
-    tipY * 0.72,
-    tipX,
-    tipY,
-  );
-  g.quadraticCurveTo(rootTrail, tipY * 0.48, rootTrail, side * bodyW * 0.72);
-  g.closePath();
-  g.fill({ color, alpha: sentinel ? 0.8 : 0.64 });
 }

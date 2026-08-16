@@ -1,6 +1,6 @@
 # Asterbloom — long-term plan
 
-Original Eufloria-inspired browser strategy. The **core loop already runs**: grow trees, send seedlings, fight in real time, burn undefended trees, plant, and a hostile empire that raids. What is missing is a **session** (start → play → win/lose → replay), then enough map, opponent, and feedback that a run feels like a game.
+Original Eufloria-inspired browser strategy. The **sim loop is real**: grow trees, send seedlings, fight, burn undefended trees, plant, rival AI. Skirmish generator, 8 campaign maps, and win/lose rules live in `src/game/sim`. Phases **0–6** shell is wired (pause menu, mute persist, end copy, first-run, send dock, tab-hide pause, touch pan); `npm run build` is green. Phase **7** stretch is optional next.
 
 Balance numbers live in `src/game/sim/types.ts`. Simulation stays Pixi-free. Views do not mutate `World`.
 
@@ -10,18 +10,67 @@ Balance numbers live in `src/game/sim/types.ts`. Simulation stays Pixi-free. Vie
 
 | Piece | State |
 | --- | --- |
-| Loop | Grow / send / fight / burn / plant |
-| Map | Skirmish generator + 8 authored campaign maps |
+| Loop | Grow / send / fight / burn / plant — sim + ticker |
+| Map | Skirmish 14–20 rocks + 8 authored campaign maps |
 | AI | Energy / Defense / Dyson; Easy / Normal / Hard knobs |
-| Session | Title Play / Campaign / Settings; pause menu; tab-hide pause |
-| HUD | Title shell, pause overlay, census, toasts, first-run, mute, follow-send |
+| Session | Title + campaign list + pause menu + end overlay + tab-hide pause |
+| HUD | Census, toasts, 1/2/3, send dock (Scout/−/count/+/All), first-run, follow-send |
 | Capture | Burn-then-plant. `coreEnergy` unused (no siege-the-core) |
-| Win rules | Eliminate, hold N rocks, claim Energy well |
-| Audio | Ambient pad + combat / plant blips; mute persisted |
-| Ship | `npm run build` → `dist/`; version **0.1.0** |
-| Tests | Graph, combat, match rules, campaign, AI knobs, pacing, prefs |
+| Win rules | Eliminate, hold N rocks, claim Energy well — sim + tests |
+| Audio | Procedural beds + combat / plant SFX. Mute persists (`writeMuted` / boot `readMuted`) |
+| Ship | Version **0.1.0** in `package.json` / `prefs.ts`. **`npm run build` green**. Phase 6 shipped |
+| Tests | Graph, combat, match rules, campaign, AI knobs, pacing, prefs, palette |
 
-Phases **0–6** are implemented (ship **0.1.0**). **Phase 7** touch is done; other stretch items remain.
+**Honest status.** Phases **0–3**, **5**, and **6** are in. Phase **4** human 8–20 min playtest is not attested. Phase **7** stretch is next when wanted.
+
+---
+
+## Finalize the shell — done
+
+**Goal.** A cold `npm run build` + static host is a complete first session. Do not add features; connect what is already written.
+
+Verified 2026-08-16: `tsc` / tests / build green after Phase 6 Finalize wiring (tab-hide, send dock, touch pan).
+
+### 1. Make TypeScript compile
+
+`package.json` script is `tsc && vite build`. **Green.**
+
+| Error | Fix |
+| --- | --- |
+| `createTitleHud` requires `onMuteChange` and `onReducedMotionChange`; `main.ts` does not pass them | **Done.** Mute calls `audio.setEnabled` + `writeMuted`. Reduced motion: title writes pref + `applyReducedMotionClass`; boot applies `readReducedMotion()`. |
+| `sessionHud.showEnd` is `(outcome, extra?)` but `main.ts` calls `showEnd({ outcome, mode, mapTitle, showNext, campaignComplete })` | **Done.** Object form + `endWinCopy` / `endLoseCopy` / `campaignCompleteCopy`. Campaign hides New map; shows Next / complete copy. |
+| `main.ts` calls `graphView.retheme(scene)` — `GraphView` has no `retheme` | **Done** (retheme exists or call removed). |
+| `tests/render/palette.test.ts` imports stale palette symbols | **Done** — tests use `sceneAtTime` / `buildScene` / `HUE_CYCLE_SECONDS`. |
+
+### 2. Wire modules that already exist
+
+| Piece | Where it lives | What `main.ts` / HUD actually do |
+| --- | --- | --- |
+| Pause **menu** | `src/game/hud/pauseHud.ts` — Resume, Restart, New map, Quit to title | **Done.** Esc/Space opens/closes pause menu; freezes ticker. |
+| Title Settings | `titleHud.ts` mute + reduced motion | **Done.** Callbacks wired; boot applies `readMuted()` / `readReducedMotion()`. |
+| End-screen copy | `copy.ts` `endWinCopy`, `endLoseCopy`, `campaignCompleteCopy` | **Done.** `sessionHud.showEnd` uses them. |
+| First-run steps | `copy.ts` `FIRST_RUN_STEPS` («Tap…») + `tests/hud/copy.test.ts` | **Done.** Overlay renders `FIRST_RUN_STEPS`. |
+| Send-count dock | CSS `.hud-send` / `.hud-dock`; helpers in `sendCount.ts`; `onSendCountChange` | **Done.** Scout / − / count / + / All in `sessionHud`; syncs `sendMode` / `sendCount`. |
+| Field skip-title | `field.html` `data-boot="field"`; CSS hides title buttons | **Done.** `isFieldBoot()` starts a skirmish and skips title. |
+| Touch pan / pinch abort | `cameraControls.ts` `shouldLeftPan`, `onMultiTouch`; `gameplay.shouldLeftPan` | **Done.** Empty-space one-finger pan + pinch-abort wired from `main`. |
+
+### 3. Session behavior
+
+- **Tab hide:** **Done.** `document.visibilitychange` calls `pauseMatch()` when hidden; does not auto-resume.
+- **Mute persist:** **Done.** In-match toggle writes `writeMuted`; boot applies `readMuted()`.
+- **Campaign end:** **Done** for end-overlay Next / complete copy / hide New map in campaign. Restart keeps campaign index / skirmish seed.
+
+### 4. Done when
+
+1. `npx tsc --noEmit` and `npm test` are green. **(done)**
+2. `npm run build` writes `dist/`. **(done)**
+3. Title → Play (any difficulty) → Esc pause **menu** → Resume / Restart / New map / Quit to title. **(wired)**
+4. Title → Settings mute/motion stick across reload. **(wired)**
+5. Win/lose overlay: Restart same seed; New map new seed (skirmish); campaign Next map / Title on last grove. **(wired)**
+6. Hide tab → sim frozen; come back still paused. **(wired)**
+7. Coarse pointer: tap select, drag send, on-screen 1/2/3 **and** send-count dock; empty-space drag pans. **(wired)**
+
+Phase 6 is shipped. Pick Phase 7 leftovers only when wanted.
 
 ---
 
@@ -31,11 +80,11 @@ Phases **0–6** are implemented (ship **0.1.0**). **Phase 7** touch is done; ot
 
 **Work**
 
-- [x] Win: last enemy tree gone (or no enemy-owned rocks with trees).
-- [x] Lose: player has no trees and not enough seedlings left to plant anywhere.
-- [x] End overlay: win/lose copy, **Restart** (same seed), **New map** can wait until Phase 2.
-- [x] Pause (`Esc` or space) — freeze sim ticker, keep camera.
-- [x] Mute toggle for ambient + SFX.
+- [x] Win: last enemy tree gone (or no enemy-owned rocks with trees). `matchStatus` — no enemy trees and no enemy pending plants.
+- [x] Lose: player has no trees, no pending plants, and fewer than `PLANT_COST` seedlings.
+- [x] End overlay: win/lose copy, **Restart** (same seed). **New map** landed in Phase 2.
+- [x] Pause (`Esc` or space) — freeze sim ticker, keep camera. Pause **menu** wired (`pauseHud.ts`).
+- [x] Mute toggle for ambient + SFX. Persist + boot apply via `prefs.ts`.
 - [x] Sim function `matchStatus(world)` so tests assert outcomes, not HUD.
 
 **Done when** you can wipe the enemy rock, see a win, restart, and lose by sending everything away and letting the AI take home.
@@ -70,7 +119,7 @@ Phases **0–6** are implemented (ship **0.1.0**). **Phase 7** touch is done; ot
 - [x] Roles mixed by seed: empty, wild (grey), energy wells, 1–2 enemy clusters.
 - [x] Home at a leaf or edge, not the geometric center every time.
 - [x] **New map** on the end screen (new seed). **Restart** keeps the seed.
-- [x] Optional: expose seed in HUD or URL hash for rematches.
+- [x] Optional: expose seed in HUD or URL hash for rematches. (`#s=<hex>` + HUD seed)
 - [x] Keep `createCoreLoopWorld` as a unit-test fixture.
 
 **Done when** two seeds feel like different wars (stats, chokes, where the Energy well sits).
@@ -91,24 +140,22 @@ Phases **0–6** are implemented (ship **0.1.0**). **Phase 7** touch is done; ot
 - [x] Tree-kind selection visible (1/2/3), not only a keyboard secret.
 - [x] Combat/capture juice (render only): hit flash, death motes, shield shimmer, trees darkening while `burnTimer` runs.
 - [x] SFX: clash, death, burn, fail plant — still procedural Web Audio, no asset pack unless we decide otherwise.
-- [x] First-run: one short overlay (select → drag send → plant slot). Dismiss forever (`localStorage` is enough).
+- [x] First-run overlay + `localStorage` dismiss. Copy uses `FIRST_RUN_STEPS`.
 
 **Done when** a new player can take a wild rock and an enemy rock without reading the README.
 
 ---
 
-## Phase 4 — Feel and pacing — done
+## Phase 4 — Feel and pacing — numbers in; live playtest not re-verified
 
 **Goal.** A match has an opening, a scramble, and a finish — not a flat production race.
 
 **Work**
 
-- [x] Playtest pass on `types.ts`: spawn rates, `LOCAL_SEEDLING_CAP`, burn time, Sentinel upkeep, shield soak.
-- [x] Opening: home produces enough to scout before the AI snowballs.
-- [x] Mid: Energy wells and Defense chokes matter more than stacking Dyson everywhere.
-- [x] Late: capturing the last cluster is a fight, not mopping 40 leftovers.
-- [x] Decide whether unused `coreEnergy` stays dead or becomes a second capture beat (siege the core instead of only burning trees). Default: leave it until burn-then-plant feels wrong. (`coreEnergy` still unused.)
-- [x] Camera: optional follow-send; keep pan/zoom as primary.
+- [x] Constants + `tests/sim/pacing.test.ts`: spawn vs `LOCAL_SEEDLING_CAP`, Defense shield soak, `coreEnergy` unchanged during burn.
+- [ ] Three full matches on different seeds in the 8–20 minute band (human playtest; not attested in-repo as of 2026-08-16 Phase 0–4 leftover pass).
+- [x] Decide `coreEnergy`: leave dead until burn-then-plant feels wrong. Still unused.
+- [x] Camera: optional follow-send (`F` / HUD); pan/zoom remain primary.
 
 **Done when** three full matches on different seeds all end in a similar time band (target: 8–20 minutes) and the loser can say why.
 
@@ -120,11 +167,11 @@ Phases **0–6** are implemented (ship **0.1.0**). **Phase 7** touch is done; ot
 
 **Work**
 
-- [x] **Skirmish** — Phase 2 generator, difficulty, optional second enemy hue/faction if the sim stays clean (`FactionId` already has room; do not add factions that AI cannot run). (second enemy faction not added — optional.)
-- [x] **Campaign** — short authored sequence (6–10 maps). Each map is a layout + win rule (eliminate, hold N rocks, reach a far Energy well). Original copy only; no Eufloria names or plot. (8 maps.)
+- [x] **Skirmish** — Phase 2 generator, difficulty. Second enemy faction not added (optional; `FactionId` has room — do not add factions the AI cannot run).
+- [x] **Campaign** — 8 authored maps in `campaign.ts`. Win rules: eliminate, hold N rocks, claim Energy well. Original copy only.
 - [x] Per-map scripts live beside `layout.ts` (data + `create*World` factories), not in the renderer.
-- [x] Unlock or just a list — list is enough for v1.
-- [x] Still no account, cloud save, or meta-progression required. Optional: remember last campaign index in `localStorage`.
+- [x] List of maps (no unlock gate). Last index in `localStorage` (`CAMPAIGN_INDEX_KEY`).
+- [x] Title → campaign → finish last map with Next / complete overlay (`showEnd` object API).
 
 **Done when** you can play Skirmish or start Campaign from a title screen and finish the last authored map.
 
@@ -136,29 +183,29 @@ Phases **0–6** are implemented (ship **0.1.0**). **Phase 7** touch is done; ot
 
 **Work**
 
-- [x] Title: Play / Campaign / Settings (mute, maybe reduced motion).
-- [x] In-match: pause menu (resume, restart, new map, quit to title).
-- [x] Build: `npm run build` is the ship artifact. Set a real version when tagging. (version **0.1.0**)
-- [x] Browser: Chromium + Firefox at 1280×720 and 1920×1080; pause when the tab hides.
-- [x] Input: keep mouse/keyboard as canonical. Touch later (Phase 7) unless a playtester cannot play at all.
-- [x] README: how a match is won/lost; point at this file for the plan.
-- [x] Legal/identity: keep original art, names, audio. No ripped assets or trademarks.
+- [x] Title: Play / Campaign / Settings **wired** to audio + reduced motion (UI exists in `titleHud.ts`).
+- [x] In-match: pause **menu** (resume, restart, new map, quit to title). `pauseHud.ts` wired from `main.ts`.
+- [x] Build: `npm run build` green. Version **0.1.0** is the ship version.
+- [x] Browser: **pause when the tab hides** (no auto-resume). Multi-resolution Chromium/Firefox smoke is manual, not automated.
+- [x] Input: mouse/keyboard canonical. Touch empty-space pan + pinch-abort + send dock wired (see Finalize).
+- [x] README: how a match is won/lost; points at this file. Send dock / tab-hide / touch pan claims match the code.
+- [x] Legal/identity: original art, names, audio. No ripped assets or trademarks.
 
 **Done when** a cold `npm run build` + static host is a complete first session with no console instructions required.
 
 ---
 
-## Phase 7 — Stretch (only after 0–6) — in progress
+## Phase 7 — Stretch (only after Finalize + Phase 6)
 
-Do not start these to avoid finishing a match.
+Do not start leftover stretch to avoid finishing a match.
 
-- [x] Touch: tap select, drag send, on-screen 1/2/3 and send-count.
+- [ ] Touch: tap select, drag send, on-screen 1/2/3 **and** send-count. Dock + empty-space pan + pinch-abort are wired via Finalize; leave open for further touch polish if playtests ask.
 - [ ] Minimap for 25+ rock maps.
-- [ ] Music: original procedural or commissioned bed; still no ripped tracks.
+- [x] Music: original procedural beds in `audio.ts` (several pieces, drone + sparse lead). No ripped tracks. Leave this checked; do not replace unless a playtest asks.
 - [ ] Extra seedling/tree kinds — only if Phase 4 pacing is bored, not for a feature list.
-- [ ] Save/resume a mid-match `World` (serialize Maps). Campaign index is cheaper and should come first.
+- [ ] Save/resume a mid-match `World` (serialize Maps). Campaign index is cheaper and already stored.
 - [ ] Spectator / replay seed + command log.
-- [ ] Accessibility: colorblind faction marks, scalable HUD, screen-flash off.
+- [ ] Accessibility: colorblind faction marks, scalable HUD, screen-flash off. Reduced-motion pref exists and is applied on boot; does not yet gate combat flash.
 
 ---
 
@@ -169,20 +216,21 @@ Do not start these to avoid finishing a match.
 3. **Tests follow the domain.** New match rules, AI policy, and generators get specs under `tests/sim/`.
 4. **One loop.** Campaign maps are layouts + win conditions, not new verbs.
 5. **No new dependencies** unless we explicitly decide (stack: TypeScript, Vite, Pixi v8, Vitest).
+6. **Wire before rewrite.** Pause, title settings, send-count, and copy helpers are already in tree. Connect them.
 
 ---
 
 ## Suggested order of attack
 
 ```
-[x] 0  session (win/lose/restart/pause)
 [x] 1  AI uses Energy + Defense
 [x] 2  generated map + new-map seed
-[x] 3  HUD, toasts, combat juice, first-run
-[x] 4  balance / pacing pass
-[x] 5  title + skirmish + short campaign
-[x] 6  ship shell
-[~] 7  stretch (touch done; rest open)
+[x] 0  session shell (pause menu + mute persist + end copy)
+[x] 3  HUD/juice + first-run FIRST_RUN_STEPS
+[~] 4  constants/tests in; 8–20 min playtest not attested
+[x] 5  campaign maps + end-screen Next/complete
+[x] 6  ship shell (tab-hide + send dock + touch pan)
+[ ] 7  stretch when wanted (minimap, a11y, save/resume, …)
 ```
 
-Phases 0–6 shipped in **0.1.0**. Phase 7 touch controls shipped; other stretch items remain.
+Next agent: optional Phase 4 playtest attestation, or pick a Phase 7 stretch item.

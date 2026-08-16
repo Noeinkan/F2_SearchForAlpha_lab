@@ -8,8 +8,9 @@ import {
   type CommandResult,
 } from '../sim/commands';
 import { shortestPath } from '../sim/graph';
-import { PLANT_COST, orbitBand, type TreeKind, type World } from '../sim/types';
-import { getOccupiedSlots, slotPosition } from '../sim/world';
+import { hitRockCrust } from '../sim/rock';
+import { orbitBand, type TreeKind, type World } from '../sim/types';
+import { nextEmptySlot } from '../sim/world';
 import {
   bumpSendCount,
   isCoarsePointer,
@@ -46,8 +47,27 @@ export function createGameplayState(homeId: number): GameplayState {
 const DRAG_THRESHOLD = 8;
 const FINE_ASTEROID_PAD = 28;
 const COARSE_ASTEROID_PAD = 48;
-const FINE_SLOT_HIT = 22;
-const COARSE_SLOT_HIT = 40;
+const FINE_CRUST_HIT = 22;
+const COARSE_CRUST_HIT = 36;
+const HOLD_MS = 480;
+
+export interface CrustMenuHit {
+  asteroidId: number;
+  angle: number;
+  screenX: number;
+  screenY: number;
+}
+
+export function plantOnCrust(
+  world: World,
+  state: GameplayState,
+  asteroidId: number,
+  angle: number,
+): CommandResult {
+  const slot = nextEmptySlot(world, asteroidId);
+  if (slot === null) return { ok: false, reason: 'slot taken' };
+  return plantTree(world, asteroidId, slot, 'player', state.plantKind, angle);
+}
 
 export function bindGameplay(opts: {
   canvas: HTMLCanvasElement;
@@ -56,7 +76,6 @@ export function bindGameplay(opts: {
   state: GameplayState;
   preview: SendPreview;
   audio: GameAudio;
-  onPlanted: () => void;
   /** Fired for every plant/send attempt (success or failure). */
   onCommand?: (result: CommandResult) => void;
   /** Fired after a successful player send (optional follow-send). */
@@ -65,7 +84,9 @@ export function bindGameplay(opts: {
   canAct?: () => boolean;
   /** Called when send count / mode changes (HUD dock). */
   onSendCountChange?: () => void;
-}): () => void {
+  /** Right-click or hold on the crust — open the plant menu. */
+  onCrustMenu?: (hit: CrustMenuHit) => void;
+}): { unbind: () => void; abort: () => void } {
   const {
     canvas,
     camera,
@@ -73,11 +94,11 @@ export function bindGameplay(opts: {
     state,
     preview,
     audio,
-    onPlanted,
     onCommand,
     onSend,
     canAct = () => true,
     onSendCountChange,
+    onCrustMenu,
   } = opts;
 
   let pointerDown = false;
@@ -88,6 +109,10 @@ export function bindGameplay(opts: {
   let shiftOnDown = false;
   let didDrag = false;
   let aborted = false;
+  let holdTimer: number | null = null;
+  let rightDown = false;
+  let rightDidDrag = false;
+  let rightCrust: { asteroidId: number; angle: number } | null = null;
 
   const coarse = () => isCoarsePointer();
 
@@ -120,26 +145,34 @@ export function bindGameplay(opts: {
     return best;
   };
 
-  const hitSlot = (
-    wx: number,
-    wy: number,
-  ): { asteroidId: number; slotIndex: number } | null => {
-    let best: { asteroidId: number; slotIndex: number } | null = null;
-    let bestDist = coarse() ? COARSE_SLOT_HIT : FINE_SLOT_HIT;
-    for (const a of world.asteroids.values()) {
-      if (orbitCount(a.id) < PLANT_COST) continue;
-      const occupied = getOccupiedSlots(world, a.id);
-      for (let i = 0; i < a.treeSlots; i++) {
-        if (occupied.has(i)) continue;
-        const pos = slotPosition(a, i);
-        const d = Math.hypot(wx - pos.x, wy - pos.y);
-        if (d <= bestDist) {
-          bestDist = d;
-          best = { asteroidId: a.id, slotIndex: i };
-        }
-      }
+  const hitCrust = (wx: number, wy: number) => {
+    const hit = hitRockCrust(
+      world.asteroids.values(),
+      wx,
+      wy,
+      coarse() ? COARSE_CRUST_HIT : FINE_CRUST_HIT,
+    );
+    return hit ? { asteroidId: hit.id, angle: hit.angle } : null;
+  };
+
+  const clearHold = () => {
+    if (holdTimer !== null) {
+      window.clearTimeout(holdTimer);
+      holdTimer = null;
     }
-    return best;
+  };
+
+  const openCrustMenu = (
+    hit: { asteroidId: number; angle: number },
+    screenX: number,
+    screenY: number,
+  ) => {
+    onCrustMenu?.({
+      asteroidId: hit.asteroidId,
+      angle: hit.angle,
+      screenX,
+      screenY,
+    });
   };
 
   const worldFromEvent = (e: PointerEvent) => {
@@ -148,6 +181,7 @@ export function bindGameplay(opts: {
   };
 
   const clearGesture = () => {
+    clearHold();
     pointerDown = false;
     activePointerId = null;
     didDrag = false;
@@ -165,6 +199,16 @@ export function bindGameplay(opts: {
   };
 
   const onPointerDown = (e: PointerEvent) => {
+    if (e.button === 2) {
+      if (!canAct()) return;
+      rightDown = true;
+      rightDidDrag = false;
+      downX = e.clientX;
+      downY = e.clientY;
+      const w = worldFromEvent(e);
+      rightCrust = hitCrust(w.x, w.y);
+      return;
+    }
     if (e.button !== 0) return;
     if (!canAct()) return;
 
@@ -190,10 +234,14 @@ export function bindGameplay(opts: {
       /* ignore */
     }
 
-    const slot = hitSlot(downWorld.x, downWorld.y);
-    if (slot) {
-      // Plant on click-up if no drag — remember for pointerup
-      return;
+    const crust = hitCrust(downWorld.x, downWorld.y);
+    if (crust) {
+      holdTimer = window.setTimeout(() => {
+        holdTimer = null;
+        if (!pointerDown || didDrag || !canAct()) return;
+        abortGesture();
+        openCrustMenu(crust, downX, downY);
+      }, HOLD_MS);
     }
 
     const hit = hitAsteroid(downWorld.x, downWorld.y);
@@ -201,20 +249,23 @@ export function bindGameplay(opts: {
       state.selectedAsteroidId = hit;
       state.dragFromId = hit;
       applySendForRock(hit, shiftOnDown);
-    } else if (!coarse() && state.selectedAsteroidId !== null) {
-      // Fine pointer: drag from the selected rock even from empty space
-      state.dragFromId = state.selectedAsteroidId;
-      applySendForRock(state.selectedAsteroidId, shiftOnDown);
     }
+    // Empty space: camera pans (shouldLeftPan). Do not start a send.
   };
 
   const onPointerMove = (e: PointerEvent) => {
+    if (rightDown && !rightDidDrag) {
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) >= DRAG_THRESHOLD) {
+        rightDidDrag = true;
+      }
+    }
     if (activePointerId !== null && e.pointerId !== activePointerId) return;
     const w = worldFromEvent(e);
     state.cursorWorld = w;
     if (!pointerDown || aborted || !canAct()) return;
 
     const dist = Math.hypot(e.clientX - downX, e.clientY - downY);
+    if (dist >= DRAG_THRESHOLD) clearHold();
     if (!didDrag && dist >= DRAG_THRESHOLD && state.dragFromId !== null) {
       didDrag = true;
       state.dragging = true;
@@ -244,6 +295,17 @@ export function bindGameplay(opts: {
   };
 
   const onPointerUp = (e: PointerEvent) => {
+    if (e.button === 2) {
+      const crust = rightCrust;
+      const dragged = rightDidDrag;
+      rightDown = false;
+      rightDidDrag = false;
+      rightCrust = null;
+      if (!dragged && crust && canAct()) {
+        openCrustMenu(crust, e.clientX, e.clientY);
+      }
+      return;
+    }
     if (e.button !== 0) return;
     if (activePointerId !== null && e.pointerId !== activePointerId) return;
 
@@ -252,32 +314,14 @@ export function bindGameplay(opts: {
     const fromId = state.dragFromId;
     const toId = state.hoverTargetId;
     const sendN = state.sendCount;
-    const w = worldFromEvent(e);
 
     if (!wasAborted && canAct()) {
       if (!didDrag) {
-        const slot = hitSlot(w.x, w.y);
-        if (slot) {
-          const result = plantTree(
-            world,
-            slot.asteroidId,
-            slot.slotIndex,
-            'player',
-            state.plantKind,
-          );
-          onCommand?.(result);
-          if (result.ok) {
-            audio.plant(state.plantKind);
-            onPlanted();
-          } else {
-            audio.fail();
-          }
-        } else {
-          const hit = hitAsteroid(w.x, w.y);
-          if (hit !== null) {
-            state.selectedAsteroidId = hit;
-            applySendForRock(hit, false);
-          }
+        const w = worldFromEvent(e);
+        const hit = hitAsteroid(w.x, w.y);
+        if (hit !== null) {
+          state.selectedAsteroidId = hit;
+          applySendForRock(hit, false);
         }
       } else if (wasDragging && fromId !== null && toId !== null) {
         const result = sendSeedlings(world, fromId, toId, sendN, 'player');
@@ -339,7 +383,7 @@ export function bindGameplay(opts: {
 
   window.addEventListener('keydown', onKeyDown);
 
-  return () => {
+  const unbind = () => {
     canvas.removeEventListener('pointerdown', onPointerDown);
     canvas.removeEventListener('pointermove', onPointerMove);
     canvas.removeEventListener('pointerup', onPointerUp);
@@ -347,16 +391,17 @@ export function bindGameplay(opts: {
     canvas.removeEventListener('wheel', onWheel, true);
     window.removeEventListener('keydown', onKeyDown);
   };
+
+  return { unbind, abort: abortGesture };
 }
 
-/** True when a left-finger press on empty space should pan the camera (coarse). */
+/** True when a left press on empty space should pan the camera. */
 export function shouldLeftPan(
   world: World,
   wx: number,
   wy: number,
 ): boolean {
-  if (!isCoarsePointer()) return false;
-  const pad = COARSE_ASTEROID_PAD;
+  const pad = isCoarsePointer() ? COARSE_ASTEROID_PAD : FINE_ASTEROID_PAD;
   for (const a of world.asteroids.values()) {
     const d = Math.hypot(wx - a.x, wy - a.y);
     if (d <= a.radius + orbitBand(a.radius) + pad) return false;

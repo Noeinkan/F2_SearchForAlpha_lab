@@ -5,7 +5,15 @@ import {
   createSkirmishWorld,
   mstDegree,
 } from '../../src/game/sim/layout';
-import { ENERGY_TREE_MIN_ENERGY, HOME_RADIUS_SCALE, ROCK_GAP, ROCK_RADIUS_MAX, ROCK_RADIUS_MIN } from '../../src/game/sim/types';
+import {
+  ENERGY_TREE_MIN_ENERGY,
+  HOME_RADIUS_SCALE,
+  PLAYER_START_SEEDLINGS,
+  ROCK_GAP,
+  ROCK_RADIUS_MAX,
+  ROCK_RADIUS_MIN,
+} from '../../src/game/sim/types';
+import { countOrbitingSeedlings } from '../../src/game/sim/world';
 
 describe('createSkirmishWorld', () => {
   it('builds a connected 12–25 rock layout with roles', () => {
@@ -17,6 +25,9 @@ describe('createSkirmishWorld', () => {
     const home = [...world.asteroids.values()].find((a) => a.owner === 'player');
     expect(home).toBeTruthy();
     expect(mstDegree(world, home!.id)).toBe(1);
+    expect(countOrbitingSeedlings(world, home!.id, 'player')).toBe(
+      PLAYER_START_SEEDLINGS,
+    );
 
     const enemy = [...world.asteroids.values()].filter((a) => a.owner === 'enemy');
     expect(enemy.length).toBeGreaterThanOrEqual(1);
@@ -102,5 +113,9 @@ describe('createCoreLoopWorld fixture', () => {
     const world = createCoreLoopWorld(42);
     expect(world.asteroids.size).toBe(5);
     expect(isGraphConnected(world)).toBe(true);
+    const home = [...world.asteroids.values()].find((a) => a.owner === 'player')!;
+    expect(countOrbitingSeedlings(world, home.id, 'player')).toBe(
+      PLAYER_START_SEEDLINGS,
+    );
   });
 });
