@@ -13,6 +13,7 @@ from __future__ import annotations
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 
+from lib.metrics import DEFAULT_SORT_KEY, sort_options
 from lib.dash.dash_config import (
     BORDER_RADIUS,
     FONT_FAMILY,
@@ -300,15 +301,8 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                             }),
                             dcc.RadioItems(
                                 id='sort-metric-dropdown',
-                                options=[
-                                    {'label': 'SCORE', 'value': 'Robustness_Score'},
-                                    {'label': 'RET', 'value': 'Total_Return_%'},
-                                    {'label': 'SHARPE', 'value': 'Sharpe_Ratio'},
-                                    {'label': 'CALMAR', 'value': 'Calmar'},
-                                    {'label': 'DD', 'value': 'Max_Drawdown_%'},
-                                    {'label': 'TRADES', 'value': 'Trades'},
-                                ],
-                                value='Robustness_Score',
+                                options=sort_options(),
+                                value=DEFAULT_SORT_KEY,
                                 inline=True,
                                 className='bbg-radio-seg',
                             ),

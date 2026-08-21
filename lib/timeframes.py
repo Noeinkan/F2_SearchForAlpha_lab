@@ -2,8 +2,15 @@
 
 Supported intervals: ``1d``, ``1h``, ``4h``.
 
-``periods_per_year`` approximates US equity regular-session bars:
-252 trading days × 6.5 hours. Hourly → 252 × 6.5 = 1638; 4h → 252 × 6.5 / 4 ≈ 410.
+``periods_per_year`` is 252 sessions times :data:`BARS_PER_SESSION`, and
+``BARS_PER_SESSION`` is the count the tape actually emits, not a duration
+divided by a bar size. A US regular session is 6.5 hours long but Yahoo returns
+**seven** 1h bars for it — 09:30 through 15:30, the last one a 30-minute stub —
+so hourly annualises at 252 × 7 = 1764, not the 252 × 6.5 = 1638 this module
+used to assume. 4h is built by :func:`resample_ohlcv`, which buckets from the
+session open, so those seven bars become two (four bars then three) and 4h
+annualises at 252 × 2 = 504. ``lib/tests/test_timeframes.py`` checks the map
+against a synthetic tape rather than trusting the arithmetic.
 
 Yahoo Finance caps intraday (1h) history at 730 calendar days, and rejects a
 request spanning exactly 730 days with an empty response — so the clamp asks
@@ -18,6 +25,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -27,7 +35,15 @@ SUPPORTED_INTERVALS = ("1d", "1h", "4h")
 # Canonical id → yfinance interval (4h fetches 1h then resamples).
 YF_INTERVAL = {"1d": "1d", "1h": "1h", "4h": "1h"}
 
-PERIODS_PER_YEAR = {"1d": 252, "1h": 1638, "4h": 410}
+# Sessions per year, and the bars each interval emits per session. Keep the two
+# factored apart: the session count is a market fact, the bar count is a
+# property of the tape and is what `bars_per_session` measures on real data.
+SESSIONS_PER_YEAR = 252
+BARS_PER_SESSION = {"1d": 1, "1h": 7, "4h": 2}
+
+PERIODS_PER_YEAR = {
+    interval: SESSIONS_PER_YEAR * bars for interval, bars in BARS_PER_SESSION.items()
+}
 
 # Yahoo intraday lookback cap (calendar days). None = no clamp.
 # 728, not 730: a request spanning the full 730 days comes back empty.
@@ -225,17 +241,53 @@ _OHLCV_AGG = {
 }
 
 
+def _session_buckets(index: pd.DatetimeIndex, rule: str) -> np.ndarray:
+    """Group codes that restart at every session open.
+
+    Within a session, bars are chunked by elapsed time since that session's
+    first bar; a new session always starts a new chunk. That is the whole point
+    of anchoring — a bucket can never hold bars from two sessions, so no 4h bar
+    straddles the overnight boundary.
+
+    Codes are assigned in order of first appearance, which for a sorted index
+    is chronological order.
+    """
+    from lib.sessions import session_ids
+
+    width = pd.Timedelta(rule).value
+    if width <= 0:
+        raise ValueError(f"Resample rule {rule!r} has no positive duration")
+
+    stamps = pd.DatetimeIndex(index).as_unit("ns").asi8
+    ids = session_ids(index)
+    # Broadcast each bar's session-open timestamp back over its session.
+    opens = stamps[np.flatnonzero(np.concatenate(([True], np.diff(ids) > 0)))]
+    elapsed = stamps - opens[ids]
+    codes, _ = pd.factorize(pd.MultiIndex.from_arrays([ids, elapsed // width]))
+    return codes
+
+
 def resample_ohlcv(
     df: pd.DataFrame,
     rule: str = "4h",
     *,
     min_bars: int | None = None,
+    session_anchored: bool = True,
 ) -> pd.DataFrame:
     """Resample OHLCV to ``rule``; drop empty / incomplete buckets.
 
+    ``session_anchored`` (the default) buckets from each session's own open
+    rather than from the wall clock, so a bucket never spans an overnight gap
+    and every label is a real bar timestamp. A US 1h tape (09:30 … 15:30)
+    becomes 09:30 and 13:30, instead of the wall-clock 08:00 and 12:00 — the
+    old labels named a time the exchange was shut. Pass
+    ``session_anchored=False`` for the pre-3.9 wall-clock behaviour.
+
     ``min_bars`` is the minimum number of source rows required to keep a
     bucket. When omitted, ``4h`` defaults to 2 (half of a full 1h→4h set);
-    other rules default to 1.
+    other rules default to 1. A session whose trailing bucket holds fewer than
+    that loses the tail — unchanged from the wall-clock version, and it does
+    not arise on a US 1h tape, whose two buckets hold four bars and three.
     """
     if df.empty:
         return df.copy()
@@ -258,10 +310,6 @@ def resample_ohlcv(
     for c in extras:
         agg[c] = "last"
 
-    grouped = out.resample(rule, label="left", closed="left")
-    counts = grouped.size()
-    resampled = grouped.agg(agg)
-
     if min_bars is None:
         if isinstance(rule, str) and rule.endswith("h") and rule[:-1].isdigit():
             hours = int(rule[:-1])
@@ -269,7 +317,22 @@ def resample_ohlcv(
         else:
             min_bars = 1
 
-    resampled = resampled.loc[counts >= min_bars]
+    if session_anchored:
+        codes = _session_buckets(out.index, rule)
+        grouped = out.groupby(codes, sort=True)
+        resampled = grouped.agg(agg)
+        counts = grouped.size().to_numpy()
+        # Label each bucket with its own first bar, not a synthetic boundary.
+        _, first_pos = np.unique(codes, return_index=True)
+        resampled.index = out.index[first_pos]
+        keep = counts >= min_bars
+    else:
+        grouped = out.resample(rule, label="left", closed="left")
+        counts = grouped.size()
+        resampled = grouped.agg(agg)
+        keep = (counts >= min_bars).to_numpy()
+
+    resampled = resampled.loc[keep]
     if "Open" in resampled.columns and "Close" in resampled.columns:
         resampled = resampled.dropna(subset=["Open", "Close"])
     else:

@@ -7,6 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`lib/sessions.py` — the session model** (ROADMAP 3.9). One place decides where a
+  trading session ends and the next begins, inferred from the bar timestamps alone so no
+  exchange calendar is needed: every bar on a daily tape, and on an intraday tape any
+  step more than 1.5× the tape's own bar spacing. That threshold is deliberately narrow —
+  Tokyo's 90-minute lunch break is exactly 1.5 steps and stays *inside* the session,
+  CME's hour-long maintenance break is 2 steps and does not.
+- `backtest()` gained `gap_fills` (default **on**), and its result frame gained
+  `Session_Start` and `Holding_Sessions`. A caller holding a real exchange calendar can
+  put a `Session_Start` column on the input frame and the inference is skipped.
+- The trade ledger gained `holding_sessions`, and `BacktestMetrics` gained
+  `avg_holding_sessions`: `holding_bars` counts bars of tape and so cannot tell you
+  whether a position was held overnight. This one can.
+- `resample_ohlcv(..., session_anchored=False)` for the pre-3.9 wall-clock bucketing.
+
+- **`lib/metrics/` — one metrics engine** (ROADMAP 3.11). Every performance metric in the
+  project now has exactly one implementation: `core.py` holds the primitives, `engine.py`
+  holds `BacktestMetrics` and `compute_metrics`, `ledger.py` owns the trade-ledger shape,
+  and `names.py` is a registry mapping each metric's canonical name to its UI name, unit
+  and formatter. `lib/tests/test_metrics.py` pins Sharpe, Sortino and Calmar against
+  hand-computed references — nothing anywhere did that before, which is how four
+  implementations managed to drift apart.
+- `BacktestMetrics` gained `cagr`, `num_fills`, `open_trades`, `avg_win`, `avg_loss`,
+  `expectancy`, `avg_holding_bars`, `total_fees` and `exposure`. The nine existing fields
+  keep their names, so the `sfa` JSON contract is a superset of what it was.
+- `metrics.risk_free_rate` in `config/agent.yaml`.
+
+### Changed
+- **⚠️ Backtest results move: the trailing stop now honours overnight gaps**
+  (ROADMAP 3.9.4). On a session's first bar, a market that reopens at or below the
+  trailing stop has *gapped through* it — the stop could not be worked while the exchange
+  was shut, so it fills at the **open**, not at the close. This applies in both stop
+  modes and on daily tapes, where every bar opens a session. On the pinned engine
+  snapshot eight of twenty-one round trips changed exit price (the trade count did not
+  move); `gap_fills=False` reproduces the old numbers exactly.
+- **⚠️ Intraday annualisation moves** (ROADMAP 3.9.2). `PERIODS_PER_YEAR` is now
+  252 sessions × the bars a session actually emits, not a session duration divided by a
+  bar size. Yahoo returns **seven** 1h bars for a 6.5-hour US session (09:30 … 15:30, the
+  last a 30-minute stub), so `1h` is `1764` (was `1638`) and `4h` is `504` (was `410`).
+  Every Sharpe, Sortino and CAGR on a 1h or 4h run rises by the square root of the ratio;
+  daily is untouched. `lib/tests/test_sessions.py` checks the map against a synthetic
+  tape rather than trusting the arithmetic.
+- **4h bars are bucketed from each session's open, not the wall clock**
+  (ROADMAP 3.9.1). A 4h bar can no longer contain the tail of one session and the head of
+  the next — on an overnight futures tape the old wall-clock 16:00 bucket held both. Bar
+  labels are now real bar timestamps: a US 1h tape resamples to 09:30 and 13:30, where it
+  used to be labelled 08:00 and 12:00, times at which the exchange was shut.
+- **⚠️ Metric values move.** Three deliberate changes, each altering numbers you have
+  already seen:
+  1. **One risk-free convention, now `0.0`** (was `0.02` on the production path,
+     `0.0` in `lib/strategy.calculate_metrics`). Every Sharpe and Sortino rises slightly.
+     The promotion gate's `min_oos_sharpe_mean: 1.0` therefore becomes easier to clear,
+     and trials already in `state/optuna.db` are no longer comparable with new ones.
+  2. **`num_trades` now counts closed round trips, not fills.** It is read from the
+     engine's trade ledger instead of reconstructed by scanning the `Units` column. Counts
+     drop sharply for anything that scales in — a real SPY run went from 69 to 15 — so the
+     optimizer's Min-Trades floor of `10` is now a genuine ten-round-trip floor. The fill
+     count survives as `num_fills`. Accumulation mode reports `num_trades == 0`, because
+     nothing closes; `open_trades` carries the information there.
+  3. **Calmar's numerator is now the geometric CAGR** off the equity curve, rather than
+     the arithmetic mean compounded (`(1 + mean) ** ppy - 1`).
+  Win rate and profit factor also shift wherever a scale-in or partial exit made the old
+  `Units` scan disagree with the ledger.
+- The Backtest tab and the optimizer now read the same metrics object.
+  `create_backtest_results` and its divergent mixed-unit dict are gone.
+- The combinatorial optimizer threads the bar interval into its metrics call, so 1h and
+  4h searches stop annualising at 252 (ROADMAP 3.11.4).
+- `Total_Return_%`, `Sharpe_Ratio` and the rest of the `Title_Case` UI vocabulary now come
+  from `lib/metrics/names.py` instead of being retyped in seven modules. **The strings
+  themselves are unchanged**, so persisted optimizer run history keeps working.
+- The optimizer's initial sort key is `Robustness_Score` everywhere.
+  `lib/dash/layout/shell.py` defaulted its store to `Total_Return_%` while the callback
+  fell back to `Robustness_Score`.
+
+### Fixed
+- **The Backtest tab was showing three metrics wrong.** `create_backtest_results` returned
+  drawdown and win rate as fractions while the tab formatted and thresholded them as
+  percents: a 6.7% drawdown rendered as `-0.07%` and its badge read **CONTROLLED** for
+  every backtest ever run, a 64% win rate rendered as `0.6%` and read **BELOW 50%** always,
+  and **Trade Count was permanently 0** because the dict never contained the
+  `num_trades` key the tab read. All three now show real values.
+- `lib/dash/callbacks/optimizer_grid.py` and `optimizer_phase3.py` labelled a fraction
+  read off `BacktestMetrics` as a percentage in three places, so a +20% return displayed
+  as `+0.2%`.
+
+### Removed
+- `lib/params_optimization.py`, `lib/weights_optimization.py` and
+  `lib/signal_combo_optimisation.py` — three modules with **zero importers** between them
+  (the last was reached only by its own test, with every metric mocked). They held three
+  of the four disagreeing Sharpe implementations. The live combinatorial search is, and
+  was, `lib/dash/helpers.py:evaluate_signal_combination`.
+- `lib/dash/helpers.py:calculate_performance_metrics` — dead, and broken: it read a
+  `Position` column the engine has never emitted.
+- The metric functions in `lib/data_processing.py` (`calculate_sharpe_ratio`,
+  `calculate_max_drawdown`, `calculate_win_rate`, `calculate_profit_factor`,
+  `calculate_average_trade_duration`) and `lib/strategy.py:calculate_max_drawdown`.
+  `lib/strategy.py:calculate_metrics` remains as a thin adapter over the engine.
+
 ### Changed
 - **`lib/dash/assets/dashboard.css` (4,183 lines) split into ten per-concern stylesheets**
   — `10-tokens.css`, `20-controls.css`, `30-vendor-widgets.css`, `40-chart.css`,

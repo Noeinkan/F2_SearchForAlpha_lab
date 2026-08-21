@@ -11,6 +11,7 @@ from dash import dcc, html
 from dash.exceptions import PreventUpdate
 import dash_mantine_components as dmc
 
+from lib.metrics import DEFAULT_SORT_KEY
 from lib.dash.dash_config import (
     DEFAULT_THEME, DEFAULT_FUNDAMENTALS_PERIOD,
     DEFAULT_INDICATOR_SETTINGS, DEFAULT_BAR_INTERVAL,
@@ -56,7 +57,7 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
             'current_index': 0,
             'total_combinations': 0,
             'completed': False,
-            'sort_by': 'Total_Return_%',
+            'sort_by': DEFAULT_SORT_KEY,
             'sort_ascending': False
         }),
         dcc.Store(id='optimization-results-store', data=[]),

@@ -7,6 +7,7 @@ from typing import Any, cast
 import pandas as pd
 from dash import dash_table, html
 
+from lib.metrics import leaderboard_columns
 from lib.dash.dash_config import FONT_SIZES, FONT_FAMILY
 
 
@@ -161,9 +162,7 @@ def _create_optimization_table_mini(display_df: pd.DataFrame, theme: dict) -> da
 
 def _create_optimization_table(display_df: pd.DataFrame, theme: dict) -> dash_table.DataTable:
     """Create enhanced optimization results table with all columns."""
-    columns = ['Buy_Signals', 'Sell_Signals', 'Total_Return_%', 'Alpha_%',
-               'Sharpe_Ratio', 'Sortino', 'Calmar', 'Max_Drawdown_%',
-               'Win_Rate_%', 'Profit_Factor', 'Trades']
+    columns = ['Buy_Signals', 'Sell_Signals', *leaderboard_columns()]
     available_cols = [c for c in columns if c in display_df.columns]
 
     # Grey out low-sample rows so they read as "less trustworthy".

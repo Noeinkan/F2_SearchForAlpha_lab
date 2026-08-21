@@ -34,6 +34,7 @@ _EXECUTION_KWARG_MAP: dict[str, str] = {
     "amount_per_buy": "amount_per_buy",
     "position_size_pct": "position_size_pct",
     "use_low_for_stops": "use_low_for_stops",
+    "gap_fills": "gap_fills",
     "allow_fractional": "allow_fractional",
 }
 

@@ -104,6 +104,7 @@ def _eval_with_cancel_guard(
     buy_combo,
     sell_combo,
     eval_kwargs: dict | None = None,
+    interval: str = "1d",
 ):
     """Evaluate a single combination, returning ``_CANCELLED`` if the run was
     stopped (``reset_optimization`` swapped the state dict) while we were
@@ -119,6 +120,7 @@ def _eval_with_cancel_guard(
         initial_capital,
         tuple(buy_combo),
         tuple(sell_combo),
+        interval=interval,
         **(eval_kwargs or {}),
     )
 
@@ -741,6 +743,9 @@ def register_optimization_callbacks(app) -> None:
             initial_capital=initial_capital,
             min_trades=min_trades or 10,
             eval_kwargs=eval_kwargs,
+            # The interval df was fetched at. Sharpe/Sortino/Calmar annualise
+            # against it; without this every 1h and 4h run was scored at 252.
+            interval=dashboard_state.interval,
             realistic=realistic,
             max_dd_pct=max_dd_val,
             min_sharpe=min_sharpe_val,
@@ -834,6 +839,7 @@ def register_optimization_callbacks(app) -> None:
         results = opt_state.get('results', [])
         initial_capital = opt_state.get('initial_capital', 10000)
         eval_kwargs = opt_state.get('eval_kwargs') or {}
+        interval = opt_state.get('interval') or '1d'
         max_dd_pct = opt_state.get('max_dd_pct')
         min_sharpe = opt_state.get('min_sharpe')
 
@@ -857,6 +863,7 @@ def register_optimization_callbacks(app) -> None:
                 buy_combo,
                 sell_combo,
                 eval_kwargs,
+                interval,
             )
             for buy_combo, sell_combo in batch
         ]

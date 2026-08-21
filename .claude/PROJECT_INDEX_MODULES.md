@@ -11,20 +11,22 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 ### Data & Config
 | File | Key Functions |
 |------|--------------|
-| [lib/data_processing.py](../lib/data_processing.py) | `fetch_data(ticker, start, end)`, `get_all_tickers()`, `validate_symbol()`, `create_backtest_results()`, `calculate_max_drawdown/sharpe_ratio/win_rate/profit_factor()` |
+| [lib/data_processing.py](../lib/data_processing.py) | `fetch_data(ticker, start, end)`, `get_all_tickers()`, `validate_symbol()`. **No metrics** — those moved to `lib/metrics/` |
 | [lib/config_loader.py](../lib/config_loader.py) | `load_config()` → reads `config/strategy_config.yaml` |
 | [lib/fundamentals.py](../lib/fundamentals.py) | `fetch_fundamentals()`, `build_fundamentals_result()` — SEC + yfinance financials |
 | [lib/utils.py](../lib/utils.py) | `export_priceaction_to_excel()`, `get_user_input()`, `TradingStrategyInput` |
 | [lib/seeds.py](../lib/seeds.py) | Deterministic RNG seed helpers |
 | [lib/ticker_universe.py](../lib/ticker_universe.py) | Loads `config/tickers_universe.csv` — symbol lookup, sector / asset-class facets |
-| [lib/timeframes.py](../lib/timeframes.py) | Interval metadata + `clamp_window()` (Yahoo's 728d intraday lookback limit, stale-range relocation) |
+| [lib/timeframes.py](../lib/timeframes.py) | Interval metadata + `clamp_window()` (Yahoo's 728d intraday lookback limit, stale-range relocation) + `resample_ohlcv()` (session-anchored 4h buckets) |
+| [lib/sessions.py](../lib/sessions.py) | **The session model.** `session_starts()`, `session_ids()`, `resolve_session_starts()` — where one trading session ends and the next begins, inferred from bar timestamps. No exchange calendar |
 | [lib/agent_strategy.py](../lib/agent_strategy.py) | Resolves agent strategy bundles (`config/agent.yaml`) to executable backtests |
 
 ### Backtesting Engine
 | File | Key Functions |
 |------|--------------|
 | [lib/strategy.py](../lib/strategy.py) | `backtest()`, `run_backtest()` — 3 strategy modes |
-| [lib/backtest_result.py](../lib/backtest_result.py) | `BacktestMetrics`, `BacktestResult`, `run_backtest_result()`, Sortino/Calmar |
+| [lib/backtest_result.py](../lib/backtest_result.py) | `BacktestResult`, `run_backtest_result()`, `metrics_from_result_df()` — runs a backtest and wraps it; computes nothing |
+| [lib/metrics/](../lib/metrics/) | **The metrics engine.** `compute_metrics()`, `BacktestMetrics`, the trade-ledger shape, and the metric-name registry. The only place any metric is implemented |
 
 **Strategy modes** (`strategy_mode`), sized in `_execute_buy` / `_execute_sell`:
 - `trading` — Kelly size × `position_scaling`; scaling ramps each *order* and stacks, with no target cap
@@ -56,9 +58,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 ### Optimisation
 | File | Key Functions |
 |------|--------------|
-| [lib/signal_combo_optimisation.py](../lib/signal_combo_optimisation.py) | `test_all_combinations(df, ...)` |
-| [lib/params_optimization.py](../lib/params_optimization.py) | Per-indicator parameter sweeps |
-| [lib/weights_optimization.py](../lib/weights_optimization.py) | Indicator weight optimisation |
+| [lib/dash/helpers.py](../lib/dash/helpers.py) | `evaluate_signal_combination()`, `compute_robustness_scores()` — the live combinatorial search |
 | [lib/bayesian_optimization.py](../lib/bayesian_optimization.py) | `run_study()`, `run_optimise_cli()`, Optuna trials |
 | [lib/execution_params.py](../lib/execution_params.py) | `partition_params()`, shared execution search-space keys |
 | [lib/grid_search.py](../lib/grid_search.py) | `run_grid_search()` — capped cartesian grid over unified space |
@@ -236,6 +236,8 @@ The Execution Type explainer modal (`execution-learn-modal`) is emitted by `back
 | Flow Scanner | `test_flow_scanner_json`, `test_flow_view` |
 | Fundamentals | `test_fundamentals`, `test_fundamentals_explainability`, `test_fundamentals_formula_rendering` |
 | Data | `test_data_processing`, `test_ticker_universe`, `test_timeframes` |
+| Metrics | `test_metrics` — formula values, unit/sign contract, ledger-sourced trade stats |
+| Sessions | `test_sessions` — boundary inference, session-anchored resampling, overnight gap fills |
 
 Run: `rtk python -m pytest lib/tests/ -q`
 

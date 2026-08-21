@@ -19,6 +19,7 @@ from lib.bayesian_optimization import run_study
 from lib.config_loader import get_agent_strategies
 from lib.dash.combo_walkforward import ComboSpec, run_combo_walkforward
 from lib.dash.components import build_alert
+from lib.metrics import format_canonical
 from lib.dash.dash_config import FONT_SIZES, get_theme
 from lib.dash.optimizer_bayesian_apply import merge_indicator_settings_from_params
 from lib.dash.optimizer_glossary import BAYESIAN_RUN_LABEL, BAYESIAN_STOP_LABEL
@@ -150,7 +151,9 @@ def _render_oos_panel(payload: dict[str, Any], theme: dict) -> html.Div:
             'Window': int(w.get('index', 0)) + 1,
             'IS Sharpe': f"{float(train.get('sharpe', 0)):.2f}",
             'OOS Sharpe': f"{float(test.get('sharpe', 0)):.2f}",
-            'OOS Ret %': f"{float(test.get('total_return', 0)):+.1f}",
+            'OOS Ret %': format_canonical(
+                'total_return', test.get('total_return', 0)
+            ).rstrip('%'),
         })
 
     return html.Div([
@@ -214,7 +217,7 @@ def _render_bayesian_results(data: dict[str, Any] | None, theme: dict) -> html.D
             html.Span(f"{data.get('metric', '')}={float(best.get('value', 0)):.4f}", style={'marginRight': '10px'}),
             html.Span(f"Sharpe {float(metrics.get('sharpe', 0)):.2f}", style={'marginRight': '10px'}),
             html.Span(f"Sortino {float(metrics.get('sortino', 0)):.2f}", style={'marginRight': '10px'}),
-            html.Span(f"Ret {float(metrics.get('total_return', 0)):+.1f}%"),
+            html.Span("Ret " + format_canonical('total_return', metrics.get('total_return', 0))),
         ], style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_primary'], 'marginBottom': '6px'}),
         html.Div(param_lines, style={'color': theme['text_secondary']}),
         html.Div(

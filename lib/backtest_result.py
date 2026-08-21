@@ -1,44 +1,24 @@
-"""
-BacktestResult dataclass and a thin wrapper around lib.strategy.backtest.
+"""BacktestResult dataclass and a thin wrapper around lib.strategy.backtest.
 
 Existing callers (Dash, optimisers, tests) keep using lib.strategy.backtest
 directly and continue to receive a pd.DataFrame. New CLI and agent code uses
 ``run_backtest_result`` to get a structured, JSON friendly result.
+
+The metrics themselves live in :mod:`lib.metrics`. This module only runs the
+backtest and wraps what comes back — it does not define a single formula.
 """
 
 from __future__ import annotations
 
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
-from lib.data_processing import (
-    calculate_max_drawdown,
-    calculate_profit_factor,
-    calculate_sharpe_ratio,
-    calculate_win_rate,
-)
+from lib.metrics import BacktestMetrics, compute_metrics
 from lib.seeds import DEFAULT_SEED, set_global_seed
 from lib.strategy import backtest
-
-
-@dataclass(frozen=True)
-class BacktestMetrics:
-    total_return: float
-    sharpe: float
-    sortino: float
-    calmar: float
-    max_drawdown: float
-    num_trades: int
-    win_rate: float
-    profit_factor: float
-    turnover: float
-
-    def as_dict(self) -> dict[str, float | int]:
-        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -71,117 +51,6 @@ class BacktestResult:
         }
 
 
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        out = float(value)
-    except (TypeError, ValueError):
-        return default
-    if not np.isfinite(out):
-        return default
-    return out
-
-
-def calculate_sortino_ratio(
-    returns: pd.Series,
-    risk_free_rate: float = 0.02,
-    periods_per_year: int = 252,
-) -> float:
-    """Annualised Sortino: like Sharpe but only penalises downside volatility."""
-    if returns is None or len(returns) == 0:
-        return 0.0
-    excess = returns - risk_free_rate / periods_per_year
-    downside = excess[excess < 0]
-    downside_std = downside.std()
-    if downside_std == 0 or np.isnan(downside_std):
-        return 0.0
-    return float(np.sqrt(periods_per_year) * excess.mean() / downside_std)
-
-
-def calculate_calmar_ratio(
-    returns: pd.Series,
-    max_drawdown: float,
-    periods_per_year: int = 252,
-) -> float:
-    """Annualised return divided by absolute max drawdown."""
-    if returns is None or len(returns) == 0 or max_drawdown == 0:
-        return 0.0
-    annualised = (1.0 + returns.mean()) ** periods_per_year - 1.0
-    return float(annualised / abs(max_drawdown))
-
-
-def count_trades(df: pd.DataFrame) -> int:
-    """Count actual filled orders (rows where units actually changed hands)."""
-    if "Units_to_buy" in df.columns and "Units_to_sell" in df.columns:
-        buys = int((df["Units_to_buy"] > 0).sum())
-        sells = int((df["Units_to_sell"] > 0).sum())
-        return buys + sells
-    if "Units" in df.columns:
-        diffs = df["Units"].diff().fillna(0)
-        return int((diffs != 0).sum())
-    return 0
-
-
-def _per_trade_metrics(df: pd.DataFrame) -> tuple[float, float]:
-    """
-    Compute win rate and profit factor from completed round-trip trades.
-
-    A round-trip is defined as a transition from Units == 0 to Units > 0
-    (entry) and back to Units == 0 (full exit).  Partial exits are ignored
-    so this is conservative but unambiguous.
-
-    Returns (win_rate, profit_factor).  Returns bar-level fallback values
-    when round-trip data is unavailable or no trades closed.
-    """
-    if "Units" not in df.columns or "Portfolio_Value" not in df.columns:
-        return 0.0, 0.0
-
-    units = df["Units"].values
-    pv = df["Portfolio_Value"].values
-
-    wins: list[float] = []
-    losses: list[float] = []
-    entry_pv: float | None = None
-
-    for i in range(1, len(units)):
-        prev_u, curr_u = units[i - 1], units[i]
-        if prev_u == 0 and curr_u > 0:
-            entry_pv = pv[i]
-        elif prev_u > 0 and curr_u == 0 and entry_pv is not None:
-            pnl = pv[i] - entry_pv
-            if pnl > 0:
-                wins.append(pnl)
-            elif pnl < 0:
-                losses.append(abs(pnl))
-            entry_pv = None
-
-    total_closed = len(wins) + len(losses)
-    if total_closed == 0:
-        return 0.0, 0.0
-
-    win_rate = len(wins) / total_closed
-    gross_profit = sum(wins)
-    gross_loss = sum(losses)
-    if gross_loss == 0:
-        profit_factor = 999.0 if gross_profit > 0 else 0.0
-    else:
-        profit_factor = gross_profit / gross_loss
-
-    return win_rate, profit_factor
-
-
-def calculate_turnover(df: pd.DataFrame) -> float:
-    """Approximate turnover as gross traded notional divided by mean equity."""
-    if "Units_to_buy" not in df.columns or "Units_to_sell" not in df.columns:
-        return 0.0
-    if "Close" not in df.columns or "Portfolio_Value" not in df.columns:
-        return 0.0
-    gross = ((df["Units_to_buy"] + df["Units_to_sell"]) * df["Close"]).sum()
-    mean_equity = df["Portfolio_Value"].mean()
-    if mean_equity <= 0:
-        return 0.0
-    return float(gross / mean_equity)
-
-
 def metrics_from_result_df(
     df: pd.DataFrame,
     initial_capital: float,
@@ -189,52 +58,17 @@ def metrics_from_result_df(
     interval: str = "1d",
     periods_per_year: int | None = None,
 ) -> BacktestMetrics:
-    """Compute the JSON contract metrics from a backtest result DataFrame."""
-    from lib.timeframes import periods_per_year as ppy_for
+    """Compute the JSON contract metrics from a backtest result DataFrame.
 
-    if df is None or df.empty:
-        return BacktestMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0)
-
-    ppy = int(periods_per_year) if periods_per_year is not None else ppy_for(interval)
-
-    final_value = _safe_float(df["Portfolio_Value"].iloc[-1], initial_capital)
-    total_return = (final_value / initial_capital) - 1.0 if initial_capital else 0.0
-
-    returns = df.get("Strategy_Returns", pd.Series(dtype=float))
-    sharpe = (
-        _safe_float(calculate_sharpe_ratio(returns, periods_per_year=ppy))
-        if len(returns)
-        else 0.0
-    )
-    max_dd_signed = _safe_float(calculate_max_drawdown(df))
-    max_dd = abs(max_dd_signed)
-    sortino = (
-        calculate_sortino_ratio(returns, periods_per_year=ppy) if len(returns) else 0.0
-    )
-    calmar = (
-        calculate_calmar_ratio(returns, max_dd_signed, periods_per_year=ppy)
-        if max_dd_signed
-        else 0.0
-    )
-    num_trades = count_trades(df)
-    win_rate, profit_factor = _per_trade_metrics(df)
-    if win_rate == 0.0 and profit_factor == 0.0:
-        # No closed round-trips — fall back to bar-level metrics
-        win_rate = _safe_float(calculate_win_rate(df))
-        pf_raw = calculate_profit_factor(df)
-        profit_factor = 999.0 if (np.isinf(pf_raw) and pf_raw > 0) else _safe_float(pf_raw)
-    turnover = calculate_turnover(df)
-
-    return BacktestMetrics(
-        total_return=total_return,
-        sharpe=sharpe,
-        sortino=sortino,
-        calmar=calmar,
-        max_drawdown=max_dd,
-        num_trades=int(num_trades),
-        win_rate=win_rate,
-        profit_factor=profit_factor,
-        turnover=turnover,
+    Kept as the name most callers import; :func:`lib.metrics.compute_metrics`
+    is the implementation.
+    """
+    return compute_metrics(
+        df,
+        initial_capital,
+        interval=interval,
+        periods_per_year=periods_per_year,
+        context="lib.backtest_result.metrics_from_result_df",
     )
 
 
@@ -277,7 +111,12 @@ def run_backtest_result(
     )
 
     duration = time.perf_counter() - started
-    metrics = metrics_from_result_df(result_df, initial_capital, interval=interval)
+    metrics = compute_metrics(
+        result_df,
+        initial_capital,
+        interval=interval,
+        context="lib.backtest_result.run_backtest_result",
+    )
 
     # Record the risk machinery that was *actually* applied. backtest() downgrades
     # an ATR stop or ATR sizer to its percentage equivalent when the ATR columns
@@ -299,3 +138,6 @@ def run_backtest_result(
         interval=interval,
         df=result_df,
     )
+
+
+__all__ = ["BacktestMetrics", "BacktestResult", "metrics_from_result_df", "run_backtest_result"]

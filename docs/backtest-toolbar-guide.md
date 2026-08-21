@@ -112,6 +112,8 @@ Your choice here changes which options appear in the next section.
 - **Strategy Preset** — quick starting points: `Swing`, `Position`, `Trend` (or `Custom`). Sets sensible holding periods and stops for you.
 - **Min Holding Period (bars)** — force the trade to stay open at least N bars before it's allowed to sell. Stops jittery in-and-out churn.
 - **Trailing Stop (%)** — auto-sell if price falls this % from its peak. Your safety net.
+  It is not a magic exit price: if the market **reopens below your stop**, you are out at
+  the open, at whatever the gap left you (see *Sessions and overnight gaps* below).
 - **Take Profit (%)** — auto-sell once you're up this %. Locks in gains. (`0` = off.)
 - **Scale-in (%)** — what fraction of the Kelly-sized target each signal buys. `100`
   (the default) means one signal buys the full entry. Lower it to ramp in over
@@ -130,6 +132,24 @@ Your choice here changes which options appear in the next section.
   (e.g. `25`). Same weight in on a buy and out on a sell, so the third buy is the same
   size as the first.
 - Plus Min Holding Period, Trailing Stop, and Take Profit.
+
+**Sessions and overnight gaps.** A stop can only be worked while the exchange is open,
+and the app now knows where each trading session ends:
+
+- **A gap through your stop fills at the open, not at the close.** Stop at $95, the
+  market shuts at $100 and reopens at $80? You are out at **$80**. The old engine
+  pretended you got $90 because it only ever looked at closing prices. Nothing you set
+  can prevent this — that is what an overnight gap *is*, and seeing it in the results is
+  the point.
+- **Holding time is measured in bars of trading**, never in calendar time. "5 bars" on an
+  hourly chart is five *hours the market was open* — a Friday-afternoon entry with a
+  5-bar minimum hold is still holding on Monday morning. The **Data** tab's Portfolio
+  columns now carry `Holding_Sessions` next to `Holding_Period`, and `Session_Start`
+  marks each session's first bar, so you can see at a glance whether a trade slept
+  overnight.
+- **4h bars are built from each session's own open** (09:30 and 13:30 on a US chart), not
+  from the wall clock. Before, one 4h bar on a 24-hour market could contain the tail of
+  one session and the start of the next — a candle that never existed.
 
 **Always shown — Consecutive Signals:** controls what happens when the same signal fires
 over and over on consecutive bars:
@@ -178,9 +198,15 @@ portfolio strip, and a grid of six **scorecards**:
 | **Total Return** | Overall % gain/loss. Also shows *"NO COSTS"* — what you'd have made with zero fees. | Positive, and close to the no-costs number. |
 | **Sharpe** | Return adjusted for how bumpy the ride was. | ≥ 1 (labelled **ROBUST**). |
 | **Max DD** (drawdown) | The worst peak-to-valley drop along the way — your stomach test. | Milder than −20% (**CONTROLLED**). |
-| **Trade Count** | How many trades happened. | Enough to be meaningful (not 2, not 2000). |
-| **Win Rate** | % of trades that made money. | Above 50%. |
+| **Trade Count** | Completed **round trips** — an entry and the exit that closed it. A position still open on the last bar isn't counted. | Enough to be meaningful (not 2, not 2000). |
+| **Win Rate** | % of closed round trips that made money. | Above 50%. |
 | **Profit Factor** | Total profits ÷ total losses. | Above 1.00 — you make more than you lose. |
+
+> **A trade is a round trip, not a fill.** Buying in three instalments and selling
+> once is **one** trade, not four. If you scale into positions, the number of
+> individual executions is several times the Trade Count — and it is the round
+> trips that tell you whether the rule works. Accumulation mode never sells, so
+> its Trade Count is 0 by definition.
 
 The portfolio strip also shows **COST DRAG** — exactly how much money fees + slippage
 cost you, in both % and dollars. This is the honesty check: a strategy that only wins

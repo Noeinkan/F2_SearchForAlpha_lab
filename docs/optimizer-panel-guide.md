@@ -74,7 +74,9 @@ Narrow the list to focus the search (bundles-lite).
 ### D — Search & Constraints
 - **Max Signals per Side** (1–5, default `2`) — how many signals may stack per side.
 - **Max Combinations** (10–1000, default `100`) — hard cap for speed.
-- **Min Trades** (default `10`) — low-sample floor for ranking.
+- **Min Trades** (default `10`) — low-sample floor for ranking. Counts completed
+  **round trips** (an entry and its matching exit), not individual fills, so a
+  combo that scaled into every position clears it far less easily than it looks.
 - **Sort Results By** — SCORE / RET / SHARPE / CALMAR / DD / TRADES (re-rank after a run).
 - Optional **Max |DD| %** and **Min Sharpe** — discard combos before ranking.
 

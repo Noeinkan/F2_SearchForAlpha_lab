@@ -7,14 +7,12 @@ import logging
 import itertools
 from typing import List, Tuple, Dict, Any, Optional
 
-import numpy as np
 import pandas as pd
 
 from lib.dash.state import dashboard_state
 from lib.strategy import run_backtest
-from lib.backtest_result import metrics_from_result_df
+from lib.metrics import compute_metrics, ui_row
 from lib.signals.indicators import classify_signal_columns
-from lib.timeframes import periods_per_year as periods_per_year_for
 
 
 logger = logging.getLogger(__name__)
@@ -262,6 +260,7 @@ def evaluate_signal_combination(
     initial_capital: float,
     buy_combo: Tuple[str, ...],
     sell_combo: Tuple[str, ...],
+    interval: str = "1d",
     **backtest_kwargs: Any,
 ) -> Dict[str, Any]:
     """
@@ -272,11 +271,14 @@ def evaluate_signal_combination(
         initial_capital: Starting capital
         buy_combo: Tuple of buy signal column names
         sell_combo: Tuple of sell signal column names
+        interval: Bar interval of ``df``. Annualises Sharpe / Sortino / Calmar.
+            A named parameter rather than part of ``backtest_kwargs`` because
+            that dict is forwarded to ``run_backtest``, which would reject it.
         **backtest_kwargs: Optional ``run_backtest`` kwargs (costs, stops, mode).
             Omitted keys keep engine defaults (idealized / legacy optimizer path).
 
     Returns:
-        Dict with backtest results
+        Dict keyed by the registry's UI names — see :mod:`lib.metrics.names`.
     """
     try:
         result_df = run_backtest(
@@ -287,10 +289,12 @@ def evaluate_signal_combination(
             **backtest_kwargs,
         )
 
-        # Reuse the tested metrics engine instead of hand-rolling a fragile
-        # subset here (return, Sharpe, Sortino, Calmar, DD, trades, win rate,
-        # profit factor, turnover all computed from the actual result columns).
-        m = metrics_from_result_df(result_df, initial_capital)
+        m = compute_metrics(
+            result_df,
+            initial_capital,
+            interval=interval,
+            context='evaluate_signal_combination',
+        )
 
         # Buy-and-hold benchmark over the same window: the single clearest
         # "is this strategy actually adding value?" signal.
@@ -299,23 +303,15 @@ def evaluate_signal_combination(
         buy_hold_return = ((close.iloc[-1] / first_close) - 1.0) * 100 if first_close else 0.0
         total_return_pct = m.total_return * 100
 
+        # ui_row applies the registry's unit conventions once: percents for the
+        # rate metrics, the conventional minus sign on drawdown.
         return {
             'Buy_Signals': ', '.join(buy_combo),
             'Sell_Signals': ', '.join(sell_combo),
             'Final_Value': result_df['Portfolio_Value'].iloc[-1],
-            'Total_Return_%': total_return_pct,
             'BuyHold_Return_%': buy_hold_return,
             'Alpha_%': total_return_pct - buy_hold_return,
-            'Sharpe_Ratio': m.sharpe,
-            'Sortino': m.sortino,
-            'Calmar': m.calmar,
-            # Keep the existing negative-drawdown convention (engine reports
-            # max_drawdown as a positive magnitude).
-            'Max_Drawdown_%': -m.max_drawdown * 100,
-            'Win_Rate_%': m.win_rate * 100,
-            'Profit_Factor': m.profit_factor,
-            'Turnover': m.turnover,
-            'Trades': int(m.num_trades),
+            **ui_row(m),
         }
     except Exception as e:
         logger.warning(f"Error testing combination {buy_combo}/{sell_combo}: {e}")
@@ -354,51 +350,3 @@ def compute_robustness_scores(results_df: pd.DataFrame, min_trades: int) -> pd.D
         (sharpe + 0.25 * calmar) * confidence + 0.001 * total_return
     )
     return df
-
-
-def calculate_performance_metrics(
-    result_df: pd.DataFrame,
-    initial_capital: float,
-    interval: str = "1d",
-) -> Dict[str, float]:
-    """
-    Calculate performance metrics from backtest results.
-
-    Args:
-        result_df: DataFrame with backtest results
-        initial_capital: Starting capital
-        interval: Bar interval for Sharpe annualization
-
-    Returns:
-        Dict with performance metrics
-    """
-    final_value = result_df['Portfolio_Value'].iloc[-1]
-    total_return = (final_value - initial_capital) / initial_capital * 100
-
-    returns = result_df['Strategy_Returns'].dropna()
-
-    # Sharpe ratio (annualized)
-    ppy = periods_per_year_for(interval)
-    sharpe = (returns.mean() / returns.std() * np.sqrt(ppy)) if returns.std() > 0 else 0
-
-    # Max drawdown
-    cumulative = (1 + returns).cumprod()
-    peak = cumulative.expanding().max()
-    drawdown = ((cumulative - peak) / peak).min() * 100
-
-    # Win rate
-    trades = result_df[result_df['Position'].diff() != 0]
-    if len(trades) > 1:
-        winning = (trades['Strategy_Returns'] > 0).sum()
-        total_trades = len(trades)
-        win_rate = (winning / total_trades) * 100 if total_trades > 0 else 0
-    else:
-        win_rate = 0
-
-    return {
-        'final_value': final_value,
-        'total_return': total_return,
-        'sharpe_ratio': sharpe,
-        'max_drawdown': drawdown,
-        'win_rate': win_rate
-    }

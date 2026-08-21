@@ -1,13 +1,15 @@
 # Data processing module
 """
-Data fetching, preprocessing, and metric calculations for trading strategies.
+Data fetching and preprocessing for trading strategies.
+
+Performance metrics used to live here too. They now live in :mod:`lib.metrics`,
+which is the only place any of them is implemented.
 """
 
 import logging
-import numpy as np
 import pandas as pd
 import yfinance as yf
-from typing import List, Dict, Optional
+from typing import List, Optional
 from pathlib import Path
 from datetime import datetime, timedelta
 import time
@@ -262,7 +264,6 @@ def _get_default_tickers() -> pd.DataFrame:
     return pd.DataFrame(bootstrap, columns=['Symbol', 'Security', 'Index', 'Exchange'])
 
 
-
 def _fetch_sp500_from_github() -> Optional[pd.DataFrame]:
     """Fetch S&P 500 constituents from GitHub datasets repo with retry logic."""
     import requests
@@ -451,7 +452,6 @@ def _is_cache_valid() -> bool:
     return age < timedelta(hours=_TICKER_CACHE_TTL_HOURS)
 
 
-
 def get_all_tickers() -> pd.DataFrame:
     """
     Get S&P 500, NASDAQ-100, and Russell 2000 tickers plus curated extras.
@@ -557,82 +557,6 @@ def validate_symbol(symbol: str, cache_hit: bool = True) -> bool:
         return False
 
 
-
-
-def calculate_max_drawdown(df: pd.DataFrame) -> float:
-    """
-    Calculate maximum drawdown from cumulative returns.
-    
-    Args:
-        df: DataFrame with 'Cumulative_Returns' column.
-        
-    Returns:
-        Maximum drawdown as a decimal (negative value).
-    """
-    if 'Cumulative_Returns' not in df.columns:
-        logger.warning("Cumulative_Returns column not found, returning 0")
-        return 0.0
-    cumulative_returns = df['Cumulative_Returns']
-    peak = cumulative_returns.expanding(min_periods=1).max()
-    drawdown = (cumulative_returns - peak) / peak
-    return drawdown.min()
-
-
-def calculate_sharpe_ratio(
-    returns: pd.Series,
-    risk_free_rate: float = 0.02,
-    periods_per_year: int = 252
-) -> float:
-    """
-    Calculate annualized Sharpe ratio.
-    
-    Args:
-        returns: Series of periodic returns.
-        risk_free_rate: Annual risk-free rate.
-        periods_per_year: Number of trading periods per year.
-        
-    Returns:
-        Annualized Sharpe ratio.
-    """
-    if returns.std() == 0:
-        return 0.0
-    excess_returns = returns - risk_free_rate / periods_per_year
-    return np.sqrt(periods_per_year) * excess_returns.mean() / excess_returns.std()
-
-
-def calculate_win_rate(df: pd.DataFrame) -> float:
-    """
-    Calculate the win rate of trading strategy.
-    
-    Args:
-        df: DataFrame with 'Strategy_Returns' column.
-        
-    Returns:
-        Win rate as a decimal.
-    """
-    if 'Strategy_Returns' not in df.columns:
-        return 0.0
-    profitable_trades = (df['Strategy_Returns'] > 0).sum()
-    total_trades = len(df['Strategy_Returns'])
-    return profitable_trades / total_trades if total_trades > 0 else 0.0
-
-
-def calculate_profit_factor(df: pd.DataFrame) -> float:
-    """
-    Calculate the profit factor (gross profits / gross losses).
-    
-    Args:
-        df: DataFrame with 'Strategy_Returns' column.
-        
-    Returns:
-        Profit factor (inf if no losses).
-    """
-    if 'Strategy_Returns' not in df.columns:
-        return 0.0
-    gross_profits = df['Strategy_Returns'][df['Strategy_Returns'] > 0].sum()
-    gross_losses = abs(df['Strategy_Returns'][df['Strategy_Returns'] < 0].sum())
-    return gross_profits / gross_losses if gross_losses != 0 else np.inf
-
 def calculate_max_consecutive(series: pd.Series) -> int:
     """
     Calculate maximum consecutive occurrences in a boolean series.
@@ -647,76 +571,3 @@ def calculate_max_consecutive(series: pd.Series) -> int:
         return 0
     groups = (series != series.shift()).cumsum()
     return max((series.groupby(groups).cumcount() + 1).max(), 0)
-
-
-def calculate_average_trade_duration(df: pd.DataFrame) -> float:
-    """
-    Calculate average trade duration in days (fractional for intraday holds).
-
-    Args:
-        df: DataFrame with 'Units' column.
-
-    Returns:
-        Average trade duration in days.
-    """
-    if 'Units' not in df.columns:
-        return 0.0
-
-    try:
-        trade_starts = df.index[df['Units'] != df['Units'].shift(1)]
-        trade_ends = df.index[df['Units'] != df['Units'].shift(-1)]
-
-        if len(trade_starts) > 0 and len(trade_ends) > 0:
-            trade_durations = []
-            for start, end in zip(trade_starts, trade_ends):
-                if end <= start:
-                    continue
-                delta = pd.Timestamp(end) - pd.Timestamp(start)
-                trade_durations.append(delta.total_seconds() / 86400.0)
-            return sum(trade_durations) / len(trade_durations) if trade_durations else 0.0
-    except Exception as e:
-        logger.warning(f"Error calculating trade duration: {e}")
-    return 0.0
-
-# Data processing module
-
-def create_backtest_results(
-    df: pd.DataFrame,
-    ticker: str,
-    initial_capital: float,
-    buy_strategy: List[str],
-    sell_strategy: List[str]
-) -> Dict:
-    """
-    Create a dictionary of backtest results and metrics.
-    
-    Args:
-        df: DataFrame with backtest results.
-        ticker: Ticker symbol.
-        initial_capital: Initial capital used.
-        buy_strategy: List of buy indicator names.
-        sell_strategy: List of sell indicator names.
-        
-    Returns:
-        Dictionary with backtest metrics.
-    """
-    try:
-        return {
-            'ticker': ticker,
-            'start_date': df.index[0].strftime('%Y-%m-%d') if hasattr(df.index[0], 'strftime') else str(df.index[0]),
-            'end_date': df.index[-1].strftime('%Y-%m-%d') if hasattr(df.index[-1], 'strftime') else str(df.index[-1]),
-            'initial_capital': initial_capital,
-            'final_portfolio_value': df['Portfolio_Value'].iloc[-1],
-            'total_return': ((df['Portfolio_Value'].iloc[-1] / initial_capital) - 1) * 100,
-            'market_return': ((df['Close'].iloc[-1] / df['Close'].iloc[0]) - 1) * 100,
-            'buy_strategy': buy_strategy,
-            'sell_strategy': sell_strategy,
-            'max_drawdown': calculate_max_drawdown(df),
-            'sharpe_ratio': calculate_sharpe_ratio(df['Strategy_Returns']),
-            'win_rate': calculate_win_rate(df),
-            'profit_factor': calculate_profit_factor(df),
-            'avg_trade_duration': calculate_average_trade_duration(df)
-        }
-    except Exception as e:
-        logger.error(f"Error creating backtest results: {e}")
-        raise

@@ -19,6 +19,14 @@ promotion:
   max_degradation: 0.4
   walkforward_max_age_days: 7
 
+metrics:
+  # Annual risk-free rate used as the excess-return hurdle for Sharpe and
+  # Sortino, in every module. Zero means Sharpe is the plain
+  # reward-to-variability ratio. Changing it moves every ratio the app reports,
+  # including the promotion gate's min_oos_sharpe_mean above — trials already in
+  # state/optuna.db were scored at whatever value was set when they ran.
+  risk_free_rate: 0.0
+
 optimiser:
   composite_weights:
     sortino: 1.0

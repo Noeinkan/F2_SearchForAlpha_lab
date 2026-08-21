@@ -117,6 +117,9 @@ Execution Type:
 - **Strategy Preset** — punti di partenza rapidi: `Swing`, `Position`, `Trend` (oppure `Custom`). Imposta per te periodi di mantenimento e stop ragionevoli.
 - **Min Holding Period (bars)** — obbliga la posizione a restare aperta per almeno N barre prima di poter vendere. Evita l'entra-ed-esci nervoso.
 - **Trailing Stop (%)** — vende automaticamente se il prezzo scende di questa % dal suo picco. La tua rete di sicurezza.
+  Non è un prezzo di uscita garantito: se il mercato **riapre sotto il tuo stop**, esci
+  all'apertura, a qualunque prezzo il gap ti abbia lasciato (vedi *Sessioni e gap notturni*
+  qui sotto).
 - **Take Profit (%)** — vende automaticamente quando sei in guadagno di questa %. Blocca i profitti. (`0` = disattivato.)
 - **Scale-in (%)** — quale frazione della dimensione-obiettivo calcolata da Kelly viene
   acquistata a ogni segnale. `100` (predefinito) significa che un solo segnale compra
@@ -135,6 +138,25 @@ Execution Type:
   per segnale (es. `25`). Stesso peso in entrata su un buy e in uscita su un sell, quindi
   il terzo acquisto ha la stessa dimensione del primo.
 - Più Min Holding Period, Trailing Stop e Take Profit.
+
+**Sessioni e gap notturni.** Uno stop può lavorare solo mentre la borsa è aperta, e ora
+l'app sa dove finisce ogni sessione di negoziazione:
+
+- **Un gap che attraversa il tuo stop viene eseguito all'apertura, non alla chiusura.**
+  Stop a 95$, il mercato chiude a 100$ e riapre a 80$? Esci a **80$**. Il vecchio motore
+  faceva finta che avessi ottenuto 90$, perché guardava solo i prezzi di chiusura. Non c'è
+  impostazione che possa evitarlo — è esattamente ciò che *è* un gap notturno, e vederlo
+  nei risultati è il punto.
+- **Il tempo di detenzione si misura in barre di negoziazione**, mai in tempo di
+  calendario. "5 barre" su un grafico orario sono cinque *ore di mercato aperto*: un
+  ingresso il venerdì pomeriggio con un minimo di 5 barre è ancora aperto il lunedì
+  mattina. Le colonne Portfolio della scheda **Data** ora includono `Holding_Sessions`
+  accanto a `Holding_Period`, e `Session_Start` segna la prima barra di ogni sessione:
+  così vedi a colpo d'occhio se un'operazione ha dormito di notte.
+- **Le barre 4h sono costruite dall'apertura di ogni sessione** (09:30 e 13:30 su un
+  grafico USA), non dall'orologio da parete. Prima, su un mercato aperto 24 ore, una
+  barra 4h poteva contenere la coda di una sessione e l'inizio della successiva — una
+  candela che non è mai esistita.
 
 **Sempre mostrata — Consecutive Signals:** controlla cosa succede quando lo stesso
 segnale scatta più volte su barre consecutive:
@@ -186,9 +208,15 @@ striscia riepilogativa del portafoglio e una griglia di sei **pagelle** (scoreca
 | **Total Return** | Guadagno/perdita % complessivo. Mostra anche *"NO COSTS"* — quanto avresti guadagnato senza commissioni. | Positivo e vicino al valore no-costs. |
 | **Sharpe** | Rendimento aggiustato per quanto è stato movimentato il percorso. | ≥ 1 (etichettato **ROBUST**). |
 | **Max DD** (drawdown) | Il calo peggiore da picco a valle lungo il percorso — il test per lo stomaco. | Più contenuto di −20% (**CONTROLLED**). |
-| **Trade Count** | Quante operazioni sono avvenute. | Abbastanza da essere significativo (non 2, non 2000). |
-| **Win Rate** | % di operazioni che hanno guadagnato. | Sopra il 50%. |
+| **Trade Count** | Operazioni **complete** — un'entrata e l'uscita che l'ha chiusa. Una posizione ancora aperta sull'ultima barra non viene contata. | Abbastanza da essere significativo (non 2, non 2000). |
+| **Win Rate** | % di operazioni chiuse che hanno guadagnato. | Sopra il 50%. |
 | **Profit Factor** | Profitti totali ÷ perdite totali. | Sopra 1.00 — guadagni più di quanto perdi. |
+
+> **Un'operazione è un ciclo completo, non un singolo eseguito.** Comprare in tre
+> tranche e vendere una volta è **una** operazione, non quattro. Se scali dentro le
+> posizioni, il numero di eseguiti è parecchie volte il Trade Count — ed è il ciclo
+> completo a dirti se la regola funziona. La modalità accumulation non vende mai,
+> quindi il suo Trade Count è 0 per definizione.
 
 La striscia del portafoglio mostra anche **COST DRAG** — esattamente quanto denaro ti
 sono costati commissioni + slippage, sia in % che in dollari. È la prova di onestà: una

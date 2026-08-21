@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from lib.metrics import DEFAULT_SORT_KEY
+
 MAX_HISTORY_ENTRIES = 12
 
 
@@ -31,7 +33,7 @@ def summarize_run(
         "kind": "combo",
         "total_combos": int(total_combos or 0),
         "valid_count": len(results),
-        "sort_by": sort_by or "Total_Return_%",
+        "sort_by": sort_by or DEFAULT_SORT_KEY,
         "realistic": bool(realistic),
         "max_signals": max_signals,
         "top": {

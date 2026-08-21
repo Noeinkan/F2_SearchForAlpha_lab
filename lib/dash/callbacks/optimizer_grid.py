@@ -15,6 +15,7 @@ from dash.exceptions import PreventUpdate
 from lib.agent_strategy import load_bundle
 from lib.config_loader import get_agent_strategies
 from lib.dash.components import build_alert
+from lib.metrics import format_canonical
 from lib.dash.dash_config import FONT_SIZES, get_theme
 from lib.dash.optimizer_glossary import GRID_RUN_LABEL, GRID_STOP_LABEL
 from lib.dash.optimizer_bayesian_apply import merge_indicator_settings_from_params
@@ -69,7 +70,7 @@ def _render_grid_results(data: dict[str, Any] | None, theme: dict) -> html.Div:
                 f"Sharpe {float(metrics.get('sharpe', 0)):.2f}",
                 style={'marginRight': '10px'},
             ),
-            html.Span(f"Ret {float(metrics.get('total_return', 0)):+.1f}%"),
+            html.Span("Ret " + format_canonical('total_return', metrics.get('total_return', 0))),
         ], style={
             'fontSize': FONT_SIZES['xs'],
             'color': theme['text_primary'],

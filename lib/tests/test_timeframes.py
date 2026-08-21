@@ -64,8 +64,8 @@ def test_normalize_interval_aliases():
 
 def test_periods_per_year_map():
     assert periods_per_year("1d") == 252
-    assert periods_per_year("1h") == 1638
-    assert periods_per_year("4h") == 410
+    assert periods_per_year("1h") == 1764  # 252 sessions x 7 hourly bars
+    assert periods_per_year("4h") == 504   # 252 sessions x 2 four-hour bars
 
 
 def test_clamp_window_intraday():

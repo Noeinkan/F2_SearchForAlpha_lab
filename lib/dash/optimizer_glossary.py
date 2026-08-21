@@ -140,7 +140,9 @@ CONTROL_HINTS: dict[str, str] = {
         "Hard cap on how many stacks to backtest. Higher = slower and more overfitting risk."
     ),
     "min_trades": (
-        "Drop combos with fewer trades than this before ranking — filters luck from tiny samples."
+        "Drop combos with fewer completed round trips than this before ranking — "
+        "filters luck from tiny samples. A round trip is an entry and its matching "
+        "exit, so this counts trades, not individual fills."
     ),
     "sort_metric": (
         "How the leaderboard is ordered. Flip after a run — the table reorders without re-search."

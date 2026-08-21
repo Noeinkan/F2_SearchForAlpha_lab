@@ -23,6 +23,24 @@ Execution model (read this before interpreting any result)
   ``use_low_for_stops=True`` to test the breach against ``Low`` instead; the
   fill is then taken at ``min(stop_level, Close)``, which charges the stop level
   on an intrabar breach and the (worse) close on a gap-down.
+* **Sessions and overnight gaps.** The loop is positionally indexed, but it is
+  no longer session-blind. ``lib.sessions`` infers where each trading session
+  begins from the timestamps (every bar on a daily tape; the overnight step on
+  an intraday one), and that mask is exposed as the ``Session_Start`` column.
+  A caller holding a real exchange calendar can supply the column instead.
+* **Gap fills.** On a session's first bar, a market that reopens at or below
+  the trailing stop has *gapped through* it — the stop could not be worked
+  while the exchange was shut, so it becomes a market order and fills at the
+  **open**, not at the close and not at the stop level. This is what
+  ``gap_fills=True`` (the default) does, and it applies in both stop modes;
+  ``gap_fills=False`` restores the pre-3.9 close-only behaviour.
+* **Holding period is session time.** ``Holding_Period`` and the ledger's
+  ``holding_bars`` count *bars of tape*, so they never include the hours a
+  market was shut — five 1h bars is five hours of trading even when a weekend
+  falls in the middle. ``Holding_Sessions`` and the ledger's
+  ``holding_sessions`` report how many session boundaries the trade crossed,
+  which is the number that tells you whether it was held overnight.
+  ``min_holding_period`` is counted in bars.
 * **Cost basis versus entry price.** ``Avg_Entry_Price`` is the average
   execution price excluding fees; ``Avg_Cost_Basis`` is the same average with
   entry commission, FX fee and slippage folded in. ``take_profit`` triggers off
@@ -36,6 +54,12 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
+
+# The ledger's shape lives in lib.metrics.ledger so the metrics engine can read
+# a ledger without importing this module. EXIT_REASONS and TRADE_COLUMNS are
+# there too, for anyone who needs the vocabulary.
+from lib.metrics.ledger import trades_to_frame
+from lib.sessions import resolve_session_starts
 
 # Configure module logger
 logger = logging.getLogger(__name__)
@@ -60,16 +84,6 @@ ATR_STOP_COLUMN = 'ATR_Stop_Long'
 STOP_MODES = ('percent', 'atr')
 STRATEGY_MODES = ('trading', 'accumulation', 'rebalancing')
 CONSECUTIVE_SIGNAL_MODES = ('scale_in', 'edge', 'cooldown', 'reset_cooldown')
-
-# Reasons a round trip can end, as written to the trade ledger.
-EXIT_REASONS = ('signal', 'trailing_stop', 'take_profit', 'open')
-
-# Column order of the trade ledger attached as ``result_df.attrs['trades']``.
-TRADE_COLUMNS = (
-    'entry_bar', 'entry_date', 'exit_bar', 'exit_date', 'units',
-    'avg_entry_price', 'avg_cost_basis', 'exit_price', 'exit_reason',
-    'gross_pnl', 'net_pnl', 'fees', 'holding_bars', 'is_open',
-)
 
 # Quantities below this are treated as flat (fractional-share rounding noise).
 _UNIT_EPS = 1e-9
@@ -208,6 +222,9 @@ class _EngineContext:
     # Price / signal inputs
     close_prices: np.ndarray
     low_prices: Optional[np.ndarray]
+    open_prices: Optional[np.ndarray]
+    session_start: np.ndarray
+    session_id: np.ndarray
     dates: Any
     buy_signal_raw: np.ndarray
     sell_signal_raw: np.ndarray
@@ -225,6 +242,7 @@ class _EngineContext:
     fee_rate: float
     slippage_pct: float
     use_low_for_stops: bool
+    gap_fills: bool
 
     # Callables
     size_position: Callable[[float, float, int], float]
@@ -241,6 +259,7 @@ class _EngineContext:
     sell_triggered: np.ndarray
     sell_rejected: np.ndarray
     holding_period: np.ndarray
+    holding_sessions: np.ndarray
 
     # Trade ledger
     trades: List[dict] = field(default_factory=list)
@@ -316,17 +335,11 @@ def _finalise_trade(
         'net_pnl': float(gross_pnl - fees),
         'fees': float(fees),
         'holding_bars': int(exit_bar - trade.entry_bar),
+        'holding_sessions': int(
+            ctx.session_id[exit_bar] - ctx.session_id[trade.entry_bar]
+        ),
         'is_open': bool(is_open),
     }
-
-
-def trades_to_frame(trades: Union[pd.DataFrame, Sequence[dict], None]) -> pd.DataFrame:
-    """Build the trade-ledger DataFrame, with stable columns even when empty."""
-    if isinstance(trades, pd.DataFrame):
-        trades = trades.to_dict('records')
-    if not trades:
-        return pd.DataFrame(columns=list(TRADE_COLUMNS))
-    return pd.DataFrame(list(trades), columns=list(TRADE_COLUMNS))
 
 
 # --------------------------------------------------------------------------- #
@@ -381,6 +394,15 @@ def _check_exits(ctx: _EngineContext, state: _PositionState, bar: int) -> bool:
     stop_level = state.trailing_stop
 
     if np.isfinite(stop_level):
+        # An overnight gap is not an intrabar move. The stop could not be
+        # worked while the exchange was shut, so a reopen at or below it fills
+        # at the open — the first price anyone could actually trade — however
+        # the bar goes on to close.
+        if ctx.gap_fills and ctx.session_start[bar] and ctx.open_prices is not None:
+            open_price = ctx.open_prices[bar]
+            if np.isfinite(open_price) and open_price <= stop_level:
+                _close_position(ctx, state, bar, open_price, 'trailing_stop')
+                return True
         if ctx.use_low_for_stops:
             # Intrabar breach: a resting stop order would have filled at the stop,
             # unless the bar closed below it (gap), where the close is the worse
@@ -614,6 +636,7 @@ def backtest(
     slippage_pct: float = 0.0005,
     fx_fee_pct: float = 0.0015,
     use_low_for_stops: bool = False,
+    gap_fills: bool = True,
     allow_fractional: bool = False
 ) -> pd.DataFrame:
     """
@@ -661,11 +684,17 @@ def backtest(
         use_low_for_stops: Test trailing-stop breaches against ``Low`` rather than
             ``Close``. Requires a ``Low`` column; falls back to ``Close`` with a
             warning when absent.
+        gap_fills: On the first bar of a session, fill a breached trailing stop
+            at the ``Open`` rather than the ``Close`` — the market gapped
+            through the stop while it could not be worked. Requires an ``Open``
+            column; silently inactive without one. Session boundaries come from
+            ``lib.sessions``, or from a ``Session_Start`` column on ``df``.
         allow_fractional: Permit fractional share quantities (Trading 212 supports
             them). Default False keeps whole-share truncation.
 
     Returns:
-        DataFrame with backtest results including portfolio values and metrics.
+        DataFrame with backtest results including portfolio values and metrics,
+        plus ``Session_Start`` and ``Holding_Sessions``.
         ``result_df.attrs['trades']`` holds the round-trip trade ledger;
         ``attrs['stop_mode']`` and ``attrs['position_sizing_strategy']`` record
         what was actually applied after any fallback.
@@ -703,6 +732,7 @@ def backtest(
         sell_triggered = np.zeros(num_rows, dtype=bool)
         sell_rejected = np.zeros(num_rows, dtype=bool)
         holding_period = np.zeros(num_rows, dtype=int)
+        holding_sessions = np.zeros(num_rows, dtype=int)
         trailing_stop = np.full(num_rows, np.inf)
         avg_entry_price = np.zeros(num_rows)
         avg_cost_basis = np.zeros(num_rows)
@@ -803,6 +833,21 @@ def backtest(
                 )
                 use_low_for_stops = False
 
+        # Session marks come from the timestamps unless the caller supplied a
+        # Session_Start column. Without an Open column there is no gap price to
+        # fill at, so gap handling turns itself off rather than inventing one.
+        session_start = resolve_session_starts(df)
+        session_id = np.cumsum(session_start) - 1 if num_rows else np.zeros(0, dtype=int)
+        open_prices = None
+        if gap_fills:
+            open_prices = _numeric_column(df, 'Open')
+            if open_prices is None:
+                logger.warning(
+                    "gap_fills=True but 'Open' is missing or empty — overnight "
+                    "gaps through the trailing stop will fill at the close."
+                )
+                gap_fills = False
+
         # Market returns, guarded against a zero/NaN previous close.
         returns = np.zeros(num_rows)
         if num_rows > 1:
@@ -823,6 +868,9 @@ def backtest(
         ctx = _EngineContext(
             close_prices=close_prices,
             low_prices=low_prices,
+            open_prices=open_prices,
+            session_start=session_start,
+            session_id=session_id,
             dates=df.index,
             buy_signal_raw=buy_signal_raw,
             sell_signal_raw=sell_signal_raw,
@@ -838,6 +886,7 @@ def backtest(
             fee_rate=fee_rate,
             slippage_pct=slippage_pct,
             use_low_for_stops=use_low_for_stops,
+            gap_fills=gap_fills,
             size_position=size_position,
             long_stop_level=long_stop_level,
             round_units=round_units,
@@ -850,6 +899,7 @@ def backtest(
             sell_triggered=sell_triggered,
             sell_rejected=sell_rejected,
             holding_period=holding_period,
+            holding_sessions=holding_sessions,
         )
 
         state = _PositionState(cash=float(initial_capital))
@@ -861,6 +911,10 @@ def backtest(
             prev_portfolio_value = portfolio_value[i - 1]
 
             holding_period[i] = holding_period[i - 1] + 1 if state.units > 0 else 0
+            # Bars held is a positional count; sessions crossed is the same
+            # hold measured against the calendar. entry_bar is recoverable
+            # because holding_period counts up one per bar from the fill.
+            holding_sessions[i] = session_id[i] - session_id[i - holding_period[i]]
 
             if not _check_exits(ctx, state, i):
                 _process_signals(ctx, state, i, prev_portfolio_value)
@@ -895,7 +949,8 @@ def backtest(
             buy_signal_raw, sell_signal_raw,
             returns, strategy_returns, cumulative_returns, cumulative_market_returns,
             holding_period, trailing_stop, buy_triggered, buy_rejected, sell_triggered, sell_rejected,
-            avg_entry_price=avg_entry_price, avg_cost_basis=avg_cost_basis
+            avg_entry_price=avg_entry_price, avg_cost_basis=avg_cost_basis,
+            session_start=session_start, holding_sessions=holding_sessions
         )
         # Record what was actually applied, not what was asked for — either may
         # have been downgraded to the percentage fallback above.
@@ -1027,7 +1082,9 @@ def create_result_dataframe(
     sell_triggered: np.ndarray,
     sell_rejected: np.ndarray,
     avg_entry_price: Optional[np.ndarray] = None,
-    avg_cost_basis: Optional[np.ndarray] = None
+    avg_cost_basis: Optional[np.ndarray] = None,
+    session_start: Optional[np.ndarray] = None,
+    holding_sessions: Optional[np.ndarray] = None
 ) -> pd.DataFrame:
     df = df.copy()
     df['Units'] = units
@@ -1055,6 +1112,13 @@ def create_result_dataframe(
         df['Avg_Entry_Price'] = avg_entry_price
     if avg_cost_basis is not None:
         df['Avg_Cost_Basis'] = avg_cost_basis
+    # Session_Start is written even when it came in on df, so the result always
+    # states which boundaries the run actually used rather than leaving the
+    # reader to re-infer them.
+    if session_start is not None:
+        df['Session_Start'] = session_start
+    if holding_sessions is not None:
+        df['Holding_Sessions'] = holding_sessions
     return df
 
 
@@ -1219,20 +1283,6 @@ def atr_risk_based(
     return int(_size_atr_risk_based(portfolio_value, close_price, atr, atr_multiplier, risk_percent))
 
 
-def calculate_max_drawdown(df: pd.DataFrame) -> float:
-    """Calculate the maximum drawdown from cumulative returns."""
-    if 'Cumulative_Returns' not in df.columns:
-        logger.warning("Cumulative_Returns column not found")
-        return 0.0
-    cumulative_returns = df['Cumulative_Returns']
-    if len(cumulative_returns) == 0:
-        return 0.0
-    peak = cumulative_returns.expanding(min_periods=1).max()
-    with np.errstate(divide='ignore', invalid='ignore'):
-        drawdown = (cumulative_returns / peak.replace(0, np.nan)) - 1
-    return float(drawdown.fillna(0.0).min())
-
-
 # --------------------------------------------------------------------------- #
 # Metrics
 # --------------------------------------------------------------------------- #
@@ -1241,10 +1291,15 @@ def calculate_metrics(
     df: pd.DataFrame,
     trades: Union[pd.DataFrame, Sequence[dict], None] = None,
     periods_per_year: int = 252,
-    risk_free_rate: float = 0.0
+    risk_free_rate: Optional[float] = None
 ) -> Dict[str, float]:
     """
     Summarise a backtest result frame and its trade ledger as a metric dict.
+
+    Thin adapter over :func:`lib.metrics.compute_metrics`, kept because callers
+    and tests have always reached for it here. New code should use the metrics
+    engine directly and hold a :class:`~lib.metrics.BacktestMetrics` rather than
+    a loose dict.
 
     Args:
         df: A DataFrame returned by :func:`backtest`.
@@ -1256,84 +1311,25 @@ def calculate_metrics(
             the CAGR horizon (252 daily, 52 weekly, 12 monthly, ...). See
             ``lib.timeframes.periods_per_year`` for the per-interval values.
         risk_free_rate: Annual risk-free rate used as the excess-return hurdle.
+            Defaults to the configured convention (see
+            ``lib.metrics.core.resolve_risk_free_rate``).
 
     Returns:
         Dict of metrics. Counts are ints, everything else is a float; undefined
-        quantities are reported as 0.0 rather than NaN, except ``profit_factor``
-        which is ``inf`` when there are wins and no losses.
+        quantities are reported as 0.0 rather than NaN. ``num_trades`` counts
+        **closed round trips**, not fills — ``num_fills`` carries that.
     """
-    metrics: Dict[str, float] = {
-        'total_return': 0.0, 'cagr': 0.0, 'sharpe': 0.0, 'sortino': 0.0,
-        'max_drawdown': 0.0, 'exposure': 0.0, 'num_trades': 0, 'open_trades': 0,
-        'win_rate': 0.0, 'profit_factor': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0,
-        'expectancy': 0.0, 'avg_holding_bars': 0.0, 'total_fees': 0.0,
-    }
-    if df is None or len(df) == 0:
-        return metrics
+    from lib.metrics import compute_metrics
 
-    ppy = max(1, int(periods_per_year or 252))
+    m = compute_metrics(
+        df,
+        trades=trades_to_frame(trades) if trades is not None else None,
+        periods_per_year=periods_per_year,
+        risk_free_rate=risk_free_rate,
+        context='lib.strategy.calculate_metrics',
+    )
+    return m.as_dict()
 
-    # --- equity curve -----------------------------------------------------
-    if 'Portfolio_Value' in df.columns:
-        pv = pd.to_numeric(df['Portfolio_Value'], errors='coerce').to_numpy(dtype=float)
-        start, end = pv[0], pv[-1]
-        if start > 0:
-            growth = end / start
-            metrics['total_return'] = float(growth - 1.0)
-            years = max(len(pv) - 1, 1) / ppy
-            metrics['cagr'] = float(growth ** (1.0 / years) - 1.0) if growth > 0 else -1.0
-
-    if 'Strategy_Returns' in df.columns:
-        r = pd.to_numeric(df['Strategy_Returns'], errors='coerce').to_numpy(dtype=float)
-        r = np.nan_to_num(r, nan=0.0, posinf=0.0, neginf=0.0)
-        excess = r - (risk_free_rate / ppy)
-        std = float(excess.std(ddof=1)) if excess.size > 1 else 0.0
-        if std > 0:
-            metrics['sharpe'] = float(np.sqrt(ppy) * excess.mean() / std)
-        downside = excess[excess < 0]
-        downside_std = float(downside.std(ddof=1)) if downside.size > 1 else 0.0
-        if downside_std > 0:
-            metrics['sortino'] = float(np.sqrt(ppy) * excess.mean() / downside_std)
-
-    metrics['max_drawdown'] = float(calculate_max_drawdown(df))
-
-    if 'Units' in df.columns:
-        held = pd.to_numeric(df['Units'], errors='coerce').fillna(0) > 0
-        metrics['exposure'] = float(held.mean())
-
-    # --- trade ledger -----------------------------------------------------
-    if trades is None:
-        trades = df.attrs.get('trades')
-    ledger = trades_to_frame(trades)
-    if ledger.empty:
-        return metrics
-
-    metrics['open_trades'] = int((ledger['exit_reason'] == 'open').sum())
-    metrics['total_fees'] = float(ledger['fees'].sum())
-
-    closed = ledger[ledger['exit_reason'] != 'open']
-    metrics['num_trades'] = int(len(closed))
-    if closed.empty:
-        return metrics
-
-    pnl = closed['net_pnl'].to_numpy(dtype=float)
-    wins = pnl[pnl > 0]
-    losses = pnl[pnl < 0]
-
-    metrics['win_rate'] = float(len(wins) / len(pnl))
-    metrics['avg_win'] = float(wins.mean()) if wins.size else 0.0
-    metrics['avg_loss'] = float(losses.mean()) if losses.size else 0.0
-    metrics['expectancy'] = float(pnl.mean())
-    metrics['avg_holding_bars'] = float(closed['holding_bars'].mean())
-
-    gross_profit = float(wins.sum())
-    gross_loss = float(-losses.sum())
-    if gross_loss > 0:
-        metrics['profit_factor'] = gross_profit / gross_loss
-    else:
-        metrics['profit_factor'] = float('inf') if gross_profit > 0 else 0.0
-
-    return metrics
 
 
 def run_backtest(
@@ -1359,6 +1355,7 @@ def run_backtest(
     slippage_pct: float = 0.0005,
     fx_fee_pct: float = 0.0015,
     use_low_for_stops: bool = False,
+    gap_fills: bool = True,
     allow_fractional: bool = False
 ) -> pd.DataFrame:
     """
@@ -1387,6 +1384,8 @@ def run_backtest(
         slippage_pct: Slippage as % of price (0.0005 = 5 bps).
         fx_fee_pct: FX fee as % of notional (Trading 212 UK default 0.15%).
         use_low_for_stops: Check trailing-stop breaches against ``Low`` instead of ``Close``.
+        gap_fills: Fill a stop the market reopened through at the session's
+            ``Open`` rather than its ``Close``.
         allow_fractional: Permit fractional share quantities.
 
     Returns:
@@ -1428,5 +1427,6 @@ def run_backtest(
         slippage_pct=slippage_pct,
         fx_fee_pct=fx_fee_pct,
         use_low_for_stops=use_low_for_stops,
+        gap_fills=gap_fills,
         allow_fractional=allow_fractional
     )

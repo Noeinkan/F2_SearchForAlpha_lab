@@ -85,6 +85,10 @@ classifica — non viene eliminata, solo declassata. Uno Sharpe o un profit fact
 splendidi costruiti su 3 operazioni sono fortuna, non vantaggio: così si evita che le
 casualità dominino la classifica.
 
+Conta le **operazioni complete** (un'entrata e l'uscita che l'ha chiusa), non i singoli
+eseguiti: una combo che scala dentro ogni posizione supera questa soglia molto meno
+facilmente di quanto sembri.
+
 ### D — Sort Results By
 *Pulsanti segmentati.* Quale metrica ordina la classifica:
 

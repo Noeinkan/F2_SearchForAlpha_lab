@@ -8,14 +8,19 @@ from dash import html
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.data_processing import create_backtest_results
 from lib.dash.callbacks.shared import slice_df_to_window
 from lib.dash.components import build_alert, kpi_cell
 from lib.dash.dash_config import get_theme
 from lib.dash.state import dashboard_state
+from lib.metrics import compute_metrics, format_canonical
 from lib.strategy import run_backtest
 
 logger = logging.getLogger(__name__)
+
+# Badge thresholds, in canonical units. A drawdown is a positive magnitude
+# here, so 'controlled' means at or below 20%, not 'greater than -20'.
+MAX_DRAWDOWN_CONTROLLED = 0.20
+WIN_RATE_TARGET = 0.50
 
 
 def register_backtest_callbacks(app) -> None:
@@ -113,8 +118,20 @@ def register_backtest_callbacks(app) -> None:
                 slippage_pct=slippage_pct,
                 fx_fee_pct=fx_fee_pct
             )
-            backtest_results = create_backtest_results(results, ticker, initial_capital, buy_signals, sell_signals)
-            dashboard_state.backtest_results = backtest_results
+            metrics = compute_metrics(
+                results,
+                initial_capital,
+                interval=dashboard_state.interval,
+                context='dash backtest tab',
+            )
+            dashboard_state.backtest_results = {
+                'ticker': ticker,
+                'initial_capital': initial_capital,
+                'final_portfolio_value': float(results['Portfolio_Value'].iloc[-1]),
+                'buy_strategy': buy_signals,
+                'sell_strategy': sell_signals,
+                **metrics.as_dict(),
+            }
 
             baseline_results = None
             if fx_fee_pct > 0 or slippage_pct > 0 or commission_per_trade > 0:
@@ -140,12 +157,24 @@ def register_backtest_callbacks(app) -> None:
                 )
 
             baseline_metrics = (
-                create_backtest_results(baseline_results, ticker, initial_capital, buy_signals, sell_signals)
+                compute_metrics(
+                    baseline_results,
+                    initial_capital,
+                    interval=dashboard_state.interval,
+                    context='dash backtest tab (no-cost baseline)',
+                )
                 if baseline_results is not None
-                else backtest_results
+                else metrics
             )
-            cost_drag_pct = backtest_results['total_return'] - baseline_metrics['total_return']
-            cost_drag_value = backtest_results['final_portfolio_value'] - baseline_metrics['final_portfolio_value']
+            final_value = float(results['Portfolio_Value'].iloc[-1])
+            baseline_final_value = (
+                float(baseline_results['Portfolio_Value'].iloc[-1])
+                if baseline_results is not None
+                else final_value
+            )
+            # Both are fractions; the display multiplies once, at the end.
+            cost_drag = metrics.total_return - baseline_metrics.total_return
+            cost_drag_value = final_value - baseline_final_value
 
             # The engine downgrades an ATR stop to the percentage trail when the
             # ATR columns are missing, so report what it actually applied.
@@ -159,22 +188,29 @@ def register_backtest_callbacks(app) -> None:
                 else theme['text_primary']
             )
 
-            # Calculate metrics
-            total_return = backtest_results['total_return']
+            # Every threshold below compares against a metrics-engine value, so
+            # they are all in canonical units: fractions, and a drawdown that is
+            # a positive magnitude. Formatting is the registry's job.
             metric_help = {
                 "Total Return": "Percent gain/loss from initial capital.",
                 "Sharpe Ratio": "Risk-adjusted return (higher is better).",
                 "Max Drawdown": "Largest peak-to-trough loss during the period.",
-                "Trade Count": "Number of completed trades in the backtest.",
-                "Win Rate": "Percent of trades that were profitable.",
+                "Trade Count": "Completed round trips — an entry and its matching "
+                               "exit. A position still open at the end is not counted.",
+                "Win Rate": "Percent of closed round trips that were profitable.",
                 "Profit Factor": "Gross profits divided by gross losses.",
             }
-            return_color = theme['accent_green'] if total_return >= 0 else theme['accent_red']
-            sharpe_color = theme['accent_green'] if backtest_results['sharpe_ratio'] >= 1 else theme['accent_red']
-            drawdown_color = theme['accent_green'] if backtest_results['max_drawdown'] >= -20 else theme['accent_red']
-            win_rate_color = theme['accent_green'] if backtest_results['win_rate'] >= 50 else theme['accent_red']
-            profit_factor_color = theme['accent_green'] if backtest_results.get('profit_factor', 0) >= 1 else theme['accent_red']
-            cost_color = theme['accent_green'] if cost_drag_pct >= 0 else theme['accent_red']
+            drawdown_controlled = metrics.max_drawdown <= MAX_DRAWDOWN_CONTROLLED
+            win_rate_healthy = metrics.win_rate >= WIN_RATE_TARGET
+            profit_factor_healthy = metrics.profit_factor >= 1
+            sharpe_robust = metrics.sharpe >= 1
+
+            return_color = theme['accent_green'] if metrics.total_return >= 0 else theme['accent_red']
+            sharpe_color = theme['accent_green'] if sharpe_robust else theme['accent_red']
+            drawdown_color = theme['accent_green'] if drawdown_controlled else theme['accent_red']
+            win_rate_color = theme['accent_green'] if win_rate_healthy else theme['accent_red']
+            profit_factor_color = theme['accent_green'] if profit_factor_healthy else theme['accent_red']
+            cost_color = theme['accent_green'] if cost_drag >= 0 else theme['accent_red']
 
             return html.Div([
                 build_alert("Backtest completed successfully!", "success", dismissable=False, theme=theme),
@@ -207,21 +243,21 @@ def register_backtest_callbacks(app) -> None:
                         style={'display': 'none'}
                     ),
                     html.Span(
-                        f"${backtest_results['final_portfolio_value']:,.2f}",
+                        f"${final_value:,.2f}",
                         className='num',
                         style={'color': theme['text_primary'], 'fontSize': '16px', 'fontWeight': '600'}
                     ),
                     html.Span("|", style={'color': theme['border_primary']}),
                     html.Span("NO COSTS", style={'color': theme['text_secondary'], 'letterSpacing': '1.5px'}),
                     html.Span(
-                        f"{baseline_metrics['total_return']:+.2f}%",
+                        format_canonical('total_return', baseline_metrics.total_return),
                         className='num',
                         style={'color': theme['accent_blue'], 'fontWeight': '600'}
                     ),
                     html.Span("|", style={'color': theme['border_primary']}),
                     html.Span("COST DRAG", style={'color': theme['text_secondary'], 'letterSpacing': '1.5px'}),
                     html.Span(
-                        f"{cost_drag_pct:+.2f}% / ${cost_drag_value:,.2f}",
+                        f"{format_canonical('total_return', cost_drag)} / ${cost_drag_value:,.2f}",
                         className='num',
                         style={'color': cost_color, 'fontWeight': '600'}
                     ),
@@ -247,26 +283,28 @@ def register_backtest_callbacks(app) -> None:
                 html.Div([
                     kpi_cell(
                         "Total Return",
-                        f"{total_return:+.2f}%",
-                        delta=f"NO COSTS {baseline_metrics['total_return']:+.2f}%",
+                        format_canonical('total_return', metrics.total_return),
+                        delta="NO COSTS " + format_canonical(
+                            'total_return', baseline_metrics.total_return
+                        ),
                         delta_color=theme['accent_blue'],
                         theme=theme,
                         info_text=metric_help["Total Return"],
-                        is_positive=total_return >= 0,
+                        is_positive=metrics.total_return >= 0,
                     ),
                     kpi_cell(
                         "Sharpe",
-                        f"{backtest_results['sharpe_ratio']:.2f}",
-                        delta='ROBUST' if backtest_results['sharpe_ratio'] >= 1 else 'WEAK',
+                        format_canonical('sharpe', metrics.sharpe),
+                        delta='ROBUST' if sharpe_robust else 'WEAK',
                         delta_color=sharpe_color,
                         theme=theme,
                         info_text=metric_help["Sharpe Ratio"],
-                        is_positive=backtest_results['sharpe_ratio'] >= 1,
+                        is_positive=sharpe_robust,
                     ),
                     kpi_cell(
                         "Max DD",
-                        f"{backtest_results['max_drawdown']:.2f}%",
-                        delta='CONTROLLED' if backtest_results['max_drawdown'] >= -20 else 'ELEVATED',
+                        format_canonical('max_drawdown', metrics.max_drawdown),
+                        delta='CONTROLLED' if drawdown_controlled else 'ELEVATED',
                         delta_color=drawdown_color,
                         theme=theme,
                         info_text=metric_help["Max Drawdown"],
@@ -275,11 +313,11 @@ def register_backtest_callbacks(app) -> None:
                         # is *better* than -25%, so we anchor the
                         # color/glyph to the threshold check, not the
                         # number sign.
-                        is_positive=backtest_results['max_drawdown'] >= -20,
+                        is_positive=drawdown_controlled,
                     ),
                     kpi_cell(
                         "Trade Count",
-                        f"{backtest_results.get('num_trades', 0):,}",
+                        format_canonical('num_trades', metrics.num_trades),
                         delta=str(strategy_mode or 'trading').replace('_', ' ').upper(),
                         delta_color=theme['accent_blue'],
                         theme=theme,
@@ -287,21 +325,21 @@ def register_backtest_callbacks(app) -> None:
                     ),
                     kpi_cell(
                         "Win Rate",
-                        f"{backtest_results['win_rate']:.1f}%",
-                        delta='ABOVE 50%' if backtest_results['win_rate'] >= 50 else 'BELOW 50%',
+                        format_canonical('win_rate', metrics.win_rate),
+                        delta='ABOVE 50%' if win_rate_healthy else 'BELOW 50%',
                         delta_color=win_rate_color,
                         theme=theme,
                         info_text=metric_help["Win Rate"],
-                        is_positive=backtest_results['win_rate'] >= 50,
+                        is_positive=win_rate_healthy,
                     ),
                     kpi_cell(
                         "Profit Factor",
-                        f"{backtest_results.get('profit_factor', 0.0):.2f}",
-                        delta='ABOVE 1.00' if backtest_results.get('profit_factor', 0.0) >= 1 else 'BELOW 1.00',
+                        format_canonical('profit_factor', metrics.profit_factor),
+                        delta='ABOVE 1.00' if profit_factor_healthy else 'BELOW 1.00',
                         delta_color=profit_factor_color,
                         theme=theme,
                         info_text=metric_help["Profit Factor"],
-                        is_positive=backtest_results.get('profit_factor', 0.0) >= 1,
+                        is_positive=profit_factor_healthy,
                     ),
                 ], style={
                     'marginTop': '12px',

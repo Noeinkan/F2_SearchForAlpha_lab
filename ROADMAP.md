@@ -42,16 +42,87 @@ Details behind the ticks live in [CHANGELOG.md](CHANGELOG.md) (what changed) and
 - [x] 3.4 Rebalancing sizes off portfolio value on **both** sides (was cash on buy, units on sell) <!-- size: S -->
 - [x] 3.5 Execution Type explainer driven by the real engine over a fixed 24-bar tape — [lib/dash/execution_sim.py](lib/dash/execution_sim.py) <!-- size: M -->
 - [x] 3.6 Portfolio column group in the data table — units, cash/stock/portfolio value, holding period, trailing stop, accepted vs rejected triggers <!-- size: M -->
-- [ ] 3.7 Limit / stop / bracket order simulation — the engine is market-only <!-- size: L -->
-- [ ] 3.8 Multi-asset portfolio backtests — one ticker per run today <!-- size: XL -->
-- [ ] 3.9 Intraday session-gap handling (overnight gaps on 1h/4h tapes) <!-- size: M -->
-- [ ] 3.10 Deflated Sharpe and benchmark-relative metrics beyond the optimizer's Alpha % <!-- size: M -->
+
+The open headlines below were each one line until 2026-08-21. They are broken out here
+in the order they should be built. The metrics foundation came first, because all three
+either add metrics or change what existing metrics mean; it and the session model are now
+shipped.
+
+### 3.11 Metrics foundation — one metrics engine ✅
+
+Every metric now has exactly one implementation, in [lib/metrics/](lib/metrics/).
+Before this, Sharpe existed four times with two different risk-free defaults (three of the
+four in modules nothing imported), `num_trades` meant "fills" in one module and "closed
+round-trips" in another, and the Backtest tab rendered a dict whose mixed units made its
+drawdown and win-rate tiles wrong on screen.
+
+- [x] 3.11.1 One implementation of Sharpe, Sortino, Calmar and max drawdown, with a single risk-free convention (`0.0`, set by `metrics.risk_free_rate` in `config/agent.yaml`) — [lib/metrics/core.py](lib/metrics/core.py) <!-- size: M -->
+- [x] 3.11.2 Round-trip statistics read from the engine ledger everywhere; the `Units`-scan reconstruction is gone — [lib/metrics/ledger.py](lib/metrics/ledger.py) <!-- size: M -->
+- [x] 3.11.3 `num_trades` settled as closed round-trips; the fill count survives as `num_fills` <!-- size: S -->
+- [x] 3.11.4 `interval` threaded into the combo-search metrics call, so 1h/4h results stop annualising at 252 <!-- size: S -->
+- [x] 3.11.5 Shared metric-name registry replacing the `Title_Case_%` literals — [lib/metrics/names.py](lib/metrics/names.py) <!-- size: M -->
+- [x] 3.11.6 Backtest tab and optimizer read the same metrics object; `create_backtest_results` retired <!-- size: M -->
+
+### 3.9 Intraday session-gap handling ✅
+
+The engine was positionally indexed and knew nothing about sessions; the 4h resample bucketed on
+the wall clock, so bars straddled the overnight boundary. Session boundaries now come from
+[lib/sessions.py](lib/sessions.py), inferred from the bar timestamps with no exchange calendar.
+
+- [x] 3.9.1 Anchor the 4h resample to the session open instead of the wall clock, so no bar straddles the overnight boundary — `resample_ohlcv(session_anchored=True)` in [lib/timeframes.py](lib/timeframes.py) <!-- size: M -->
+- [x] 3.9.2 Reconcile `PERIODS_PER_YEAR` with the bar count the tape actually emits — `BARS_PER_SESSION`; 1h is 1764 (was 1638), 4h is 504 (was 410) <!-- size: S -->
+- [x] 3.9.3 Mark session boundaries on the frame so the engine can tell an overnight gap from an intrabar move — `Session_Start`, overridable by the caller <!-- size: M -->
+- [x] 3.9.4 Trailing stop honours overnight gaps — a gap-down through the stop fills at the open, not at the close (`gap_fills`, default on) <!-- size: M -->
+- [x] 3.9.5 Holding period measured in session time, so a five-bar hold cannot silently span a weekend — `Holding_Sessions`, `holding_sessions`, `avg_holding_sessions` <!-- size: S -->
+- [x] 3.9.6 Session model documented in the execution-model docstring and the backtest toolbar guide, both languages <!-- size: S -->
+
+### 3.10 Deflated Sharpe and benchmark-relative metrics — also closes 4.13
+
+Alpha % exists only in the combo-search path and is a naive arithmetic difference. The benchmark
+series is already on every result frame and never rendered.
+
+- [ ] 3.10.1 Benchmark return series promoted from an unrendered column into the metrics object <!-- size: S -->
+- [ ] 3.10.2 Benchmark-relative metrics — alpha, beta, information ratio, tracking error, up/down capture — available to CLI, optimizer and Backtest tab alike <!-- size: M -->
+- [ ] 3.10.3 Probabilistic Sharpe Ratio, skew- and kurtosis-aware, replacing the assumption that returns are normal <!-- size: M -->
+- [ ] 3.10.4 Deflated Sharpe Ratio with the trial count folded in, wired to the combo count and the trials store <!-- size: M -->
+- [ ] 3.10.5 New metrics exposed through the JSON contract, the leaderboard columns and the sort options <!-- size: M -->
+- [ ] 3.10.6 Computed overfitting number replaces the prose honesty caption, in the app and in the optimizer guide <!-- size: S -->
+
+### 3.7 Limit / stop / bracket order simulation — unblocks 8.11
+
+Every fill is at the close of the bar; realism comes only from the signal lag. There is no order
+abstraction at all — the closest precedent is the low-based trailing-stop check.
+
+- [ ] 3.7.1 Order and Fill types with a resting-order book, market-only at first — a pure refactor that must leave the pinned engine snapshot unchanged <!-- size: L -->
+- [ ] 3.7.2 Intrabar touch-and-fill against High and Low, generalising the existing low-based stop check <!-- size: M -->
+- [ ] 3.7.3 A documented rule for bars where more than one resting order is touched <!-- size: S -->
+- [ ] 3.7.4 Limit orders with a time-in-force knob <!-- size: M -->
+- [ ] 3.7.5 Stop and stop-limit orders, with the bespoke trailing-stop branch expressed as a resting stop <!-- size: M -->
+- [ ] 3.7.6 Bracket and OCO orders, extending the exit reasons and the trade ledger <!-- size: M -->
+- [ ] 3.7.7 Order type reachable from the optimizers, the shared execution search space and the backtest toolbar <!-- size: M -->
+- [ ] 3.7.8 Execution sandbox tape given real intrabar range so limit and stop fills can be demonstrated, plus an order-type mechanics row <!-- size: M -->
+- [ ] 3.7.9 Order model documented in the execution-model docstring and both toolbar guides, with a results-change warning in the changelog <!-- size: S -->
+
+### 3.8 Multi-asset portfolio backtests — converges with 4.14
+
+The engine is scalar top to bottom: single `units`, single `cash`, 1-D price arrays, one ticker
+per bundle. The live side is already multi-symbol; the backtest side is not.
+
+- [ ] 3.8.1 Portfolio semantics decided and written down — shared cash or per-sleeve, rebalance cadence, and what happens when two symbols signal on one bar and cash is short <!-- size: S -->
+- [ ] 3.8.2 Aligned multi-symbol panel on a common session-aware index <!-- size: M -->
+- [ ] 3.8.3 Engine state generalised from scalars to per-symbol maps, with the single-symbol path preserved as the one-symbol case <!-- size: L -->
+- [ ] 3.8.4 Portfolio-level cash, sizing and affordability across competing orders on the same bar <!-- size: L -->
+- [ ] 3.8.5 Multi-symbol trade ledger and result frame <!-- size: M -->
+- [ ] 3.8.6 Contract decision for a result that names many tickers instead of one, since external agents parse the current shape <!-- size: M -->
+- [ ] 3.8.7 Portfolio-level metrics — contribution by symbol, correlation, concentration <!-- size: M -->
+- [ ] 3.8.8 Ticker lists accepted by the CLI and the bundle schema, reusing the existing benchmark-group registry <!-- size: M -->
+- [ ] 3.8.9 Multi-symbol selection and portfolio results in the dashboard <!-- size: L -->
 
 ## 4. 🎯 Optimizer & Validation
 
-- [x] 4.1 Per-indicator parameter sweeps — [lib/params_optimization.py](lib/params_optimization.py) <!-- size: M -->
-- [x] 4.2 Signal-combination combinatorial search — [lib/signal_combo_optimisation.py](lib/signal_combo_optimisation.py) <!-- size: L -->
-- [x] 4.3 Indicator-weight optimisation — [lib/weights_optimization.py](lib/weights_optimization.py) <!-- size: M -->
+- [x] 4.1 Per-indicator parameter sweeps — via Optuna (4.4) and grid search (4.5); the standalone `lib/params_optimization.py` was deleted on 2026-08-21, unimported and holding a stale Sharpe <!-- size: M -->
+- [x] 4.2 Signal-combination combinatorial search — `evaluate_signal_combination` in [lib/dash/helpers.py](lib/dash/helpers.py), driven by [lib/dash/callbacks/optimization.py](lib/dash/callbacks/optimization.py). The older Dask module `lib/signal_combo_optimisation.py` it superseded was deleted on 2026-08-21 <!-- size: L -->
+- [ ] 4.3 Indicator-weight optimisation — `lib/weights_optimization.py` was deleted on 2026-08-21: nothing imported it, and it optimised signal-return correlation rather than any backtest metric. Reopen only with a stated objective <!-- size: M -->
 - [x] 4.4 Optuna TPE Bayesian search, resumable against `state/optuna.db` — [lib/bayesian_optimization.py](lib/bayesian_optimization.py) <!-- size: L -->
 - [x] 4.5 Grid search — [lib/grid_search.py](lib/grid_search.py) <!-- size: M -->
 - [x] 4.6 Full-screen optimizer workspace: landscape, search-space viz, run history, glossary — [lib/dash/layout/optimizer_workspace.py](lib/dash/layout/optimizer_workspace.py) <!-- size: XL -->

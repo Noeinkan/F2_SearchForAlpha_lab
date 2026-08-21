@@ -8,6 +8,7 @@ from typing import Any
 
 import plotly.graph_objects as go
 
+from lib.metrics import format_ui
 from lib.dash.dash_config import FONT_FAMILY
 
 
@@ -50,10 +51,10 @@ def build_return_sharpe_figure(
         (
             f"Buy: {r.get('Buy_Signals', '')}{br}"
             f"Sell: {r.get('Sell_Signals', '')}{br}"
-            f"Return: {float(r['Total_Return_%']):+.1f}%{br}"
-            f"Sharpe: {float(r['Sharpe_Ratio']):.2f}{br}"
-            f"DD: {float(r.get('Max_Drawdown_%') or 0):.1f}% · "
-            f"Trades: {int(r.get('Trades') or 0)}"
+            f"Return: {format_ui('Total_Return_%', r['Total_Return_%'])}{br}"
+            f"Sharpe: {format_ui('Sharpe_Ratio', r['Sharpe_Ratio'])}{br}"
+            f"DD: {format_ui('Max_Drawdown_%', r.get('Max_Drawdown_%') or 0)} · "
+            f"Trades: {format_ui('Trades', r.get('Trades') or 0)}"
         )
         for r in rows
     ]

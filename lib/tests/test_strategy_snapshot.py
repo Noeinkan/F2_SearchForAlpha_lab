@@ -30,14 +30,21 @@ from lib.strategy import backtest, calculate_metrics  # noqa: E402
 # Columns whose bar-by-bar values define "same behaviour".
 SNAPSHOT_COLUMNS = (
     'Units', 'Units_to_buy', 'Units_to_sell', 'Cash_Value', 'Portfolio_Value',
-    'Trailing_Stop', 'Holding_Period', 'Avg_Entry_Price', 'Avg_Cost_Basis',
+    'Trailing_Stop', 'Holding_Period', 'Holding_Sessions',
+    'Avg_Entry_Price', 'Avg_Cost_Basis',
 )
 
+# Last deliberate change: 3.9.4 gap fills (2026-08-21). On this daily fixture
+# every bar opens a session, so eight of the twenty-one round trips now exit at
+# the bar's Open instead of its Close. `gap_fills=False` still reproduces the
+# pre-3.9 numbers exactly, which is how that change was confirmed to be the
+# only one.
+
 # --- pinned expectations ---------------------------------------------------
-EXPECTED_DIGEST = '276e1bb2c8a83f1073ac04605ac346b0fa62c6b9b54ace3e88504ad6af4f9123'
-EXPECTED_FINAL_VALUE = 29255.676554313537
+EXPECTED_DIGEST = 'e124c42c8096958d3d8c12f9c130940518f96858bc6367175a64134f60816bd8'
+EXPECTED_FINAL_VALUE = 29355.045253426455
 EXPECTED_TRADE_COUNT = 21
-EXPECTED_NET_PNL = 4255.6765543135325
+EXPECTED_NET_PNL = 4355.045253426444
 
 
 def _fixture(seed: int = 20240817, n_rows: int = 400) -> pd.DataFrame:

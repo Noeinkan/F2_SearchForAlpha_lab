@@ -29,6 +29,8 @@ _PORTFOLIO_COLUMN_SET = frozenset({
     'Cumulative_Returns',
     'Cumulative_Market_Returns',
     'Holding_Period',
+    'Holding_Sessions',
+    'Session_Start',
     'Trailing_Stop',
     'Buy_Trigger_Accepted',
     'Buy_Trigger_Rejected',
