@@ -40,6 +40,13 @@ SIGNAL_DESCRIPTIONS: Dict[str, str] = {
     "CCI_Reversal_Sell": "CCI reverses down from extreme high (> 180).",
     "CCI_ZeroCross_Buy": "CCI crosses above zero (trend turns positive).",
     "CCI_ZeroCross_Sell": "CCI crosses below zero (trend turns negative).",
+    # Stochastic
+    "STOCH_Oversold_Buy": "%K < 20 (close near the bottom of its recent range).",
+    "STOCH_Overbought_Sell": "%K > 80 (close near the top of its recent range).",
+    "STOCH_Cross_Buy": "%K crosses above %D (momentum turns up).",
+    "STOCH_Cross_Sell": "%K crosses below %D (momentum turns down).",
+    "STOCH_Reversal_Buy": "%K crosses above %D on the way out of oversold.",
+    "STOCH_Reversal_Sell": "%K crosses below %D on the way out of overbought.",
     # SMA
     "SMA_TripleCross_Buy": "Short > medium > long SMAs (bullish alignment).",
     "SMA_TripleCross_Sell": "Short < medium < long SMAs (bearish alignment).",

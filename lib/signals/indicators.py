@@ -241,6 +241,7 @@ def _build_default_indicator_settings() -> dict:
     """Build default indicator settings from strategy YAML with safe fallbacks."""
     rsi_cfg = get_strategy_config('rsi')
     cci_cfg = get_strategy_config('cci')
+    stoch_cfg = get_strategy_config('stoch')
     macd_cfg = get_strategy_config('macd')
     bb_cfg = get_strategy_config('bollinger_bands')
     sma_cfg = get_strategy_config('sma')
@@ -260,6 +261,12 @@ def _build_default_indicator_settings() -> dict:
             'period': cci_cfg.get('cci', {}).get('window', 20),
             'ceiling': cci_cfg.get('overbought_oversold', {}).get('upper_threshold', 100),
             'floor': cci_cfg.get('overbought_oversold', {}).get('lower_threshold', -100)
+        },
+        'stoch': {
+            'period': stoch_cfg.get('stoch', {}).get('window', 14),
+            'smooth_window': stoch_cfg.get('stoch', {}).get('smooth_window', 3),
+            'overbought': stoch_cfg.get('overbought_oversold', {}).get('upper_threshold', 80),
+            'oversold': stoch_cfg.get('overbought_oversold', {}).get('lower_threshold', 20)
         },
         'macd': {
             'fast': macd_cfg.get('macd', {}).get('fast_period', 12),
@@ -336,6 +343,16 @@ def _build_strategy_config_mappers() -> dict[str, Callable[[dict], dict]]:
             },
             'trend_reversal': {
                 'extreme_threshold': settings.get('extreme_threshold', 180),
+            },
+        },
+        'stoch': lambda settings: {
+            'stoch': {
+                'window': settings.get('period', 14),
+                'smooth_window': settings.get('smooth_window', 3),
+            },
+            'overbought_oversold': {
+                'upper_threshold': settings.get('overbought', 80),
+                'lower_threshold': settings.get('oversold', 20),
             },
         },
         'macd': lambda settings: {
@@ -434,7 +451,7 @@ _WINDOWED_PARAM_KEYS: frozenset[str] = frozenset({
     "ema_short", "ema_medium", "ema_long",
     "rsi_window", "bb_window", "cci_window",
     "macd_fast", "macd_slow", "macd_signal",
-    "vwap_window", "period",
+    "vwap_window", "period", "smooth_window",
     "ma_period", "expansion_lookback",
     "divergence_lookback", "confirmation_lookback",
 })
@@ -467,8 +484,8 @@ def add_indicators(df: pd.DataFrame, indicator_settings: dict | None = None) -> 
     ``generate_signals``, which runs after this and writes identical values plus
     its derived columns. This function exists for the callers that never reach
     the strategy registry and read ``df['ADX']`` / ``df['ATR']`` / ``df['OBV']``
-    directly as model features or chart input (``lib/live/runner.py``,
-    ``lib/WIP/ML_strategy.py``). Settings are merged against the YAML defaults
+    directly as model features or chart input (``lib/live/runner.py``).
+    Settings are merged against the YAML defaults
     for the same reason ``generate_signals`` merges them: a caller passing a
     partial dict would otherwise get the hardcoded fallback here and the
     configured window there, for the same column.

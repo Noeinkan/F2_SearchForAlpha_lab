@@ -47,6 +47,16 @@ strategies:
     trend_reversal:
       extreme_threshold: 180
 
+  # %K over `window` bars, %D as its `smooth_window` SMA. 14/3 with 80/20 bands
+  # is the classic slow-stochastic setting.
+  stoch:
+    stoch:
+      window: 14
+      smooth_window: 3
+    overbought_oversold:
+      upper_threshold: 80
+      lower_threshold: 20
+
   macd:
     macd:
       fast_period: 12
@@ -120,12 +130,6 @@ execution_search_space:
   stop_mode: { type: categorical, choices: [percent, atr] }
   consecutive_signal_mode: { type: categorical, choices: [scale_in, edge, cooldown] }
   cooldown_bars: { type: int, low: 0, high: 10, step: 5 }
-
-# ML Strategy defaults
-ml_strategy:
-  test_size: 0.2
-  random_state: 42
-  n_estimators: 100
 
 # Two-stage FCFE DCF assumptions (sibling of Rule #1 valuation).
 # Cost of equity = risk_free + beta * equity_risk_premium (beta from quote, clamped).

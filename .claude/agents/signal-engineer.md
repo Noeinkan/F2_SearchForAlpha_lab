@@ -24,6 +24,7 @@ lib/signals/
   signals_EMA.py        # EMA_TradingStrategy
   signals_SMA.py        # SMA_TradingStrategy
   signals_CCI.py        # CCI_TradingStrategy
+  signals_STOCH.py      # STOCH_TradingStrategy
   signals_VWAP.py       # VWAP_TradingStrategy
 ```
 

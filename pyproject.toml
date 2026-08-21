@@ -47,7 +47,7 @@ sfa = "lib.cli.app:app"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["lib*"]
-exclude = ["lib.WIP*", "lib.tests*"]
+exclude = ["lib.tests*"]
 
 [tool.pytest.ini_options]
 testpaths = ["lib/tests"]

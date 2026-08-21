@@ -4,7 +4,7 @@ A Python-based algorithmic trading research workspace for data fetching, signal 
 
 ## 🎯 Features
 
-- **Signal generation**: Bollinger Bands, RSI, MACD, CCI, SMA, EMA, VWAP plus ADX/ATR/OBV regime filters and regime-gated strategy variants.
+- **Signal generation**: Bollinger Bands, RSI, MACD, CCI, Stochastic, SMA, EMA, VWAP plus ADX/ATR/OBV regime filters and regime-gated strategy variants.
 - **Backtesting engine**: Trading, Accumulation (DCA), and Rebalancing modes with position sizing and trailing stops.
 - **Optimization tools**: Parameter sweeps, signal-combination testing, and indicator weight optimization.
 - **Interactive dashboard**: TradingView Lightweight Charts, signal overlays, symbol search with watchlists, and data tables with configurable views.
@@ -23,14 +23,10 @@ F2_SearchForAlpha_lab/
 │   ├── data_processing.py          # Data fetching + metrics
 │   ├── strategy.py                 # Backtesting engine
 │   ├── utils.py                    # Input helpers and Excel export
-│   ├── params_optimization.py      # Parameter optimization
-│   ├── signal_combo_optimisation.py# Signal combination testing
-│   ├── weights_optimization.py     # Indicator weight optimization
 │   ├── config_loader.py            # YAML config loader
 │   ├── dash/                       # Dash UI and callbacks
 │   ├── signals/                    # Indicator strategies
-│   ├── tests/                      # Pytest suite
-│   └── WIP/                        # Experimental ideas
+│   └── tests/                      # Pytest suite
 ├── export/                         # Exported Excel results
 ├── results/                        # Parquet outputs
 └── Signal_Combination.pbix         # Power BI report
@@ -99,7 +95,7 @@ What you can do from the UI:
 - Find symbols with the search modal (`Ctrl + /` or bare `/`): ~13k tickers
   from `config/tickers_universe.csv`, filterable by sector and asset class,
   with named watchlists persisted to `config/watchlists.json`.
-- Toggle indicator overlays (RSI, MACD, BB, SMA, EMA, CCI, VWAP, ADX, ATR,
+- Toggle indicator overlays (RSI, MACD, BB, SMA, EMA, CCI, STOCH, VWAP, ADX, ATR,
   OBV) and tune their windows interactively.
 - Pick buy and sell signal columns, run a backtest, and view the equity
   curve, trade markers, and metric cards. The **Execution Type** explainer

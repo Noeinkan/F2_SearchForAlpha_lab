@@ -8,7 +8,6 @@ results/
 export/
 
 # Experimental — not production code
-lib/WIP/
 
 # Python bytecode
 **/__pycache__/

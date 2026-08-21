@@ -78,10 +78,6 @@ class ConfigLoader:
         """Get backtest configuration."""
         return self._config.get('backtest', {})
     
-    def get_ml_config(self) -> Dict[str, Any]:
-        """Get ML strategy configuration."""
-        return self._config.get('ml_strategy', {})
-    
     def get(self, key: str, default: Any = None) -> Any:
         """Get a top-level config value."""
         return self._config.get(key, default)

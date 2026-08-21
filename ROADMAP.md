@@ -25,14 +25,15 @@ Details behind the ticks live in [CHANGELOG.md](CHANGELOG.md) (what changed) and
 
 ## 2. 📐 Signals & Indicators
 
-- [x] 2.1 Seven auto-discovered strategy classes — RSI, BB, MACD, EMA, SMA, CCI, VWAP — [lib/signals/](lib/signals/) <!-- size: L -->
+- [x] 2.1 Eight auto-discovered strategy classes — RSI, BB, MACD, EMA, SMA, CCI, STOCH, VWAP — [lib/signals/](lib/signals/) <!-- size: L -->
 - [x] 2.2 ADX / ATR / OBV regime indicators <!-- size: M -->
 - [x] 2.3 Regime-gated strategy variants <!-- size: M -->
 - [x] 2.4 `{INDICATOR}_{CONDITION}_{Buy|Sell}` column convention, enforced across UI, optimizer and CLI <!-- size: M -->
 - [x] 2.5 Flat param keys mapped to nested indicator settings via `PARAM_KEY_MAP` — [lib/agent_strategy.py](lib/agent_strategy.py) <!-- size: S -->
-- [ ] 2.6 Decide the fate of [lib/WIP/](lib/WIP/) — `ML_strategy.py`, `WIP_Stochastic_oscillator.py`, `WIP_Market_Analysis_Trader.py`: promote to real strategies or delete <!-- size: M -->
-- [ ] 2.7 ML-built signals (nothing in the shipped indicator set is learned) <!-- size: XL -->
-- [ ] 2.8 Order-book microstructure and sentiment inputs <!-- size: XL -->
+- [x] 2.6 `lib/WIP/` resolved on 2026-08-21 — the Stochastic oscillator was promoted to a real strategy ([lib/signals/signals_STOCH.py](lib/signals/signals_STOCH.py)); the folder and its orphaned `ml_strategy` config were deleted. See 2.9 for what was rejected and why <!-- size: M -->
+- [x] 2.9 Stochastic %K/%D shipped as the eighth indicator — six signals, own chart pane, `stoch_*` optimizer params. Registered **default-off** so no existing run's results change <!-- size: M -->
+- [ ] 2.7 ML-built signals (nothing in the shipped indicator set is learned) — **not started, and the two prior attempts were deleted rather than fixed**: both trained on a `Close.shift(-1)` target through a shuffled `train_test_split`, so their reported accuracy was look-ahead twice over, and one learned to reproduce the rule-based signals it was meant to replace. `scikit-learn` is deliberately not a dependency. Reopening means committing to purged walk-forward splits under [lib/walkforward/](lib/walkforward/) and scoring through [lib/metrics/](lib/metrics/), not a fresh notebook <!-- size: XL -->
+- [ ] 2.8 Order-book microstructure and sentiment inputs — **blocked on data, not on code**: depth-of-book and tick data are behind paid vendors, and 1.8 found no free second source even for OHLCV. The options chain is the only non-OHLCV feed wired today (§6). Reopens with 1.8 <!-- size: XL -->
 
 ## 3. 🧮 Backtest Engine
 

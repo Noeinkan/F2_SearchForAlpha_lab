@@ -48,6 +48,7 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | [lib/signals/signals_EMA.py](../lib/signals/signals_EMA.py) | `EMA_TradingStrategy` |
 | [lib/signals/signals_SMA.py](../lib/signals/signals_SMA.py) | `SMA_TradingStrategy` |
 | [lib/signals/signals_CCI.py](../lib/signals/signals_CCI.py) | `CCI_TradingStrategy` |
+| [lib/signals/signals_STOCH.py](../lib/signals/signals_STOCH.py) | `STOCH_TradingStrategy` (Stochastic %K/%D) |
 | [lib/signals/signals_VWAP.py](../lib/signals/signals_VWAP.py) | `VWAP_TradingStrategy` |
 | [lib/signals/signals_ADX.py](../lib/signals/signals_ADX.py) | `ADX_TradingStrategy` — trend/range regime filter |
 | [lib/signals/signals_ATR.py](../lib/signals/signals_ATR.py) | `ATR_TradingStrategy` — volatility regime + ATR risk sizing |

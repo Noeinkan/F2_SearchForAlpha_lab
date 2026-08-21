@@ -277,7 +277,7 @@ class TestDefaultOffWiring(unittest.TestCase):
 
         self.assertEqual(
             DEFAULT_OFF_SIGNAL_CATEGORIES,
-            frozenset({'ADX', 'ATR', 'OBV', 'SMA', 'EMA', 'VWAP'}),
+            frozenset({'ADX', 'ATR', 'OBV', 'SMA', 'EMA', 'VWAP', 'STOCH'}),
         )
 
     def test_default_category_selection_excludes_them(self):

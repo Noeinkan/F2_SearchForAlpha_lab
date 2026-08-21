@@ -485,6 +485,18 @@ INDICATOR_DEFINITIONS = [
         ],
     },
     {
+        'key': 'stoch',
+        'label': 'Stochastic',
+        'help': 'Stochastic Oscillator — where the close sits inside the recent High/Low range. %K crossing %D out of an extreme zone flags a turn.',
+        'defaults': {'period': 14, 'smooth_window': 3, 'overbought': 80, 'oversold': 20},
+        'fields': [
+            {'key': 'period', 'label': '%K Period', 'step': 1, 'min': 1},
+            {'key': 'smooth_window', 'label': '%D Smoothing', 'step': 1, 'min': 1},
+            {'key': 'overbought', 'label': 'Overbought', 'step': 1},
+            {'key': 'oversold', 'label': 'Oversold', 'step': 1},
+        ],
+    },
+    {
         'key': 'macd',
         'label': 'MACD',
         'help': 'Moving Average Convergence Divergence — trend/momentum from fast vs slow EMAs. Histogram and signal-line crosses mark shifts.',
@@ -561,11 +573,13 @@ CHART_OVERLAY_HELP = {
 }
 
 # Signal categories that stay unticked in the SIGNALS panel on first load.
-# Default-on set is BB / MACD / RSI / CCI only. SMA/EMA/VWAP stay opt-in to
-# keep the first-paint signal list focused; ADX/ATR/OBV are regime filters
+# Default-on set is BB / MACD / RSI / CCI only. SMA/EMA/VWAP/STOCH stay opt-in
+# to keep the first-paint signal list focused; ADX/ATR/OBV are regime filters
 # (their chart panes are also absent from bootstrap.DEFAULT_SELECTED_PLOTS).
+# Adding a category here rather than to the default-on set is deliberate: a new
+# indicator must not silently change the results of an existing default run.
 DEFAULT_OFF_SIGNAL_CATEGORIES = frozenset({
-    'ADX', 'ATR', 'OBV', 'SMA', 'EMA', 'VWAP',
+    'ADX', 'ATR', 'OBV', 'SMA', 'EMA', 'VWAP', 'STOCH',
 })
 
 PLOT_OPTIONS = [('Candlestick', 'candlestick')] + [
@@ -658,6 +672,7 @@ def _deep_update(base: dict, updates: dict) -> dict:
 def _strategy_yaml_indicator_defaults() -> dict:
     rsi_cfg = get_strategy_config('rsi')
     cci_cfg = get_strategy_config('cci')
+    stoch_cfg = get_strategy_config('stoch')
     macd_cfg = get_strategy_config('macd')
     bb_cfg = get_strategy_config('bollinger_bands')
     sma_cfg = get_strategy_config('sma')
@@ -677,6 +692,12 @@ def _strategy_yaml_indicator_defaults() -> dict:
             'period': cci_cfg.get('cci', {}).get('window', 20),
             'ceiling': cci_cfg.get('overbought_oversold', {}).get('upper_threshold', 150),
             'floor': cci_cfg.get('overbought_oversold', {}).get('lower_threshold', -150)
+        },
+        'stoch': {
+            'period': stoch_cfg.get('stoch', {}).get('window', 14),
+            'smooth_window': stoch_cfg.get('stoch', {}).get('smooth_window', 3),
+            'overbought': stoch_cfg.get('overbought_oversold', {}).get('upper_threshold', 80),
+            'oversold': stoch_cfg.get('overbought_oversold', {}).get('lower_threshold', 20)
         },
         'macd': {
             'fast': macd_cfg.get('macd', {}).get('fast_period', 12),

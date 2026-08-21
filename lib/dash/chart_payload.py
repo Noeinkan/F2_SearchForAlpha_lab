@@ -28,7 +28,7 @@ from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
-from ta.momentum import RSIIndicator
+from ta.momentum import RSIIndicator, StochasticOscillator
 from ta.trend import ADXIndicator, CCIIndicator, MACD
 from ta.volatility import AverageTrueRange
 from ta.volume import VolumeWeightedAveragePrice
@@ -45,7 +45,7 @@ PANE_HEIGHT_MAIN = 4.5
 PANE_HEIGHT_INDICATOR = 1.0
 
 # Panes the sidebar can enable, in the order they should stack under price.
-INDICATOR_PANES = ('volume', 'rsi', 'cci', 'macd', 'vwap', 'adx', 'atr', 'obv')
+INDICATOR_PANES = ('volume', 'rsi', 'cci', 'stoch', 'macd', 'vwap', 'adx', 'atr', 'obv')
 
 
 # ------------------------------------------------------------------ scalars
@@ -267,6 +267,28 @@ def _cci_series(df, times, config, theme) -> List[dict]:
     )]
 
 
+def _stoch_series(df, times, config, theme) -> List[dict]:
+    period = _period(_get_setting(config, 'stoch', 'period', 14), 14)
+    smooth = _period(_get_setting(config, 'stoch', 'smooth_window', 3), 3)
+    overbought = _get_setting(config, 'stoch', 'overbought', 80)
+    oversold = _get_setting(config, 'stoch', 'oversold', 20)
+    stoch = StochasticOscillator(
+        high=df['High'], low=df['Low'], close=df['Close'],
+        window=period, smooth_window=smooth,
+    )
+    return [
+        _line_spec(
+            'stoch', f'%K ({period})', times, stoch.stoch(), theme['accent_blue'], digits=2,
+            price_lines=[
+                _threshold(overbought, theme['accent_red'], 'OB'),
+                _threshold(oversold, theme['accent_green'], 'OS'),
+            ],
+        ),
+        _line_spec('stoch', f'%D ({smooth})', times, stoch.stoch_signal(),
+                   theme['accent_orange'], width=1.1, digits=2),
+    ]
+
+
 def _macd_series(df, times, config, theme) -> List[dict]:
     fast = _period(_get_setting(config, 'macd', 'fast', 12), 12)
     slow = _period(_get_setting(config, 'macd', 'slow', 26), 26)
@@ -435,6 +457,7 @@ _PANE_BUILDERS = {
     'volume': _volume_series,
     'rsi': _rsi_series,
     'cci': _cci_series,
+    'stoch': _stoch_series,
     'macd': _macd_series,
     'vwap': _vwap_series,
     'adx': _adx_series,

@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whether a position was held overnight. This one can.
 - `resample_ohlcv(..., session_anchored=False)` for the pre-3.9 wall-clock bucketing.
 
+- **`lib/signals/signals_STOCH.py` — the Stochastic oscillator, eighth indicator**
+  (ROADMAP 2.6, 2.9). `STOCH_K` / `STOCH_D` plus six signals: `STOCH_Oversold_Buy`,
+  `STOCH_Overbought_Sell`, `STOCH_Cross_{Buy,Sell}` and `STOCH_Reversal_{Buy,Sell}`.
+  The reversal pair is the plain %K/%D cross *qualified* by having just left an extreme
+  zone — the same exit-the-zone framing as `CCI_Reversal_*`, because a cross while still
+  sinking deeper into the zone is a falling knife. Wired end to end: YAML defaults, the
+  runtime settings mappers, `stoch_*` keys in `PARAM_KEY_MAP` for the optimizers, an
+  indicator pane in the chart payload, and SIGNALS-panel descriptions.
+  **Registered default-off** (`DEFAULT_OFF_SIGNAL_CATEGORIES`), so no existing default
+  run changes its results — the default-on set is still BB / MACD / RSI / CCI.
 - **`lib/metrics/` — one metrics engine** (ROADMAP 3.11). Every performance metric in the
   project now has exactly one implementation: `core.py` holds the primitives, `engine.py`
   holds `BacktestMetrics` and `compute_metrics`, `ledger.py` owns the trade-ledger shape,
@@ -93,6 +103,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `+0.2%`.
 
 ### Removed
+- **`lib/WIP/`** — `ML_strategy.py`, `WIP_Stochastic_oscillator.py`,
+  `WIP_Market_Analysis_Trader.py` and `ML_tester.ipynb` (ROADMAP 2.6). Only the
+  Stochastic oscillator was worth keeping, and it was promoted (above). The rest did not
+  survive review: both ML files trained on a `Close.shift(-1)` target through a shuffled
+  `train_test_split` — look-ahead in the label *and* in the split — and one of them
+  derived its target from the very rule-based Buy/Sell columns it was meant to replace.
+  `ML_strategy.py` could not have run in any case: `sklearn` is not a dependency and its
+  `backtest()` call predated the current signature by two required arguments.
+  `WIP_Market_Analysis_Trader.py` took a `List[float]`, fabricated a 2023 date index, and
+  scored itself with its own return calculation. Also removed: the orphaned `ml_strategy`
+  block in `config/strategy_config.yaml` and `ConfigLoader.get_ml_config`, which had no
+  callers left, and the `lib.WIP*` mypy exclusion.
 - `lib/params_optimization.py`, `lib/weights_optimization.py` and
   `lib/signal_combo_optimisation.py` — three modules with **zero importers** between them
   (the last was reached only by its own test, with every metric mocked). They held three

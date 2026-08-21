@@ -250,7 +250,7 @@ OpenClaw legge `AGENTS.md` da `/opt/searchforalpha/AGENTS.md`; il companion deve
 
 ## Phase 2 changelog (2026-06)
 
-- **`.cursorignore`** — `AGENTS.md`, `RESEARCH.md`, `docs/token-efficiency.md`, `results/`, `export/`, `lib/WIP/`, bytecode; stops Cursor auto-loading OpenClaw rules during coding sessions.
+- **`.cursorignore`** — `AGENTS.md`, `RESEARCH.md`, `docs/token-efficiency.md`, `results/`, `export/`, bytecode; stops Cursor auto-loading OpenClaw rules during coding sessions.
 - **`sfa-python.mdc` glob** — excludes `lib/dash/**` and `lib/cli/**` to avoid overlap with scoped Dash/CLI rules.
 - **`dash-callbacks.mdc`** — refreshed for register/layout/routes/bootstrap architecture (post-refactor).
 - **`PROJECT_INDEX` split** — slim hub + `PROJECT_INDEX_MODULES.md` on demand.
