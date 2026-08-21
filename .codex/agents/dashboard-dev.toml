@@ -1,0 +1,42 @@
+name = "dashboard-dev"
+description = "Dash dashboard developer for the SearchForAlpha Lab UI. Use when building new UI components, writing Dash callbacks, modifying chart layouts, adding overlays, or debugging callback chains."
+developer_instructions = """
+Dash specialist for SearchForAlpha Lab. **Read `.cursor/rules/dash-callbacks.mdc` first** — it has the current architecture.
+
+## Architecture
+- `integrated_dashboard.py` — thin entry; calls `register_callbacks(app)`
+- `layout/` — UI regions (add components here)
+- `callbacks/` — `register_*_callbacks(app)` pattern; wire in `callbacks/__init__.py`
+- `routes.py`, `bootstrap.py` — routing and session preload
+
+## The price chart is not Plotly
+It is TradingView Lightweight Charts, vendored in `assets/` and driven entirely
+client-side:
+
+- `chart_payload.py` builds a JSON payload; `assets/10-sfa-chart.js` renders it.
+- `callbacks/chart.py` has the **only** writer of `chart-payload-store`.
+- Pan / zoom / crosshair / autoscale never reach the server. Do not add a
+  callback that rebuilds the chart from a viewport change.
+- Indicator panes: add a builder to `_PANE_BUILDERS` in `chart_payload.py`.
+  Price overlays: `overlay_registry.get_tv_overlay_specs`.
+- Panes must read the columns the strategy wrote (`ATR_Pct`, `ADX_Pos_DI`,
+  `OBV_MA`, …) when present, so the chart shows the series the signal fired
+  from. Recompute only as a fallback for bare OHLCV frames.
+
+Plotly remains only for the small fundamentals metric charts.
+
+## Workflow
+1. Read 2–3 existing callbacks before writing a new one.
+2. New callbacks: `register_{name}_callbacks(app)` + register in `__init__.py`.
+3. Test: `python main.py` + `rtk python -m pytest lib/tests/test_chart*.py lib/tests/test_dash*.py -q`
+
+## Enforce
+- **One writer per output.** Dash 4 aborts an entire dispatch batch with
+  "Duplicate callback outputs" if two callbacks write the same output in one
+  layer, and every control in the app goes inert. This has bitten twice.
+- A callback downstream of one that raises `PreventUpdate` is never dispatched
+  — not even via its other inputs. For first-paint work, trigger off a real DOM
+  event (see `chart-boot-btn`), not off a store that may never transition.
+- `prevent_initial_call=True` unless load-time fire is required (`'initial_duplicate'` for routing)
+- `dcc.Store` for shared state; `dash.no_update` for unchanged outputs
+- Thin callbacks — business logic in `lib/` modules"""

@@ -1,5 +1,11 @@
 # SearchForAlpha Lab — Tab "Options" (optlib fork) — Piano di integrazione
 
+> **Stato al 2026-08-21: piano NON eseguito.** Nessuno dei 10 file nuovi esiste — niente
+> `lib/vendor/optlib/`, niente `lib/dash/callbacks/options_pricing.py`, niente `sfa options`.
+> L'unico modulo presente e' [`lib/options/greeks.py`](../lib/options/greeks.py), scritto per i
+> pannelli GEX/Vanna del Flow Scanner, non per il tab Options descritto qui.
+> Stato aggiornato in [ROADMAP.md](../ROADMAP.md).
+
 > Stato: **piano**. Nessuna modifica al codice o alla config fino ad approvazione.
 > Scope concordato: **lite tab** (Pricer + Payoff + 4 strategie predefinite) + sorgente chain via `greeks-package` (MVP) con fallback esplicito a provider reale.
 >

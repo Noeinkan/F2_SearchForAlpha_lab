@@ -26,6 +26,7 @@ from .chart_area import _create_chart_area
 from .right_panel import _create_right_panel
 from .command_palette import _create_command_palette
 from .symbol_search import _create_symbol_search_modal
+from .feedback import _create_feedback_modal
 from lib.dash.bootstrap import BootstrapSnapshot
 
 
@@ -206,6 +207,7 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         # stacks above every overlay).
         _create_command_palette(styles, theme),
         _create_symbol_search_modal(styles, theme),
+        _create_feedback_modal(styles, theme),
 
         # Hidden elements
         html.Div(id='hidden-output', style={'display': 'none'}),

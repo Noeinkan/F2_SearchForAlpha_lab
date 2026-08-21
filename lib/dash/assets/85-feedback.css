@@ -1,0 +1,528 @@
+/* =============================================================================
+   Feedback modal + header button
+
+   Loads after 80-command-palette (shares its modal chrome conventions) and
+   before 90-symbol-search, neither of which it touches. Everything here is
+   scoped to `.sfa-feedback-*`, and every colour comes from a token, so the
+   light and CVD themes flip for free. Only two things are hardcoded enough to
+   need a `body.theme-light` override at the bottom: the drop shadow and
+   Bootstrap's close glyph, which is an image rather than a colour.
+
+   The form is longer than the rest of this UI is dense, on purpose: it is the
+   one screen aimed at somebody who has never seen the app before.
+   ========================================================================== */
+
+/* -----------------------------------------------------------------------------
+   Header button
+   -------------------------------------------------------------------------- */
+
+/* Inherits .bbg-icon-button; only the label sizing differs from the glyph
+   buttons it sits beside. */
+button.sfa-feedback-open-btn {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    padding: 3px 9px;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.sfa-feedback-open-glyph {
+    display: none;
+    font-size: 12px;
+    line-height: 1;
+}
+
+/* The header cluster is the busiest strip in the app, and FEEDBACK is the
+   longest word in it. Drop to the envelope at the same 1180px breakpoint
+   70-forms-responsive.css already uses — well before the 900px block that
+   compacts the rest of the header, because the crowding starts in that band.
+   The `title` attribute carries the meaning for anyone who hovers. */
+@media (max-width: 1180px) {
+    .sfa-feedback-open-text { display: none; }
+    .sfa-feedback-open-glyph { display: inline; }
+    button.sfa-feedback-open-btn { padding: 3px 7px; }
+}
+
+/* -----------------------------------------------------------------------------
+   Modal shell
+   -------------------------------------------------------------------------- */
+
+/* Where dbc puts things, confirmed against the rendered DOM:
+     `className`          -> the outer `.modal` wrapper (which carries `.show`)
+     `id`                 -> the inner `.modal-dialog`
+     `content_class_name` -> `.modal-content`
+   So `.sfa-feedback-modal` and `.sfa-feedback-content` are the handles here;
+   `#feedback-modal` is the dialog. No anti-flash guard is needed the way
+   80-command-palette.css has one — dbc renders nothing at all while closed. */
+.sfa-feedback-modal .modal-content,
+.sfa-feedback-content {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+    color: var(--text-primary);
+}
+
+.sfa-feedback-header {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    padding: 10px 16px;
+}
+
+.sfa-feedback-header .modal-title {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--text-primary);
+}
+
+.sfa-feedback-header .btn-close {
+    filter: invert(1);
+    opacity: 0.55;
+}
+
+.sfa-feedback-header .btn-close:hover { opacity: 1; }
+
+.sfa-feedback-body {
+    padding: 14px 16px 16px;
+    font-family: var(--font-sans);
+}
+
+.sfa-feedback-intro {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    margin: 0 0 14px;
+}
+
+/* -----------------------------------------------------------------------------
+   Step labels
+   -------------------------------------------------------------------------- */
+
+.sfa-feedback-step {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 16px 0 7px;
+}
+
+.sfa-feedback-step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border-primary));
+    color: var(--accent);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.sfa-feedback-step-text {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.sfa-feedback-step-opt {
+    font-size: 9.5px;
+    font-style: italic;
+    color: var(--text-tertiary);
+    text-transform: lowercase;
+    letter-spacing: 0;
+}
+
+/* -----------------------------------------------------------------------------
+   Type accordion
+
+   Rides on `.compact-accordion` (55-theme-light.css) for the dark Bootstrap
+   overrides; these rules only undo the uppercase/dense treatment, which suits
+   a settings panel but reads as shouting in a form aimed at a newcomer.
+   -------------------------------------------------------------------------- */
+
+.sfa-feedback-accordion {
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.sfa-feedback-accordion .accordion-button {
+    text-transform: none !important;
+    letter-spacing: 0.2px !important;
+    font-size: 12.5px !important;
+    font-weight: 500 !important;
+    padding: 9px 12px !important;
+    background-color: var(--bg-tertiary) !important;
+}
+
+.sfa-feedback-accordion .accordion-button:hover {
+    background-color: var(--bg-hover) !important;
+}
+
+.sfa-feedback-accordion .accordion-button:not(.collapsed) {
+    font-weight: 600 !important;
+}
+
+.sfa-feedback-accordion .accordion-body {
+    padding: 2px 12px 11px !important;
+    background-color: var(--bg-panel) !important;
+}
+
+.sfa-feedback-type-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.sfa-feedback-type-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+
+.sfa-feedback-blurb {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+/* -----------------------------------------------------------------------------
+   Message box + optional fields
+   -------------------------------------------------------------------------- */
+
+/* Deliberately not `.bbg-input`: that primitive hard-sets `height: 28px` and
+   `font-size: 12px` with `!important`, which is right for the dense one-line
+   controls it was built for and wrong for a box someone writes a paragraph in.
+   These two rules restate the parts worth sharing rather than fighting it. */
+textarea.sfa-feedback-textarea,
+textarea.sfa-feedback-transcript {
+    width: 100%;
+    display: block;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    color: var(--text-primary);
+    resize: vertical;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 100ms ease;
+}
+
+textarea.sfa-feedback-textarea:focus,
+textarea.sfa-feedback-transcript:focus {
+    border-color: var(--accent);
+}
+
+textarea.sfa-feedback-textarea {
+    min-height: 132px;
+    padding: 9px 11px;
+    font-family: var(--font-sans);
+    font-size: 12.5px;
+    line-height: 1.55;
+}
+
+/* The placeholder is a three-line template, not a hint — keep the newlines
+   legible rather than collapsing them into grey mush. */
+textarea.sfa-feedback-textarea::placeholder {
+    color: var(--text-tertiary);
+    line-height: 1.7;
+}
+
+.sfa-feedback-email-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* Keeps `.bbg-input` — a one-line field is exactly what that primitive is
+   for. Only the flex sizing it has no opinion about is set here. */
+input.sfa-feedback-email {
+    flex: 0 1 260px;
+    min-width: 180px;
+}
+
+.sfa-feedback-hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+
+/* Dash 4 mounts dcc.Checklist as `.dash-options-list`, which arrives wearing
+   dropdown chrome: a panel background on the list, a divider under each row,
+   and an amber `background: var(--bg-hover)` highlight on the ticked one. On a
+   menu that is right; on a lone checkbox in a form it reads as a selected
+   option in a list that is not there.
+
+   The rules being undone live in 30-vendor-widgets.css and are
+   `.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option[...]`,
+   i.e. specificity (0,4,0) with `!important`. Matching that shape — own class
+   AND `.dash-options-list` AND the option AND the attribute — ties the
+   specificity, and this sheet loads later, so it wins. Dropping any part of
+   the chain silently loses; `className` lands on the list element itself, not
+   a parent, which is why these are `.sfa-feedback-check.dash-options-list`
+   and not a descendant selector. */
+.sfa-feedback-check.dash-options-list {
+    margin-top: 14px;
+    background: transparent !important;
+    border-top: none !important;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.sfa-feedback-check.dash-options-list > .dash-options-list-option,
+.sfa-feedback-check.dash-options-list > .dash-options-list-option:hover,
+.sfa-feedback-check.dash-options-list > .dash-options-list-option[aria-selected="true"],
+.sfa-feedback-check.dash-options-list > .dash-options-list-option[data-state="checked"] {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border-bottom: none !important;
+    color: var(--text-secondary) !important;
+    cursor: pointer;
+}
+
+.sfa-feedback-check.dash-options-list > .dash-options-list-option:hover {
+    color: var(--text-primary) !important;
+}
+
+.sfa-feedback-check input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.sfa-feedback-details { margin-top: 5px; }
+
+.sfa-feedback-summary {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    list-style: none;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+}
+
+.sfa-feedback-summary:hover { color: var(--accent); }
+
+.sfa-feedback-context {
+    margin-top: 7px;
+    padding: 8px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+}
+
+.sfa-feedback-context-row {
+    display: flex;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.7;
+}
+
+.sfa-feedback-context-key {
+    flex: 0 0 130px;
+    color: var(--text-tertiary);
+}
+
+.sfa-feedback-context-val {
+    color: var(--text-secondary);
+    word-break: break-word;
+}
+
+/* -----------------------------------------------------------------------------
+   Status + copy fallback
+   -------------------------------------------------------------------------- */
+
+.sfa-feedback-status {
+    margin-top: 14px;
+    padding: 9px 11px;
+    border-radius: 3px;
+    font-size: 12px;
+    line-height: 1.5;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.sfa-feedback-status.is-ok {
+    border-color: color-mix(in srgb, var(--up) 55%, var(--border-primary));
+    background: color-mix(in srgb, var(--up) 12%, transparent);
+    color: var(--up);
+}
+
+.sfa-feedback-status.is-error {
+    border-color: color-mix(in srgb, var(--down) 55%, var(--border-primary));
+    background: color-mix(in srgb, var(--down) 12%, transparent);
+    color: var(--down);
+}
+
+/* No status yet — the callback renders '' before the first Send, and an empty
+   bordered box would read as a broken widget. */
+.sfa-feedback-status:empty {
+    display: none;
+}
+
+#feedback-fallback {
+    margin-top: 12px;
+    padding: 10px 11px;
+    border: 1px dashed var(--border-primary);
+    border-radius: 3px;
+    background: var(--bg-panel);
+}
+
+.sfa-feedback-fallback-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.sfa-feedback-fallback-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+button.sfa-feedback-copy {
+    font-size: 10px;
+    padding: 3px 9px;
+    white-space: nowrap;
+}
+
+.sfa-feedback-address {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.sfa-feedback-address:hover { text-decoration: underline; }
+
+textarea.sfa-feedback-transcript {
+    min-height: 120px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
+/* -----------------------------------------------------------------------------
+   Footer
+   -------------------------------------------------------------------------- */
+
+.sfa-feedback-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-primary);
+    padding: 9px 16px;
+}
+
+.sfa-feedback-privacy {
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+
+.sfa-feedback-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+button.sfa-feedback-cancel {
+    font-size: 11px;
+    padding: 5px 14px;
+}
+
+/* The one filled control in the dialog — the same warm amber as the Support
+   CTA, because both are asking rather than operating. */
+button.sfa-feedback-send {
+    background: var(--accent);
+    color: var(--bg-primary);
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    padding: 5px 20px;
+    cursor: pointer;
+    transition: background 80ms ease, border-color 80ms ease;
+}
+
+button.sfa-feedback-send:hover {
+    background: color-mix(in srgb, var(--accent) 82%, #fff);
+    border-color: color-mix(in srgb, var(--accent) 82%, #fff);
+}
+
+button.sfa-feedback-send:active {
+    background: color-mix(in srgb, var(--accent) 85%, #000);
+    border-color: color-mix(in srgb, var(--accent) 85%, #000);
+}
+
+/* -----------------------------------------------------------------------------
+   Narrow viewports
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+    .sfa-feedback-body { padding: 12px; }
+    .sfa-feedback-context-key { flex-basis: 96px; }
+    .sfa-feedback-footer {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .sfa-feedback-actions { justify-content: flex-end; }
+    /* Comfortable touch targets — this is the screen a phone visitor is most
+       likely to be the first to open. */
+    button.sfa-feedback-send,
+    button.sfa-feedback-cancel { min-height: 40px; }
+}
+
+/* -----------------------------------------------------------------------------
+   Light theme
+   -------------------------------------------------------------------------- */
+
+body.theme-light .sfa-feedback-content {
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+}
+
+body.theme-light .sfa-feedback-header .btn-close {
+    filter: none;
+}
+
+/* `.compact-accordion` inverts Bootstrap's chevron so it shows up on a dark
+   panel, which leaves it white-on-white once the light theme flips the
+   background. Undo the inversion here. NOTE: the same bug affects every other
+   `.compact-accordion` in the app (backtest panel, optimizer) — fixing it at
+   the source in 55-theme-light.css needs a visual pass over those panels, so
+   this stays scoped to the accordion it was found on. */
+body.theme-light .sfa-feedback-accordion .accordion-button::after,
+body.theme-light .sfa-feedback-accordion .accordion-button:not(.collapsed)::after {
+    filter: none !important;
+    opacity: 0.65;
+}
+
+body.theme-light .sfa-feedback-accordion .accordion-button:not(.collapsed)::after {
+    opacity: 1;
+}
+
+/* The send button needs no light-theme rule: its label is `var(--bg-primary)`
+   in every theme, which 55-theme-light.css already flips to white against the
+   darker light-theme amber. (The Support CTA in 20-controls.css does need one,
+   because its label is only `--bg-primary` on hover.) */

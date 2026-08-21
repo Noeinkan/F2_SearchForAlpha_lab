@@ -22,3 +22,4 @@ dbg_*.txt
 scratch_*.py
 flow_report.json
 results/
+.shots/

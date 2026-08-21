@@ -512,7 +512,7 @@ a.bbg-icon-button:active {
     background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
-/* Donate CTA — warm accent fill so it reads as a giving action, not a
+/* Support CTA — warm accent fill so it reads as a giving action, not a
    utility control. Research-backed pattern: high-contrast warm tone
    (amber) separate from neutral icon buttons; concise action label. */
 a.bbg-donate-button {

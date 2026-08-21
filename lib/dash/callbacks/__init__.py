@@ -26,6 +26,7 @@ from .layout import register_layout_callbacks
 from .command_palette import register_command_palette_callbacks
 from .symbol_search import register_symbol_search_callbacks
 from .status import register_status_callbacks
+from .feedback import register_feedback_callbacks
 
 
 def register_callbacks(app) -> None:
@@ -54,3 +55,4 @@ def register_callbacks(app) -> None:
     register_command_palette_callbacks(app)
     register_symbol_search_callbacks(app)
     register_status_callbacks(app)
+    register_feedback_callbacks(app)

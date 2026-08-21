@@ -270,6 +270,27 @@ DEFAULT_TICKER = 'TSLA'
 # Ko-fi support page — replace username with your handle before publishing.
 KOFI_USERNAME = 'noeinkan'
 KOFI_URL = f'https://ko-fi.com/{KOFI_USERNAME}'
+
+# =============================================================================
+# VISITOR FEEDBACK
+# =============================================================================
+# Where the header's FEEDBACK modal sends notes. See lib/dash/feedback.py for
+# the two delivery paths and lib/dash/layout/feedback.py for the form.
+#
+# Out of the box only FEEDBACK_EMAIL is set, and the modal falls back to opening
+# the visitor's mail client — no account, no keys, works on a fresh clone. The
+# cost is that the address sits in public source once the repo is published,
+# where scrapers will find it.
+#
+# To avoid that (and to have notes arrive without the visitor pressing Send in
+# their own mail app), point SFA_FEEDBACK_ENDPOINT at a JSON form relay —
+# Web3Forms and Formspree both work — and keep the real address in the relay's
+# dashboard instead of here.
+FEEDBACK_EMAIL = os.environ.get(
+    'SFA_FEEDBACK_EMAIL', 'andrea.aita@noeinsolutions.com'
+).strip()
+FEEDBACK_ENDPOINT = os.environ.get('SFA_FEEDBACK_ENDPOINT', '').strip()
+FEEDBACK_ACCESS_KEY = os.environ.get('SFA_FEEDBACK_ACCESS_KEY', '').strip()
 # Cold-load fallback on the /fundamentals route when the user has not
 # explicitly selected a ticker. The main page also defaults to
 # DEFAULT_TICKER (TSLA), so a fundamentals deep-link that omits the

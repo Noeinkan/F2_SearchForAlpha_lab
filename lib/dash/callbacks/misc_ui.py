@@ -441,6 +441,11 @@ def register_misc_callbacks(app) -> None:
                 // modals don't overlap during Bootstrap's close transition.
                 setTimeout(function() { clickById('symbol-search-trigger'); }, 180);
             }
+            else if (action === 'send-feedback') {
+                // Same deferral as the symbol search: let the palette finish
+                // its close transition before a second modal opens.
+                setTimeout(function() { clickById('feedback-open-btn'); }, 180);
+            }
             else if (action === 'load-data')      { clickById('load-data-button'); }
             else if (action === 'run-backtest')   { clickById('run-backtest-btn'); }
             else if (action === 'export-csv')     { clickById('export-csv-btn'); }

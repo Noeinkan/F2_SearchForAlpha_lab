@@ -1,5 +1,21 @@
 # SearchForAlpha Lab — Flawless UI/UX Plan (Critical Path)
 
+> **Status at 2026-08-21.** Most of this plan has shipped. The phase text below is the original
+> spec and still describes files and line numbers as they were when it was written — read it for
+> intent, not as a to-do list. Live status is tracked in [ROADMAP.md](../ROADMAP.md).
+>
+> | Phase | State |
+> |---|---|
+> | 1 — chart collapse | Superseded — the Plotly chart was replaced by TradingView Lightweight Charts, rendered client-side |
+> | 2 — responsive + collapsible sidebars | Shipped — `layout/shell.py`, `callbacks/layout.py`, `assets/70-forms-responsive.css` |
+> | 3 — split the layout file | Shipped — `lib/dash/layout/`, twelve modules |
+> | 4 — accessibility & theming | Shipped — CVD palette in `dash_config.py`, `:focus-visible` rings across the sheets |
+> | 5 — command palette | Shipped — `layout/command_palette.py`, `callbacks/command_palette.py`, incl. the shortcuts help of 5.3 |
+> | 6 — remove dead TradingView branch | Shipped, then reversed by design — Lightweight Charts is now *the* chart |
+> | 7 — loading / empty / error states | **Partial** — status bar wired to the callback lifecycle; no global error boundary (7.3), empty states unpolished (7.2) |
+> | 8 — performance | Superseded — client-side LWC handles large tapes; bar-count meta in `lib/dash/chart_meta.py` |
+> | 9 — tests + docs | Shipped — `docs/ui-architecture.md`, layout tests in `lib/tests/` |
+
 **Target:** laptop (≥1024px) and desktop. Bloomberg-style tri-pane. Backward compatible with existing callbacks and presets. No functional regression in research workflow.
 
 ---

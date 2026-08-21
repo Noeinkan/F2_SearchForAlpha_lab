@@ -10,6 +10,8 @@ A Python-based algorithmic trading research workspace for data fetching, signal 
 - **Interactive dashboard**: TradingView Lightweight Charts, signal overlays, symbol search with watchlists, and data tables with configurable views.
 - **Performance metrics**: Total return, Sharpe, max drawdown, win rate, profit factor, and trade duration.
 
+What is built and what is still open: [ROADMAP.md](ROADMAP.md).
+
 ## 📁 Project Structure
 
 ```

@@ -171,6 +171,7 @@ sorted filename order**, so the numeric prefixes *are* the cascade:
 | `60-execution.css` | strategy mode cards, Execution Type explainer, signal panel |
 | `70-forms-responsive.css` | trade-setup stepper, responsive layout, splitter, phone shell |
 | `80-command-palette.css` | command palette modal |
+| `85-feedback.css` | feedback modal + its header button |
 | `90-symbol-search.css` | symbol search universe browser |
 
 Two rules when editing:

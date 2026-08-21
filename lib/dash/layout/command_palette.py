@@ -58,6 +58,8 @@ COMMANDS = [
      "group": "UI",     "hint": "Show or hide the backtest panel"},
     {"id": "toggle-sidebar",   "label": "Toggle sidebar",           "shortcut": "Ctrl+,",
      "group": "UI",     "hint": "Collapse or expand the left sidebar"},
+    {"id": "send-feedback",    "label": "Send feedback",            "shortcut": "",
+     "group": "UI",     "hint": "Report a bug, suggest an idea, or say what you think"},
 
     # Ticker switcher — the palette accepts a bare ticker as input.
     # When the user types a query that matches no command exactly but

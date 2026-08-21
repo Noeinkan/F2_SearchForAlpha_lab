@@ -109,15 +109,33 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
                 title='Re-fetch the current symbol (Ctrl+Enter)',
                 **{'aria-label': 'Refresh market data'},
             ),
-            # Donate link — warm CTA distinct from neutral header icon buttons.
+            # Feedback — the whole point of publishing the repo is to hear
+            # back, so this sits in the header rather than a footer. The glyph
+            # and the word are both rendered; CSS drops the word on narrow
+            # viewports (85-feedback.css) so the header cluster never wraps.
+            html.Button(
+                id='feedback-open-btn',
+                children=[
+                    html.Span('✉', className='sfa-feedback-open-glyph',
+                              **{'aria-hidden': 'true'}),
+                    html.Span('FEEDBACK', className='sfa-feedback-open-text'),
+                ],
+                className='bbg-icon-button sfa-feedback-open-btn',
+                n_clicks=0,
+                title='Send feedback — bugs, ideas, first impressions',
+                **{'aria-label': 'Send feedback', 'aria-haspopup': 'dialog'},
+            ),
+            # Support link — warm CTA distinct from neutral header icon buttons.
+            # Wording must stay "Support" (not "Donate"): Ko-fi reserves donation
+            # wording for registered non-profits.
             html.A(
-                'Donate',
+                'Support',
                 href=KOFI_URL,
                 target='_blank',
                 rel='noopener noreferrer',
                 className='bbg-donate-button',
                 title='Support this project on Ko-fi',
-                **{'aria-label': 'Donate — support this project on Ko-fi'},
+                **{'aria-label': 'Support this project on Ko-fi'},
             ),
             # Theme toggle — Phase 4: cycle DARK → CVD → LIGHT.
             html.Button(
