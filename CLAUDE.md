@@ -12,6 +12,8 @@ Python algorithmic trading research: Yahoo Finance OHLCV → indicator signals �
 - **sfa research in Cursor:** read [docs/openclaw-research.md](docs/openclaw-research.md) first (`@`-mention it)
 
 ## Non-obvious essentials
+- OHLCV is split- and dividend-adjusted, and corporate-action columns are stripped — [docs/data-adjustment.md](docs/data-adjustment.md). Yahoo is the only wired vendor; the seam for adding another is `_yahoo_history` in `lib/data_processing.py`, and [docs/data-vendors.md](docs/data-vendors.md) records why no free second source exists today
+- Transient fetch failures (429/5xx/timeout) are retried then raised as `TransientFetchError` (`lib/fetch_errors.py`); the dashboard renders them as `RATE LIMITED`, distinct from a bad ticker
 - Signal columns: `{INDICATOR}_{CONDITION}_Buy` / `_Sell` — see `lib/signals/indicators.py`
 - Indicator params: always from `config/strategy_config.yaml` via `lib/config_loader.py`
 - Dash callbacks: one file per concern in `lib/dash/callbacks/`; register via `register_*_callbacks(app)` in `callbacks/__init__.py`

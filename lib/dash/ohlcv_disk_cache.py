@@ -19,6 +19,8 @@ from typing import Callable, Literal, Optional
 
 import pandas as pd
 
+from lib.data_processing import ACTION_COLUMNS
+
 logger = logging.getLogger(__name__)
 
 _ENV_CACHE_DIR = "SFA_OHLCV_CACHE_DIR"
@@ -112,6 +114,12 @@ def _normalize_frame(df: pd.DataFrame) -> Optional[pd.DataFrame]:
             return None
     if getattr(out.index, "tz", None) is not None:
         out.index = out.index.tz_localize(None)
+    # Parquet files written before fetch_data set actions=False still carry
+    # corporate-action columns. Drop them on read so old caches self-heal
+    # instead of feeding the columns back into the indicator pipeline.
+    stale_action_cols = [c for c in ACTION_COLUMNS if c in out.columns]
+    if stale_action_cols:
+        out = out.drop(columns=stale_action_cols)
     return out
 
 

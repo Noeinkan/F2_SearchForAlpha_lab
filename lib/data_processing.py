@@ -12,6 +12,16 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import time
 
+# DataFetchError / TransientFetchError live in lib.fetch_errors so that vendor
+# adapters can import them without a circular import. They are re-exported here
+# because several modules still import DataFetchError from this path.
+from lib.fetch_errors import (
+    DataFetchError,
+    TransientFetchError,
+    classify_fetch_error,
+    retry_with_backoff,
+)
+
 # Configure module logger
 logger = logging.getLogger(__name__)
 
@@ -21,9 +31,42 @@ _TICKER_CACHE_TIME = None
 _TICKER_CACHE_TTL_HOURS = 24
 
 
-class DataFetchError(Exception):
-    """Custom exception for data fetching errors."""
-    pass
+# Corporate-action columns yfinance returns when actions=True. We fetch with
+# actions=False, but a cached frame written by an older build may still carry
+# them, so the names stay here as the single definition.
+ACTION_COLUMNS = ("Dividends", "Stock Splits", "Capital Gains")
+
+
+def _yahoo_history(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    yf_int: str,
+) -> pd.DataFrame:
+    """Fetch raw bars from Yahoo, retrying transient failures.
+
+    ``auto_adjust=True`` is passed explicitly: prices are split- and
+    dividend-adjusted. ``actions=False`` keeps the Dividends / Stock Splits
+    columns out of the pipeline -- nothing downstream consumes them and
+    resampling them to 4h silently corrupts them. See docs/data-adjustment.md.
+    """
+
+    def _attempt() -> pd.DataFrame:
+        try:
+            ticker = yf.Ticker(symbol)
+            return ticker.history(
+                start=start_date,
+                end=end_date,
+                interval=yf_int,
+                auto_adjust=True,
+                actions=False,
+            )
+        except Exception as exc:
+            raise classify_fetch_error(
+                exc, f"Failed to fetch data for {symbol}: {exc}"
+            ) from exc
+
+    return retry_with_backoff(_attempt, describe=f"Yahoo fetch for {symbol}")
 
 
 def fetch_data(
@@ -36,6 +79,11 @@ def fetch_data(
     """
     Fetch historical price data from Yahoo Finance.
 
+    Prices are split- and dividend-adjusted (``auto_adjust=True``) and the
+    corporate-action columns are excluded -- see docs/data-adjustment.md.
+    Transient vendor failures (429/5xx/timeout) are retried, then raised as
+    ``TransientFetchError`` so callers can distinguish them from a bad ticker.
+
     Args:
         symbol: Ticker symbol to fetch.
         start_date: Start date in 'YYYY-MM-DD' format.
@@ -44,7 +92,8 @@ def fetch_data(
         interval: Bar size ``1d`` / ``1h`` / ``4h`` (4h resamples from 1h).
 
     Returns:
-        DataFrame with OHLCV data and a timezone-naive DatetimeIndex.
+        DataFrame with adjusted OHLCV data and a timezone-naive DatetimeIndex.
+        ``df.attrs['source']`` names the vendor that served it.
 
     Raises:
         DataFetchError: If data cannot be fetched or is invalid.
@@ -80,8 +129,13 @@ def fetch_data(
     )
 
     try:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(start=start_date, end=end_date, interval=yf_int)
+        # Yahoo is the only wired source. _yahoo_history is the vendor seam:
+        # everything below it is vendor-agnostic, so a second source only has
+        # to return an OHLCV frame with a DatetimeIndex. A fallback must also
+        # set df.attrs["source"], which the dashboard cache reads to avoid
+        # mixing two vendors' bars in one parquet file.
+        source = "yahoo"
+        df = _yahoo_history(symbol, start_date, end_date, yf_int)
 
         if df.empty:
             raise DataFetchError(
@@ -92,6 +146,20 @@ def fetch_data(
         df.index = pd.to_datetime(df.index)
         if getattr(df.index, "tz", None) is not None:
             df.index = df.index.tz_localize(None)
+
+        # actions=False should already have excluded these, but strip them
+        # defensively: nothing downstream reads them, resampling them to 4h
+        # corrupts them, and this keeps the fetch path consistent with the
+        # disk-cache read path, which strips them from older parquet files.
+        present_actions = [c for c in ACTION_COLUMNS if c in df.columns]
+        if present_actions:
+            df = df.drop(columns=present_actions)
+
+        # Measure NaN density before dropping, so the quality warning in
+        # _validate_price_data reflects what the vendor actually sent.
+        nan_pct = 0.0
+        if "Close" in df.columns and len(df):
+            nan_pct = df["Close"].isna().sum() / len(df) * 100
 
         # Drop incomplete/placeholder rows with no usable Close.
         if "Close" in df.columns:
@@ -111,13 +179,15 @@ def fetch_data(
                 )
 
         if validate:
-            _validate_price_data(df, symbol)
+            _validate_price_data(df, symbol, nan_pct=nan_pct)
 
+        df.attrs["source"] = source
         logger.info(
-            "Successfully fetched %s rows for %s (interval=%s)",
+            "Successfully fetched %s rows for %s (interval=%s, source=%s)",
             len(df),
             symbol,
             canon,
+            source,
         )
         return df
 
@@ -125,17 +195,27 @@ def fetch_data(
         raise
     except Exception as e:
         logger.error(f"Error fetching data for {symbol}: {str(e)}")
-        raise DataFetchError(f"Failed to fetch data for {symbol}: {str(e)}") from e
+        raise classify_fetch_error(
+            e, f"Failed to fetch data for {symbol}: {str(e)}"
+        ) from e
 
 
-def _validate_price_data(df: pd.DataFrame, symbol: str) -> None:
+def _validate_price_data(
+    df: pd.DataFrame,
+    symbol: str,
+    *,
+    nan_pct: float | None = None,
+) -> None:
     """
     Validate price data quality.
-    
+
     Args:
         df: DataFrame with price data.
         symbol: Symbol name for error messages.
-        
+        nan_pct: Percentage of NaN Closes measured *before* they were dropped.
+            Callers must pass this; measuring it here would always read 0
+            because fetch_data drops NaN Closes first.
+
     Raises:
         DataFetchError: If data fails validation.
     """
@@ -143,9 +223,11 @@ def _validate_price_data(df: pd.DataFrame, symbol: str) -> None:
     missing = [col for col in required_columns if col not in df.columns]
     if missing:
         raise DataFetchError(f"Missing required columns for {symbol}: {missing}")
-    
+
+    if nan_pct is None:
+        nan_pct = df['Close'].isna().sum() / len(df) * 100 if len(df) else 0.0
+
     # Check for excessive NaN values
-    nan_pct = df['Close'].isna().sum() / len(df) * 100
     if nan_pct > 10:
         logger.warning(f"{symbol} has {nan_pct:.1f}% NaN values in Close column")
 

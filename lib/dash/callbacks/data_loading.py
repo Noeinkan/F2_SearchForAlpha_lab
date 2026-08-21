@@ -183,9 +183,24 @@ def register_data_loading_callbacks(app) -> None:
 
         except Exception as e:
             logger.error(f"Error loading data: {e}")
+
+            # A retryable vendor failure (429 / 5xx / timeout) is not a dead
+            # end — the status bar says so, and the header refresh button is
+            # already wired to force=True, so the user has a working retry.
+            from lib.data_processing import TransientFetchError
+
+            if isinstance(e, TransientFetchError):
+                status_text = f"RATE LIMITED · RETRY ({canon.upper()})"
+                header_note = "RATE LIMITED — RETRY"
+                note_colour = theme['accent_orange']
+            else:
+                status_text = f"ERROR: {str(e)[:48]}"
+                header_note = str(e)[:40].upper()
+                note_colour = theme['accent_red']
+
             # Keep previous dashboard_state.df so a failed 1H fetch doesn't blank a good daily chart.
             return (
-                f"ERROR: {str(e)[:48]}",
+                status_text,
                 "--",
                 load_generation or 0,
                 no_update,
@@ -195,6 +210,6 @@ def register_data_loading_callbacks(app) -> None:
                 no_update,
                 (ticker or DEFAULT_TICKER).upper(),
                 no_update,
-                html.Span(str(e)[:40].upper(), style={'color': theme['accent_red']}),
+                html.Span(header_note, style={'color': note_colour}),
                 no_update,
             )

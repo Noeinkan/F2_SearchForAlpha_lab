@@ -56,11 +56,16 @@ def register_status_callbacks(app) -> None:
         prevent_initial_call=True,
     )
 
-    # Resolver — settle back to READY, or ERROR when a data load failed.
+    # Resolver — settle back to READY, or flag a failed data load. A retryable
+    # vendor failure (429/5xx) reads as a warning, not a hard error: the data
+    # is not gone, the request just needs repeating.
     app.clientside_callback(
         """
         function(dataStatus, _backtestChildren) {
             var s = (dataStatus == null ? '' : String(dataStatus)).toUpperCase();
+            if (s.indexOf('RATE LIMITED') !== -1 || s.indexOf('RETRY') !== -1) {
+                return ['RATE LIMITED', 'dot dot-warn'];
+            }
             if (s.indexOf('ERROR') !== -1) {
                 return ['ERROR', 'dot dot-down'];
             }

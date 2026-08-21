@@ -214,6 +214,14 @@ _OHLCV_AGG = {
     "Low": "min",
     "Close": "last",
     "Volume": "sum",
+    # Corporate actions are per-bar events, so they must be summed across a
+    # bucket. Aggregating them with "last" -- the default for unknown columns
+    # below -- silently drops a dividend that landed on any bar but the last.
+    # fetch_data excludes these columns, but resample_ohlcv is public and is
+    # called with vendor frames that may still carry them.
+    "Dividends": "sum",
+    "Stock Splits": "sum",
+    "Capital Gains": "sum",
 }
 
 
@@ -240,7 +248,9 @@ def resample_ohlcv(
         out.index = out.index.tz_localize(None)
 
     cols = [c for c in _OHLCV_AGG if c in out.columns]
-    if not cols:
+    # Guard on price/volume specifically: _OHLCV_AGG also names corporate-action
+    # columns, and a frame carrying only those is not resamplable.
+    if not any(c in out.columns for c in ("Open", "High", "Low", "Close", "Volume")):
         raise ValueError("DataFrame has no OHLCV columns to resample")
 
     agg = {c: _OHLCV_AGG[c] for c in cols}

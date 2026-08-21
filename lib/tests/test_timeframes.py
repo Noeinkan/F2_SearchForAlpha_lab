@@ -180,3 +180,45 @@ def test_metrics_annualization_differs_by_interval():
     assert daily.sharpe != hourly.sharpe
     # Same mean/std → higher periods_per_year scales Sharpe up by sqrt ratio
     assert abs(hourly.sharpe) > abs(daily.sharpe)
+
+
+def test_resample_sums_dividends_across_a_bucket():
+    """A dividend on any bar of a 4h bucket must survive the resample.
+
+    Regression: non-OHLCV columns were aggregated with "last", so a dividend
+    landing on the first 1h bar was overwritten by the final bar's 0.0.
+    """
+    idx = pd.date_range("2024-03-01 08:00", periods=4, freq="1h")
+    df = pd.DataFrame(
+        {
+            "Open": [10.0, 11.0, 12.0, 13.0],
+            "High": [11.0, 12.0, 13.0, 14.0],
+            "Low": [9.0, 10.0, 11.0, 12.0],
+            "Close": [11.0, 12.0, 13.0, 13.5],
+            "Volume": [100, 200, 300, 400],
+            "Dividends": [0.25, 0.0, 0.0, 0.0],
+            "Stock Splits": [0.0, 0.0, 2.0, 0.0],
+        },
+        index=idx,
+    )
+
+    out = resample_ohlcv(df, "4h")
+
+    assert len(out) == 1
+    assert out["Dividends"].iloc[0] == 0.25
+    assert out["Stock Splits"].iloc[0] == 2.0
+    # OHLCV aggregation must be unchanged by the fix.
+    assert out["Open"].iloc[0] == 10.0
+    assert out["High"].iloc[0] == 14.0
+    assert out["Low"].iloc[0] == 9.0
+    assert out["Close"].iloc[0] == 13.5
+    assert out["Volume"].iloc[0] == 1000
+
+
+def test_resample_rejects_a_frame_with_only_action_columns():
+    df = pd.DataFrame(
+        {"Dividends": [0.1, 0.2]},
+        index=pd.date_range("2024-03-01 09:00", periods=2, freq="1h"),
+    )
+    with pytest.raises(ValueError, match="no OHLCV columns"):
+        resample_ohlcv(df, "4h")

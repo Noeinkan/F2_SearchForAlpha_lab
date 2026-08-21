@@ -64,9 +64,11 @@ def fetch_data_with_cache(
         DataFrame with OHLCV data
 
     Raises:
+        TransientFetchError: If the vendor failed retryably (429/5xx/timeout)
+            and no cached frame exists to serve instead.
         ValueError: If no data available for ticker
     """
-    from lib.data_processing import DataFetchError, fetch_data
+    from lib.data_processing import DataFetchError, TransientFetchError, fetch_data
     from lib.dash import ohlcv_disk_cache as ohlcv_cache
     from lib.timeframes import normalize_interval
 
@@ -84,6 +86,22 @@ def fetch_data_with_cache(
         if isinstance(frame.columns, pd.MultiIndex):
             frame.columns = frame.columns.get_level_values(0)
         return frame
+
+    def _persist(df: pd.DataFrame) -> None:
+        """Write to the parquet cache -- but only bars from the primary vendor.
+
+        The cache key is ``{ticker}_{interval}`` with no vendor dimension, so
+        writing a fallback frame would interleave two vendors' bars in one
+        file. Fallbacks are a transient-outage path, so skipping the write
+        costs little.
+        """
+        source = df.attrs.get("source", "yahoo")
+        if source != "yahoo":
+            logger.info(
+                "Not caching %s bars for %s (fallback source)", source, ticker
+            )
+            return
+        ohlcv_cache.write_frame(ticker, canon, df)
 
     def _store(df: pd.DataFrame) -> pd.DataFrame:
         windowed = ohlcv_cache.slice_window(df, start_date, end_date)
@@ -116,18 +134,22 @@ def fetch_data_with_cache(
     try:
         if force or disk_frame is None:
             df = _yahoo(start_date, end_date)
-            ohlcv_cache.write_frame(ticker, canon, df)
+            _persist(df)
             return _store(df)
 
         # expired but file exists → incremental
         start = ohlcv_cache.incremental_start(disk_frame)
         try:
             tail = _yahoo(start, end_date)
-            df = ohlcv_cache.merge_ohlcv(disk_frame, tail)
+            merged = ohlcv_cache.merge_ohlcv(disk_frame, tail)
+            # merge_ohlcv builds a new frame, so carry the tail's provenance
+            # across: a fallback-vendor tail must not enter the Yahoo cache.
+            merged.attrs["source"] = tail.attrs.get("source", "yahoo")
+            df = merged
         except DataFetchError:
             # Tail fetch failed — fall back to full window once.
             df = _yahoo(start_date, end_date)
-        ohlcv_cache.write_frame(ticker, canon, df)
+        _persist(df)
         return _store(df)
     except (DataFetchError, ValueError) as exc:
         if disk_frame is not None and not disk_frame.empty:
@@ -137,6 +159,10 @@ def fetch_data_with_cache(
                 exc,
             )
             return _store(disk_frame)
+        # Transient failures keep their type so the UI can offer a retry
+        # instead of showing a dead end. Only genuine not-found is flattened.
+        if isinstance(exc, TransientFetchError):
+            raise
         if isinstance(exc, DataFetchError):
             raise ValueError(str(exc)) from exc
         raise

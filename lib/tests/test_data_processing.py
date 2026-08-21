@@ -28,22 +28,74 @@ class TestFetchData(unittest.TestCase):
     @patch('lib.data_processing.yf.Ticker')
     def test_fetch_data_returns_dataframe(self, mock_ticker):
         """Test that fetch_data returns a DataFrame."""
-        # Mock the yfinance response
+        # Mock the yfinance response. Note this is the real column set: with
+        # actions=True (yfinance's default) two corporate-action columns ride
+        # along. The old fixture had only the five OHLCV columns, which is why
+        # those columns leaking into the pipeline went unnoticed.
         mock_history = pd.DataFrame({
             'Open': [100, 101],
             'High': [102, 103],
             'Low': [98, 99],
             'Close': [101, 102],
-            'Volume': [1000000, 1100000]
+            'Volume': [1000000, 1100000],
+            'Dividends': [0.0, 0.22],
+            'Stock Splits': [0.0, 0.0],
         }, index=pd.to_datetime(['2020-01-01', '2020-01-02']))
-        
+
         mock_ticker.return_value.history.return_value = mock_history
-        
+
         result = fetch_data('AAPL', '2020-01-01', '2020-01-03')
-        
+
         self.assertIsInstance(result, pd.DataFrame)
         self.assertEqual(len(result), 2)
         self.assertIsInstance(result.index, pd.DatetimeIndex)
+
+    @patch('lib.data_processing.yf.Ticker')
+    def test_fetch_data_requests_explicit_adjustment(self, mock_ticker):
+        """Adjustment must be stated, not inherited from yfinance defaults."""
+        mock_history = pd.DataFrame({
+            'Open': [100.0], 'High': [102.0], 'Low': [98.0],
+            'Close': [101.0], 'Volume': [1000000],
+        }, index=pd.to_datetime(['2020-01-02']))
+        mock_ticker.return_value.history.return_value = mock_history
+
+        fetch_data('AAPL', '2020-01-01', '2020-01-03')
+
+        kwargs = mock_ticker.return_value.history.call_args.kwargs
+        self.assertTrue(kwargs['auto_adjust'])
+        self.assertFalse(kwargs['actions'])
+
+    @patch('lib.data_processing.yf.Ticker')
+    def test_fetch_data_drops_corporate_action_columns(self, mock_ticker):
+        """Dividends / Stock Splits must not reach the indicator pipeline."""
+        mock_history = pd.DataFrame({
+            'Open': [100, 101],
+            'High': [102, 103],
+            'Low': [98, 99],
+            'Close': [101, 102],
+            'Volume': [1000000, 1100000],
+            'Dividends': [0.0, 0.22],
+            'Stock Splits': [0.0, 4.0],
+        }, index=pd.to_datetime(['2020-01-01', '2020-01-02']))
+        mock_ticker.return_value.history.return_value = mock_history
+
+        result = fetch_data('AAPL', '2020-01-01', '2020-01-03')
+
+        # actions=False is what normally prevents these; assert on the output
+        # so a vendor that ignores the flag is still caught.
+        for column in ('Dividends', 'Stock Splits'):
+            self.assertNotIn(column, result.columns)
+
+    @patch('lib.data_processing.yf.Ticker')
+    def test_fetch_data_tags_its_source(self, mock_ticker):
+        mock_history = pd.DataFrame({
+            'Open': [100.0], 'High': [102.0], 'Low': [98.0],
+            'Close': [101.0], 'Volume': [1000000],
+        }, index=pd.to_datetime(['2020-01-02']))
+        mock_ticker.return_value.history.return_value = mock_history
+
+        result = fetch_data('AAPL', '2020-01-01', '2020-01-03')
+        self.assertEqual(result.attrs['source'], 'yahoo')
 
     @patch('lib.data_processing.yf.Ticker')
     def test_fetch_data_empty_raises_error(self, mock_ticker):

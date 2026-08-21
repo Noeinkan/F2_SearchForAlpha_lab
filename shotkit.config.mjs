@@ -52,6 +52,9 @@ export default {
   viewport: { width: 1440, height: 900 },
   colorScheme: 'dark',
   settleMs: 1500,
+  // Everything else is served locally; only the webfonts are remote, and
+  // blocking them silently swaps the whole UI onto fallback faces.
+  allowHosts: ['fonts.googleapis.com', 'fonts.gstatic.com'],
 
   server: {
     command:
@@ -177,6 +180,18 @@ export default {
       shows: 'the fundamentals workspace: the Big Five quality table (ROIC, equity/EPS/sales/FCF growth, debt) across 11 fiscal years with 10Y/5Y/1Y roll-ups and trend charts',
       alt: 'Fundamentals page showing a colour-coded Big Five metrics table and growth charts',
       async prepare(page) {
+        // The hero quote lands after the statements do; without this the top
+        // card screenshots as a '--' placeholder.
+        await page
+          .waitForFunction(
+            () => {
+              const el = document.querySelector('.sfa-fundamentals-hero-value');
+              return el && el.innerText.includes('$');
+            },
+            null,
+            { timeout: 60000 },
+          )
+          .catch(() => {});
         await park(page);
       },
     },
@@ -202,15 +217,15 @@ export default {
       timeoutMs: 180000,
       waitFor: '.sfa-symsearch-row-body',
       settleMs: 1500,
-      shows: 'the Ctrl+/ symbol search over the committed ~13k-row universe, matching on business category with live quotes, sector, exchange and starred watchlist',
-      alt: 'Symbol search modal listing semiconductor companies with live prices and sectors',
+      shows: 'the Ctrl+/ symbol search over the committed ~13k-row universe: starred watchlist pinned on top, live quotes, asset-class tabs and sector/industry per row',
+      alt: 'Symbol search modal listing starred tickers with live prices, sectors and exchanges',
       async prepare(page) {
         await bootChart(page);
         await page.keyboard.press('Control+Slash');
         await page.waitForSelector('#symbol-search-query', { state: 'visible', timeout: 30000 });
-        await page.click('#symbol-search-query');
-        await page.keyboard.type('semiconductor', { delay: 45 });
-        await page.waitForTimeout(2500);
+        // Deliberately no typed query: the filter does not narrow the list
+        // (see report), so a query in the box would caption a lie.
+        await page.waitForTimeout(2000);
         await park(page);
       },
     },
