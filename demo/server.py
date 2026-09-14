@@ -229,8 +229,17 @@ def create_demo_app(settings: DemoSettings | None = None, access_settings=None, 
     return app
 
 
+def _is_loopback(host: str) -> bool:
+    return host in ("127.0.0.1", "localhost", "::1")
+
+
 def main() -> None:
+    from demo import envfile
+
+    loaded = envfile.load()  # a no-op in the container, which has no .env
     logging.basicConfig(level=os.environ.get("SFA_LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    if loaded:
+        logger.info("read %d settings from %s (the environment wins where both set one)", len(loaded), envfile.REPO_ENV)
     host = os.environ.get("DEMO_HOST", "127.0.0.1")
     port = int(os.environ.get("DEMO_PORT", "8050"))
     threads = int(os.environ.get("DEMO_THREADS", "8"))
@@ -241,7 +250,17 @@ def main() -> None:
         logger.warning("DEMO_MODE is off: serving 404 for every page")
         server = create_off_app()
 
-    from waitress import serve
+    try:
+        from waitress import serve
+    except ImportError:
+        # The image installs waitress (demo/requirements.txt); the workspace's
+        # environment does not. Flask's own server is fine for one person on
+        # this machine and never acceptable on a public address.
+        if not _is_loopback(host):
+            raise
+        logger.warning("waitress is not installed: serving with Flask's development server on %s:%s (local use only)", host, port)
+        server.run(host=host, port=port, threaded=True, use_reloader=False)
+        return
 
     serve(server, host=host, port=port, threads=threads, channel_timeout=180, connection_limit=300, ident="sfa-demo")
 

@@ -83,6 +83,17 @@ def test_disconnect_guard_triggers_after_threshold():
     assert "No connection" in result.reason
 
 
+def test_disconnect_guard_quiet_inside_gateway_restart_window():
+    now = datetime.now(UTC)
+    snap = guard_module.RunnerSnapshot(
+        **{**_snapshot(last_connected_at=now - timedelta(seconds=600), local_now=now).__dict__,
+           "outage_expected": True},
+    )
+    result = guard_module.broker_disconnected_guard(snap, CONFIG)
+    assert not result.triggered
+    assert "restart window" in result.reason
+
+
 def test_disconnect_guard_quiet_within_threshold():
     now = datetime.now(UTC)
     snap = _snapshot(last_connected_at=now - timedelta(seconds=10), local_now=now)

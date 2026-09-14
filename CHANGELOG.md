@@ -8,6 +8,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Quarterly fundamentals from SEC filings** (ROADMAP 7.6). For U.S. filers, the
+  Fundamentals page's quarterly view now reads the same SEC company-facts file as the annual
+  view, so it shows up to 40 quarters instead of the last five Yahoo returns. Income items
+  are filed as three-month amounts and read directly. Cash-flow items are filed only as
+  year-to-date totals, and no filing has a fourth quarter, so those quarters are the
+  difference of two totals: Q4 is the full year minus the first nine months. A derived Q4
+  EPS is approximate, because the share count moves during the year; the page notes this.
+  On AAPL, MSFT and NVDA every quarter that overlaps Yahoo's matched within 0.5%. Yahoo
+  quarters stay in use for non-U.S. symbols and when SEC has under four quarters (XOM).
+  Quarter-end prices are now read at the filed period end (Apple's 27 September), not the
+  calendar quarter end. The SEC code moved to `lib/fundamentals_sec.py`.
+- **Fundamentals cache and refresh policy** (ROADMAP 7.9). Every visit to the Fundamentals
+  page used to download the SEC file (3.8 MB for Apple) and call Yahoo up to seven times.
+  Inputs are now kept in `state/fundamentals/`: SEC filings, Yahoo statements and price
+  history for 24 hours (`SFA_FUNDAMENTALS_FILINGS_TTL_HOURS`), the Yahoo quote and analyst
+  estimates for 15 minutes (`SFA_FUNDAMENTALS_QUOTE_TTL_MINUTES`), the SEC ticker map for
+  7 days. A warm load of AAPL takes about 0.2 s instead of 5 s. **Refresh** refetches
+  everything. When a refetch fails or comes back empty, the last good copy stays on screen,
+  the status line says `REFETCH FAILED, SHOWING CACHED COPY`, and a note gives its date.
+  `fetch_fundamentals(..., use_cache=False)` touches no cache; the demo freezer uses it.
+- **Limit, stop and stop-limit orders in paper trading** (ROADMAP 8.11). The runner used to
+  send a market order whatever the strategy said. It now reads `order_type`,
+  `limit_offset_pct`, `stop_offset_pct`, `time_in_force` and `order_expiry_bars` from
+  `live_params`, the same keys the backtest, the optimizer and `sfa promote` use.
+  Prices come from the engine's own function, rounded to `runner.price_tick` (0.01) so
+  that a buy limit is never rounded up and a stop never rounded nearer the market.
+  Resting orders go to IB as LMT / STP / STP LMT with GTC or DAY and no longer block
+  the bar loop. The runner checks them each bar, cancels an `ioc` order after one bar
+  and any order after `order_expiry_bars`, as the backtest does, and replaces the
+  working order when a new signal arrives on its side. `sfa_fills` gains `order_type`,
+  `broker_order_id` and the statuses `working`, `partially_filled`, `cancelled` and
+  `rejected`. `sfa status` shows `working_orders`, and a rejection sends an alert. The
+  mock broker fills resting orders with `lib/orders.py`'s model, so the tests check
+  paper fills against backtest fills. **Changed behaviour:** `sfa run` now refuses to
+  start (`unsupported_live_params`, exit 2) when `live_params` sets an exit, sizing or
+  signal-gating key the runner does not apply; before, it silently ignored them. No
+  bundle in the repo sets one today. "Bars" are IB's 5-second bars; ROADMAP 8.15
+  records that and the other paper/research differences found along the way.
+- **The paper runner survives the IB Gateway daily restart** (ROADMAP 8.13). A heartbeat
+  (`runner.heartbeat_seconds`, default 5) checks the connection and evaluates the guards
+  whether or not bars arrive. When the connection drops it reconnects, waiting 2s, 4s,
+  8s … up to 30s (`ib.reconnect`), then re-subscribes to bars. A drop inside the
+  `ib.daily_restart` window (default 23:45 local, 15 minutes) does not trip
+  `broker_disconnected`. A longer one still stops the runner once the window closes.
+  **Match the time to IB Gateway's Auto restart setting.** Other fixes on the same path:
+  - Guards used to run only when a bar arrived. A dead connection sends no bars, so
+    `broker_disconnected` could never trip.
+  - An exception in a bar handler used to end IB's bar stream for good.
+  - An order waiting on a dropped connection used to wait forever.
+  - A bar replayed with an old timestamp is now ignored.
+- **Alerts** (ROADMAP 8.14). With `SFA_ALERT_WEBHOOK` set, the runner posts when a
+  guard trips, when the broker refuses an order, and when the runner crashes. The
+  payload suits Slack and Discord (`text` / `content`); ntfy.sh URLs get a plain-text
+  push (`SFA_ALERT_FORMAT` overrides). Delivery is one attempt with a 5s timeout. It
+  never raises, so an unreachable webhook cannot stop the shutdown. Setup: README,
+  *Alerts on your phone*.
 - **Basket backtests against one cash account** (ROADMAP 3.8.3, 3.8.4).
   `lib.portfolio.backtest_portfolio(panel, capital, sizer, params, buys, sells, **options)`
   runs every symbol of a `lib.panel` panel through one shared cash balance, taking the same
@@ -240,6 +296,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `metrics.risk_free_rate` in `config/agent.yaml`.
 
 ### Changed
+- **`sfa kill` stops the runner cleanly, and `--flatten` works** (ROADMAP 8.8). On Windows
+  `sfa kill` used to terminate the process on the spot: no cancel, no disconnect. `--flatten`
+  was refused outright. Now the command leaves a stop request in `state/running/`, and the
+  runner answers at its next heartbeat. It cancels open orders and closes its own ticker's
+  position with a market order when `--flatten` is given; the order-size caps do not block
+  that exit. Then it disconnects and reports the orders it sent. A runner that does not
+  answer is terminated. The JSON then says `"graceful": false`, and with `--flatten` the
+  command exits 3, because nothing was closed. A stale PID file is cleaned up. A PID now
+  used by some other process is never terminated (`pid_mismatch`). New `--wait` option,
+  default 60 seconds.
 - **The Flow Scanner survives a bad expiry and says when Yahoo is throttling** (ROADMAP 6.7).
   All of its Yahoo calls moved to `lib/options/chain_source.py` and now retry 429 / 5xx /
   timeouts with the same backoff as the OHLCV fetch. One expiry that still fails is left
@@ -311,6 +377,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fell back to `Robustness_Score`.
 
 ### Fixed
+- **SEC EPS was not adjusted for stock splits, so older fundamentals were wrong.** Filings
+  report EPS on the share count of their day, while Yahoo's prices are split-adjusted.
+  Apple's annual EPS fell from 9.21 (2017) to 2.98 (2018) at the 2020 four-for-one split,
+  which pushed down the 10-year EPS growth, the P/E and the Rule #1 price. Each per-share
+  figure is now divided by the splits that took effect after its filing date, before any
+  quarter is derived; the split history comes from the Yahoo price history the page
+  already reads. AAPL, NVDA, TSLA and AMZN now match their published split-adjusted EPS,
+  and a note on the page lists the splits applied. Cached price history from before this
+  fix is refetched once, because it did not keep the splits.
+- **The Fundamentals page showed the day's change 100 times too large** (+34.6% for a
+  +0.35% day). Yahoo's `regularMarketChangePercent` is in percent points and was read as a
+  fraction. The change is now calculated from the price and the previous close.
+- **Refresh on the Fundamentals page reloaded the terminal chart behind it.** It re-sent
+  the ticker the terminal already had, which re-ran the price, indicator and signal
+  callbacks; Refresh took 13 to 60 seconds. The ticker is now sent only when it differs,
+  and Refresh takes about 4 seconds.
 - **The Backtest tab was showing three metrics wrong.** `create_backtest_results` returned
   drawdown and win rate as fractions while the tab formatted and thresholded them as
   percents: a 6.7% drawdown rendered as `-0.07%` and its badge read **CONTROLLED** for

@@ -134,7 +134,8 @@ def _patch_prices() -> None:
 
 
 def _patch_fundamentals() -> None:
-    rebind("lib.fundamentals", "fetch_fundamentals", lambda ticker, years=None: snapshot.load_fundamentals(ticker))
+    # **_ swallows force / use_cache: the snapshot has no cache to refresh.
+    rebind("lib.fundamentals", "fetch_fundamentals", lambda ticker, years=None, **_: snapshot.load_fundamentals(ticker))
 
 
 def _patch_symbols() -> None:

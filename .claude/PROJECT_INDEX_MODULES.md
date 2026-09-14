@@ -13,7 +13,9 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 |------|--------------|
 | [lib/data_processing.py](../lib/data_processing.py) | `fetch_data(ticker, start, end)`, `get_all_tickers()`, `validate_symbol()`. **No metrics** — those moved to `lib/metrics/` |
 | [lib/config_loader.py](../lib/config_loader.py) | `load_config()` → reads `config/strategy_config.yaml` |
-| [lib/fundamentals.py](../lib/fundamentals.py) | `fetch_fundamentals()`, `build_fundamentals_result()` — SEC + yfinance financials |
+| [lib/fundamentals.py](../lib/fundamentals.py) | `fetch_fundamentals(force=, use_cache=)`, `build_fundamentals_result()` — orchestration, yfinance side, calculations |
+| [lib/fundamentals_sec.py](../lib/fundamentals_sec.py) | `load_company_facts()`, `sec_statements(period=)` — SEC XBRL annual + quarterly (derived Q4) |
+| [lib/fundamentals_cache.py](../lib/fundamentals_cache.py) | `read_through()`, tiers `FILINGS` / `QUOTE` / `SYMBOLS` — refresh policy, `state/fundamentals/` |
 | [lib/utils.py](../lib/utils.py) | `export_priceaction_to_excel()`, `get_user_input()`, `TradingStrategyInput` |
 | [lib/seeds.py](../lib/seeds.py) | Deterministic RNG seed helpers |
 | [lib/ticker_universe.py](../lib/ticker_universe.py) | Loads `config/tickers_universe.csv` — symbol lookup, sector / asset-class facets |
@@ -84,7 +86,12 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 ### Live / Paper Trading
 | File | Key Functions |
 |------|--------------|
-| [lib/live/runner.py](../lib/live/runner.py) | `PaperRunner`, `run_paper_cli()`, `status_cli()`, `kill_cli()` |
+| [lib/live/runner.py](../lib/live/runner.py) | `PaperRunner` (bars + heartbeat), `run_paper_cli()`, `status_cli()`, `kill_cli()` |
+| [lib/live/connection.py](../lib/live/connection.py) | `ReconnectPolicy` backoff, `RestartWindow` (IB Gateway daily restart) |
+| [lib/live/alerts.py](../lib/live/alerts.py) | `Alert`, `send_alert()` / `notify()` → `SFA_ALERT_WEBHOOK` |
+| [lib/live/execution.py](../lib/live/execution.py) | `LiveOrderModel` (order keys from `live_params`, engine prices, tick rounding), `unsupported_live_params()` |
+| [lib/live/working_orders.py](../lib/live/working_orders.py) | `WorkingOrders`: place / settle / ioc + expiry cancel / replace resting orders |
+| [lib/live/stop_request.py](../lib/live/stop_request.py) | `sfa kill` ↔ runner stop request / result files |
 | [lib/live/broker.py](../lib/live/broker.py) | `Broker` protocol, `MockBroker`, `IBBroker` |
 | [lib/live/guards.py](../lib/live/guards.py) | `evaluate()` — daily loss, position size, broker disconnect guards |
 
@@ -252,7 +259,7 @@ The Execution Type explainer modal (`execution-learn-modal`) is emitted by `back
 | Chart (Lightweight Charts) | `test_chart_payload`, `test_chart_meta`, `test_chart_assets`, `test_chart_regime_panes` |
 | Execution explainer | `test_execution_sim`, `test_execution_view` |
 | Flow Scanner | `test_flow_scanner_json`, `test_flow_view`, `test_chain_source`, `test_flow_refresh` |
-| Fundamentals | `test_fundamentals`, `test_fundamentals_explainability`, `test_fundamentals_formula_rendering` |
+| Fundamentals | `test_fundamentals`, `test_fundamentals_sec_quarterly`, `test_fundamentals_cache`, `test_fundamentals_explainability`, `test_fundamentals_formula_rendering` |
 | Data | `test_data_processing`, `test_ticker_universe`, `test_timeframes` |
 | Metrics | `test_metrics` — formula values, unit/sign contract, ledger-sourced trade stats. `test_metrics_benchmark` — alpha vs excess return, PSR/DSR, leaderboard deflation |
 | Sessions | `test_sessions` — boundary inference, session-anchored resampling, overnight gap fills |

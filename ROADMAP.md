@@ -191,10 +191,10 @@ outside the tests calls `backtest_portfolio` yet.
 - [x] 7.3 Analyst targets with conditional styling <!-- size: S -->
 - [x] 7.4 Discounted cash flow analysis — [lib/dcf.py](lib/dcf.py) <!-- size: M -->
 - [x] 7.5 Metric explainability: detailed tooltips, dependency chips, formula breakdowns <!-- size: M -->
-- [ ] 7.6 Quarterly statements from XBRL — quarterly data is yfinance-only <!-- size: M -->
+- [x] 7.6 Quarterly statements from XBRL — read from the same company-facts file as the annual ones, so a U.S. filer now shows up to 40 quarters instead of Yahoo's last five. Q4 and cash-flow quarters are filed only as year-to-date totals and are derived by subtraction; checked against Yahoo on AAPL, MSFT and NVDA, every overlapping quarter within 0.5%. Yahoo quarters stay in use when SEC has under a year of them (XOM) — [lib/fundamentals_sec.py](lib/fundamentals_sec.py) <!-- size: M -->
 - [ ] 7.7 First-class non-US coverage (currently fallback quality) <!-- size: L -->
 - [ ] 7.8 Peer / sector comparison alongside the single-ticker card <!-- size: L -->
-- [ ] 7.9 An explicit cache and refresh policy for fundamentals fetches <!-- size: S -->
+- [x] 7.9 An explicit cache and refresh policy for fundamentals fetches — every input on disk under `state/fundamentals/`: filings and price history fresh for 24 h, the Yahoo quote for 15 min, the SEC ticker map for 7 days. **Refresh** refetches everything, a failed refetch serves the last good copy and says so, and a warm page load drops from ~5 s to ~0.2 s — [lib/fundamentals_cache.py](lib/fundamentals_cache.py) <!-- size: S -->
 
 ## 8. 🤖 Research CLI & Paper Trading
 
@@ -205,18 +205,24 @@ outside the tests calls `backtest_portfolio` yet.
 - [x] 8.5 SQLite store for trials, walk-forward windows, promotions, fills and runner state — [lib/store/](lib/store/) <!-- size: L -->
 - [x] 8.6 Broker protocol with Mock and IB implementations — [lib/live/broker.py](lib/live/broker.py) <!-- size: L -->
 - [x] 8.7 Four live guards — daily loss, position size, broker disconnect, clock drift — [lib/live/guards.py](lib/live/guards.py) <!-- size: M -->
-- [x] 8.8 Paper runner with PID-file lifecycle, `sfa status` and `sfa kill --flatten` <!-- size: L -->
+- [x] 8.8 Paper runner with PID-file lifecycle, `sfa status` and `sfa kill --flatten`. Until 2026-09-14 `--flatten` was refused and `sfa kill` was a hard terminate on Windows. It is now a stop request the runner answers: cancel, close the position, disconnect, report — [lib/live/stop_request.py](lib/live/stop_request.py) <!-- size: L -->
 - [x] 8.9 `--mode live` refused unconditionally; the IB broker rejects the live port <!-- size: S -->
 - [ ] 8.10 Decide whether live mode is ever unlocked, and what evidence would justify it — today it is a hard code-level refusal <!-- size: M -->
-- [ ] 8.11 Limit orders in the live path — `Order` carries `limit_price` but only `MKT` is sent. **Unblocked by 3.7**: the backtest side now models limit, stop and stop-limit orders with a stated fill and priority model ([lib/orders.py](lib/orders.py)), so the live path has a semantics to match rather than invent <!-- size: M -->
+- [x] 8.11 Limit, stop and stop-limit orders in the live path, read from the same `live_params` keys the optimizer sweeps and `sfa promote` writes. Prices come from the engine's own `signal_order_prices`, rounded to the tick. Orders rest at IB (LMT / STP / STP LMT, GTC / DAY) without blocking the bar loop. The runner enforces `ioc` and `order_expiry_bars`, as in the backtest, and a new signal replaces the working order on its side. The mock broker fills with `lib/orders.py`'s model. `sfa run` now **refuses** `live_params` the runner cannot honour (exits, sizing, signal gating), which it used to ignore silently — [lib/live/execution.py](lib/live/execution.py), [lib/live/working_orders.py](lib/live/working_orders.py) <!-- size: M -->
 - [ ] 8.12 Multi-symbol / multi-strategy runner — one strategy and one ticker per process <!-- size: L -->
-- [ ] 8.13 Reconnect and resume across the IB Gateway daily restart <!-- size: M -->
-- [ ] 8.14 Alerting when a guard trips (the runner exits silently apart from the state row) <!-- size: S -->
+- [x] 8.13 Reconnect and resume across the IB Gateway daily restart. A heartbeat checks the connection and the guards whether or not bars arrive (before, a dead connection sent no bars, so `broker_disconnected` could never fire), reconnects with backoff, and re-subscribes to bars. A drop inside `ib.daily_restart` does not trip the guard; one that outlasts the window still does — [lib/live/connection.py](lib/live/connection.py) <!-- size: M -->
+- [x] 8.14 Alerting when a guard trips, an order is refused, or the runner crashes — one POST to `SFA_ALERT_WEBHOOK` (ntfy, Slack, Discord), never allowed to block the shutdown — [lib/live/alerts.py](lib/live/alerts.py) <!-- size: S -->
+- [ ] 8.15 Paper runs on different rules from research — found 2026-09-14 while building 8.11. `sfa run` refuses the explicit `live_params` it cannot honour, but these gaps remain even when no such key is set:
+  - **Bar size.** Signals are recomputed on IB's 5-second bars; bundles are researched on daily bars (the CLI default), and a bundle has no interval field. This also means `order_expiry_bars` and `day` count 5-second bars live.
+  - **Signal gating.** The bundle-level `signal_logic` / `signal_window` are ignored; nine bundles set `signal_logic: and`, and the runner trades them as OR on the last bar.
+  - **Exits and sizing.** When a key is absent the backtest applies its own defaults: a 5% trailing stop, `position_scaling` 0.25, `consecutive_signal_mode: scale_in`. The runner has no stop and trades a fixed 10 shares.
+
+  Until this closes, a paper track record says little about the backtest behind it. It is also the evidence 8.10 would lean on <!-- size: L -->
 
 ## 9. 🧪 Docs, Testing & Infra
 
 - [x] 9.1 60+ test files covering engine, signals, optimisation, walk-forward, promotion gate, runner safety, dashboard startup and routing, chart payload, symbol search, fundamentals and flow — [lib/tests/](lib/tests/) <!-- size: XL -->
-- [x] 9.2 Ruff and mypy configured in `pyproject.toml`, wrapped in `just lint` / `just fmt` / `just mypy` <!-- size: M -->
+- [x] 9.2 Ruff and mypy configured in `pyproject.toml` <!-- size: M -->
 - [x] 9.3 Architecture and usage docs — [docs/ui-architecture.md](docs/ui-architecture.md), [docs/backtest-toolbar-guide.md](docs/backtest-toolbar-guide.md), [docs/optimizer-panel-guide.md](docs/optimizer-panel-guide.md) (EN + IT) <!-- size: L -->
 - [x] 9.4 Agent context tiering — [.claude/PROJECT_INDEX.md](.claude/PROJECT_INDEX.md), scoped `.cursor/rules/`, [AGENTS.md](AGENTS.md), [RESEARCH.md](RESEARCH.md) <!-- size: M -->
 - [x] 9.5 Deployment tooling — `deploy.ps1` with rollback, nginx vhost, TLS and Windows service scripts under [scripts/](scripts/) <!-- size: L -->

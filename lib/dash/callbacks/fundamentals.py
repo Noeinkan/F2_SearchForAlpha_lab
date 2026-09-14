@@ -68,6 +68,32 @@ __all__ = [
 ]
 
 
+def _load_status(payload: dict) -> str:
+    """Status line: when it loaded, and whether any of it is a cached or stale copy."""
+    status = f"LOADED {payload['as_of']}"
+    cache_info = payload.get('cache') or {}
+    if cache_info.get('stale'):
+        return f"{status} · REFETCH FAILED, SHOWING CACHED COPY"
+    cached = cache_info.get('cached') or []
+    if cached:
+        everything = len(cached) == len(cache_info.get('sources') or [])
+        return f"{status} · {'FROM CACHE' if everything else 'PARTLY FROM CACHE'}"
+    return status
+
+
+def _global_ticker_update(trigger_id: str, symbol: str, current: str | None):
+    """Keep the global symbol aligned with the fundamentals URL / refresh.
+
+    Only when it differs: Dash fires every dependent callback on a write, even
+    of the value already there, so re-sending the same ticker reloaded the
+    terminal's prices, indicators and signals behind the page -- Refresh took
+    13 to 60 s for a fetch of about 1.5 s.
+    """
+    if trigger_id not in {'app-url', 'route-ticker-store', 'refresh-fundamentals-button'}:
+        return no_update
+    return symbol if symbol != current else no_update
+
+
 def register_fundamentals_callbacks(app) -> None:
     @app.callback(
         Output('fundamentals-period-store', 'data'),
@@ -141,19 +167,14 @@ def register_fundamentals_callbacks(app) -> None:
             return None, 'Invalid ticker', 'ERROR: ticker is required', no_update
 
         try:
-            payload = fetch_fundamentals(symbol)
+            # Navigation reads the fundamentals cache; Refresh refetches every input.
+            payload = fetch_fundamentals(symbol, force=trigger_id == 'refresh-fundamentals-button')
         except Exception as exc:
             logger.exception("Error loading fundamentals for %s", symbol)
             return None, f'{symbol} fundamentals', f'ERROR: {exc}', no_update
 
         title = f"{payload['company_name']} ({payload['ticker']})"
-        # Keep the global symbol aligned with the fundamentals URL / refresh.
-        update_global_ticker = symbol if trigger_id in {
-            'app-url',
-            'route-ticker-store',
-            'refresh-fundamentals-button',
-        } else no_update
-        return payload, title, f"LOADED {payload['as_of']}", update_global_ticker
+        return payload, title, _load_status(payload), _global_ticker_update(trigger_id, symbol, ticker)
 
     @app.callback(
         Output('fundamentals-content', 'children'),

@@ -169,7 +169,9 @@ def freeze_fundamentals(symbols: list[str], snapshot_day: date, out_dir: Path) -
                 continue
             current["symbol"] = symbol
             try:
-                payload = fundamentals.fetch_fundamentals(symbol)
+                # No cache: a hit would skip the pins, and a write would leave
+                # snapshot-day prices in state/ for the live dashboard to serve.
+                payload = fundamentals.fetch_fundamentals(symbol, use_cache=False)
             except Exception as exc:  # noqa: BLE001 - recorded, not hidden
                 unavailable[symbol] = str(exc)
                 logger.warning("%s: fundamentals unavailable: %s", symbol, exc)

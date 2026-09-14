@@ -5,6 +5,24 @@ ib:
   host: 127.0.0.1
   port: 4002           # paper port; live (4001) is refused at the CLI layer
   client_id: 7
+  # After a dropped connection the runner retries, waiting 2s, 4s, 8s ... up
+  # to 30s between attempts, and re-subscribes to bars once it is back.
+  reconnect:
+    initial_delay_seconds: 2
+    max_delay_seconds: 30
+  # IB Gateway restarts itself once a day. A disconnect inside this window does
+  # not trip the broker_disconnected guard. Copy the time from IB Gateway:
+  # Configure > Settings > Lock and Exit > Auto restart. Remove the section and
+  # every disconnect longer than max_disconnect_seconds stops the runner.
+  daily_restart:
+    time: "23:45"          # 24h clock, in this computer's local time zone
+    window_minutes: 15
+    # timezone: America/New_York   # only if Gateway runs in another time zone
+
+runner:
+  heartbeat_seconds: 5          # connection, guards and sfa kill requests are checked this often, bars or not
+  flatten_timeout_seconds: 30   # sfa kill --flatten waits this long for the closing fill
+  price_tick: 0.01              # limit/stop prices are rounded to this; IB rejects finer prices on US stocks above $1
 
 guards:
   max_daily_loss_pct: 0.02

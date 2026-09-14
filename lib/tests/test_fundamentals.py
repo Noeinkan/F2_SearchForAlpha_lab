@@ -20,6 +20,7 @@ from lib.fundamentals import (
     build_fundamentals_result,
     fetch_fundamentals,
 )
+from lib.fundamentals_cache import FILINGS, CacheRead
 
 
 class TestFundamentalsResult(unittest.TestCase):
@@ -321,12 +322,14 @@ class TestQuarterlyFundamentals(unittest.TestCase):
         quarterly_cashflow = pd.DataFrame([[1.0]], index=["Operating Cash Flow"], columns=pd.to_datetime(["2024-03-31"]))
 
         ticker_obj = MagicMock()
-        with patch("lib.fundamentals._fetch_sec_fundamentals", return_value=(annual_income, annual_balance, annual_cashflow, {})), \
+        no_sec = CacheRead(None, "miss", None, FILINGS)
+        with patch("lib.fundamentals.load_company_facts", return_value=no_sec), \
              patch("lib.fundamentals.yf.Ticker", return_value=ticker_obj), \
              patch("lib.fundamentals._safe_info", return_value={"longName": "Test Corp"}), \
              patch("lib.fundamentals._safe_history", return_value=pd.DataFrame()), \
+             patch("lib.fundamentals._fetch_yfinance_annual", return_value=(annual_income, annual_balance, annual_cashflow)), \
              patch("lib.fundamentals._fetch_yfinance_quarterly", return_value=(quarterly_income, quarterly_balance, quarterly_cashflow)):
-            payload = fetch_fundamentals("TEST")
+            payload = fetch_fundamentals("TEST", use_cache=False)
 
         self.assertIn("annual", payload)
         self.assertIn("quarterly", payload)
@@ -556,8 +559,8 @@ class TestFetchSecFundamentals(unittest.TestCase):
         }
 
     def test_returns_populated_dataframes_when_cik_and_facts_available(self):
-        with patch("lib.fundamentals._sec_cik", return_value="0000012345"), \
-             patch("lib.fundamentals._sec_company_facts", return_value=self._mock_facts()):
+        with patch("lib.fundamentals_sec._sec_cik", return_value="0000012345"), \
+             patch("lib.fundamentals_sec._sec_company_facts", return_value=self._mock_facts()):
             income, balance, cashflow, info = _fetch_sec_fundamentals("ACME")
 
         self.assertFalse(income.empty)
@@ -566,23 +569,23 @@ class TestFetchSecFundamentals(unittest.TestCase):
         self.assertEqual(info["financialCurrency"], "USD")
 
     def test_returns_empty_when_cik_not_found(self):
-        with patch("lib.fundamentals._sec_cik", return_value=None):
+        with patch("lib.fundamentals_sec._sec_cik", return_value=None):
             income, balance, cashflow, info = _fetch_sec_fundamentals("UNKNOWN")
 
         self.assertTrue(income.empty)
         self.assertEqual(info, {})
 
     def test_returns_empty_when_company_facts_unavailable(self):
-        with patch("lib.fundamentals._sec_cik", return_value="0000099999"), \
-             patch("lib.fundamentals._sec_company_facts", return_value=None):
+        with patch("lib.fundamentals_sec._sec_cik", return_value="0000099999"), \
+             patch("lib.fundamentals_sec._sec_company_facts", return_value=None):
             income, balance, cashflow, info = _fetch_sec_fundamentals("FAIL")
 
         self.assertTrue(income.empty)
 
     def test_sec_data_feeds_through_build_fundamentals_result(self):
         """End-to-end: SEC-shaped DataFrames produce a valid dashboard payload."""
-        with patch("lib.fundamentals._sec_cik", return_value="0000012345"), \
-             patch("lib.fundamentals._sec_company_facts", return_value=self._mock_facts()):
+        with patch("lib.fundamentals_sec._sec_cik", return_value="0000012345"), \
+             patch("lib.fundamentals_sec._sec_company_facts", return_value=self._mock_facts()):
             income, balance, cashflow, info = _fetch_sec_fundamentals("ACME")
 
         # build_fundamentals_result must accept SEC-shaped DataFrames
@@ -607,14 +610,14 @@ class TestLivePriceSnapshot(unittest.TestCase):
             "regularMarketPrice": 99.5,
             "previousClose": 98.0,
             "regularMarketChange": 2.0,
-            "regularMarketChangePercent": 0.0204,
+            "regularMarketChangePercent": 2.0408,  # Yahoo sends percent points
             "marketState": "REGULAR",
             "currency": "USD",
         })
         self.assertEqual(snap["last_price"], 100.0)
         self.assertEqual(snap["previous_close"], 98.0)
         self.assertEqual(snap["last_change"], 2.0)
-        self.assertAlmostEqual(snap["last_change_pct"], 0.0204, places=6)
+        self.assertAlmostEqual(snap["last_change_pct"], 2.0 / 98.0, places=6)
         self.assertEqual(snap["market_state"], "REGULAR")
         self.assertEqual(snap["price_currency"], "USD")
 
@@ -625,6 +628,18 @@ class TestLivePriceSnapshot(unittest.TestCase):
         # Change is derived when regularMarketChange is absent.
         self.assertAlmostEqual(snap["last_change"], 1.25, places=6)
         self.assertAlmostEqual(snap["last_change_pct"], 1.25 / 49.0, places=6)
+
+    def test_real_yahoo_quote_gives_a_fraction_not_percent_points(self):
+        # AAPL's info on 2026-09-14: +1.15 on 332.27 is +0.35%, sent as 0.346.
+        snap = _live_price_snapshot({
+            "currentPrice": 333.42, "previousClose": 332.27,
+            "regularMarketChange": 1.1500244, "regularMarketChangePercent": 0.34611142,
+        })
+        self.assertAlmostEqual(snap["last_change_pct"], 0.0034611, places=6)
+
+    def test_percent_points_are_converted_when_no_previous_close(self):
+        snap = _live_price_snapshot({"currentPrice": 10.0, "regularMarketChangePercent": 1.5})
+        self.assertAlmostEqual(snap["last_change_pct"], 0.015, places=9)
 
     def test_returns_none_for_missing_values(self):
         snap = _live_price_snapshot({})

@@ -202,15 +202,25 @@ snapshot itself.
 ## Run it locally
 
 ```bash
-# PowerShell: $env:DEMO_MODE = "true"; $env:DEMO_MAIL_BACKEND = "console"; python -m demo.server
-DEMO_MODE=true DEMO_MAIL_BACKEND=console python -m demo.server   # http://127.0.0.1:8050/ticker/TSLA
+# PowerShell: $env:DEMO_MODE = "true"; python -m demo.server
+DEMO_MODE=true python -m demo.server        # http://127.0.0.1:8050/ticker/TSLA
 ```
 
+**The repo's `.env` is read at start** (`demo/envfile.py`), so the mail lines
+and `DEMO_ADMIN_TOKEN` written there are used: codes really go out from the Neo
+mailbox, and `/admin` opens with that token. A variable set in the terminal
+wins over the same one in `.env`. From a laptop `NEO_SMTP_PORT=465` works; the
+server needs 587. The start-up log says which settings it read and whether the
+mail server accepted the sign-in.
+
+Without a mail account, add `DEMO_MAIL_BACKEND=console`: the sign-in email,
+code included, is printed in the terminal instead of sent. Add
+`DEMO_ACCESS_GATE=false` to skip the gate altogether.
+
 It needs only the packages in `demo/requirements.txt` (a subset of `uv.lock`
-without `ib_async`, plus `waitress`). No network, no secrets.
-`DEMO_MAIL_BACKEND=console` prints the sign-in email, code included, in the
-terminal instead of sending it. Add `DEMO_ADMIN_TOKEN=` followed by 24 or more
-characters to try `/admin`, or `DEMO_ACCESS_GATE=false` to skip the gate.
+without `ib_async`, plus `waitress`). The workspace's own environment has no
+`waitress`; then the demo says so and serves with Flask's development server,
+which it allows on `127.0.0.1` only.
 
 ## Kill switch
 

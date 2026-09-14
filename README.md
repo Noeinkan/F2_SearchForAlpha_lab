@@ -145,12 +145,26 @@ ib:
   host: 127.0.0.1
   port: 4002
   client_id: 7
+  reconnect:
+    initial_delay_seconds: 2    # retry after 2s, 4s, 8s ... once the connection drops
+    max_delay_seconds: 30
+  daily_restart:
+    time: "23:45"               # IB Gateway's Auto restart time, this computer's local time
+    window_minutes: 15          # a drop inside this window does not stop the runner
+runner:
+  heartbeat_seconds: 5          # connection, guards and kill requests checked this often
+  flatten_timeout_seconds: 30   # how long sfa kill --flatten waits for the closing fill
 guards:
   max_daily_loss_pct: 0.02      # stop if daily realised PnL drops 2%
   max_position_pct: 0.25        # stop if any position exceeds 25% of equity
   max_disconnect_seconds: 60    # stop if Gateway is unreachable for 60s
   max_clock_drift_seconds: 5    # stop if local vs IB clock drift exceeds 5s
 ```
+
+**Match `daily_restart.time` to your Gateway.** In IB Gateway open
+*Configure → Settings → Lock and Exit* and copy the *Auto restart* time.
+If the two differ, the nightly restart lasts longer than
+`max_disconnect_seconds`, trips `broker_disconnected`, and stops the runner.
 
 ### Run, observe, kill
 
@@ -164,25 +178,121 @@ sfa status --json                                 # for piping / agents
 
 # Stop a running runner cleanly
 sfa kill --name mean_reversion_rsi_bb
+
+# Stop it and close its position with a market order first
+sfa kill --name mean_reversion_rsi_bb --flatten
 ```
 
 The runner writes a PID file to `state/running/<name>.pid` and persists
-every fill to the `sfa_fills` table in `state/optuna.db`. Each bar updates
-`sfa_runner_state` with the latest equity, positions, and the result of
-every guard. If any guard trips, the runner cancels open orders for that
-symbol, disconnects, and exits.
+every fill to the `sfa_fills` table in `state/optuna.db`. Each bar, and
+every `heartbeat_seconds` even when no bars arrive, updates
+`sfa_runner_state` with the latest equity, positions, connection state and
+the result of every guard. If any guard trips, the runner cancels open
+orders for that symbol, disconnects, sends an alert (below), and exits.
+
+When the connection drops, the runner keeps retrying and re-subscribes to
+bars once it is back, so it survives the Gateway's nightly restart. It
+still stops if the outage lasts longer than `max_disconnect_seconds` outside
+the restart window. That is what happens on the weekly re-login, when
+Gateway waits for you to sign in again.
+
+`sfa kill` does not signal the process. It leaves a stop request that the
+runner picks up at its next heartbeat. The runner then cancels its orders,
+closes the position when `--flatten` is given, disconnects, and reports
+what it did. A runner that does not answer is terminated instead. The
+output then says `"graceful": false`, and the command exits with code 3 if
+`--flatten` was asked, because nothing was closed. `--flatten` closes only
+the strategy's own ticker; the order-size caps do not block it.
+
+### Order types
+
+The runner uses the order model the strategy was backtested with. It reads
+the same keys from the strategy's `live_params` in
+`config/strategy_config.yaml`, which is where `sfa promote` writes them:
+
+```yaml
+live_params:
+  rsi_window: 14
+  order_type: limit          # market (default), limit, stop, stop_limit
+  limit_offset_pct: 0.002    # a fraction: 0.002 rests a buy limit 0.2% under the signal bar's close
+  time_in_force: day         # gtc (default), day, ioc
+  order_expiry_bars: 12      # cancel after 12 bars unfilled; 0 = never
+```
+
+A market order is sent and waited for. Any other type is placed at IB and
+left working while the runner carries on. `sfa status` lists it under
+`working_orders`. Each later bar either finds it filled or counts one more
+bar against it. `ioc` gives it exactly one bar, as in the backtest. A new
+signal on the same side cancels the old order and places a fresh one.
+Every order's end is recorded in `sfa_fills`: `filled`, `partially_filled`,
+`cancelled` or `rejected`. A rejection also sends an alert.
+
+**A bar here is IB's 5-second bar**, not the daily bar most strategies
+are researched on. `order_expiry_bars: 12` therefore means one minute
+live. ROADMAP 8.15 tracks this and the other differences between paper
+and research.
+
+`sfa run` refuses to start when `live_params` asks for something the
+runner does not do:
+
+- exits: `trailing_stop_loss`, `take_profit`, `use_brackets`, `trailing_stop_orders`;
+- sizing: `position_size_pct`, `position_scaling`, `amount_per_buy`;
+- signal gating: `signal_logic: and`, `signal_window`, `min_holding_period`,
+  `cooldown_bars`.
+
+The error (`unsupported_live_params`) names each key. Remove those keys or
+set them to off (`0`), then run again.
+
+### Alerts on your phone
+
+Set `SFA_ALERT_WEBHOOK` and the runner posts to it when a guard trips,
+when the broker refuses an order, and when the runner crashes. Without it,
+these events are only logged. The quickest setup uses
+[ntfy](https://ntfy.sh), which is free and needs no account:
+
+1. On your phone, install the **ntfy** app, tap **+**, and subscribe to a
+   topic with a hard-to-guess name, e.g. `sfa-alerts-7f3k9q`. Anyone who
+   knows the name can read the topic, so do not use a guessable one.
+2. On the computer that runs `sfa run`, set the variable in the terminal
+   you will start the runner from:
+   ```powershell
+   $env:SFA_ALERT_WEBHOOK = "https://ntfy.sh/sfa-alerts-7f3k9q"
+   ```
+   To keep it for every new terminal, run
+   `setx SFA_ALERT_WEBHOOK "https://ntfy.sh/sfa-alerts-7f3k9q"` once, then
+   open a new terminal. `setx` does not change the one you are in.
+3. Check that it reaches the phone before relying on it:
+   ```powershell
+   Invoke-RestMethod -Method Post -Uri $env:SFA_ALERT_WEBHOOK -Body "sfa test"
+   ```
+   If no notification arrives, check the topic name in the app matches
+   the URL exactly.
+
+Slack and Discord webhooks work too. Paste the URL from Slack's
+*Incoming Webhooks* app, or from Discord's *Server Settings → Integrations
+→ Webhooks → New Webhook → Copy Webhook URL*. The payload carries both
+fields those services display (`text` and `content`). ntfy.sh URLs get a plain-text
+message instead; set `SFA_ALERT_FORMAT=text` for a self-hosted ntfy.
 
 ### Trouble shooting
 
 - `unknown_strategy`: run `sfa list` to see what bundles exist; names must
   match exactly.
 - `live_mode_disabled`: you passed `--mode live`. Use `--mode paper`.
+- `unsupported_live_params`: see *Order types* above; the `keys` field
+  lists what to remove.
+- An order sits in `working_orders` far longer than expected: check its
+  `time_in_force`. A `gtc` limit far from the market can wait for days.
+  `sfa kill` cancels it.
 - Connection hangs: confirm Gateway is on port 4002, signed in (not
   logged out for daily reset), and that no other client is using
   `client_id: 7`.
+- `pid_mismatch` from `sfa kill`: the PID in `state/running/<name>.pid`
+  belongs to a process that is not this runner, so nothing was terminated.
+  Check the process yourself before deleting the file.
 - Want to force a stuck runner off without IB calls: delete the
   `state/running/<name>.pid` file and the matching row in
-  `sfa_runner_state`, or run `just clean-state`.
+  `sfa_runner_state`.
 
 ## 📊 Programmatic Usage
 

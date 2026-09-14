@@ -2,12 +2,15 @@
 Fundamental analysis helpers for the dashboard.
 
 Fetch strategy:
-  1. SEC EDGAR XBRL (free, no API key, long annual history) — primary for U.S. stocks.
-  2. yfinance — fallback for non-U.S. / tickers not found in EDGAR, and supplemental
-     source for analyst estimates (forwardPE, earningsGrowth, consensus price targets)
-     not available in filings.
-  3. yfinance quarterly statements — quarterly financials + charts only (no SEC
-     quarterly XBRL in this release). Valuation and Big Five remain annual.
+  1. SEC EDGAR XBRL (free, no API key, long history) — primary for U.S. stocks,
+     annual and quarterly, from one company-facts file (``lib/fundamentals_sec.py``).
+  2. yfinance — fallback statements for non-U.S. / tickers not found in EDGAR,
+     and supplemental source for analyst estimates (forwardPE, earningsGrowth,
+     consensus price targets) not available in filings. Valuation and Big Five
+     stay annual.
+
+Every remote input is read through ``lib/fundamentals_cache.py``, which holds
+the refresh policy.
 
 The calculation layer (build_fundamentals_result) stays pure so it can be tested
 with fixed fixtures independent of any remote source.
@@ -15,79 +18,45 @@ with fixed fixtures independent of any remote source.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date, datetime
-import json
 import logging
 import math
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import date, datetime
+from fractions import Fraction
 from typing import Any, Literal
-
-PeriodKey = int | tuple[int, int]
-PeriodMode = Literal["annual", "quarterly"]
-import urllib.error
-import urllib.request
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from lib import fundamentals_cache as cache
 from lib.config_loader import get_config
 from lib.dcf import DcfAssumptions, build_dcf, dcf_rows
 
+# The concept maps and parsers are re-exported: callers and tests imported them
+# from here before the SEC code moved out.
+from lib.fundamentals_sec import (  # noqa: F401
+    _BALANCE_CONCEPTS,
+    _CASHFLOW_CONCEPTS,
+    _INCOME_CONCEPTS,
+    _build_sec_statement,
+    _fetch_sec_fundamentals,
+    _sec_annual_series,
+    load_company_facts,
+    sec_statements,
+)
+
+PeriodKey = int | tuple[int, int]
+PeriodMode = Literal["annual", "quarterly"]
+
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# SEC EDGAR configuration
-# ---------------------------------------------------------------------------
-# EDGAR requires a descriptive User-Agent identifying the application and a
-# contact address.  See https://www.sec.gov/os/accessing-edgar-data
-_SEC_UA = "SearchForAlpha/research contact@searchforalpha.local"
-_SEC_HEADERS = {"User-Agent": _SEC_UA, "Accept": "application/json"}
-
-# In-process cache: populated once per process from company_tickers.json
-_CIK_CACHE: dict[str, str] = {}
-
-# XBRL concept maps: (display_label, [concepts_in_priority_order], negate)
-# Labels match exactly what _series_from_statement() looks up so the
-# downstream calculation layer needs no changes.
-_INCOME_CONCEPTS: list[tuple[str, list[str], bool]] = [
-    ("Total Revenue", ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
-                       "SalesRevenueNet", "SalesRevenueGoodsNet",
-                       "RevenueFromContractWithCustomerIncludingAssessedTax"], False),
-    ("Operating Income", ["OperatingIncomeLoss"], False),
-    ("Pretax Income", ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
-                       "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"], False),
-    ("Tax Provision", ["IncomeTaxExpenseBenefit"], False),
-    ("Net Income", ["NetIncomeLoss", "ProfitLoss",
-                    "NetIncomeLossAvailableToCommonStockholdersBasic"], False),
-    ("Diluted EPS", ["EarningsPerShareDiluted"], False),
-    ("Basic EPS", ["EarningsPerShareBasic"], False),
-]
-_BALANCE_CONCEPTS: list[tuple[str, list[str], bool]] = [
-    ("Stockholders Equity", ["StockholdersEquity",
-                              "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"], False),
-    ("Current Debt", ["LongTermDebtCurrent", "ShortTermBorrowings", "DebtCurrent"], False),
-    ("Long Term Debt", ["LongTermDebtNoncurrent", "LongTermDebt"], False),
-    ("Total Debt", ["DebtAndCapitalLeaseObligations", "LongTermDebtAndCapitalLeaseObligations"], False),
-    ("Cash And Cash Equivalents", ["CashAndCashEquivalentsAtCarryingValue",
-                                    "CashCashEquivalentsAndShortTermInvestments"], False),
-]
-# Capital Expenditure: SEC reports positive payments; negate to match yfinance
-# sign convention (negative = cash outflow) so FCF = OCF + CAPEX works correctly.
-# ProductiveAssets is the tag many filers (e.g. NVDA) use instead of PPE.
-_CASHFLOW_CONCEPTS: list[tuple[str, list[str], bool]] = [
-    ("Operating Cash Flow", ["NetCashProvidedByUsedInOperatingActivities"], False),
-    ("Capital Expenditure", [
-        "PaymentsToAcquirePropertyPlantAndEquipment",
-        "PaymentsToAcquireProductiveAssets",
-        "PaymentsForCapitalImprovements",
-    ], True),
-]
 
 DEFAULT_MARR = 0.15
 DEFAULT_MARGIN_OF_SAFETY = 0.50
 DEFAULT_FUNDAMENTAL_YEARS = 11
 DEFAULT_FUNDAMENTAL_QUARTERS = 40
+MIN_SEC_QUARTERS = 4
 # Rule #1: use the most conservative positive growth estimate; cap compounding rate.
 MAX_ESTIMATED_GROWTH = 0.50
 
@@ -150,30 +119,49 @@ def _dcf_assumptions_from_config() -> DcfAssumptions:
     return DcfAssumptions(**kwargs)
 
 
-def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> dict[str, Any]:
+def fetch_fundamentals(
+    ticker: str,
+    years: int = DEFAULT_FUNDAMENTAL_YEARS,
+    *,
+    force: bool = False,
+    use_cache: bool = True,
+) -> dict[str, Any]:
     """Fetch annual and quarterly fundamentals and return dashboard-ready data.
 
-    Primary source: SEC EDGAR XBRL (free, long annual history for U.S. stocks).
-    Fallback: yfinance statements (used when the ticker is not found in EDGAR).
+    Primary source: SEC EDGAR XBRL (free, long annual and quarterly history for
+    U.S. stocks). Fallback: yfinance statements, per period, when EDGAR has none.
     yfinance is always queried for supplemental analyst estimates (forwardPE,
     earningsGrowth, trailingEps, consensus price targets) which are not available
     in SEC filings.
-    Quarterly financials are sourced from yfinance only.
     Price history for period-end closes is always sourced from yfinance.
+
+    Inputs are read through the fundamentals cache (``lib/fundamentals_cache.py``).
+    ``force`` refetches all of them, as the page's Refresh button does.
+    ``use_cache=False`` reads and writes no cache at all -- the demo freezer
+    uses it so the prices it pins never land in ``state/``.
     """
     symbol = (ticker or "").strip().upper()
     if not symbol:
         raise ValueError("Ticker is required")
 
-    # --- primary: SEC EDGAR ---------------------------------------------------
-    sec_income, sec_balance, sec_cashflow, sec_info = _fetch_sec_fundamentals(symbol)
-    sec_available = not sec_income.empty
+    reads: dict[str, cache.CacheRead[Any]] = {}
+
+    def read(label: str, kind: str, loader: Callable[[], Any], tier: cache.Tier = cache.FILINGS, **codec: Any) -> Any:
+        result = cache.read_through(kind, symbol, tier, loader, force=force, enabled=use_cache, **codec)
+        reads[label] = result
+        return result.value
+
+    # --- primary: SEC EDGAR, one company-facts file for both periods ----------
+    facts_read = load_company_facts(symbol, force=force, use_cache=use_cache)
+    reads["SEC filings"] = facts_read
+    sec_income, sec_balance, sec_cashflow, sec_info = sec_statements(facts_read.value, symbol, period="annual")
+    q_income, q_balance, q_cashflow, _ = sec_statements(facts_read.value, symbol, period="quarterly")
 
     # --- supplemental: yfinance (info + prices) --------------------------------
     ticker_obj = yf.Ticker(symbol)
-    yf_info = _safe_info(ticker_obj)
+    yf_info = read("Yahoo quote", "yf-info", lambda: _safe_info(ticker_obj), cache.QUOTE, encode=_json_safe) or {}
 
-    if sec_available:
+    if not sec_income.empty:
         income = sec_income
         balance = sec_balance
         cashflow = sec_cashflow
@@ -184,16 +172,44 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
         logger.info("Using SEC EDGAR data for %s", symbol)
     else:
         logger.info("SEC data unavailable for %s — falling back to yfinance statements", symbol)
-        income = _safe_statement(ticker_obj, ("income_stmt", "financials"))
-        balance = _safe_statement(ticker_obj, ("balance_sheet", "balancesheet"))
-        cashflow = _safe_statement(ticker_obj, ("cashflow",))
+        income, balance, cashflow = read(
+            "Yahoo annual statements", "yf-annual", lambda: _fetch_yfinance_annual(ticker_obj),
+            encode=_encode_statements, decode=_decode_statements,
+        )
         info = yf_info
         data_source = "yfinance (fallback)"
 
-    q_income, q_balance, q_cashflow = _fetch_yfinance_quarterly(ticker_obj)
+    # SEC quarters only alongside SEC years, and only a year or more of them: a
+    # filer whose tags the annual path cannot read (XOM) yields a stray quarter
+    # or two, where Yahoo has the last seven.
+    if data_source == "SEC EDGAR" and len(q_income.columns) >= MIN_SEC_QUARTERS:
+        quarterly_source = "SEC EDGAR"
+    else:
+        q_income, q_balance, q_cashflow = read(
+            "Yahoo quarterly statements", "yf-quarterly", lambda: _fetch_yfinance_quarterly(ticker_obj),
+            encode=_encode_statements, decode=_decode_statements,
+        )
+        quarterly_source = "yfinance"
+    if "SEC EDGAR" not in (data_source, quarterly_source):
+        # Checked but unused (XOM): listing it would contradict the source note.
+        reads.pop("SEC filings", None)
 
     first_year = _first_statement_year(income, balance, cashflow)
-    history = _safe_history(ticker_obj, first_year)
+    history = read(
+        "Yahoo price history", "yf-history", lambda: _safe_history(ticker_obj, first_year),
+        encode=lambda frame: _encode_history(frame, first_year),
+        decode=lambda raw: _decode_history(raw, first_year),
+    )
+    splits = _stock_splits(history)
+    if splits:
+        # SEC per-share figures go on the split-adjusted basis of the prices.
+        # Which periods exist does not depend on it, so the choices above stand.
+        if data_source == "SEC EDGAR":
+            income, balance, cashflow, _ = sec_statements(facts_read.value, symbol, period="annual", splits=splits)
+        if quarterly_source == "SEC EDGAR":
+            q_income, q_balance, q_cashflow, _ = sec_statements(
+                facts_read.value, symbol, period="quarterly", splits=splits,
+            )
     yearly_prices = _yearly_close_prices(history)
     quarterly_prices = _quarterly_close_prices(history)
 
@@ -252,6 +268,7 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
             "as_of": annual_result["as_of"],
         }
 
+    cache_summary = cache.describe_reads(reads)
     payload: dict[str, Any] = {
         "ticker": annual_result["ticker"],
         "company_name": annual_result["company_name"],
@@ -270,10 +287,104 @@ def fetch_fundamentals(ticker: str, years: int = DEFAULT_FUNDAMENTAL_YEARS) -> d
         "dcf_sensitivity": annual_result["dcf_sensitivity"],
         "analyst_targets": annual_result["analyst_targets"],
         "chart_series": annual_result["chart_series"],
-        "quality_notes": [f"Data source: {data_source}"] + annual_result["quality_notes"],
+        "quality_notes": (
+            _source_notes(data_source, quarterly_source, cache_summary, splits) + annual_result["quality_notes"]
+        ),
+        "cache": cache_summary,
     }
     payload.update(_live_price_snapshot(info, currency=payload.get("currency")))
     return payload
+
+
+def _source_notes(
+    data_source: str,
+    quarterly_source: str,
+    cache_summary: dict[str, Any],
+    splits: tuple[tuple[pd.Timestamp, float], ...] = (),
+) -> list[str]:
+    notes = [f"Data source: {data_source}; quarterly: {quarterly_source}"]
+    if quarterly_source == "SEC EDGAR":
+        notes.append(
+            "Quarterly: fourth quarters and cash-flow quarters are derived from year-to-date "
+            "totals; a derived Q4 EPS is approximate"
+        )
+    if splits and "SEC EDGAR" in (data_source, quarterly_source):
+        listed = ", ".join(f"{_split_label(ratio)} on {effective:%Y-%m-%d}" for effective, ratio in splits)
+        notes.append(f"EPS filed before a stock split is restated to today's share count ({listed})")
+    cached = [item for item in cache_summary["sources"] if item["state"] == "cache"]
+    if cached:
+        listed = ", ".join(
+            f"{item['source']} {item['age']} old (refetched after {item['fresh_for']})" for item in cached
+        )
+        notes.append(f"From cache: {listed}. Refresh refetches everything now")
+    for item in cache_summary["sources"]:
+        if item["state"] == "stale":
+            notes.append(f"Refetch of {item['source']} failed; showing the copy fetched {item['fetched_at']}")
+    return notes
+
+
+# ---------------------------------------------------------------------------
+# Cache codecs
+# ---------------------------------------------------------------------------
+
+def _json_safe(value: Any) -> Any:
+    """Yahoo's info dict, with non-finite floats as ``None`` so it can be written as JSON."""
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (float, np.floating)):
+        return float(value) if math.isfinite(value) else None
+    if isinstance(value, np.integer):
+        return int(value)
+    return value
+
+
+_STATEMENT_NAMES = ("income", "balance", "cashflow")
+
+
+def _encode_statements(statements: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]) -> dict[str, Any]:
+    return {name: cache.encode_frame(frame) for name, frame in zip(_STATEMENT_NAMES, statements, strict=True)}
+
+
+def _decode_statements(raw: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    income, balance, cashflow = (cache.decode_frame(raw[name]) for name in _STATEMENT_NAMES)
+    return income, balance, cashflow
+
+
+# Closes give the period-end prices, splits the per-share restatement; the
+# rest of Yahoo's history is never read. Bump the shape when this changes.
+_HISTORY_COLUMNS = ("Close", "Stock Splits")
+_HISTORY_SHAPE = 2
+
+
+def _encode_history(history: pd.DataFrame, first_year: int | None) -> dict[str, Any]:
+    kept = history[[column for column in _HISTORY_COLUMNS if column in history]]
+    return {"shape": _HISTORY_SHAPE, "first_year": first_year, "frame": cache.encode_frame(kept)}
+
+
+def _decode_history(raw: dict[str, Any], first_year: int | None) -> pd.DataFrame | None:
+    # A new earliest statement year needs a longer history than the one cached.
+    if raw.get("shape") != _HISTORY_SHAPE or raw.get("first_year") != first_year:
+        return None
+    return cache.decode_frame(raw["frame"])
+
+
+def _stock_splits(history: pd.DataFrame | None) -> tuple[tuple[pd.Timestamp, float], ...]:
+    """Split history from Yahoo's price history: (effective date, ratio), oldest first."""
+    if history is None or history.empty or "Stock Splits" not in history:
+        return ()
+    ratios = pd.to_numeric(history["Stock Splits"], errors="coerce")
+    ratios = ratios[(ratios > 0) & (ratios != 1)]
+    dates = pd.DatetimeIndex(ratios.index)
+    if dates.tz is not None:
+        dates = dates.tz_localize(None)  # the exchange's calendar date
+    return tuple(sorted((date.normalize(), float(ratio)) for date, ratio in zip(dates, ratios, strict=True)))
+
+
+def _split_label(ratio: float) -> str:
+    fraction = Fraction(ratio).limit_denominator(1000)
+    return f"{fraction.numerator}-for-{fraction.denominator}"
 
 
 def _live_price_snapshot(info: dict[str, Any], *, currency: str | None = None) -> dict[str, Any]:
@@ -289,10 +400,13 @@ def _live_price_snapshot(info: dict[str, Any], *, currency: str | None = None) -
     if not _is_number(previous_close):
         previous_close = _number(info.get("regularMarketPreviousClose"))
     change = _number(info.get("regularMarketChange"))
-    change_pct = _number(info.get("regularMarketChangePercent"))
     if not _is_number(change) and _is_number(last_price) and _is_number(previous_close):
         change = last_price - previous_close
-    if not _is_number(change_pct) and _is_number(change) and _is_number(previous_close) and previous_close:
+    # A fraction, like every rate in the payload. Derived whenever possible:
+    # Yahoo's regularMarketChangePercent is in percent points (0.35 = 0.35%),
+    # and reading it as a fraction put +34.6% on screen for a +0.35% day.
+    change_pct = _number(info.get("regularMarketChangePercent")) / 100
+    if _is_number(change) and _is_number(previous_close) and previous_close:
         change_pct = change / previous_close
     raw_state = info.get("marketState")
     market_state = str(raw_state).strip().upper() if raw_state else None
@@ -406,233 +520,16 @@ def build_fundamentals_result(
     )
 
 
-# ---------------------------------------------------------------------------
-# SEC EDGAR fetch helpers
-# ---------------------------------------------------------------------------
-
-def _sec_cik(ticker: str) -> str | None:
-    """Resolve a ticker symbol to a zero-padded 10-digit CIK string.
-
-    On the first call the full ticker→CIK mapping is fetched from EDGAR and
-    cached in-process.  Subsequent calls are local dictionary lookups.
-    """
-    if not _CIK_CACHE:
-        url = "https://www.sec.gov/files/company_tickers.json"
-        try:
-            req = urllib.request.Request(url, headers=_SEC_HEADERS)
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data: dict = json.loads(resp.read())
-            _CIK_CACHE.update(
-                {entry["ticker"].upper(): str(entry["cik_str"]).zfill(10)
-                 for entry in data.values()}
-            )
-        except Exception as exc:
-            logger.warning("SEC ticker\u2192CIK mapping unavailable: %s", exc)
-            return None
-    return _CIK_CACHE.get(ticker)
-
-
-def _sec_company_facts(cik: str) -> dict[str, Any] | None:
-    """Fetch the full XBRL company-facts JSON for the given CIK."""
-    url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
-    try:
-        req = urllib.request.Request(url, headers=_SEC_HEADERS)
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read())
-    except Exception as exc:
-        logger.warning("SEC company facts unavailable for CIK %s: %s", cik, exc)
-        return None
-
-
-def _sec_period_year(entry: dict[str, Any]) -> int | None:
-    """Calendar year of the fact's period end (fallback: filing fiscal year).
-
-    10-Ks embed up to three annual columns that share the same filing ``fy``.
-    Keying by period end avoids comparative years overwriting the current year.
-    """
-    end = entry.get("end")
-    if isinstance(end, str) and len(end) >= 4:
-        try:
-            year = int(end[:4])
-            if 1900 <= year <= 2100:
-                return year
-        except ValueError:
-            pass
-    fy = entry.get("fy")
-    return fy if isinstance(fy, int) else None
-
-
-def _sec_is_annual_fact(entry: dict[str, Any]) -> bool:
-    """True when the XBRL fact looks like a full-year 10-K amount."""
-    if entry.get("form") not in ("10-K", "10-K/A"):
-        return False
-    fp = entry.get("fp")
-    if fp is not None and fp != "FY":
-        return False
-    start, end = entry.get("start"), entry.get("end")
-    if isinstance(start, str) and isinstance(end, str):
-        try:
-            days = (pd.Timestamp(end) - pd.Timestamp(start)).days
-        except (TypeError, ValueError):
-            return True
-        # Reject YTD / stub periods that occasionally appear on 10-K forms.
-        if days < 300:
-            return False
-    return True
-
-
-def _sec_annual_series(usgaap: dict[str, Any], concept: str) -> dict[int, float]:
-    """Return a period-year→value dict from SEC XBRL for one concept."""
-    values, _ends = _sec_annual_series_and_ends(usgaap, concept)
-    return values
-
-
-def _sec_annual_series_and_ends(
-    usgaap: dict[str, Any], concept: str
-) -> tuple[dict[int, float], dict[int, pd.Timestamp]]:
-    """Return values and period-end timestamps for one SEC XBRL concept.
-
-    Only annual 10-K / 10-K/A facts are included.  Facts are keyed by the
-    calendar year of ``end`` (not filing ``fy``), so comparative columns in a
-    single 10-K do not clobber each other.  When the same period appears in
-    multiple filings, the latest-filed value wins.
-    """
-    concept_data = usgaap.get(concept)
-    if not concept_data:
-        return {}, {}
-    for unit in ("USD", "USD/shares", "shares"):
-        entries = concept_data.get("units", {}).get(unit)
-        if not entries:
-            continue
-        # period_year → (filed_date, val, period_end)
-        best: dict[int, tuple[str, float, pd.Timestamp]] = {}
-        for entry in entries:
-            if not _sec_is_annual_fact(entry):
-                continue
-            period_year = _sec_period_year(entry)
-            if period_year is None:
-                continue
-            val = entry.get("val")
-            if val is None:
-                continue
-            filed = entry.get("filed", "")
-            end_raw = entry.get("end")
-            try:
-                end_ts = pd.Timestamp(end_raw) if end_raw else _default_period_end(period_year)
-            except (TypeError, ValueError):
-                end_ts = _default_period_end(period_year)
-            end_ts = _naive_timestamp(end_ts)
-            if period_year not in best or filed > best[period_year][0]:
-                best[period_year] = (filed, float(val), end_ts)
-        if best:
-            values = {year: val for year, (_, val, _) in best.items()}
-            ends = {year: end for year, (_, _, end) in best.items()}
-            return values, ends
-    return {}, {}
-
-
-def _build_sec_statement(
-    concepts: list[tuple[str, list[str], bool]],
-    usgaap: dict[str, Any],
-) -> pd.DataFrame:
-    """Build a statement DataFrame from SEC XBRL concept definitions.
-
-    Returns a DataFrame with row labels matching the names that
-    _series_from_statement() already looks up and integer year columns,
-    identical in shape to a cleaned yfinance statement.  Period-end dates are
-    stored on ``df.attrs['period_ends']`` so incomplete fiscal years can be
-    filtered before they become table columns.
-    """
-    rows: dict[str, dict[int, float]] = {}
-    period_ends: dict[int, pd.Timestamp] = {}
-    for label, concept_names, negate in concepts:
-        series, ends = _best_sec_series(usgaap, concept_names)
-        if series:
-            rows[label] = {fy: -val if negate else val for fy, val in series.items()}
-            for year, end in ends.items():
-                prev = period_ends.get(year)
-                if prev is None or end > prev:
-                    period_ends[year] = end
-
-    if not rows:
-        return pd.DataFrame()
-
-    all_years = sorted({fy for s in rows.values() for fy in s})
-    df = pd.DataFrame(
-        {label: [series.get(yr, np.nan) for yr in all_years]
-         for label, series in rows.items()},
-        index=all_years,
-    ).T
-    df.columns = pd.Index(all_years)
-    df.attrs["period_ends"] = {
-        year: period_ends[year]
-        for year in all_years
-        if year in period_ends
-    }
-    return df
-
-
-def _best_sec_series(
-    usgaap: dict[str, Any], concept_names: list[str]
-) -> tuple[dict[int, float], dict[int, pd.Timestamp]]:
-    """Pick the alternate XBRL concept with the best recent coverage.
-
-    Filers rename tags over time (PPE vs ProductiveAssets).  The first
-    non-empty concept is not enough — a single ancient year would mask a
-    complete modern series.
-    """
-    best: dict[int, float] = {}
-    best_ends: dict[int, pd.Timestamp] = {}
-    best_score = (-1, -1)  # (max_year, count)
-    for concept in concept_names:
-        series, ends = _sec_annual_series_and_ends(usgaap, concept)
-        if not series:
-            continue
-        score = (max(series), len(series))
-        if score > best_score:
-            best_score = score
-            best = series
-            best_ends = ends
-    return best, best_ends
-
-
-def _fetch_sec_fundamentals(
-    ticker: str,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    """Fetch annual income, balance, and cashflow statements from SEC EDGAR XBRL.
-
-    Returns empty DataFrames and an empty dict if the ticker cannot be resolved
-    or EDGAR is unreachable, so the caller can transparently fall back.
-    """
-    _empty: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]] = (
-        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
-    )
-
-    cik = _sec_cik(ticker)
-    if not cik:
-        return _empty
-
-    facts = _sec_company_facts(cik)
-    if not facts:
-        return _empty
-
-    usgaap = facts.get("facts", {}).get("us-gaap", {})
-    if not usgaap:
-        return _empty
-
-    income = _build_sec_statement(_INCOME_CONCEPTS, usgaap)
-    balance = _build_sec_statement(_BALANCE_CONCEPTS, usgaap)
-    cashflow = _build_sec_statement(_CASHFLOW_CONCEPTS, usgaap)
-
-    sec_info: dict[str, Any] = {
-        "longName": facts.get("entityName", ticker),
-        "financialCurrency": "USD",
-    }
-    return income, balance, cashflow, sec_info
+def _fetch_yfinance_annual(ticker_obj: Any) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Fetch annual statements from yfinance, for symbols EDGAR does not cover."""
+    income = _safe_statement(ticker_obj, ("income_stmt", "financials"))
+    balance = _safe_statement(ticker_obj, ("balance_sheet", "balancesheet"))
+    cashflow = _safe_statement(ticker_obj, ("cashflow",))
+    return income, balance, cashflow
 
 
 def _fetch_yfinance_quarterly(ticker_obj: Any) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Fetch quarterly statements from yfinance (no SEC quarterly XBRL in this release)."""
+    """Fetch quarterly statements from yfinance, for symbols without SEC 10-Q facts."""
     income = _safe_statement(
         ticker_obj,
         ("quarterly_income_stmt", "quarterly_financials", "quarterly_incomestmt"),
@@ -720,7 +617,9 @@ def _clean_statement(statement: pd.DataFrame | None, *, period: PeriodMode = "an
         if isinstance(column, tuple) and len(column) == 2:
             key = (int(column[0]), int(column[1]))
             converted_columns[column] = key
-            discovered_ends.setdefault(key, _default_period_end(key, mode="quarterly"))
+            # A calendar-quarter guess must not override the filed period end.
+            if key not in inherited_ends:
+                discovered_ends.setdefault(key, _default_period_end(key, mode="quarterly"))
             continue
         if isinstance(column, (int, np.integer)):
             if period == "quarterly":

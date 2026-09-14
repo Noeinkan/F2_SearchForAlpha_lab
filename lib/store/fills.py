@@ -1,4 +1,11 @@
-"""Sqlite persistence for paper trading fills."""
+"""Sqlite persistence for paper trading fills.
+
+One row per order, keyed by its client order id. ``status`` moves from
+``intent`` (written before the broker is called) to ``filled``, or for a resting
+order through ``working`` to ``filled``, ``partially_filled`` (cancelled after
+some shares traded; ``quantity`` is then what traded), ``cancelled`` or
+``rejected``.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +16,6 @@ from typing import Any
 
 from lib.live.broker import Fill
 from lib.store import trials as trials_store
-
 
 _FILLS_SCHEMA_BASE = """
 CREATE TABLE IF NOT EXISTS sfa_fills (
@@ -40,6 +46,10 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE sfa_fills ADD COLUMN status TEXT NOT NULL DEFAULT 'submitted'"
         )
+    if "order_type" not in cols:
+        conn.execute("ALTER TABLE sfa_fills ADD COLUMN order_type TEXT NOT NULL DEFAULT 'market'")
+    if "broker_order_id" not in cols:
+        conn.execute("ALTER TABLE sfa_fills ADD COLUMN broker_order_id TEXT")
     # Partial unique index requires both columns to exist before creation.
     conn.executescript(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_sfa_fills_coid"
@@ -54,6 +64,7 @@ def record_intent(
     qty: float,
     client_order_id: str,
     db_path: Path | None = None,
+    order_type: str = "market",
 ) -> bool:
     """Insert a pre-order intent row using INSERT OR IGNORE (idempotent).
 
@@ -66,8 +77,8 @@ def record_intent(
             """
             INSERT OR IGNORE INTO sfa_fills (
                 strategy_name, symbol, side, quantity, price, commission,
-                realised_pnl, timestamp, client_order_id, status
-            ) VALUES (?, ?, ?, ?, 0, 0, NULL, ?, ?, 'intent')
+                realised_pnl, timestamp, client_order_id, status, order_type
+            ) VALUES (?, ?, ?, ?, 0, 0, NULL, ?, ?, 'intent', ?)
             """,
             (
                 strategy_name,
@@ -76,9 +87,60 @@ def record_intent(
                 float(qty),
                 now,
                 client_order_id,
+                order_type,
             ),
         )
         return cur.rowcount > 0
+
+
+def mark_working(client_order_id: str, broker_order_id: str, db_path: Path | None = None) -> None:
+    """The broker accepted a resting order and it is waiting in the market."""
+    with trials_store.connect(db_path) as conn:
+        _ensure_table(conn)
+        conn.execute(
+            "UPDATE sfa_fills SET status = 'working', broker_order_id = ?"
+            " WHERE client_order_id = ? AND status = 'intent'",
+            (broker_order_id, client_order_id),
+        )
+
+
+def mark_closed(
+    client_order_id: str,
+    *,
+    status: str,
+    quantity: float | None = None,
+    price: float = 0.0,
+    commission: float = 0.0,
+    realised_pnl: float | None = None,
+    db_path: Path | None = None,
+) -> None:
+    """Record how a resting order ended: filled, partially_filled, cancelled or rejected.
+
+    ``quantity`` replaces the ordered quantity when given — what actually traded.
+    """
+    with trials_store.connect(db_path) as conn:
+        _ensure_table(conn)
+        conn.execute(
+            """
+            UPDATE sfa_fills SET
+                status = ?,
+                quantity = COALESCE(?, quantity),
+                price = ?,
+                commission = ?,
+                realised_pnl = ?,
+                timestamp = ?
+            WHERE client_order_id = ? AND status IN ('intent', 'working')
+            """,
+            (
+                status,
+                None if quantity is None else float(quantity),
+                float(price),
+                float(commission),
+                None if realised_pnl is None else float(realised_pnl),
+                datetime.now(UTC).isoformat(),
+                client_order_id,
+            ),
+        )
 
 
 def mark_filled(

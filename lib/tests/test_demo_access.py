@@ -15,6 +15,7 @@ once more in front of the real app.
 
 from __future__ import annotations
 
+import os
 import re
 import socket
 import sys
@@ -452,6 +453,42 @@ def test_settings_refuse_an_smtp_gate_with_no_server(monkeypatch):
     monkeypatch.setenv("DEMO_BLOCKED_EMAIL_DOMAINS", "Spam.example, junk.example")
     settings = AccessSettings.from_env()
     assert settings.trial_days == 3 and "spam.example" in settings.blocked_domains
+
+
+def test_a_local_run_reads_the_repo_env_file_without_overriding_the_environment(monkeypatch, tmp_path):
+    from demo import envfile
+
+    env = tmp_path / ".env"
+    env.write_text(
+        "﻿# comment\n"
+        "\n"
+        "SFA_TEST_HOST=smtp0001.neo.space\n"
+        "export SFA_TEST_PORT = 465\n"
+        "SFA_TEST_PASS=ab$cd#ef \n"  # a $ stays literal: nothing is expanded here
+        "SFA_TEST_QUOTED='x$y z'\n"
+        'SFA_TEST_DOUBLE="q"\n'
+        "SFA_TEST_SET_ALREADY=from-file\n"
+        "not a setting\n",
+        encoding="utf-8",
+    )
+    names = ["SFA_TEST_HOST", "SFA_TEST_PORT", "SFA_TEST_PASS", "SFA_TEST_QUOTED", "SFA_TEST_DOUBLE"]
+    for name in names:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SFA_TEST_SET_ALREADY", "from-environment")
+
+    loaded = envfile.load(env)
+    try:
+        assert sorted(loaded) == sorted(names)
+        assert os.environ["SFA_TEST_HOST"] == "smtp0001.neo.space"
+        assert os.environ["SFA_TEST_PORT"] == "465"
+        assert os.environ["SFA_TEST_PASS"] == "ab$cd#ef"
+        assert os.environ["SFA_TEST_QUOTED"] == "x$y z"  # the server's quoted form works here too
+        assert os.environ["SFA_TEST_DOUBLE"] == "q"
+        assert os.environ["SFA_TEST_SET_ALREADY"] == "from-environment"
+        assert envfile.load(tmp_path / "missing.env") == []
+    finally:
+        for name in names:
+            os.environ.pop(name, None)
 
 
 def test_smtp_mailer_speaks_implicit_tls_to_neo_as_the_mailbox(monkeypatch):

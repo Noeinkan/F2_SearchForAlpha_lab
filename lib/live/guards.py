@@ -9,9 +9,14 @@ Implemented guards:
     1. daily_loss          : realised PnL today below -max_daily_loss_pct
     2. position_size       : any position market value above max_position_pct
     3. broker_disconnected : seconds since last successful heartbeat exceed
-                             max_disconnect_seconds
+                             max_disconnect_seconds, unless the drop falls in
+                             the IB Gateway daily restart window
+                             (``outage_expected``, see lib.live.connection)
     4. clock_drift         : abs(local now - broker server time) exceeds
                              max_clock_drift_seconds
+
+The runner evaluates them on every bar and on every heartbeat, so a broker that
+stops sending bars cannot keep the guards from running.
 """
 
 from __future__ import annotations
@@ -49,6 +54,7 @@ class RunnerSnapshot:
     last_connected_at: datetime
     server_time: datetime
     local_now: datetime
+    outage_expected: bool = False
 
 
 def daily_loss_guard(snapshot: RunnerSnapshot, config: dict[str, Any]) -> GuardResult:
@@ -83,6 +89,12 @@ def position_size_guard(snapshot: RunnerSnapshot, config: dict[str, Any]) -> Gua
 def broker_disconnected_guard(snapshot: RunnerSnapshot, config: dict[str, Any]) -> GuardResult:
     limit = float(config.get("max_disconnect_seconds", DEFAULTS["max_disconnect_seconds"]))
     elapsed = (snapshot.local_now - snapshot.last_connected_at).total_seconds()
+    if elapsed > limit and snapshot.outage_expected:
+        return GuardResult(
+            False,
+            "broker_disconnected",
+            f"No connection for {elapsed:.1f}s, inside the IB Gateway restart window",
+        )
     if elapsed > limit:
         return GuardResult(
             True,
