@@ -125,13 +125,17 @@ demo is sending a lot of sign-in emails right now".
    NEO_SMTP_HOST=smtp0001.neo.space
    NEO_SMTP_PORT=587
    NEO_SMTP_USER=the-mailbox-address
-   NEO_SMTP_PASS=the-mailbox-password
+   NEO_SMTP_PASS='the-mailbox-password'
    EMAIL_FROM=the-mailbox-address
    DEMO_ADMIN_TOKEN=the-token-from-step-2
    EOF
    chmod 600 /opt/sites/alpha/.env
    ```
 
+   **Keep the single quotes around the password.** Docker Compose reads a `$`
+   in this file as the start of a variable name, so a password containing `$`
+   reaches the demo cut short and Neo answers "535 authentication failed";
+   quoted, it arrives exactly as written.
    *If the Neo password is ever changed, Capsar and the demo both stop sending
    until this file and Capsar's `.env` are updated.*
 4. **Deploy**: commit, push, then `bash deploy-demo.sh` from the repo root.

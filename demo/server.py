@@ -201,10 +201,17 @@ def create_demo_app(settings: DemoSettings | None = None, access_settings=None, 
             access.mailer.check()
             logger.info("demo access: mail server %s:%s reachable, sign-in accepted", s.smtp_host, s.smtp_port)
         except MailError as exc:
+            reason = str(exc)
+            if "535" in reason or "Authentication" in reason:
+                hint = ("Wrong user or password. In the server .env, wrap a password that contains $ in "
+                        "single quotes: Docker Compose reads $ as a variable and cuts the value short.")
+            elif "timed out" in reason.lower() or "Timeout" in reason:
+                hint = "The port is blocked. The Hetzner server blocks outbound 465 and 25: use NEO_SMTP_PORT=587."
+            else:
+                hint = "See the reason above."
             logger.error(
-                "demo access: mail server %s:%s NOT usable (%s); every sign-in code will fail. "
-                "On the Hetzner server outbound 465 is blocked: use NEO_SMTP_PORT=587.",
-                s.smtp_host, s.smtp_port, exc,
+                "demo access: mail server %s:%s NOT usable (%s); every sign-in code will fail. %s",
+                s.smtp_host, s.smtp_port, reason, hint,
             )
 
     if access is not None and access_settings.mail_backend == "smtp":
