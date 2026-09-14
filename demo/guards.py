@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable
+import threading
+from contextlib import contextmanager
+from typing import Any, Callable, Iterator
 
 from dash._utils import to_json
 from dash.exceptions import PreventUpdate
@@ -110,6 +112,15 @@ class DemoGuards:
         self.actions = SlidingWindowLimiter(settings.actions_per_ip_per_minute, 60)
         self.jobs = SlidingWindowLimiter(settings.jobs_per_ip_per_hour, 3600)
         self._last_owner: dict[str, str] = {}
+        # Progress is polled by dcc.Interval. When a poll outlasts the interval,
+        # the renderer fires the next one and *drops the reply to the one in
+        # flight* -- so the reply carrying "completed" can be thrown away, and
+        # every later poll finds a finished run and changes nothing: the page
+        # sits at "Testing 95/100" for good. Polls are therefore serialised per
+        # visitor, and the final reply is kept so a later poll can replay it.
+        self._final_replies: dict[tuple[str, str], str] = {}
+        self._poll_locks: dict[str, threading.Lock] = {}
+        self._poll_locks_guard = threading.Lock()
         self.clamps: dict[str, int] = {
             "max-combos-input.value": settings.max_combos,
             "max-signals-slider.value": settings.max_signals_per_side,
@@ -219,12 +230,35 @@ class DemoGuards:
             )
         return None
 
+    @contextmanager
+    def _serialised(self, key: str) -> Iterator[None]:
+        with self._poll_locks_guard:
+            lock = self._poll_locks.setdefault(key, threading.Lock())
+        if not lock.acquire(timeout=60):
+            raise PreventUpdate  # the poll ahead of this one is still working; the next tick retries
+        try:
+            yield
+        finally:
+            lock.release()
+
+    def prune(self) -> None:
+        """Forget replies and locks of visitors whose state has expired."""
+        for key in list(self._final_replies):
+            if self.store.peek(key[1]) is None:
+                self._final_replies.pop(key, None)
+        with self._poll_locks_guard:
+            for key in list(self._poll_locks):
+                sid = key.split(":", 1)[-1]
+                if self.store.peek(sid) is None and not self._poll_locks[key].locked():
+                    del self._poll_locks[key]
+
     def _combos_start(self, func: Callable, names: list[str]) -> Callable:
         label_index = names.index("run-optimization-btn.children") if "run-optimization-btn.children" in names else None
 
         def start(*args: Any, **kwargs: Any):
             sid = sessions.current_sid.get() or ""
             state = self.store.get(sid)
+            self._final_replies.pop(("combos", sid), None)  # a new run or a stop: the old reply is void
             label = str(args[label_index] if label_index is not None and label_index < len(args) else "").upper()
             if "STOP" in label or state.optimization_state.get("running"):
                 return func(*args, **kwargs)  # a stop, or a double click the original ignores
@@ -263,15 +297,22 @@ class DemoGuards:
     def _combos_tick(self, func: Callable) -> Callable:
         def tick(*args: Any, **kwargs: Any):
             sid = sessions.current_sid.get() or ""
-            self.gate.touch("combos", sid)
-            self.gate.sweep()
-            state = self.store.get(sid)
-            notice = state.optimization_state.get("demo_notice")
-            raw = func(*args, **kwargs)
-            if notice and not state.optimization_state.get("running"):
-                state.optimization_state.pop("demo_notice", None)
-                return _with_notice(raw, notice)
-            return raw
+            with self._serialised(f"combos:{sid}"):
+                self.gate.touch("combos", sid)
+                self.gate.sweep()
+                state = self.store.get(sid)
+                if not state.optimization_state.get("running"):
+                    replay = self._final_replies.get(("combos", sid))
+                    if replay is not None:
+                        return replay
+                notice = state.optimization_state.get("demo_notice")
+                raw = func(*args, **kwargs)
+                if not state.optimization_state.get("running"):
+                    if notice:
+                        state.optimization_state.pop("demo_notice", None)
+                        raw = _with_notice(raw, notice)
+                    self._final_replies[("combos", sid)] = raw
+                return raw
 
         return tick
 
@@ -302,6 +343,7 @@ class DemoGuards:
             if refusal:
                 return wall_response(refusal)
 
+            self._final_replies.pop((kind, sid), None)
             raw = func(*args, **kwargs)
             if job.get("running"):
                 self._last_owner[kind] = sid
@@ -321,12 +363,23 @@ class DemoGuards:
             owner = self._last_owner.get(kind)
             if owner and owner != sid:
                 raise PreventUpdate  # not yours to read, or to consume
-            self.gate.sweep()
-            raw = func(*args, **kwargs)
             job, _ = self._singleton(kind)
-            if not job.get("running") and job.get("result") is None and job.get("error") is None:
-                self._last_owner.pop(kind, None)
-            return raw
+            with self._serialised(f"{kind}:{sid}"):
+                self.gate.sweep()
+                try:
+                    raw = func(*args, **kwargs)
+                except PreventUpdate:
+                    # The original found nothing new. If the result was already
+                    # handed out in a reply the renderer dropped, hand it out again.
+                    replay = self._final_replies.get((kind, sid))
+                    if replay is not None and not job.get("running"):
+                        return replay
+                    raise
+                if not job.get("running") and job.get("result") is None and job.get("error") is None:
+                    # This reply consumed the result: it is the final one.
+                    self._final_replies[(kind, sid)] = raw
+                    self._last_owner.pop(kind, None)
+                return raw
 
         return poll
 

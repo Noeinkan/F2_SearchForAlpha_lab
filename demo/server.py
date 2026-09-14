@@ -145,6 +145,7 @@ def create_demo_app(settings: DemoSettings | None = None):
             try:
                 guards.gate.sweep()
                 store.purge()
+                guards.prune()
             except Exception:  # noqa: BLE001 - the sweeper must outlive a bad tick
                 logger.exception("demo housekeeping failed")
 

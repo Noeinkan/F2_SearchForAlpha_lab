@@ -233,6 +233,41 @@ def test_clamp_rewrites_oversized_and_missing_values_before_the_callback_sees_th
     assert seen["combos"] == 40 and seen["signals"] == 1
 
 
+def test_a_dropped_final_progress_reply_is_replayed_on_the_next_poll():
+    """The renderer drops the reply to a poll still in flight when the next
+    interval tick fires. If that reply was the one saying "completed", the page
+    froze at "Testing 95/100" (seen on the live demo, 14 Sep 2026)."""
+    from demo.guards import DemoGuards
+    from demo.settings import DemoSettings
+
+    class _App:
+        callback_map: dict = {}
+
+    store = SessionStore(max_sessions=5, idle_seconds=60)
+    guards = DemoGuards(_App(), store, DemoSettings())
+    sid = "visitor-" + "r" * 20
+    state = store.get(sid)
+    calls = []
+
+    def original_tick(*_args, **_kwargs):
+        calls.append(1)
+        if state.optimization_state.get("running"):
+            state.update_optimization_state(running=False, completed=True)
+            return '{"response": "completed leaderboard"}'
+        from dash.exceptions import PreventUpdate
+        raise PreventUpdate  # what the real callback does once the run is over
+
+    tick = guards._combos_tick(original_tick)
+    token = current_sid.set(sid)
+    try:
+        state.update_optimization_state(running=True)
+        assert tick() == '{"response": "completed leaderboard"}'  # this reply is lost in transit
+        assert tick() == '{"response": "completed leaderboard"}'  # replayed, not a silent no-op
+        assert len(calls) == 1
+    finally:
+        current_sid.reset(token)
+
+
 def test_settings_read_every_limit_from_the_environment(monkeypatch):
     from demo.settings import DemoSettings
 
