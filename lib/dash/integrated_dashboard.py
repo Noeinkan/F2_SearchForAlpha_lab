@@ -189,8 +189,13 @@ def _configure_dev_server(app: dash.Dash, dev_mode: bool) -> list[str] | None:
     return None
 
 
-def run_dashboard(dev_mode: bool = False) -> None:
-    """Run the professional trading dashboard."""
+def create_app() -> dash.Dash:
+    """Build the dashboard — bootstrap session, layout, callbacks, extra routes.
+
+    Serves nothing: ``run_dashboard`` runs it on the Werkzeug dev server, and
+    the public demo (``demo/server.py``) hands ``app.server`` to a WSGI server
+    after installing its snapshot seams and guards.
+    """
     theme = get_theme(DEFAULT_THEME)
 
     logger.info("Bootstrapping default market session (%s)...", "TSLA")
@@ -281,6 +286,13 @@ def run_dashboard(dev_mode: bool = False) -> None:
     for idx, route in enumerate(_shell_routes):
         endpoint = f"sfa_shell_{idx}"
         app.server.add_url_rule(route, endpoint=endpoint, view_func=_serve_dash_shell)
+
+    return app
+
+
+def run_dashboard(dev_mode: bool = False) -> None:
+    """Run the professional trading dashboard."""
+    app = create_app()
 
     # In dev mode the reloader spawns two processes; keep a fixed port to
     # avoid the second process auto-selecting the next free port.

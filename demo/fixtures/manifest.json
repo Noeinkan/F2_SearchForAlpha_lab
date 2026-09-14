@@ -1,0 +1,102 @@
+{
+  "snapshot": "2026-09-11",
+  "capturedAt": "2026-09-14",
+  "tickers": [
+    "TSLA",
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "JPM",
+    "KO",
+    "XOM",
+    "SPY",
+    "QQQ"
+  ],
+  "dailyFrom": "2006-01-01",
+  "intradayDays": 727,
+  "bars": {
+    "TSLA": {
+      "daily": 4076,
+      "hourly": 3466,
+      "from": "2010-06-29",
+      "to": "2026-09-11"
+    },
+    "AAPL": {
+      "daily": 5205,
+      "hourly": 3466,
+      "from": "2006-01-03",
+      "to": "2026-09-11"
+    },
+    "MSFT": {
+      "daily": 5205,
+      "hourly": 3466,
+      "from": "2006-01-03",
+      "to": "2026-09-11"
+    },
+    "NVDA": {
+      "daily": 5205,
+      "hourly": 3466,
+      "from": "2006-01-03",
+      "to": "2026-09-11"
+    },
+    "AMZN": {
+      "daily": 5205,
+      "hourly": 3466,
+      "from": "2006-01-03",
+      "to": "2026-09-11"
+    },
+    "GOOGL": {
+      "daily": 5205,
+      "hourly": 3466,
+      "from": "2006-01-03",
+      "to": "2026-09-11"
+    },
+    "META": {
+      "daily": 3599,
+      "hourly": 3466,
+      "from": "2012-05-18",
+      "to": "2026-09-11"
+    },
+    "JPM": {
+      "daily": 5205,
+      "hourly": 3466,
+      "from": "2006-01-03",
+      "to": "2026-09-11"
+    },
+    "KO": {
+      "daily": 5205,
+      "hourly": 3466,
+      "from": "2006-01-03",
+      "to": "2026-09-11"
+    },
+    "XOM": {
+      "daily": 5205,
+      "hourly": 3466,
+      "from": "2006-01-03",
+      "to": "2026-09-11"
+    },
+    "SPY": {
+      "daily": 5205,
+      "hourly": 3466,
+      "from": "2006-01-03",
+      "to": "2026-09-11"
+    },
+    "QQQ": {
+      "daily": 5205,
+      "hourly": 3466,
+      "from": "2006-01-03",
+      "to": "2026-09-11"
+    }
+  },
+  "fundamentalsUnavailable": {
+    "SPY": "an ETF files no 10-K, so there are no statements to analyse",
+    "QQQ": "an ETF files no 10-K, so there are no statements to analyse"
+  },
+  "sources": {
+    "bars": "Yahoo Finance via yfinance, split- and dividend-adjusted (auto_adjust=True)",
+    "fundamentals": "SEC EDGAR XBRL company facts, with yfinance for analyst estimates and period-end prices"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "slug": "alpha",
+  "domain": "alpha.demos.noeinsolutions.com",
+  "repo": "https://github.com/Noeinkan/F2_SearchForAlpha_lab.git",
+  "ref": "main",
+
+  "type": "node",
+  "buildCommand": "",
+  "outputDir": "",
+  "spa": false,
+
+  "port": 8050,
+  "healthPath": "/healthz",
+  "expectStatus": 200,
+
+  "memLimit": "1536m",
+  "maxBody": "24m",
+  "readTimeout": "120s",
+
+  "notes": "The public demo of SearchForAlpha Lab, not the research workspace. One Python container: waitress serves the Dash app that demo/server.py builds. Type is 'node' only because the pipeline has no Python type; the Dockerfile here is custom and ignores BUILD_COMMAND/START_COMMAND. Reads demo/fixtures/ -- a frozen snapshot of 12 tickers (daily bars from 2006, hourly for two years, SEC/Yahoo fundamentals) committed in the repo -- and never a vendor: demo.sealing refuses outbound sockets and yfinance in-process. The order path is absent: ib_async is not installed, lib/live/ is deleted in the image, and importing it is refused. No sign-up and no secrets; .env stays empty. Stateless: per-visitor dashboard state lives in memory and expires after 30 idle minutes; the only disk writes (Optuna studies) go to a tmpfs. The container is capped at 2 CPUs and 1.5 GB on top of the demo's own run caps and per-IP rate limits (DEMO_* in compose.yml). maxBody is 24m because the Data table round-trips its JSON payload. Kill switch: DEMO_MODE=false in compose.yml, redeploy -- every page 404s and /healthz still answers."
+}

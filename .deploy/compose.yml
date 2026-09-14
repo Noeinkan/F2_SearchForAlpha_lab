@@ -1,0 +1,73 @@
+# alpha — the public demo of SearchForAlpha Lab (Dash on waitress, frozen snapshot).
+# No secrets: the demo needs none. /opt/sites/alpha/.env exists (site-deploy.sh
+# creates it, 0600) but should stay empty.
+services:
+  web:
+    build:
+      # Context is the site directory, not the checkout, so the Dockerfile lives
+      # outside the cloned repo and .dockerignore keeps .env and repo/.git out.
+      context: .
+      dockerfile: Dockerfile
+    image: site-alpha:${SITE_TAG:-latest}
+    container_name: site-alpha-web
+    env_file:
+      - .env
+    environment:
+      # The kill switch. Set it to "false" and redeploy: every page 404s, the
+      # health check still answers, and the dashboard is never imported.
+      DEMO_MODE: "true"
+      DEMO_HOST: 0.0.0.0
+      DEMO_PORT: "8050"
+      DEMO_THREADS: "8"
+      # Limits (defaults in demo/settings.py, repeated here so the running
+      # values are readable without opening the code).
+      DEMO_MAX_SESSIONS: "60"
+      DEMO_SESSION_IDLE_MINUTES: "30"
+      DEMO_MAX_COMBOS: "150"
+      DEMO_MAX_SIGNALS_PER_SIDE: "2"
+      DEMO_MAX_GRID_COMBOS: "250"
+      DEMO_MAX_BAYES_TRIALS: "30"
+      DEMO_OPTIMIZER_WORKERS: "2"
+      DEMO_MAX_CONCURRENT_JOBS: "2"
+      DEMO_JOB_TIMEOUT_SECONDS: "120"
+      DEMO_ACTIONS_PER_IP_PER_MINUTE: "30"
+      DEMO_JOBS_PER_IP_PER_HOUR: "20"
+      SFA_LOG_LEVEL: INFO
+    networks:
+      - edge
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      # Optuna's study database and the trial store (grid search, Bayesian
+      # sweep) live under state/. In RAM, so a restart forgets every run.
+      - /app/state:size=64m,mode=1777
+      - /tmp:size=64m,mode=1777
+      - /home/demo:size=8m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # The hard ceiling under the demo's own caps: whatever visitors do, this
+    # container gets at most two of the server's eight cores and 1.5 GB.
+    cpus: 2.0
+    mem_limit: 1536m
+    pids_limit: 256
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8050/healthz', timeout=5).status==200 else 1)\"",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  edge:
+    external: true

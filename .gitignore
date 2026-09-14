@@ -23,3 +23,6 @@ scratch_*.py
 flow_report.json
 results/
 .shots/
+# Public demo: secrets never live in the deploy config; the freeze script stages here.
+.deploy/.env
+demo/fixtures.staging/
