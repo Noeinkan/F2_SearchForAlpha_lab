@@ -1,0 +1,70 @@
+{
+  "manifestVersion": 1,
+
+  "slug": "f2-search-for-alpha",
+  "repo": "F2_SearchForAlpha_lab",
+  "name": "SearchForAlpha Lab",
+
+  "archetype": "dashboard",
+  "kind": "sandbox",
+  "status": "live",
+
+  "url": "https://alpha.demos.noeinsolutions.com/",
+  "note": "No sign-up. Prices and fundamentals frozen at the 11 Sep 2026 close; no broker, runs capped.",
+  "noteIt": "Nessuna registrazione. Prezzi e fondamentali congelati alla chiusura dell’11 settembre 2026; nessun broker, esecuzioni limitate.",
+
+  "data": {
+    "source": "demo/fixtures/",
+    "snapshot": "2026-09-11",
+    "capturedAt": "2026-09-14",
+    "tickers": ["TSLA", "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "JPM", "KO", "XOM", "SPY", "QQQ"],
+    "bars": "daily from 2006-01-03 (TSLA from 2010-06-29, META from 2012-05-18), 3,466 hourly bars per ticker; split- and dividend-adjusted, Yahoo Finance via yfinance",
+    "fundamentals": "SEC EDGAR XBRL plus Yahoo analyst estimates, as of the snapshot close; none for SPY and QQQ (ETFs); XOM statements from the Yahoo fallback",
+    "sizeMb": 2.4,
+    "refresh": "python -m demo.freeze_demo_data --snapshot YYYY-MM-DD, run lib/tests/test_demo_mode.py, commit demo/fixtures/, update this file and docs/DEMO.md, bash deploy-demo.sh."
+  },
+
+  "killSwitch": {
+    "server": "DEMO_MODE=false",
+    "client": null,
+    "note": "Unset or false and every page 404s (/healthz still answers 200 with demo:false); the dashboard is never imported, so it cannot fall back to the live, unguarded workspace. Default off."
+  },
+
+  "disabled": [
+    "Interactive Brokers connection, paper-trading agent and live mode: ib_async is not installed, lib/live/ is deleted from the image, and importing it is refused in-process",
+    "all outbound network: sockets to non-loopback hosts and yfinance are refused in-process",
+    "the options Flow Scanner (needs a live options chain)",
+    "writes to config/: presets and watchlists stay in the visitor's browser"
+  ],
+
+  "limits": {
+    "ttlMinutes": 30,
+    "perSessionActions": null,
+    "globalDailyActions": null,
+    "perIpPerHour": 20,
+    "perIpPerMinute": 30,
+    "maxCombinationsPerSearch": 150,
+    "maxSignalsPerSide": 2,
+    "maxGridCombinations": 250,
+    "maxBayesianTrials": 30,
+    "optimizerWorkers": 2,
+    "maxConcurrentJobs": 2,
+    "jobTimeoutSeconds": 120,
+    "maxSessions": 60,
+    "container": "2 CPUs, 1.5 GB, read-only root filesystem",
+    "note": "perIpPerHour counts optimiser runs started; perIpPerMinute counts backtests, data loads and fundamentals loads. Oversized requests are clamped server-side; refusals show a notice, never an error page. The date range is the snapshot's."
+  },
+
+  "resets": "Stateless: each visitor's dashboard state lives in memory and is dropped after 30 idle minutes (or when 60 visitors are held); optimiser studies are written to a tmpfs. Nothing a visitor does is visible to the next one, and a restart forgets everything.",
+  "costPerVisit": "none",
+
+  "runLocally": "DEMO_MODE=true python -m demo.server",
+  "shots": [
+    "f2-search-for-alpha.jpg",
+    "f2-search-for-alpha-terminal.jpg",
+    "f2-search-for-alpha-optimizer.jpg",
+    "f2-search-for-alpha-fundamentals.jpg"
+  ],
+  "registeredOnLanding": true,
+  "updatedAt": "2026-09-14"
+}
