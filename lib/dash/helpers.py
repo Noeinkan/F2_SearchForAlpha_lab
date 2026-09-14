@@ -5,6 +5,7 @@ Utility functions for data processing and optimization.
 
 import logging
 import itertools
+import math
 from typing import List, Tuple, Dict, Any, Optional
 
 import pandas as pd
@@ -12,6 +13,7 @@ import pandas as pd
 from lib.dash.state import dashboard_state
 from lib.strategy import run_backtest
 from lib.metrics import compute_metrics, ui_row
+from lib.metrics.deflated import NORMAL_KURTOSIS, deflated_sharpe_ratio, trial_sharpe_std
 from lib.signals.indicators import classify_signal_columns
 
 
@@ -296,21 +298,15 @@ def evaluate_signal_combination(
             context='evaluate_signal_combination',
         )
 
-        # Buy-and-hold benchmark over the same window: the single clearest
-        # "is this strategy actually adding value?" signal.
-        close = result_df['Close']
-        first_close = close.iloc[0]
-        buy_hold_return = ((close.iloc[-1] / first_close) - 1.0) * 100 if first_close else 0.0
-        total_return_pct = m.total_return * 100
-
         # ui_row applies the registry's unit conventions once: percents for the
-        # rate metrics, the conventional minus sign on drawdown.
+        # rate metrics, the conventional minus sign on drawdown. Buy-and-hold,
+        # excess return and Jensen's alpha ride along inside it — the metrics
+        # engine measures them against the benchmark series on the result
+        # frame, so this path no longer recomputes any of the three by hand.
         return {
             'Buy_Signals': ', '.join(buy_combo),
             'Sell_Signals': ', '.join(sell_combo),
             'Final_Value': result_df['Portfolio_Value'].iloc[-1],
-            'BuyHold_Return_%': buy_hold_return,
-            'Alpha_%': total_return_pct - buy_hold_return,
             **ui_row(m),
         }
     except Exception as e:
@@ -349,4 +345,61 @@ def compute_robustness_scores(results_df: pd.DataFrame, min_trades: int) -> pd.D
     df['Robustness_Score'] = (
         (sharpe + 0.25 * calmar) * confidence + 0.001 * total_return
     )
+    return df
+
+
+def apply_deflated_sharpe(results_df: pd.DataFrame, *, num_trials: int | None = None) -> pd.DataFrame:
+    """Re-deflate every leaderboard row against the size of the search.
+
+    ``evaluate_signal_combination`` computes each row on its own and cannot see
+    the sweep it belongs to, so its ``DSR_%`` is a single-trial figure. Only
+    here, with the whole leaderboard in hand, are the two missing inputs known:
+    how many configurations were tried, and how widely their Sharpe ratios
+    scattered. Both come from Bailey & López de Prado's expected maximum — a
+    wide search over a noisy space sets a high bar for the winner.
+
+    Args:
+        results_df: Leaderboard rows in UI units, as ``ui_row`` produces them.
+        num_trials: Configurations tested. Defaults to the row count, which
+            undercounts when some combinations errored out — pass the real
+            total when it is known.
+
+    Returns a copy with ``DSR_%`` and ``Trials`` rewritten. Rows missing the
+    sample columns keep a 0.0 DSR: no sample, no confidence.
+    """
+    df = results_df.copy()
+    if df.empty or 'Sharpe_Ratio' not in df.columns:
+        return df
+
+    sharpes = pd.to_numeric(df['Sharpe_Ratio'], errors='coerce').fillna(0.0)
+    trials = max(1, int(num_trials if num_trials is not None else len(df)))
+    sharpe_std = trial_sharpe_std(sharpes.to_numpy())
+
+    def _num(row: pd.Series, key: str, fallback: float) -> float:
+        """A finite number off a leaderboard row, or *fallback*.
+
+        A row that predates these columns, or one an older persisted run wrote,
+        carries NaN here — and NaN would sail through ``int()`` as an exception
+        and through the formula as a silent zero.
+        """
+        try:
+            value = float(row.get(key))
+        except (TypeError, ValueError):
+            return fallback
+        return value if math.isfinite(value) else fallback
+
+    def _row_dsr(row: pd.Series) -> float:
+        return deflated_sharpe_ratio(
+            _num(row, 'Sharpe_Ratio', 0.0),
+            n_obs=int(_num(row, 'Bars', 0.0)),
+            skew=_num(row, 'Skew', 0.0),
+            kurtosis=_num(row, 'Kurtosis', NORMAL_KURTOSIS),
+            num_trials=trials,
+            sharpe_std=sharpe_std,
+            periods_per_year=int(_num(row, 'Periods_Per_Year', 252.0)),
+        )
+
+    # DSR_% is in UI units — a percent, like every other 'fraction' column.
+    df['DSR_%'] = df.apply(_row_dsr, axis=1).astype(float) * 100.0
+    df['Trials'] = trials
     return df

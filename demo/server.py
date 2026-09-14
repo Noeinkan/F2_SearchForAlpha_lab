@@ -11,6 +11,9 @@ With it on, the order matters and ``create_demo_app`` is the one place it is
 written down: seal the process first, import the dashboard, swap its seams for
 the snapshot, give every visitor their own state, build the app with the
 template session pinned, then wrap its callbacks and add the demo chrome.
+The access gate (``demo.access``) goes in front of everything else: its
+before-request check is registered first, so no page or callback runs for a
+browser without a verified email and a live trial.
 """
 
 from __future__ import annotations
@@ -27,7 +30,8 @@ from demo.settings import DemoSettings
 
 logger = logging.getLogger("demo.server")
 
-ROBOTS = "User-agent: *\nDisallow: /_dash-\nDisallow: /_reload-hash\n"
+ROBOTS = "User-agent: *\nDisallow: /_dash-\nDisallow: /_reload-hash\nDisallow: /access\nDisallow: /admin\n"
+PURGE_EVERY_SECONDS = 3600
 
 
 def create_off_app() -> Flask:
@@ -53,7 +57,7 @@ def _install_request_hooks(server: Flask, store) -> None:
     from demo import sessions
     from demo.guards import client_ip
 
-    exempt = ("/_dash-", "/assets/", "/_favicon", "/healthz", "/robots.txt")
+    exempt = ("/_dash-", "/assets/", "/_favicon", "/healthz", "/robots.txt", "/access", "/admin")
 
     @server.before_request
     def bind_session():
@@ -90,19 +94,32 @@ def _install_request_hooks(server: Flask, store) -> None:
                 sessions.current_sid.set(None)
 
 
-def create_demo_app(settings: DemoSettings | None = None):
-    """Build the guarded demo app. Raises if the snapshot cannot bootstrap."""
+def create_demo_app(settings: DemoSettings | None = None, access_settings=None, mailer=None):
+    """Build the guarded demo app.
+
+    Raises if the snapshot cannot bootstrap, or if the access gate is on but
+    cannot send a sign-in email (a gate nobody can pass is an outage).
+    """
     settings = settings or DemoSettings.from_env()
+
+    from demo.access import AccessSettings, build_access
+
+    access_settings = access_settings or AccessSettings.from_env()
+    problems = access_settings.problems()
+    if problems:
+        raise RuntimeError("the demo access gate is misconfigured: " + "; ".join(problems))
 
     from demo import sealing
 
     sealing.install_broker_seal()
     sealing.install_network_seal()
+    if access_settings.enabled and access_settings.mail_backend == "smtp":
+        sealing.allow_outbound(access_settings.smtp_host, access_settings.smtp_port)
 
     import lib.dash.integrated_dashboard as dashboard
 
     from demo import banner, patches, snapshot
-    from demo.guards import DemoGuards
+    from demo.guards import DemoGuards, client_ip, wall_response
     from demo.sessions import SessionStore
 
     patches.install(settings)
@@ -120,7 +137,22 @@ def create_demo_app(settings: DemoSettings | None = None):
     banner.register_wall_close(app)
     patches.register_lazy_data_display(app)
 
-    guards = DemoGuards(app, store, settings)
+    access = admin = None
+    if access_settings.enabled:
+        access, admin = build_access(access_settings, wall=wall_response, client_ip=client_ip, mailer=mailer)
+        # Before _install_request_hooks: Flask runs before-request hooks in
+        # registration order, and a refused browser must not be handed a
+        # dashboard session first.
+        access.install(app.server)
+        # Installed either way: with no token its routes answer 404, instead of
+        # /admin falling through to the Dash catch-all.
+        admin.install(app.server)
+        if not access_settings.admin_enabled:
+            logger.warning("DEMO_ADMIN_TOKEN is unset or shorter than 24 characters: /admin answers 404")
+    else:
+        logger.warning("DEMO_ACCESS_GATE is off: the demo is open to anyone and usage is not recorded")
+
+    guards = DemoGuards(app, store, settings, access=access)
     guards.install()
     _install_request_hooks(app.server, store)
 
@@ -129,6 +161,7 @@ def create_demo_app(settings: DemoSettings | None = None):
         return jsonify(
             status="ok",
             demo=True,
+            access_gate=access is not None,
             snapshot=snapshot.snapshot_date(),
             tickers=len(snapshot.tickers()),
             sessions=len(store),
@@ -140,12 +173,18 @@ def create_demo_app(settings: DemoSettings | None = None):
         return Response(ROBOTS, mimetype="text/plain")
 
     def housekeeping() -> None:
+        last_purge = 0.0
         while True:
             time.sleep(5)
             try:
                 guards.gate.sweep()
                 store.purge()
                 guards.prune()
+                if access is not None and time.monotonic() - last_purge > PURGE_EVERY_SECONDS:
+                    last_purge = time.monotonic()
+                    removed = access.purge()
+                    if removed:
+                        logger.info("demo access: deleted %d visitors past the retention period", removed)
             except Exception:  # noqa: BLE001 - the sweeper must outlive a bad tick
                 logger.exception("demo housekeeping failed")
 
@@ -153,10 +192,12 @@ def create_demo_app(settings: DemoSettings | None = None):
     app.demo_store = store
     app.demo_guards = guards
     app.demo_settings = settings
+    app.demo_access = access
     logger.info(
-        "SearchForAlpha demo ready: snapshot %s, limits %s",
+        "SearchForAlpha demo ready: snapshot %s, limits %s, access %s",
         snapshot.snapshot_date(),
         settings.as_manifest_limits(),
+        access_settings.as_manifest_limits() if access is not None else "open",
     )
     return app
 

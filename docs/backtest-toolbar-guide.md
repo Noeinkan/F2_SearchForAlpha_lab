@@ -151,6 +151,48 @@ and the app now knows where each trading session ends:
   from the wall clock. Before, one 4h bar on a 24-hour market could contain the tail of
   one session and the start of the next — a candle that never existed.
 
+**Always shown — Order Model.** Everything above decides *when* and *how much*. These four
+decide **how the order is worked** — and until now the answer was always "buy or sell
+everything at the next bar's closing price", which is a real assumption, not a neutral one.
+
+- **Order Type**
+  - **Market (at the close)** — the default, and what every result before this feature
+    assumed. The order fills at the next bar's close, whatever that turns out to be.
+  - **Limit (patient)** — the order rests *below* the close for a buy, *above* it for a
+    sell, and fills only if the market comes to it. You either get a better price or you
+    get nothing. Signals you liked will simply not happen.
+  - **Stop (confirmation)** — the mirror image: the order rests *beyond* the close (above
+    for a buy) and fills only if the move continued. You pay a worse price for evidence
+    that you were right.
+  - **Stop-limit (capped)** — a stop that turns into a limit when it triggers, so you cap
+    how bad a fill you will accept. The catch is real: if the market blows through your
+    limit you do **not** get out, and you are still holding.
+- **Order Offset (%)** — how far from the close the order rests. Bigger is more patient and
+  fills less often. Ignored by Market orders.
+- **Time in Force** — how long a resting order waits: **GTC** until it fills, **DAY** until
+  the session ends (on daily bars that is one bar), **IOC** for exactly one bar. Ignored by
+  Market orders.
+- **Exit Handling**
+  - **Close check** (default) — the trailing stop is compared against each bar's close, as
+    it always has been.
+  - **Trailing stop order** — the stop becomes a *real resting order*. A bar whose low
+    trips it exits at the stop, even if the close recovered. Stricter, and usually a
+    worse-looking result. That is the point.
+  - **OCO bracket** — your entry gets a fixed stop and a fixed profit target, both hung off
+    the average entry price, using the **Trailing Stop** and **Take Profit** distances you
+    already set above. Whichever fills first cancels the other. Unlike the trailing stop,
+    neither leg moves.
+
+> ⚠️ **Changing Order Type or Exit Handling changes your results.** A strategy that looks
+> good on market fills can be worthless on limits — the entries it needed never happened —
+> and a strategy that looks good with the close-only stop can be much worse once a real
+> stop order can be tripped by a bar's low. Compare like with like: change one, re-run,
+> and read the trade count as carefully as the return.
+
+**When a bar touches both bracket legs.** A single candle can reach your stop *and* your
+target, and OHLC data cannot say which came first. The engine does not guess in your
+favour: it fills the **stop**. Any other choice would make every wide bracket look free.
+
 **Always shown — Consecutive Signals:** controls what happens when the same signal fires
 over and over on consecutive bars:
 - **Scale-in** (default) — act every time. *(Repeated buys stack up.)*
@@ -216,6 +258,31 @@ cost you, in both % and dollars. This is the honesty check: a strategy that only
 > warning, not a win — it may have gotten lucky on one or two trades. Look at all six
 > cards together.
 
+### VS BUY & HOLD
+
+Every card above measures the strategy against itself. None of them answers the question
+that decides whether the work was worth doing: *would I have done better just holding the
+symbol?* A second block of four cards does.
+
+| Scorecard | What it means | Good sign |
+|---|---|---|
+| **Excess Return** | Your return minus what buy-and-hold made over exactly the same bars (shown as **B&H**). | Positive. Negative means holding beat you. |
+| **Alpha** | Annualised **Jensen's alpha** — the excess return that survives once your **BETA** to buy-and-hold is priced in. | Positive. |
+| **Info Ratio** | Active return ÷ **TE** (tracking error): reward per unit of deviation from buy-and-hold. | Positive; above 0.5 is respectable. |
+| **PSR** | **Probabilistic Sharpe** — the chance the true Sharpe is above zero, given how long the sample is and how skewed and fat-tailed the returns are. | ≥ 95% (**CREDIBLE**). |
+
+> **Excess Return and Alpha are not the same number, and the gap between them is the
+> point.** A strategy that is simply invested more of the time in a rising market earns
+> plenty of excess return with an alpha near zero: that is leverage on the market's move,
+> not skill. Excess Return says *how much more you made*; Alpha says *whether you earned
+> it*. When Excess Return is large and Alpha is ~0, check **BETA** — you are probably
+> looking at a long-biased ride rather than an edge.
+
+> **PSR is not the same as a big Sharpe.** A Sharpe of 2 over 40 bars, earned by selling
+> tails, can come out below 50%. A Sharpe of 0.9 over ten years comes out near certain.
+> If you arrived here from the Optimizer, its **DSR** column is the stricter cousin: it
+> raises the bar by however many combinations were searched.
+
 ---
 
 ## 5. Example workflows
@@ -246,7 +313,19 @@ cost you, in both % and dollars. This is the honesty check: a strategy that only
 2. Restore realistic costs (FX `0.15`, Slippage `0.05`) and run again.
 3. The difference is your **COST DRAG** — proof of whether the edge survives real-world friction.
 
-### Workflow 5 — "I don't know which signals to pick" → use the Optimizer
+### Workflow 5 — "Would I actually have got those fills?" (order-model reality check)
+1. Run any strategy you like at the defaults — **Order Type: Market**, **Exit Handling:
+   Close check**. Note the **Total Return** and the **Trade Count**.
+2. Change **Order Type** to **Limit** with an **Order Offset** of `0.5%` and re-run. Trade
+   Count will fall: some entries you were counting on never filled at the price you wanted.
+   Judge the strategy on what survived, not on the entries the market never offered.
+3. Put Order Type back to Market and change **Exit Handling** to **Trailing stop order**.
+   The return usually gets *worse*: the close-only check was quietly forgiving every bar
+   that dipped through your stop and recovered before the close.
+4. If a strategy still looks good after both changes, its edge is not an artefact of how
+   the simulator fills orders. If it collapses, you have learned something cheap.
+
+### Workflow 6 — "I don't know which signals to pick" → use the Optimizer
 Switch to the **Optimizer** tab (next to Backtest). Instead of guessing, it **tries many
 signal combinations for you** and ranks them by the metric you choose (Return, Sharpe,
 Drawdown, or Trades). Then click **Apply Best Strategy** to drop the winner straight into
@@ -277,8 +356,15 @@ time from the **Preset** dropdown — no need to re-tick everything.
 ## 8. The 30-second mental model
 
 1. **Load data** (left) → 2. **Pick a style** (Execution Type) → 3. **Tune the knobs**
-(Trade Setup) → 4. **Choose triggers** (Signals) → 5. **Keep it honest** (Costs) →
-6. **RUN** → 7. **Read the six cards** → 8. **Save** if it's good, or tweak and repeat.
+(Trade Setup) → 4. **Decide how orders are worked** (Order Model) → 5. **Choose triggers**
+(Signals) → 6. **Keep it honest** (Costs) → 7. **RUN** → 8. **Read the six cards** →
+9. **Save** if it's good, or tweak and repeat.
+
+Execution Type and Order Type answer different questions and are easy to confuse.
+**Execution Type** is *how much* to trade — Kelly-sized swings, a fixed dollar drip, or a
+constant portfolio weight. **Order Type** is *how the order is worked* once that size is
+decided — at the close, or resting in the market waiting for a price. You set both, and
+they do not overlap.
 
 That loop — *idea → test → measure → refine* — is the entire point of the toolbar. It
 lets you be wrong cheaply and often, so the ideas that survive are the ones worth real

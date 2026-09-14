@@ -13,6 +13,13 @@ from dash.exceptions import PreventUpdate
 from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, FONT_SIZES, get_theme, merge_indicator_settings
 from lib.dash.styles import get_styles
 from lib.dash.state import dashboard_state
+from lib.dash.layout.empty_states import (
+    SIGNALS_NO_DATA_HINT,
+    SIGNALS_NO_DATA_TITLE,
+    SIGNALS_NO_MATCH_HINT,
+    SIGNALS_NO_MATCH_TITLE,
+    empty_state,
+)
 from lib.dash.callbacks.shared import (
     _format_signal_label,
     _build_indicator_settings_panel,
@@ -53,13 +60,7 @@ def register_signal_callbacks(app) -> None:
             }),
         ], className='signals-unified-header')
         if not signal_rows:
-            return [
-                header,
-                html.Div(
-                    "Load data to view signals.",
-                    style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'padding': '6px'}
-                )
-            ]
+            return [header, empty_state(SIGNALS_NO_DATA_TITLE, SIGNALS_NO_DATA_HINT, compact=True)]
 
         search_value = (search_value or '').lower()
         category_values = set(category_values or [])
@@ -125,13 +126,7 @@ def register_signal_callbacks(app) -> None:
             )
 
         if not rows:
-            return [
-                header,
-                html.Div(
-                    "No signals match the filter.",
-                    style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'padding': '6px'}
-                )
-            ]
+            return [header, empty_state(SIGNALS_NO_MATCH_TITLE, SIGNALS_NO_MATCH_HINT, compact=True)]
 
         return [header, *rows]
 

@@ -102,8 +102,11 @@ What you can do from the UI:
   shows how each strategy mode sizes an order, using the real engine on a
   fixed tape.
 - Save and reload UI presets via `config/ui_presets.json`.
-- Inspect the options **Flow Scanner** at `/flow/<ticker>` (or the standalone
-  `/flow_report.html`); regenerate the report with
+- Inspect the options **Flow Scanner** at `/flow/<ticker>`. RESCAN NOW fetches
+  a fresh chain; while the dashboard runs, reports for the tickers in
+  `watchlist.txt` and any ticker you have scanned also refresh on their own
+  every 15 minutes of US market hours. Set `SFA_FLOW_REFRESH_MINUTES` to change
+  the interval, or `0` to turn it off. The scanner also runs standalone:
   `python scripts/flow_scanner.py <ticker>`.
 
 Three themes ship in `THEMES` in `lib/dash/dash_config.py`: the default
@@ -237,7 +240,7 @@ results, buy_combo, sell_combo, best_value, output_file = test_all_combinations(
 
 ## 📈 Strategy Modes
 
-Three engine modes (`strategy_mode`), sized in `_execute_buy` / `_execute_sell`:
+Three engine modes (`strategy_mode`), sized in `size_buy` / `size_sell` (`lib/engine/steps.py`):
 
 | Mode | Description | Sell Signals Required? |
 |------|-------------|------------------------|

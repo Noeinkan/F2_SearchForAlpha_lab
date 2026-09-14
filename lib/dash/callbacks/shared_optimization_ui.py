@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, cast
 
 import pandas as pd
@@ -24,6 +25,7 @@ def _create_best_strategy_highlight(best_row: pd.Series, theme: dict) -> html.Di
     win_rate = best_row.get('Win_Rate_%', 0)
     profit_factor = best_row.get('Profit_Factor', 0)
     trades = best_row.get('Trades', 0)
+    excess = best_row.get('Excess_Return_%', None)
     alpha = best_row.get('Alpha_%', None)
     buy_hold = best_row.get('BuyHold_Return_%', None)
     low_sample = bool(best_row.get('Low_Sample', False))
@@ -86,17 +88,21 @@ def _create_best_strategy_highlight(best_row: pd.Series, theme: dict) -> html.Di
         ], style={'marginTop': '4px'}),
     ]
 
-    if alpha is not None and buy_hold is not None:
-        alpha_color = theme['accent_green'] if alpha >= 0 else theme['accent_red']
-        detail_children.append(
-            html.Div([
-                html.Span("vs Buy & Hold: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['xs']}),
-                html.Span(f"{alpha:+.1f}% alpha", style={
-                    'color': alpha_color, 'fontSize': FONT_SIZES['xs'], 'fontWeight': '600'
-                }),
-                html.Span(f" (B&H {buy_hold:+.1f}%)", style=sub_style),
-            ], style={'marginTop': '4px'})
-        )
+    # Two different numbers, deliberately shown side by side: the headline is
+    # the plain excess over buy-and-hold, and Jensen's alpha is how much of it
+    # survives once the strategy's beta to buy-and-hold is priced in.
+    if excess is not None and buy_hold is not None:
+        excess_color = theme['accent_green'] if excess >= 0 else theme['accent_red']
+        vs_children = [
+            html.Span("vs Buy & Hold: ", style={'color': theme['text_secondary'], 'fontSize': FONT_SIZES['xs']}),
+            html.Span(f"{excess:+.1f}% excess", style={
+                'color': excess_color, 'fontSize': FONT_SIZES['xs'], 'fontWeight': '600'
+            }),
+            html.Span(f" (B&H {buy_hold:+.1f}%)", style=sub_style),
+        ]
+        if alpha is not None:
+            vs_children.append(html.Span(f" | α {alpha:+.1f}%/yr", style=sub_style))
+        detail_children.append(html.Div(vs_children, style={'marginTop': '4px'}))
 
     return html.Div([
         html.Div(title_children, style={'marginBottom': '8px'}),
@@ -108,6 +114,81 @@ def _create_best_strategy_highlight(best_row: pd.Series, theme: dict) -> html.Di
         'marginBottom': '12px',
         'border': f'1px solid {theme["accent_green"]}40'
     })
+
+
+# Deflated Sharpe thresholds, as probabilities. 0.95 is the conventional bar
+# for calling a result significant; below 0.5 the winner is not distinguishable
+# from the best draw of a search over noise.
+DSR_CREDIBLE = 0.95
+DSR_COIN_FLIP = 0.50
+
+
+def build_overfitting_note(
+    best_row: pd.Series | dict | None, total_combos: int, theme: dict
+) -> html.Div:
+    """The overfitting line under a finished combo search — a number, not a mood.
+
+    This used to read "the more you test, the more likely the top result is
+    luck", which is true of every search and therefore says nothing about
+    *this* one. The Deflated Sharpe says how much luck: it is the probability
+    the winner's Sharpe is genuinely positive once the bar has been raised to
+    the Sharpe the best of ``total_combos`` tries would reach on noise alone.
+
+    Falls back to the general warning only when the row carries no DSR — an
+    older persisted run, or a leaderboard that never got a sample to measure.
+    """
+    row = best_row if best_row is not None else {}
+    dsr_pct = row.get('DSR_%') if hasattr(row, 'get') else None
+    sharpe = row.get('Sharpe_Ratio') if hasattr(row, 'get') else None
+    tried = max(1, int(total_combos or 0))
+
+    base_style = {
+        'fontSize': FONT_SIZES['xs'],
+        'marginTop': '4px',
+        'lineHeight': '1.45',
+    }
+
+    try:
+        dsr = float(dsr_pct) / 100.0
+        if not math.isfinite(dsr):
+            raise ValueError("DSR is not a finite probability")
+    except (TypeError, ValueError):
+        return html.Div(
+            f"Ranked from {tried} combos — the more you test, the more likely the "
+            "top result is luck. Re-run the winner on the Backtest tab with real "
+            "costs, and ideally on a different date range.",
+            style={**base_style, 'color': theme['text_secondary'], 'fontStyle': 'italic'},
+        )
+
+    if dsr >= DSR_CREDIBLE:
+        colour = theme['accent_green']
+        verdict = "survives the correction for how many combos were tried."
+    elif dsr >= DSR_COIN_FLIP:
+        colour = theme['accent_orange']
+        verdict = (
+            "better than a coin flip, but short of the 95% bar — confirm it "
+            "out of sample before believing it."
+        )
+    else:
+        colour = theme['accent_red']
+        verdict = (
+            f"below 50%: not distinguishable from the best of {tried} searches "
+            "over noise."
+        )
+
+    sharpe_txt = ""
+    try:
+        sharpe_txt = f" on a Sharpe of {float(sharpe):.2f}"
+    except (TypeError, ValueError):
+        pass
+
+    return html.Div([
+        html.Span(f"Deflated Sharpe {dsr * 100:.0f}%", style={'fontWeight': '600', 'color': colour}),
+        html.Span(
+            f"{sharpe_txt} across {tried} combos — {verdict}",
+            style={'color': theme['text_secondary']},
+        ),
+    ], style=base_style)
 
 
 def _create_price_subtitle(df: pd.DataFrame, theme: dict) -> html.Span:

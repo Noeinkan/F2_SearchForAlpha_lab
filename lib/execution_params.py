@@ -36,6 +36,18 @@ _EXECUTION_KWARG_MAP: dict[str, str] = {
     "use_low_for_stops": "use_low_for_stops",
     "gap_fills": "gap_fills",
     "allow_fractional": "allow_fractional",
+    # Order model (3.7). These change *how* a decision is executed, never which
+    # decision is made, so they belong on this side of the partition with the
+    # rest of the execution layer.
+    "order_type": "order_type",
+    "limit_offset_pct": "limit_offset_pct",
+    "stop_offset_pct": "stop_offset_pct",
+    "time_in_force": "time_in_force",
+    "order_expiry_bars": "order_expiry_bars",
+    "trailing_stop_orders": "trailing_stop_orders",
+    "use_brackets": "use_brackets",
+    "bracket_stop_pct": "bracket_stop_pct",
+    "bracket_target_pct": "bracket_target_pct",
 }
 
 _KELLY_KEYS = frozenset({"kelly_win_rate", "kelly_win_loss_ratio"})
@@ -58,6 +70,45 @@ DEFAULT_EXECUTION_SEARCH_SPACE: dict[str, dict[str, Any]] = {
         "choices": ["scale_in", "edge", "cooldown"],
     },
     "cooldown_bars": {"type": "int", "low": 0, "high": 10, "step": 5},
+    # Order type is swept, but the offsets and the bracket knobs are not: a
+    # search that varies how patient an entry is *and* how wide its bracket is
+    # multiplies the trial count for two knobs that mean nothing to a market
+    # order. Put them in ``execution_search_space`` in strategy_config.yaml
+    # when you actually want to sweep them.
+    "order_type": {
+        "type": "categorical",
+        "choices": ["market", "limit", "stop"],
+    },
+}
+
+# The order-model keys, split out so the UI and the optimizer can label them as
+# one group and so a bundle can merge them without taking the whole grid.
+ORDER_PARAM_KEYS: frozenset[str] = frozenset({
+    "order_type",
+    "limit_offset_pct",
+    "stop_offset_pct",
+    "time_in_force",
+    "order_expiry_bars",
+    "trailing_stop_orders",
+    "use_brackets",
+    "bracket_stop_pct",
+    "bracket_target_pct",
+})
+
+# Optional extras for a run that wants to sweep the order model properly. Not in
+# the default grid — merge it in deliberately.
+ORDER_SEARCH_SPACE: dict[str, dict[str, Any]] = {
+    "order_type": {
+        "type": "categorical",
+        "choices": ["market", "limit", "stop", "stop_limit"],
+    },
+    "limit_offset_pct": {"type": "float", "low": 0.0, "high": 0.01, "step": 0.002},
+    "stop_offset_pct": {"type": "float", "low": 0.0, "high": 0.01, "step": 0.002},
+    "time_in_force": {"type": "categorical", "choices": ["gtc", "day", "ioc"]},
+    "trailing_stop_orders": {"type": "categorical", "choices": [False, True]},
+    "use_brackets": {"type": "categorical", "choices": [False, True]},
+    "bracket_stop_pct": {"type": "float", "low": 0.03, "high": 0.10, "step": 0.01},
+    "bracket_target_pct": {"type": "float", "low": 0.05, "high": 0.20, "step": 0.05},
 }
 
 

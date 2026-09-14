@@ -330,6 +330,25 @@ PRESET_FILE_PATH = os.path.join('config', 'ui_presets.json')
 # source of truth; the browser store is a mirror. See lib/dash/watchlist_storage.py.
 WATCHLIST_FILE_PATH = os.path.join('config', 'watchlists.json')
 
+# Last session's workspace (symbol, interval, window, toolbar), restored on the
+# next start. Under state/ because it is gitignored runtime state, rewritten on
+# every change. SFA_RESTORE_SESSION=0 turns it off. See lib/dash/ui_session_storage.py.
+UI_SESSION_FILE_PATH = os.path.join('state', 'ui_session.json')
+
+# =============================================================================
+# FLOW SCANNER REFRESH
+# =============================================================================
+# run_dashboard() rescans stale Flow Scanner reports (state/flow/<TICKER>.json)
+# in a background thread — lib/dash/flow_refresh.py says which tickers and
+# when. SFA_FLOW_REFRESH_MINUTES=0 switches it off.
+try:
+    FLOW_REFRESH_MINUTES = max(0, int(os.environ.get('SFA_FLOW_REFRESH_MINUTES', '15')))
+except ValueError:
+    FLOW_REFRESH_MINUTES = 15
+# Cap on tickers rescanned per round: each is a subprocess plus a few Yahoo
+# requests, and Yahoo rate-limits hard.
+FLOW_REFRESH_MAX_TICKERS = 20
+
 # =============================================================================
 # SERVER CONFIG
 # =============================================================================
@@ -418,7 +437,8 @@ INDICATOR_DEFINITIONS = [
         'help': 'Shares/contracts traded each bar. Rising volume often confirms moves; a volume MA highlights participation trends.',
         'defaults': {'ma_period': 20},
         'fields': [
-            {'key': 'ma_period', 'label': 'Volume MA Period', 'step': 1, 'min': 1}
+            {'key': 'ma_period', 'label': 'Volume MA Period', 'step': 1, 'min': 1,
+             'help': 'Bars averaged for the volume baseline. Longer = a steadier "normal volume" line, so fewer bars look unusual.'}
         ],
     },
     {
@@ -427,9 +447,12 @@ INDICATOR_DEFINITIONS = [
         'help': 'Relative Strength Index (0–100) — momentum oscillator. High readings suggest overbought; low suggest oversold.',
         'defaults': {'period': 14, 'overbought': 70, 'oversold': 30},
         'fields': [
-            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
-            {'key': 'overbought', 'label': 'Overbought', 'step': 0.1},
-            {'key': 'oversold', 'label': 'Oversold', 'step': 0.1},
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1,
+             'help': 'Bars of gain/loss averaged into RSI. Shorter reacts faster and hits the extremes more often; longer is smoother and rarer.'},
+            {'key': 'overbought', 'label': 'Overbought', 'step': 0.1,
+             'help': 'RSI level above which RSI_Overbought_Sell fires. Raising it (e.g. 80) demands a stronger run-up, so you get fewer sell signals.'},
+            {'key': 'oversold', 'label': 'Oversold', 'step': 0.1,
+             'help': 'RSI level below which RSI_Oversold_Buy fires. Lowering it (e.g. 20) demands a deeper dip, so you get fewer buy signals.'},
         ],
     },
     {
@@ -443,10 +466,14 @@ INDICATOR_DEFINITIONS = [
             'double_bottom_threshold': 0.02,
         },
         'fields': [
-            {'key': 'window', 'label': 'Window', 'step': 1, 'min': 1},
-            {'key': 'window_dev', 'label': 'Std Dev', 'step': 0.1, 'min': 0.1},
-            {'key': 'squeeze_threshold', 'label': 'Squeeze Threshold', 'step': 0.01, 'min': 0},
-            {'key': 'double_bottom_threshold', 'label': 'Double Top/Bottom Threshold', 'step': 0.001, 'min': 0},
+            {'key': 'window', 'label': 'Window', 'step': 1, 'min': 1,
+             'help': 'Bars in the moving average the bands are drawn around, and in the standard deviation that sets their width.'},
+            {'key': 'window_dev', 'label': 'Std Dev', 'step': 0.1, 'min': 0.1,
+             'help': 'How many standard deviations out each band sits. Wider (e.g. 3) means price touches the bands less often, so fewer signals.'},
+            {'key': 'squeeze_threshold', 'label': 'Squeeze Threshold', 'step': 0.01, 'min': 0,
+             'help': 'Band width, relative to price, below which the bands count as squeezed. Lower = only the very tightest ranges qualify.'},
+            {'key': 'double_bottom_threshold', 'label': 'Double Top/Bottom Threshold', 'step': 0.001, 'min': 0,
+             'help': 'How close two lows (or highs) must be to count as a double bottom/top. 0.02 = within 2%.'},
         ],
     },
     {
@@ -455,10 +482,14 @@ INDICATOR_DEFINITIONS = [
         'help': 'Simple moving averages — equal-weighted trend levels across short/medium/long windows.',
         'defaults': {'short_window': 5, 'medium_window': 20, 'long_window': 50, 'trend_window': 200},
         'fields': [
-            {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1},
-            {'key': 'medium_window', 'label': 'Medium Window', 'step': 1, 'min': 1},
-            {'key': 'long_window', 'label': 'Long Window', 'step': 1, 'min': 1},
-            {'key': 'trend_window', 'label': 'Trend Window', 'step': 1, 'min': 1},
+            {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1,
+             'help': 'Fast average. It crosses the medium one to generate signals — shorter means more crosses and more whipsaw.'},
+            {'key': 'medium_window', 'label': 'Medium Window', 'step': 1, 'min': 1,
+             'help': 'The average the short one is compared against. Widening the gap between the two makes crossovers rarer but slower.'},
+            {'key': 'long_window', 'label': 'Long Window', 'step': 1, 'min': 1,
+             'help': 'Slower average used for the broader trend backdrop.'},
+            {'key': 'trend_window', 'label': 'Trend Window', 'step': 1, 'min': 1,
+             'help': 'The long-horizon trend line (200 by convention). Price above it is usually read as a bull regime.'},
         ],
     },
     {
@@ -467,10 +498,14 @@ INDICATOR_DEFINITIONS = [
         'help': 'Exponential moving averages — faster than SMAs because recent price gets more weight.',
         'defaults': {'short_window': 12, 'medium_window': 26, 'long_window': 50, 'atr_window': 14},
         'fields': [
-            {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1},
-            {'key': 'medium_window', 'label': 'Medium Window', 'step': 1, 'min': 1},
-            {'key': 'long_window', 'label': 'Long Window', 'step': 1, 'min': 1},
-            {'key': 'atr_window', 'label': 'ATR Window', 'step': 1, 'min': 1},
+            {'key': 'short_window', 'label': 'Short Window', 'step': 1, 'min': 1,
+             'help': 'Fast EMA. Weights recent bars more heavily than an SMA, so it turns sooner — and whipsaws sooner too.'},
+            {'key': 'medium_window', 'label': 'Medium Window', 'step': 1, 'min': 1,
+             'help': 'The EMA the fast one crosses. 12/26 is the MACD pairing and the usual starting point.'},
+            {'key': 'long_window', 'label': 'Long Window', 'step': 1, 'min': 1,
+             'help': 'Slow EMA for the broader trend backdrop.'},
+            {'key': 'atr_window', 'label': 'ATR Window', 'step': 1, 'min': 1,
+             'help': 'Bars of ATR used to size this strategy’s volatility-scaled distance checks.'},
         ],
     },
     {
@@ -479,9 +514,12 @@ INDICATOR_DEFINITIONS = [
         'help': 'Commodity Channel Index — how far price is from its statistical mean. Extremes above/below the ceiling/floor flag stretches.',
         'defaults': {'period': 20, 'ceiling': 150, 'floor': -150},
         'fields': [
-            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
-            {'key': 'ceiling', 'label': 'Ceiling', 'step': 0.1},
-            {'key': 'floor', 'label': 'Floor', 'step': 0.1},
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1,
+             'help': 'Bars used for the mean and mean-deviation CCI measures price against. Shorter = a jumpier, more extreme reading.'},
+            {'key': 'ceiling', 'label': 'Ceiling', 'step': 0.1,
+             'help': 'CCI level above which CCI_Overbought_Sell fires. Typically +100; raising it demands a bigger stretch above the mean.'},
+            {'key': 'floor', 'label': 'Floor', 'step': 0.1,
+             'help': 'CCI level below which CCI_Oversold_Buy fires. Typically -100; lowering it demands a bigger stretch below the mean.'},
         ],
     },
     {
@@ -490,10 +528,14 @@ INDICATOR_DEFINITIONS = [
         'help': 'Stochastic Oscillator — where the close sits inside the recent High/Low range. %K crossing %D out of an extreme zone flags a turn.',
         'defaults': {'period': 14, 'smooth_window': 3, 'overbought': 80, 'oversold': 20},
         'fields': [
-            {'key': 'period', 'label': '%K Period', 'step': 1, 'min': 1},
-            {'key': 'smooth_window', 'label': '%D Smoothing', 'step': 1, 'min': 1},
-            {'key': 'overbought', 'label': 'Overbought', 'step': 1},
-            {'key': 'oversold', 'label': 'Oversold', 'step': 1},
+            {'key': 'period', 'label': '%K Period', 'step': 1, 'min': 1,
+             'help': 'How many bars of High/Low range the close is measured against. %K near 100 means the close finished at the top of that range, near 0 the bottom. Shorter reacts faster and pins the extremes more often.'},
+            {'key': 'smooth_window', 'label': '%D Smoothing', 'step': 1, 'min': 1,
+             'help': 'Bars of %K averaged into the %D signal line. Larger = a slower %D, so crossovers lag but fire less often.'},
+            {'key': 'overbought', 'label': 'Overbought', 'step': 1,
+             'help': 'Upper zone (80 by convention). Drives STOCH_Overbought_Sell, and qualifies STOCH_Reversal_Sell - the cross only counts on the way out of this zone.'},
+            {'key': 'oversold', 'label': 'Oversold', 'step': 1,
+             'help': 'Lower zone (20 by convention). Drives STOCH_Oversold_Buy, and qualifies STOCH_Reversal_Buy - the cross only counts on the way out of this zone.'},
         ],
     },
     {
@@ -502,9 +544,12 @@ INDICATOR_DEFINITIONS = [
         'help': 'Moving Average Convergence Divergence — trend/momentum from fast vs slow EMAs. Histogram and signal-line crosses mark shifts.',
         'defaults': {'fast': 12, 'slow': 26, 'signal': 9},
         'fields': [
-            {'key': 'fast', 'label': 'Fast EMA', 'step': 1, 'min': 1},
-            {'key': 'slow', 'label': 'Slow EMA', 'step': 1, 'min': 1},
-            {'key': 'signal', 'label': 'Signal EMA', 'step': 1, 'min': 1},
+            {'key': 'fast', 'label': 'Fast EMA', 'step': 1, 'min': 1,
+             'help': 'Short EMA of the pair. The MACD line is fast minus slow, so a shorter fast EMA makes it swing harder.'},
+            {'key': 'slow', 'label': 'Slow EMA', 'step': 1, 'min': 1,
+             'help': 'Long EMA of the pair. Widening the fast/slow gap makes the MACD line larger and its zero-crosses rarer.'},
+            {'key': 'signal', 'label': 'Signal EMA', 'step': 1, 'min': 1,
+             'help': 'EMA of the MACD line itself. The two crossing is the signal-cross entry; larger = smoother and later.'},
         ],
     },
     {
@@ -513,7 +558,8 @@ INDICATOR_DEFINITIONS = [
         'help': 'Volume-Weighted Average Price — institutional fair-value reference. Price above VWAP is often treated as bullish bias.',
         'defaults': {'window': 20},
         'fields': [
-            {'key': 'window', 'label': 'Window', 'step': 1, 'min': 1}
+            {'key': 'window', 'label': 'Window', 'step': 1, 'min': 1,
+             'help': 'Bars in the rolling volume-weighted average. True VWAP resets each session; on a daily tape this rolling window stands in for it.'}
         ],
     },
     {
@@ -522,9 +568,12 @@ INDICATOR_DEFINITIONS = [
         'help': 'Average Directional Index — trend strength (not direction). Rising ADX means a stronger trend; +DI/−DI show which side leads.',
         'defaults': {'period': 14, 'threshold': 25, 'range_threshold': 20},
         'fields': [
-            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
-            {'key': 'threshold', 'label': 'Trend Threshold', 'step': 0.1},
-            {'key': 'range_threshold', 'label': 'Range Threshold', 'step': 0.1},
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1,
+             'help': 'Bars of directional movement smoothed into ADX.'},
+            {'key': 'threshold', 'label': 'Trend Threshold', 'step': 0.1,
+             'help': 'ADX above this counts as trending (25 by convention). Raise it to demand a stronger trend before trend-gated signals are allowed.'},
+            {'key': 'range_threshold', 'label': 'Range Threshold', 'step': 0.1,
+             'help': 'ADX below this counts as ranging (20 by convention) - the regime mean-reversion entries are gated to.'},
         ],
     },
     {
@@ -539,11 +588,16 @@ INDICATOR_DEFINITIONS = [
             'breakout_multiplier': 1.5,
         },
         'fields': [
-            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1},
-            {'key': 'expansion_lookback', 'label': 'Expansion Lookback', 'step': 1, 'min': 1},
-            {'key': 'expansion_factor', 'label': 'Expansion Factor', 'step': 0.1, 'min': 0.1},
-            {'key': 'compression_factor', 'label': 'Compression Factor', 'step': 0.05, 'min': 0.05},
-            {'key': 'breakout_multiplier', 'label': 'Breakout ATR Multiple', 'step': 0.1, 'min': 0.1},
+            {'key': 'period', 'label': 'Period', 'step': 1, 'min': 1,
+             'help': 'Bars of true range averaged into ATR. Also sets the stop distance when Stop Mode is ATR.'},
+            {'key': 'expansion_lookback', 'label': 'Expansion Lookback', 'step': 1, 'min': 1,
+             'help': 'Bars of ATR% history that current volatility is compared against.'},
+            {'key': 'expansion_factor', 'label': 'Expansion Factor', 'step': 0.1, 'min': 0.1,
+             'help': 'How far above its own average ATR% must sit to count as expanding. 1.2 = 20% above; raising it flags only violent moves.'},
+            {'key': 'compression_factor', 'label': 'Compression Factor', 'step': 0.05, 'min': 0.05,
+             'help': 'How far below its average ATR% must sit to count as compressed. 0.9 = 10% below - the quiet-market regime.'},
+            {'key': 'breakout_multiplier', 'label': 'Breakout ATR Multiple', 'step': 0.1, 'min': 0.1,
+             'help': 'A bar must move more than this many ATRs to count as a breakout thrust. Higher = fewer, larger breakouts.'},
         ],
     },
     {
@@ -552,9 +606,12 @@ INDICATOR_DEFINITIONS = [
         'help': 'On-Balance Volume — cumulative up/down volume flow. Divergences vs price can flag weakening moves before price turns.',
         'defaults': {'ma_period': 20, 'divergence_lookback': 20, 'confirmation_lookback': 5},
         'fields': [
-            {'key': 'ma_period', 'label': 'OBV MA Period', 'step': 1, 'min': 1},
-            {'key': 'divergence_lookback', 'label': 'Divergence Lookback', 'step': 1, 'min': 2},
-            {'key': 'confirmation_lookback', 'label': 'Confirmation Lookback', 'step': 1, 'min': 1},
+            {'key': 'ma_period', 'label': 'OBV MA Period', 'step': 1, 'min': 1,
+             'help': 'Bars in the moving average OBV is compared against. OBV crossing it is the volume-flow signal.'},
+            {'key': 'divergence_lookback', 'label': 'Divergence Lookback', 'step': 1, 'min': 2,
+             'help': 'Window used to spot price and OBV pulling in opposite directions - the classic warning that a move lacks volume behind it.'},
+            {'key': 'confirmation_lookback', 'label': 'Confirmation Lookback', 'step': 1, 'min': 1,
+             'help': 'Window over which price and OBV must agree for a move to count as volume-confirmed.'},
         ],
     },
 ]
@@ -654,6 +711,9 @@ _BASE_INDICATOR_SETTINGS = {
 INDICATOR_SETTING_SCHEMA = {
     definition['key']: {
         'label': definition['label'],
+        # Carried through so the gear panel can explain the indicator itself,
+        # not just its individual parameters.
+        'help': definition['help'],
         'fields': copy.deepcopy(definition['fields']),
     }
     for definition in INDICATOR_DEFINITIONS

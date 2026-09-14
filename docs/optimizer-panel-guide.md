@@ -77,7 +77,7 @@ Narrow the list to focus the search (bundles-lite).
 - **Min Trades** (default `10`) — low-sample floor for ranking. Counts completed
   **round trips** (an entry and its matching exit), not individual fills, so a
   combo that scaled into every position clears it far less easily than it looks.
-- **Sort Results By** — SCORE / RET / SHARPE / CALMAR / DD / TRADES (re-rank after a run).
+- **Sort Results By** — SCORE / DSR / RET / SHARPE / ALPHA / INFO RATIO / CALMAR / DD / TRADES (re-rank after a run).
 - Optional **Max |DD| %** and **Min Sharpe** — discard combos before ranking.
 
 ### E — Realistic Ranking
@@ -102,8 +102,9 @@ partial results). Close restores the chart to the terminal and returns to `/tick
 - Once at least 5 valid results exist, a live **"Top strategies so far"** mini-table previews the current leaders.
 
 **When it finishes:**
-- A green *"✓ Completed! Tested N combinations"* message, followed by a one-line honesty
-  caption reminding you that testing many combos makes the top result more likely to be luck.
+- A green *"✓ Completed! Tested N combinations"* message, followed by the run's
+  **Deflated Sharpe** — a measured probability that the winner is real, given how many
+  combos were tried (see §7), colour-coded green / orange / red.
 - A **Best Strategy highlight** card and **top-10 table**.
 - An **Apply Best Strategy** button appears.
 - A **Return vs Sharpe** scatter chart plots every valid combo; the current
@@ -112,6 +113,8 @@ partial results). Close restores the chart to the terminal and returns to `/tick
   for this ticker — timestamp, combo count, top return/Sharpe, truncated signals.
 - **VALIDATE OOS** runs a 5-window rolling walk-forward on the sorted winner and
   shows IS/OOS Sharpe means, degradation, and a robust yes/no verdict.
+- **REGIMES** backtests the sorted winner separately in each market regime since
+  2019 and says whether it passes the RESEARCH.md regime rule.
 
 ### Apply Best Strategy
 Click it and the Optimizer will:
@@ -130,6 +133,40 @@ in-sample vs out-of-sample Sharpe, degradation, and whether the combo passes the
 robustness gate (≥80% of windows with OOS Sharpe > 1.0 and mean degradation < 0.4).
 This uses the same signal columns as the winner; when **Realistic ranking** was on,
 costs/stops from that run are applied.
+
+### Regimes (regime slicing)
+Walk-forward asks "does it hold up on data it was not tuned on?". **REGIMES** asks a
+different question: "does it only work in one kind of market?". After a combinatorial
+run, click **REGIMES** next to VALIDATE OOS. The **Regime slicing** section opens and,
+after a few seconds, shows one row per period of the regime calendar: Bull / low vol
+2019, the COVID crash, the QE bull, the 2022 bear, the 2023 recovery, the AI bull run,
+and the current mixed market.
+
+Each row is its own backtest: it starts with no position and your starting capital, so
+a trade opened in 2021 is never scored in 2022. For each regime you see Sortino,
+return, **buy & hold** return over the same dates, max drawdown and trade count. A
+result of −3% in the 2022 bear, while buy & hold lost 18%, reads very differently from
+−3% in a bull market.
+
+The verdict at the top applies the rule from RESEARCH.md: **positive Sortino in at
+least 3 of the 7 regimes, and one of them must be the 2022 bear**.
+
+- **PASSES REGIME RULE** (green) — the rule is met.
+- **FAILS REGIME RULE** (red) — the 2022 bear was tested and lost, or too few regimes
+  pass.
+- **INCONCLUSIVE** (orange) — some regimes have no complete data, and they could
+  still change the answer.
+
+The Data column says whether the prices cover the whole regime: `full`, `partial` or
+`none`. Only `full` rows count toward the verdict. **With 1h or 4h bars most rows read
+`none`**, because Yahoo keeps only about two years of intraday history, so the verdict
+is almost always INCONCLUSIVE. Switch the bar interval to 1d for a real answer. A
+young ticker (listed after 2019) shows the same pattern on its early regimes.
+
+The same signal columns, indicator settings and (with Realistic ranking) costs/stops
+as the winner are used. Click again while it runs to **STOP REGIMES**. The calendar
+and the rule live in `config/regimes.yaml`; the CLI equivalent for agent bundles is
+`sfa regimes --name <bundle>`.
 
 ### Bayesian Sweep (agent bundles)
 The **Bayesian Sweep** accordion runs Optuna TPE on a named **agent strategy**
@@ -180,10 +217,13 @@ trials are kept). Progress shows `Trial N/M`. When finished:
 ## 6. Reading the leaderboard
 
 Each row is one signal combination. The columns mirror the Backtest scorecards — Total
-Return %, **Alpha %** (vs buy-and-hold), Sharpe, **Sortino, Calmar**, Max Drawdown %,
-**Win Rate %, Profit Factor**, and trade count. Quick reading rules:
+Return %, **Excess Return %** and **Alpha %** (both vs buy-and-hold), **Beta**, Sharpe,
+**DSR %**, **Sortino, Calmar**, Max Drawdown %, **Info Ratio**, **Win Rate %, Profit
+Factor**, and trade count. Quick reading rules:
 
-- **Check Alpha first.** A big Total Return means little if the stock itself doubled. **Alpha %** is the strategy's return *minus* buy-and-hold — if it's negative, you'd have done better just holding.
+- **Check Excess Return first.** A big Total Return means little if the stock itself doubled. **Excess Return %** is the strategy's return *minus* buy-and-hold — if it's negative, you'd have done better just holding.
+- **Then check Alpha.** **Alpha %** is annualised **Jensen's alpha**: the part of that excess its **Beta** to buy-and-hold does *not* explain. A combo that is simply long more of the time earns excess return with an alpha near zero — that is leverage, not skill. Excess return says *how much more you made*; alpha says *whether you earned it*.
+- **Then check DSR.** See §7 — it is the one column that knows how many combos were tried.
 - **Don't just take row #1.** A tiny difference in return between #1 and #5 is noise; prefer the combo that also has a decent Sharpe/Calmar and a controlled drawdown.
 - **Beware greyed-out (low-sample) rows.** A combo that "won" on 2 trades is luck, not edge — that's why the Min Trades floor pushes them down the board.
 - **Cross-check metrics.** Re-sort by SHARPE, CALMAR and DD; a combo that ranks well under *all* of them is far more trustworthy than one that only tops RET. **SCORE** already blends these for you.
@@ -200,10 +240,30 @@ Two things to keep in mind so the Optimizer helps rather than misleads:
    tab. Think of it as a **fast screen** to shortlist candidates. Always re-run the winner
    on the **Backtest** tab with realistic costs and your risk controls before trusting it.
 
-2. **Overfitting is real.** The more combinations you test, the higher the chance that the
-   top result simply fit the *noise* of this particular history and won't repeat. Guard
-   against it: prefer simpler combos (fewer signals per side), demand enough trades, sanity-check across
-   metrics, and — ideally — re-test the winner on a *different* date range to see if it holds.
+2. **Overfitting is real, and now it is measured.** The more combinations you test, the
+   higher the chance that the top result simply fit the *noise* of this particular history.
+   The **DSR %** column — the **Deflated Sharpe Ratio** — puts a number on it, and the same
+   number appears under the "Completed!" message for the winning row.
+
+   Read it as a probability that the row's Sharpe is genuinely positive, measured not
+   against zero but against the Sharpe *the best of N tries would reach on noise alone*.
+   It folds in four things at once: how long the sample is, how skewed the returns are,
+   how fat their tails are, and how many combinations the search looked at.
+
+   | DSR % | What it means |
+   |---|---|
+   | **≥ 95%** | Survives the correction. The usual bar for calling a result significant. |
+   | **50–95%** | Better than a coin flip, short of the bar. Confirm out of sample. |
+   | **< 50%** | Not distinguishable from the best of N searches over noise. |
+
+   Two consequences worth internalising. Raising **Max Combinations** raises the bar the
+   winner has to clear — a wider search is not a free lunch, and the DSR is where you see
+   the price. And a *shorter* window costs confidence too: the same Sharpe over 500 bars is
+   worth far more than over 60.
+
+   The DSR does not replace the old guardrails, it prices them: prefer simpler combos
+   (fewer signals per side), demand enough trades, sanity-check across metrics, and —
+   ideally — re-test the winner on a *different* date range to see if it holds.
 
 ---
 

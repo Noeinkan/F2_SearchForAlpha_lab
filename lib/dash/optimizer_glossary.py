@@ -200,7 +200,10 @@ LEARN_SECTIONS: list[dict[str, str]] = [
         "body": (
             "Without Realistic Ranking, the combo search uses simplified defaults — "
             "treat it as a fast screen, then confirm on Backtest with costs and stops. "
-            "The more combinations you test, the more likely the top row overfit noise. "
+            "The more combinations you test, the more likely the top row overfit noise, "
+            "and the DSR column measures exactly that: the chance the row's Sharpe is "
+            "genuinely positive once the bar is raised to what the best of N tries "
+            "would hit on noise alone. Above 95% is credible, below 50% is a coin flip. "
             "Prefer simpler stacks, enough trades, cross-metric ranking, and OOS when "
             "in doubt."
         ),

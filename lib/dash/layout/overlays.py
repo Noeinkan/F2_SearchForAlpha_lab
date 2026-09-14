@@ -193,6 +193,7 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                 }),
                 html.A(
                     "OPEN IN NEW TAB",
+                    id='flow-open-tab-link',
                     href='/flow_report.html',
                     target='_blank',
                     className='sfa-flow-secondary-action',
@@ -259,6 +260,11 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
             scrollable=True,
         ),
         html.Div(id='flow-fullscreen-sync', style={'display': 'none'}),
+        # Watches for a report the background refresh rewrote. Kept outside the
+        # dcc.Loading below: a poll that targets flow-content directly would
+        # flash the spinner every minute even when nothing changed.
+        dcc.Interval(id='flow-refresh-interval', interval=60_000, disabled=True),
+        dcc.Store(id='flow-refresh-signal', data=None),
         # Single scroll container for the whole report — the glossary lives inside
         # it so an open glossary scrolls with the content instead of stealing height.
         html.Div(

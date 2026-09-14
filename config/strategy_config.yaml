@@ -130,6 +130,14 @@ execution_search_space:
   stop_mode: { type: categorical, choices: [percent, atr] }
   consecutive_signal_mode: { type: categorical, choices: [scale_in, edge, cooldown] }
   cooldown_bars: { type: int, low: 0, high: 10, step: 5 }
+  # Order model (roadmap 3.7). Only the type is swept by default: the offsets
+  # and the bracket distances mean nothing to a market order, so sweeping them
+  # here would multiply the trial count for knobs most trials ignore. Add
+  # limit_offset_pct / stop_offset_pct / time_in_force / trailing_stop_orders /
+  # use_brackets / bracket_stop_pct / bracket_target_pct when you deliberately
+  # want to search the execution model — lib/execution_params.py holds a ready
+  # made ORDER_SEARCH_SPACE with sensible ranges for all of them.
+  order_type: { type: categorical, choices: [market, limit, stop] }
 
 # Two-stage FCFE DCF assumptions (sibling of Rule #1 valuation).
 # Cost of equity = risk_free + beta * equity_risk_premium (beta from quote, clamped).

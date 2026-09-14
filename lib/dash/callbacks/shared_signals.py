@@ -54,6 +54,8 @@ SIGNAL_DESCRIPTIONS: Dict[str, str] = {
     "SMA_PriceCross_Sell": "Price crosses below medium SMA.",
     "SMA_TrendFollow_Buy": "Price above long SMA with short/medium/long aligned.",
     "SMA_TrendFollow_Sell": "Price below long SMA with short/medium/long aligned.",
+    "SMA_SlopeFlip_Buy": "Short SMA stops falling and turns up (momentum flip).",
+    "SMA_SlopeFlip_Sell": "Short SMA stops rising and turns down (momentum flip).",
     # EMA
     "EMA_TripleCross_Buy": "Short > medium > long EMAs (bullish alignment).",
     "EMA_TripleCross_Sell": "Short < medium < long EMAs (bearish alignment).",
@@ -67,6 +69,34 @@ SIGNAL_DESCRIPTIONS: Dict[str, str] = {
     "EMA_Divergence_Sell": "Price high rises while short EMA falls (divergence).",
     "EMA_Volatility_Buy": "Bullish EMA alignment during high volatility.",
     "EMA_Volatility_Sell": "Bearish EMA alignment during high volatility.",
+    # VWAP
+    "VWAP_CrossAbove_Buy": "Price crosses above VWAP (buyers take the average price).",
+    "VWAP_CrossBelow_Sell": "Price crosses below VWAP (sellers take the average price).",
+    # ADX — trend-strength filters. These say how strongly price is trending,
+    # not which way, so they are usually combined with a directional signal.
+    "ADX_TrendRegime_Buy": "ADX above the trend threshold with +DI leading (strong uptrend).",
+    "ADX_TrendRegime_Sell": "ADX above the trend threshold with -DI leading (strong downtrend).",
+    "ADX_RangeRegime_Buy": "ADX below the range threshold — chop filter for mean-reversion longs.",
+    "ADX_RangeRegime_Sell": "ADX below the range threshold — chop filter for mean-reversion shorts.",
+    "ADX_DICross_Buy": "+DI crosses above -DI while ADX confirms trend strength.",
+    "ADX_DICross_Sell": "-DI crosses above +DI while ADX confirms trend strength.",
+    "ADX_Rising_Buy": "ADX breaks up through the trend threshold with +DI leading.",
+    "ADX_Rising_Sell": "ADX breaks up through the trend threshold with -DI leading.",
+    # ATR — volatility regime. Expansion/compression are gates rather than
+    # entries; only the breakout pair is directional on its own.
+    "ATR_Expansion_Buy": "Volatility expands above its average while price closes up.",
+    "ATR_Expansion_Sell": "Volatility expands above its average while price closes down.",
+    "ATR_Compression_Buy": "Volatility compressed below its average — low-vol gate for longs.",
+    "ATR_Compression_Sell": "Volatility compressed below its average — low-vol gate for shorts.",
+    "ATR_Breakout_Buy": "Close advances more than the ATR multiple in one bar.",
+    "ATR_Breakout_Sell": "Close drops more than the ATR multiple in one bar.",
+    # OBV — volume flow behind the move.
+    "OBV_MACross_Buy": "OBV crosses above its moving average (accumulation).",
+    "OBV_MACross_Sell": "OBV crosses below its moving average (distribution).",
+    "OBV_Divergence_Buy": "Price prints a new low while OBV holds above its low.",
+    "OBV_Divergence_Sell": "Price prints a new high while OBV fails to confirm.",
+    "OBV_Confirmation_Buy": "Price and OBV both rising over the lookback — volume confirms longs.",
+    "OBV_Confirmation_Sell": "Price and OBV both falling over the lookback — volume confirms shorts.",
 }
 
 

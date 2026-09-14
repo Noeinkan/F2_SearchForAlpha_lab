@@ -8,6 +8,190 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Basket backtests against one cash account** (ROADMAP 3.8.3, 3.8.4).
+  `lib.portfolio.backtest_portfolio(panel, capital, sizer, params, buys, sells, **options)`
+  runs every symbol of a `lib.panel` panel through one shared cash balance, taking the same
+  keyword options as `backtest()`. It implements the rules in
+  [docs/portfolio-semantics.md](docs/portfolio-semantics.md): orders are sized off the
+  **total** portfolio value of the previous bar; each bar settles every symbol's sells
+  before any symbol buys, so a same-bar sale funds a same-bar buy; buys that outrun the
+  cash share it by the equal-share water-fill (`lib/engine/allocation.py`); and a bar a
+  symbol did not print is valued at its last close but never traded. A stop the symbol
+  reopens through after such a hole fills at the open, as it does after a weekend.
+  Reversing the ticker list changes no unit, round trip or balance. In rebalancing mode
+  `position_size_pct` defaults to an equal weight, `100 / number of symbols`. The result
+  (`PortfolioResult`: per-symbol frames, a portfolio frame benchmarked against equal-weight
+  buy-and-hold of the basket, combined ledgers) is **provisional** until 3.8.5–3.8.7, and
+  nothing in the CLI or dashboard calls it yet.
+- **The engine moved into `lib/engine/`** — config, account and per-symbol state, per-bar
+  steps, the resting-order book, the allocation rule and the bar loop, one file each.
+  `lib/strategy.py` keeps `backtest()`, `run_backtest()` and `calculate_metrics()`, and
+  re-exports every name it exported before, so no import changes. **Single-symbol results
+  do not change:** 603 configurations (every strategy mode × order type × exit model ×
+  signal mode, on daily and hourly tapes) were compared before and after, and every
+  result frame, trade and fill matched exactly; `test_strategy_snapshot` is untouched.
+- **Flow Scanner reports refresh on their own** (ROADMAP 6.8). While the dashboard runs, a
+  background thread rescans stale reports: the tickers in `watchlist.txt` plus every ticker
+  already scanned from the page, at most 20. A report is stale after
+  `SFA_FLOW_REFRESH_MINUTES` (default 15) while the US market is open, and once more after
+  the close; nothing runs overnight or at weekends. There is no holiday calendar, so a
+  holiday is scanned like a normal session. `SFA_FLOW_REFRESH_MINUTES=0` turns it off. An
+  open `/flow/<ticker>` page swaps in the new report within a minute of it landing. Only
+  `python main.py` starts the thread; the public demo does not.
+- **One Flow Scanner report per ticker**, in `state/flow/<TICKER>.json` and `.html`. Before,
+  every scan overwrote one `flow_report.json`, so `/flow/AAPL` showed whichever ticker had
+  been scanned last. A failed scan no longer replaces a good report either: if Yahoo
+  throttles a rescan, the page keeps the last good chain and the status line says
+  `RATE LIMITED — kept the report from 14:05`. OPEN IN NEW TAB opens the current ticker's
+  report (`/flow_report.html?ticker=AAPL`); a `flow_report.html` at the repo root, written
+  by a manual CLI run, is still served at the bare URL. `lib/dash/flow_store.py`,
+  `lib/dash/flow_refresh.py`.
+- **The dashboard reopens where you left it** (ROADMAP 5.15). The symbol, bar interval,
+  test window, capital, chart toggles, indicator settings, signal selection, trade setup,
+  costs and order model are saved to `state/ui_session.json` as they change, and restored
+  on the next start. Results are not saved: data is refetched and backtests are not
+  replayed. A deep link to another symbol still wins; if the saved symbol no longer loads,
+  the dashboard falls back to TSLA. `SFA_RESTORE_SESSION=0` turns it off, and the public
+  demo has it off.
+- **Error boundary** (ROADMAP 5.13). A callback that raises now shows a dismissible alert
+  at the top right — which part of the page failed, and the error — and sets the status
+  bar to `ERROR`. Before, it failed silently and the status bar stayed on `WORKING…`.
+  Full traceback in the server log. `lib/dash/error_boundary.py`, via Dash's `on_error`.
+- **Empty states** (ROADMAP 5.14) for the chart area, backtest results and signal list
+  before they have content. The chart's overlay also shows why a chart came back empty,
+  which the canvas never displayed.
+- **Regime slicing — `sfa regimes` and the optimizer's REGIMES button** (ROADMAP 4.15).
+  RESEARCH.md has always said a robust strategy should show positive Sortino in at least
+  3 of its 7 market regimes, including the 2022 bear, but nothing computed it. Now a
+  strategy is backtested **separately in each regime**: it starts flat with fresh capital,
+  so a trade opened in one period is never scored in another. Indicators are computed
+  once over the whole history before slicing, so each regime's first bars have warmed-up
+  indicators. Each row shows Sortino, return, buy-and-hold return, drawdown and trade
+  count, and the set gets a verdict.
+- The verdict has three outcomes, not two. **Pass**: enough regimes clear the bar,
+  required ones included. **Fail**: a required regime was scored and missed, or too few
+  pass even if every regime without data had passed. **Inconclusive**: the regimes
+  without data could still change the answer. That third state matters on
+  intraday bars, where Yahoo history reaches back ~2 years and six of the seven regimes
+  have no data: an hourly run cannot pass or fail the 2022 test, and says so instead of
+  scoring it as a loss.
+- `config/regimes.yaml` — the calendar and the rule in machine-readable form. RESEARCH.md
+  stays the human reference (agents must not edit it), and
+  `test_repo_calendar_matches_research_md_table` fails if the two drift. The table's one
+  shared month (2020-02) is split at SPY's pre-COVID peak, 2020-02-19.
+- `lib/regimes/` (calendar, slicer, bundle runner), `lib/dash/combo_regimes.py`,
+  `lib/dash/regime_view.py`, `lib/dash/callbacks/optimizer_regimes.py`; 23 tests in
+  `lib/tests/test_regimes.py`. Nothing is persisted and the promotion gate does not read
+  the verdict yet.
+- **`lib/panel.py` — many symbols on one index** (ROADMAP 3.8.2). The first piece of the
+  multi-asset backtest, and pure data: `align_panel({symbol: frame})` returns a `Panel`
+  where bar `i` is the same instant for every member, which is the property the portfolio
+  engine (3.8.3) will be built on. Nothing calls it yet — the engine below it is still
+  scalar — so no existing result moves.
+
+  It implements [docs/portfolio-semantics.md](docs/portfolio-semantics.md) §6, whose one
+  sentence is really two rules pulling opposite ways. **Valuation forward-fills**: a new
+  `Mark` column carries the last close across a hole, because a halted name still belongs
+  in portfolio value and §2 sizes every order off that total. **Execution does not**:
+  `Open`/`High`/`Low`/`Close` stay `NaN` and a new `Tradable` column reads `False`, because
+  forward-filling those would let a resting stop fill against a bar that never printed.
+- Signal columns fill with `0` on a hole, not `NaN`. This is the trap the module exists to
+  disarm: `{INDICATOR}_{CONDITION}_Buy` is int-coded, a reindex turns the gaps into `NaN`,
+  and **`NaN` is truthy** — so a naive `df.reindex(...)` would have fired a buy on every
+  bar a symbol did not trade. Boolean columns fill `False`; indicators keep their `NaN`.
+- **Sessions are inferred once, on the merged index**, and written to every member as
+  `Session_Start` — which `resolve_session_starts` already honours, so the engine picks up
+  the basket's boundaries with no change. A hole in one symbol is no longer a session
+  boundary for the basket, and `Panel.periods_per_year()` annualises at the bar count the
+  *merged* tape emits rather than any one member's.
+- The panel index is the **union** of its members' bars, not the intersection — an
+  intersection deletes real trading in four symbols to avoid a hole in the fifth.
+  `trim='common'` clips to the window every member was tradable in, for a fair-comparison
+  basket. Ticker order changes nothing but `Panel.symbols`, the same commitment
+  `CASH_ALLOCATION_RULE` makes in §4.
+- `lib/tests/test_panel.py` — 40 tests over the hole rules, the signal-truthiness trap, the
+  merged session mask, trimming, and the §8 degenerate case: a gapless one-symbol panel
+  backtests to the same equity curve as the raw frame.
+- `lib.sessions.bars_per_session_from_starts` — the counting half of `bars_per_session`,
+  split out so a panel that already inferred its boundaries on the merged index is not
+  forced to re-infer them per member.
+- **`lib/orders.py` — an order model** (ROADMAP 3.7). Until now the engine had no order
+  abstraction: every decision became a fill at the bar's close, and the only nod to
+  intrabar reality was a bespoke branch comparing the trailing stop against `Low`. There
+  is now an `Order` / `Fill` / `OrderBook` layer, and `backtest()` takes `order_type`
+  (`market`, `limit`, `stop`, `stop_limit`), `limit_offset_pct`, `stop_offset_pct`,
+  `time_in_force` (`gtc` / `day` / `ioc`), `order_expiry_bars`, `trailing_stop_orders`,
+  `use_brackets`, `bracket_stop_pct` and `bracket_target_pct`.
+
+  > ⚠️ **These change results, and that is the point.** Every default is chosen so that a
+  > run which sets none of them reproduces the pre-3.7 numbers exactly — that equivalence
+  > is what `test_strategy_snapshot` pins, and its constants are unchanged. But the moment
+  > you select a limit order, entries that used to fill at the close may never fill at
+  > all; the moment you select `trailing_stop_orders`, a bar whose *low* trips your stop
+  > exits even though the close recovered. A strategy can look materially worse under
+  > either, and the older, kinder number was the assumption, not the truth.
+- Resting orders fill against the bar's High and Low: a limit fills at its level, or at
+  the **open** when the bar opened through it (price improvement is real); a stop fills at
+  its level, or at the **open** on a gap — the generalisation of the 3.9.4 gap rule to
+  every resting order. A stop-limit that triggers past its limit does **not** fill at a
+  worse price; it stays resting as a plain limit, which is exactly why a stop-limit can
+  leave you holding a position a plain stop would have exited.
+- **A stated rule for bars that touch more than one resting order** (3.7.3): orders
+  marketable at the open fill first, then stops before limits, then nearest the open, then
+  submission order. A bar that reaches both legs of a bracket is scored as the **stop** —
+  ranking the profitable leg first would make every wide bracket look free.
+- **OCO brackets** — an entry can carry a fixed stop and a fixed profit target hung off
+  the average entry price, and whichever trades cancels the other. Two new exit reasons,
+  `bracket_stop` and `bracket_target`, because a bracket's stop is not the trailing stop
+  and its target is not `take_profit`: both are fixed at entry and neither moves.
+- The trade ledger gained `entry_order_type` and `exit_order_type` — the *mechanism*, as
+  opposed to `exit_reason`'s *cause*. A sell signal worked as a limit still reads
+  `signal`.
+- **`result_df.attrs['fills']` — a fill ledger.** One row per execution with the market
+  price before slippage and fees, market orders included, so `attrs['trades']` (round
+  trips) and `attrs['fills']` (executions) finally have a shared source.
+- The order model is reachable from the **backtest toolbar** (Order Type, Order Offset,
+  Time in Force, Exit Handling), from the **optimizer** whenever realistic ranking is on,
+  and from the **shared execution search space**, which now sweeps `order_type` by
+  default. `lib/execution_params.py` carries an opt-in `ORDER_SEARCH_SPACE` for sweeping
+  the offsets, TIF and bracket distances too.
+- The Execution Type sandbox tape was rebuilt with real intrabar range. Its Open, High and
+  Low used to be cosmetic multiples of the close, which meant no limit or stop could ever
+  be demonstrated on it — and it also hid the 3.9.4 gap fill, which is now visible in the
+  ledger. The explainer gained an **Order type** and an **Exit handling** row, and the
+  sandbox gained live controls for both.
+- `lib/tests/test_orders.py` and `lib/tests/test_order_wiring.py` — 136 tests covering the
+  fill rules, the priority rule, time in force, the bracket lifecycle, and the three
+  surfaces that reach them. The invariant every order-model bug breaks first — the trade
+  ledger reconciling with the equity curve — is asserted on all eleven configurations.
+
+- **Benchmark-relative metrics** (ROADMAP 3.10.1–3.10.2). `lib/metrics/benchmark.py`
+  measures the strategy against buy-and-hold on the same bars, using the `Returns`
+  column the engine has always written and nothing ever read. `BacktestMetrics` gained
+  `benchmark_return`, `excess_return`, `alpha`, `beta`, `information_ratio`,
+  `tracking_error`, `up_capture` and `down_capture`. The Backtest tab renders them in a
+  new **VS BUY & HOLD** block; the CLI prints them and the JSON contract carries them.
+- **Probabilistic and Deflated Sharpe** (ROADMAP 3.10.3–3.10.4, closes 4.13).
+  `lib/metrics/deflated.py` implements Bailey & López de Prado's PSR and DSR. `psr` is
+  the chance the true Sharpe is above zero given the sample's length, skew and kurtosis;
+  `deflated_sharpe` is the same probability measured against the Sharpe the best of *N*
+  trials would reach on noise alone. `BacktestMetrics` also carries the sample the two
+  were computed from — `num_bars`, `returns_skew`, `returns_kurtosis`,
+  `periods_per_year`, `num_trials` — so a caller that learns the trial count later can
+  redo the deflation without re-running anything (`with_deflated_sharpe`).
+- The combo search deflates its whole leaderboard against the real combination count and
+  the spread of the trials' Sharpes (`apply_deflated_sharpe` in `lib/dash/helpers.py`).
+  Attempts that errored out or were pruned by a constraint still count: the search
+  looked at them.
+- `sfa optimise` deflates its winning trial against every trial in the study, read back
+  from `sfa_trials` — so a **resumed** study counts the trials it already had, because
+  that history is part of the search. `best.dsr` is printed and carried in the JSON.
+- New leaderboard columns — `Excess_Return_%`, `Beta`, `DSR_%`, `Info_Ratio` — and new
+  sort options: **DSR**, **ALPHA**, **INFO RATIO**.
+- `lib/tests/test_metrics_benchmark.py` — 44 tests pinning the new formulas against
+  hand-computed references, including the two distinctions that matter: a levered long
+  has excess return and no alpha, and a wider search deflates the same Sharpe further.
+
 - **`lib/sessions.py` — the session model** (ROADMAP 3.9). One place decides where a
   trading session ends and the next begins, inferred from the bar timestamps alone so no
   exchange calendar is needed: every bar on a daily tape, and on an intraday tape any
@@ -22,6 +206,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whether a position was held overnight. This one can.
 - `resample_ohlcv(..., session_anchored=False)` for the pre-3.9 wall-clock bucketing.
 
+- **Hover explanations on every indicator parameter.** The gear-icon settings panel
+  rendered each parameter as a bare label and a number box — 38 inputs across 12
+  indicators with nothing anywhere saying what "Expansion Factor" or "Squeeze Threshold"
+  meant, or which way to move them. Every field in `INDICATOR_DEFINITIONS` now carries a
+  `help` string explaining what it controls *and* the effect of raising or lowering it,
+  surfaced as native `title=` hover copy (same idiom as the Chart Settings checklist);
+  the panel header explains the indicator itself.
+- **24 missing SIGNALS-panel descriptions filled in** — every SMA slope-flip, VWAP, ADX,
+  ATR and OBV signal was falling through to the generic "Signal generated from …".
+  `lib/tests/test_indicator_help.py` now fails if any registered signal, indicator or
+  parameter ships without copy, so this cannot silently regress.
 - **`lib/signals/signals_STOCH.py` — the Stochastic oscillator, eighth indicator**
   (ROADMAP 2.6, 2.9). `STOCH_K` / `STOCH_D` plus six signals: `STOCH_Oversold_Buy`,
   `STOCH_Overbought_Sell`, `STOCH_Cross_{Buy,Sell}` and `STOCH_Reversal_{Buy,Sell}`.
@@ -45,6 +240,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `metrics.risk_free_rate` in `config/agent.yaml`.
 
 ### Changed
+- **The Flow Scanner survives a bad expiry and says when Yahoo is throttling** (ROADMAP 6.7).
+  All of its Yahoo calls moved to `lib/options/chain_source.py` and now retry 429 / 5xx /
+  timeouts with the same backoff as the OHLCV fetch. One expiry that still fails is left
+  out and named on the ticker card ("Partial chain: 1 expiry could not be fetched…");
+  before, it threw away the whole ticker. A ticker that stays throttled shows
+  `RATE LIMITED` instead of looking like a bad symbol. Reports carry the two new fields
+  `error_kind` and `failed_expiries`. A failed expiry-list lookup is now an error, where it
+  used to pass as a ticker with no options. `--scan` builds its most-actives list with
+  `yfinance.screen` instead of calling Yahoo's private screener URL, so Yahoo's login
+  handshake is yfinance's to keep working. There is still no second chain source (ROADMAP
+  6.9): the free candidates need an account or allow only a few requests a day.
+- **`Alpha_%` changed meaning.** It was the arithmetic difference between the strategy's
+  return and buy-and-hold's, computed by hand in the combo-search path only. It is now
+  annualised **Jensen's alpha**, from the metrics engine, available everywhere. The old
+  figure survives under the name it always deserved, `Excess_Return_%`, and the captions
+  that reconcile two headline returns ("+12.4% vs buy & hold") use that one — a levered
+  long earns excess return with no alpha, and the two columns now say so side by side.
+  Persisted optimizer history written before this release keeps the old numbers under
+  the old key; nothing re-labels them.
+- The optimizer's completion caption is a measured number rather than a general warning.
+  It read "the more you test, the more likely the top result is luck" after every run,
+  which is true of every search and therefore said nothing about that one. It now reports
+  the winner's Deflated Sharpe, colour-coded against the 95% and 50% thresholds, and both
+  optimizer guides explain how to read it (§7).
 - **⚠️ Backtest results move: the trailing stop now honours overnight gaps**
   (ROADMAP 3.9.4). On a session's first bar, a market that reopens at or below the
   trailing stop has *gapped through* it — the stop could not be worked while the exchange

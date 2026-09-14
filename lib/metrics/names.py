@@ -175,6 +175,92 @@ _SPECS: tuple[MetricSpec, ...] = (
         unit="ratio",
         blurb="Gross traded notional over mean equity. Higher means busier, and costlier.",
     ),
+    MetricSpec(
+        key="benchmark_return", ui_key="BuyHold_Return_%", label="Buy & Hold",
+        unit="fraction", signed=True,
+        blurb="What simply holding the symbol over the same window returned.",
+    ),
+    MetricSpec(
+        key="excess_return", ui_key="Excess_Return_%", label="Excess",
+        unit="fraction", signed=True,
+        blurb="Strategy return minus buy-and-hold return, in percentage points. "
+              "No risk adjustment — a levered long shows excess return with no skill.",
+    ),
+    MetricSpec(
+        key="alpha", ui_key="Alpha_%", label="Alpha",
+        unit="fraction", signed=True,
+        blurb="Annualised Jensen's alpha: the return left over once the strategy's "
+              "beta to buy-and-hold is accounted for. This is the skill number.",
+    ),
+    MetricSpec(
+        key="beta", ui_key="Beta", label="Beta",
+        unit="ratio", signed=True,
+        blurb="How much of buy-and-hold's move the strategy rides. 1.0 tracks it, "
+              "0 is uncorrelated, negative leans the other way.",
+    ),
+    MetricSpec(
+        key="information_ratio", ui_key="Info_Ratio", label="Info Ratio",
+        unit="ratio", signed=True,
+        blurb="Active return over tracking error, annualised — reward per unit of "
+              "deviation from buy-and-hold.",
+    ),
+    MetricSpec(
+        key="tracking_error", ui_key="Tracking_Error_%", label="Tracking Err",
+        unit="fraction",
+        blurb="Annualised volatility of the gap between strategy and buy-and-hold.",
+    ),
+    MetricSpec(
+        key="up_capture", ui_key="Up_Capture", label="Up Capture",
+        unit="ratio",
+        blurb="Share of buy-and-hold's gain captured on its up bars. Above 1 beat it.",
+    ),
+    MetricSpec(
+        key="down_capture", ui_key="Down_Capture", label="Down Capture",
+        unit="ratio", signed=True,
+        blurb="Share of buy-and-hold's loss taken on its down bars. Below 1 is good; "
+              "negative means the strategy made money while the market fell.",
+    ),
+    MetricSpec(
+        key="psr", ui_key="PSR_%", label="PSR",
+        unit="fraction", precision=1,
+        blurb="Probabilistic Sharpe: chance the true Sharpe is above zero, given the "
+              "sample length, skew and kurtosis. Above 95% is the usual bar.",
+    ),
+    MetricSpec(
+        key="deflated_sharpe", ui_key="DSR_%", label="DSR",
+        unit="fraction", precision=1,
+        blurb="Deflated Sharpe: the same chance, measured against the Sharpe the best "
+              "of all the configurations tried would hit on noise alone. Below 50% "
+              "the winner is not distinguishable from luck.",
+    ),
+    MetricSpec(
+        key="num_trials", ui_key="Trials", label="Trials",
+        unit="count", precision=0,
+        blurb="Configurations searched before this one won — the count the Deflated "
+              "Sharpe corrects for.",
+    ),
+    MetricSpec(
+        key="num_bars", ui_key="Bars", label="Bars",
+        unit="count", precision=0,
+        blurb="Return observations behind every ratio on this row.",
+    ),
+    MetricSpec(
+        key="returns_skew", ui_key="Skew", label="Skew",
+        unit="ratio", signed=True,
+        blurb="Asymmetry of the return distribution. Negative means the losses have "
+              "the long tail — the shape that flatters a Sharpe ratio.",
+    ),
+    MetricSpec(
+        key="returns_kurtosis", ui_key="Kurtosis", label="Kurtosis",
+        unit="ratio",
+        blurb="Tail weight of the return distribution, non-excess: 3.0 is normal, "
+              "higher means fatter tails than a Sharpe ratio assumes.",
+    ),
+    MetricSpec(
+        key="periods_per_year", ui_key="Periods_Per_Year", label="Bars / Year",
+        unit="count", precision=0,
+        blurb="Bars per year the ratios on this row were annualised at.",
+    ),
 )
 
 BY_KEY: dict[str, MetricSpec] = {s.key: s for s in _SPECS}
@@ -188,15 +274,6 @@ _EXTRA_SPECS: tuple[MetricSpec, ...] = (
         blurb="Portfolio value on the last bar.",
     ),
     MetricSpec(
-        key="", ui_key="BuyHold_Return_%", label="Buy & Hold", unit="fraction",
-        signed=True,
-        blurb="What simply holding the symbol over the same window returned.",
-    ),
-    MetricSpec(
-        key="", ui_key="Alpha_%", label="Alpha", unit="fraction", signed=True,
-        blurb="Strategy return minus buy-and-hold return, in percentage points.",
-    ),
-    MetricSpec(
         key="", ui_key="Robustness_Score", label="Score", unit="ratio",
         blurb="Risk-adjusted performance discounted by how few trades backed it up.",
     ),
@@ -204,9 +281,15 @@ _EXTRA_SPECS: tuple[MetricSpec, ...] = (
 for _spec in _EXTRA_SPECS:
     BY_UI_KEY[_spec.ui_key] = _spec
 
-# These three carry no canonical key, so they never pass through ``to_display``
-# — the optimizer stores them already multiplied out. ``unit='fraction'`` here
-# means "render with a % suffix", not "multiply me".
+# These carry no canonical key, so they never pass through ``to_display`` — the
+# optimizer stores them already multiplied out. ``unit='fraction'`` on such a
+# spec means "render with a % suffix", not "multiply me".
+#
+# ``BuyHold_Return_%`` and ``Alpha_%`` used to live here too, computed by hand
+# in the combo-search path. They are canonical metrics now; ``Alpha_%`` changed
+# meaning with them, from the arithmetic difference against buy-and-hold to
+# annualised Jensen's alpha. The old figure kept its place on the leaderboard
+# under the name it always deserved, ``Excess_Return_%``.
 
 # Default sort key for the optimizer leaderboard. One definition, so
 # ``layout/shell.py``'s store default and ``callbacks/optimization.py``'s
@@ -278,14 +361,16 @@ def ui_row(metrics: BacktestMetrics) -> dict[str, Any]:
 # reshuffle a table users read left to right. The two signal columns are not
 # metrics and are prepended by the caller.
 LEADERBOARD_ORDER = (
-    "Total_Return_%", "Alpha_%", "Sharpe_Ratio", "Sortino", "Calmar",
-    "Max_Drawdown_%", "Win_Rate_%", "Profit_Factor", "Trades",
+    "Total_Return_%", "Excess_Return_%", "Alpha_%", "Beta", "Sharpe_Ratio",
+    "DSR_%", "Sortino", "Calmar", "Max_Drawdown_%", "Info_Ratio",
+    "Win_Rate_%", "Profit_Factor", "Trades",
 )
 
-# Sort dropdown, in the order the control has always listed them.
+# Sort dropdown, in the order the control has always listed them — with the
+# two selection-bias-aware keys added at the front, where they belong.
 SORT_ORDER = (
-    DEFAULT_SORT_KEY, "Total_Return_%", "Sharpe_Ratio", "Calmar",
-    "Max_Drawdown_%", "Trades",
+    DEFAULT_SORT_KEY, "DSR_%", "Total_Return_%", "Sharpe_Ratio", "Alpha_%",
+    "Info_Ratio", "Calmar", "Max_Drawdown_%", "Trades",
 )
 
 _SORT_LABELS = {

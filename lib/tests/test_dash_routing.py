@@ -156,5 +156,8 @@ class TestDashShellRoutes(unittest.TestCase):
         self.assertIn('apply-bayesian-btn', layout_str)
         self.assertIn('validate-bayesian-oos-btn', layout_str)
         self.assertIn('optimizer-oos-interval', layout_str)
+        self.assertIn('validate-regimes-btn', layout_str)
+        self.assertIn('optimizer-regimes-panel', layout_str)
+        self.assertIn('optimizer-regimes-interval', layout_str)
         self.assertIn('chart-area-home', layout_str)
         self.assertIn('chart-area-host', layout_str)

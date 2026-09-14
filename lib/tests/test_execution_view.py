@@ -88,7 +88,15 @@ class TestGlossary:
 
     def test_active_controls_cover_every_mode(self):
         assert set(ACTIVE_CONTROLS) == set(MODE_ORDER)
-        assert ACTIVE_CONTROLS['accumulation'] == ('Amount per buy',)
+
+    def test_accumulation_lists_only_the_knobs_that_reach_its_entries(self):
+        """It has no exits, so every exit-side control must stay off the list."""
+        accumulation = set(ACTIVE_CONTROLS['accumulation'])
+        assert 'Amount per buy' in accumulation
+        assert accumulation.isdisjoint({
+            'Trailing stop', 'Take profit', 'Min holding period', 'Exit handling',
+            'Scale-in %', 'Kelly win rate', 'Kelly win/loss ratio',
+        })
 
     def test_sections_are_non_empty(self):
         assert len(EXECUTION_SECTIONS) >= 3

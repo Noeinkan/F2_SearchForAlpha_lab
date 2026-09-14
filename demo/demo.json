@@ -10,8 +10,21 @@
   "status": "live",
 
   "url": "https://alpha.demos.noeinsolutions.com/",
-  "note": "No sign-up. Prices and fundamentals frozen at the 11 Sep 2026 close; no broker, runs capped.",
-  "noteIt": "Nessuna registrazione. Prezzi e fondamentali congelati alla chiusura dell’11 settembre 2026; nessun broker, esecuzioni limitate.",
+  "note": "Free 7-day trial with your email. Prices and fundamentals frozen at the 11 Sep 2026 close; no broker, runs capped.",
+  "noteIt": "Prova gratuita di 7 giorni con la tua email. Prezzi e fondamentali congelati alla chiusura dell’11 settembre 2026; nessun broker, esecuzioni limitate.",
+
+  "access": {
+    "mode": "email-trial",
+    "verification": "6-digit code plus a one-use link (confirm click, so mail scanners cannot spend it), 15 minutes",
+    "trialDays": 7,
+    "perPersonDaily": "25 optimiser runs per UTC day",
+    "oneTrialPer": "mailbox: lower-cased, +tags dropped, Gmail dots dropped; common throwaway domains refused",
+    "tracking": "SQLite on the access-data volume: sign-ins, page loads, backtests, data and fundamentals loads, optimiser runs, limits hit, per email",
+    "admin": "/admin, unlocked by DEMO_ADMIN_TOKEN (server .env); CSV export; extend, revoke, delete",
+    "privacy": "Sign-in page states what is stored and why; deleted 365 days after the last visit or on request",
+    "secrets": ["DEMO_SMTP_HOST", "DEMO_SMTP_PORT", "DEMO_SMTP_SECURITY", "DEMO_SMTP_USER", "DEMO_SMTP_PASSWORD", "DEMO_MAIL_FROM", "DEMO_ADMIN_TOKEN"],
+    "killSwitch": "DEMO_ACCESS_GATE=false opens the demo to anyone, unrecorded; local runs only"
+  },
 
   "data": {
     "source": "demo/fixtures/",
@@ -32,7 +45,7 @@
 
   "disabled": [
     "Interactive Brokers connection, paper-trading agent and live mode: ib_async is not installed, lib/live/ is deleted from the image, and importing it is refused in-process",
-    "all outbound network: sockets to non-loopback hosts and yfinance are refused in-process",
+    "all outbound network except the one SMTP host:port that sends sign-in codes: other sockets to non-loopback hosts and yfinance are refused in-process",
     "the options Flow Scanner (needs a live options chain)",
     "writes to config/: presets and watchlists stay in the visitor's browser"
   ],
@@ -52,13 +65,17 @@
     "jobTimeoutSeconds": 120,
     "maxSessions": 60,
     "container": "2 CPUs, 1.5 GB, read-only root filesystem",
+    "perEmailOptimiserRunsPerDay": 25,
+    "codesPerEmailPerHour": 3,
+    "codesPerHour": 60,
+    "newAddressesPerIpPerDay": 5,
     "note": "perIpPerHour counts optimiser runs started; perIpPerMinute counts backtests, data loads and fundamentals loads. Oversized requests are clamped server-side; refusals show a notice, never an error page. The date range is the snapshot's."
   },
 
-  "resets": "Stateless: each visitor's dashboard state lives in memory and is dropped after 30 idle minutes (or when 60 visitors are held); optimiser studies are written to a tmpfs. Nothing a visitor does is visible to the next one, and a restart forgets everything.",
-  "costPerVisit": "none",
+  "resets": "Each visitor's dashboard state lives in memory and is dropped after 30 idle minutes (or when 60 visitors are held); optimiser studies are written to a tmpfs. Nothing a visitor does is visible to the next one. Only the access and usage log persists (access-data volume), and it is visible only at /admin.",
+  "costPerVisit": "none beyond one transactional email per sign-in (capped at 60 an hour)",
 
-  "runLocally": "DEMO_MODE=true python -m demo.server",
+  "runLocally": "DEMO_MODE=true DEMO_MAIL_BACKEND=console python -m demo.server",
   "shots": [
     "f2-search-for-alpha.jpg",
     "f2-search-for-alpha-terminal.jpg",

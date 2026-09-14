@@ -824,3 +824,82 @@ input.bbg-input[type=number] {
 /* Drop the underline animation */
 .panel-tab::after { display: none !important; }
 
+
+/* =============================================================================
+   Empty states (lib/dash/layout/empty_states.py)
+   A region with nothing to show yet: glyph, what is missing, what to do.
+   ========================================================================== */
+
+.sfa-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 20px 12px;
+    text-align: center;
+    font-family: var(--font-sans);
+    color: var(--text-secondary);
+}
+.sfa-empty-state__glyph {
+    font-size: 22px;
+    line-height: 1;
+    color: var(--accent-dim);
+    margin-bottom: 4px;
+}
+.sfa-empty-state__title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-primary);
+}
+.sfa-empty-state__hint {
+    font-size: 11px;
+    max-width: 34ch;
+    color: var(--text-tertiary);
+}
+.sfa-empty-state--compact {
+    padding: 10px 6px;
+}
+
+/* =============================================================================
+   Error boundary (lib/dash/error_boundary.py)
+   Unhandled callback exceptions. Fixed so it is visible from every workspace;
+   empty (no alert) it takes no space and no clicks.
+   ========================================================================== */
+
+.sfa-error-boundary {
+    position: fixed;
+    top: 56px;
+    right: 16px;
+    z-index: 2000;
+    width: min(420px, calc(100vw - 32px));
+    pointer-events: none;
+}
+.sfa-error-boundary .custom-alert {
+    pointer-events: auto;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.55);
+    margin-bottom: 0 !important;
+}
+.sfa-error-boundary .custom-alert strong {
+    color: var(--text-primary);
+}
+.sfa-error-boundary .custom-alert {
+    padding-right: 36px;
+}
+/* Bootstrap's close glyph is black; same inversion the modals use. */
+.sfa-error-boundary .btn-close {
+    filter: invert(1) grayscale(100%) brightness(1.6);
+    opacity: 0.7;
+    padding: 10px;
+}
+.sfa-error-boundary .btn-close:hover { opacity: 1; }
+body.theme-light .sfa-error-boundary .btn-close { filter: none; }
+.sfa-error-boundary__detail {
+    margin-top: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+    word-break: break-word;
+}

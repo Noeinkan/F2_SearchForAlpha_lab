@@ -1,0 +1,67 @@
+# Market regime calendar — machine-readable twin of the table in RESEARCH.md.
+#
+# Read by lib/regimes/ to slice a strategy's history into these periods and
+# score each one on its own (`sfa regimes`, the optimizer's REGIMES button).
+# RESEARCH.md is the human reference and must not be edited by agents; this
+# file is what the code reads. lib/tests/test_regimes.py fails if the months
+# and labels here drift from that table.
+#
+# Dates are inclusive on both ends. `to: null` means "up to today".
+# The table gives months only; where two rows share a month (2020-02), the
+# boundary is the day the regime actually turned: SPY's pre-COVID peak close
+# on 2020-02-19.
+
+regimes:
+  - id: bull_2019
+    label: Bull / low vol
+    character: Pre-COVID trend, tight spreads
+    from: 2019-01-01
+    to: 2020-02-19
+
+  - id: covid_crash
+    label: Crash + recover
+    character: COVID crash -34%, fastest recovery ever
+    from: 2020-02-20
+    to: 2020-04-30
+
+  - id: qe_bull
+    label: Bull / momentum
+    character: Fed QE, growth stocks outperform
+    from: 2020-05-01
+    to: 2021-12-31
+
+  - id: bear_2022
+    label: Bear / rates
+    character: Fed hikes, SPY -25%, QQQ -35%
+    from: 2022-01-01
+    to: 2022-10-31
+
+  - id: recovery_2023
+    label: Recovery
+    character: Mean reversion bounce, rate-peak pivot
+    from: 2022-11-01
+    to: 2023-12-31
+
+  - id: ai_bull
+    label: AI bull run
+    character: NVDA/tech concentration, low breadth
+    from: 2024-01-01
+    to: 2025-06-30
+
+  - id: mixed_2025
+    label: Mixed
+    character: Rate cuts priced in, earnings-driven
+    from: 2025-07-01
+    to: null
+
+# RESEARCH.md's rule of thumb: "A robust strategy should show positive Sortino
+# in at least 3 of the 7 regimes above, including the 2022 bear."
+rule:
+  metric: sortino        # any BacktestMetrics field
+  threshold: 0.0         # a regime passes when metric > threshold
+  min_passing: 3
+  required: [bear_2022]  # must be among the passing regimes
+
+# A regime counts only when the data reaches both of its ends, within this many
+# calendar days (a holiday or weekend at the boundary is not a data gap).
+coverage_grace_days: 7

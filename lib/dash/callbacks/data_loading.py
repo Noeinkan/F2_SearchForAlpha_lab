@@ -44,9 +44,15 @@ def register_data_loading_callbacks(app) -> None:
             interval = normalize_interval(market.get("interval") or DEFAULT_BAR_INTERVAL)
         except Exception:
             interval = DEFAULT_BAR_INTERVAL
+        # A missing ticker or capital leaves the control alone rather than
+        # blanking it. The last-session restore sends no ticker on purpose
+        # (callbacks/ui_session.py), and an empty `ticker-dropdown` would strand
+        # the ~15 callbacks that read it as the current symbol.
+        ticker = market.get("ticker")
+        capital = market.get("initial_capital")
         return (
-            market.get("ticker"),
-            market.get("initial_capital"),
+            ticker if ticker else no_update,
+            capital if capital is not None else no_update,
             interval,
         )
 

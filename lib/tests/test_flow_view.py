@@ -446,6 +446,34 @@ def test_render_ticker_card_has_score_chips_and_strike_map():
     assert "sfa-flow-strike-map" in serialized
 
 
+def test_rate_limited_card_says_retry_not_bad_symbol():
+    theme = get_theme(DEFAULT_THEME)
+    card = str(render_ticker_card(
+        _sample_report(error="Option expiries for NVDA: Too Many Requests", error_kind="rate_limited"),
+        theme,
+    ))
+    assert "RATE LIMITED" in card
+    assert "Too Many Requests" in card
+
+
+def test_plain_error_card_has_no_rate_limit_banner():
+    theme = get_theme(DEFAULT_THEME)
+    card = str(render_ticker_card(_sample_report(error="no such symbol", error_kind="error"), theme))
+    assert "no such symbol" in card
+    assert "RATE LIMITED" not in card
+
+
+def test_partial_chain_warning_names_the_missing_expiries():
+    theme = get_theme(DEFAULT_THEME)
+    card = str(render_ticker_card(
+        _sample_report(failed_expiries={"2026-06-27": "Too Many Requests"}),
+        theme,
+    ))
+    assert "sfa-flow-partial-chain" in card
+    assert "1 expiry could not be fetched (2026-06-27)" in card
+    assert "sfa-flow-partial-chain" not in str(render_ticker_card(_sample_report(), theme))
+
+
 def test_render_flow_reports_composes_summary_and_cards():
     theme = get_theme(DEFAULT_THEME)
     payload = {"generated_at": "2026-06-14T12:00:00", "reports": [_sample_report()]}

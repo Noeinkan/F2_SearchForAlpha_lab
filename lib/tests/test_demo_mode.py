@@ -371,15 +371,23 @@ _PROBE = textwrap.dedent(r"""
         r = client.post('/_dash-update-component', json=body, headers={'X-Real-IP': ip})
         return r.status_code, r.get_data(as_text=True)
 
-    def visitor():
+    import re
+    def visitor(address):
+        # The access gate is on (console mailer): bounce, ask for a code, type it.
         c = app.server.test_client()
-        page = c.get('/ticker/TSLA')
-        return c, page
+        bounced = c.get('/ticker/TSLA')
+        results.setdefault('signed_out_redirect', bounced.status_code == 302 and bounced.headers['Location'].startswith('/access'))
+        results.setdefault('signed_out_no_session', sessions.COOKIE_NAME not in (bounced.headers.get('Set-Cookie') or ''))
+        c.post('/access', data={'email': address, 'next': '/ticker/TSLA'})
+        code = ''.join(re.search(r'code is (\d{3}) (\d{3})', app.demo_access.mailer.outbox[-1].text).groups())
+        c.post('/access/code', data={'email': address, 'code': code})
+        return c, c.get('/ticker/TSLA')
 
-    a, page = visitor()
+    a, page = visitor('visitor-a@example.com')
     html = page.get_data(as_text=True)
     results['page_status'] = page.status_code
     results['banner'] = 'PUBLIC DEMO' in html and '11 Sep 2026' in html
+    results['signed_in_line'] = 'Signed in as <b>visitor-a@example.com</b>' in html
     results['cookie'] = sessions.COOKIE_NAME in (page.headers.get('Set-Cookie') or '')
     results['layout_bytes'] = len(a.get('/_dash-layout').get_data())
     status, body = call(a, 'data-display-store.data', 'open-data-button.n_clicks', {'open-data-button.n_clicks': 1})
@@ -410,7 +418,7 @@ _PROBE = textwrap.dedent(r"""
     results['combos_signals_per_side'] = max((max(len(b), len(s)) for b, s in opt.get('combinations', [])), default=0)
 
     # Concurrency: DEMO_MAX_CONCURRENT_JOBS=1, so a second visitor is walled.
-    b, _ = visitor()
+    b, _ = visitor('visitor-b@example.com')
     status, body = call(b, 'optimization-state.data', 'run-optimization-btn.n_clicks', combos, ip='198.51.100.2')
     results['second_run_walled'] = 'demo-wall-body' in body and 'already going' in body
     sid_b = b.get_cookie(sessions.COOKIE_NAME).value
@@ -433,6 +441,13 @@ _PROBE = textwrap.dedent(r"""
                         {'flow-rescan-button.n_clicks': 1, 'app-url.pathname': '/flow/TSLA'})
     results['flow_off'] = 'live options chain' in body
 
+    # Usage recorded against each signed-in email.
+    usage = {}
+    for row in app.demo_access.store.visitor_rows():
+        usage[row['email']] = {k: row[k] for k in ('visits', 'backtests', 'optimizer_runs', 'limits_hit')}
+    results['usage'] = usage
+    results['admin_off_without_token'] = app.server.test_client().get('/admin').status_code
+
     # Seals, from inside the running demo process.
     try:
         import lib.live.runner
@@ -454,7 +469,7 @@ _PROBE = textwrap.dedent(r"""
 
 
 @pytest.fixture(scope="module")
-def probe():
+def probe(tmp_path_factory):
     env = {
         **os.environ,
         "DEMO_MODE": "true",
@@ -462,6 +477,10 @@ def probe():
         "DEMO_MAX_CONCURRENT_JOBS": "1",
         "DEMO_MAX_COMBOS": "40",
         "DEMO_MAX_SIGNALS_PER_SIDE": "2",
+        "DEMO_ACCESS_GATE": "true",
+        "DEMO_MAIL_BACKEND": "console",
+        "DEMO_ACCESS_DB": str(tmp_path_factory.mktemp("demo-access") / "access.sqlite3"),
+        "DEMO_ADMIN_TOKEN": "",
     }
     out = subprocess.run([sys.executable, "-c", _PROBE], cwd=REPO_ROOT, env=env,
                          capture_output=True, text=True, timeout=600)
@@ -473,6 +492,22 @@ def probe():
 def test_demo_page_serves_the_banner_and_a_session_cookie(probe):
     assert probe["page_status"] == 200
     assert probe["banner"] and probe["cookie"]
+
+
+def test_the_real_demo_is_behind_the_email_gate(probe):
+    assert probe["signed_out_redirect"]
+    assert probe["signed_out_no_session"]  # no dashboard state is minted for a refused browser
+    assert probe["signed_in_line"]
+    assert probe["admin_off_without_token"] == 404
+
+
+def test_usage_is_recorded_against_the_signed_in_email(probe):
+    a = probe["usage"]["visitor-a@example.com"]
+    assert a["visits"] >= 1
+    assert a["backtests"] >= 1
+    assert a["optimizer_runs"] == 1
+    assert a["limits_hit"] >= 1  # the per-minute backtest limit
+    assert probe["usage"]["visitor-b@example.com"]["optimizer_runs"] == 0
 
 
 def test_page_ships_without_the_data_table_payload_until_it_is_opened(probe):

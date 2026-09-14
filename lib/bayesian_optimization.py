@@ -42,6 +42,7 @@ from lib.agent_strategy import (
     params_to_indicator_settings,
 )
 from lib.backtest_result import BacktestMetrics, run_backtest_result
+from lib.metrics.deflated import NORMAL_KURTOSIS, deflated_sharpe_ratio, trial_sharpe_std
 from lib.cli.contracts import CliError
 from lib.config_loader import get_agent_config
 from lib.data_processing import fetch_data
@@ -145,6 +146,41 @@ def composite_weights() -> dict[str, float]:
         "max_drawdown": float(cfg.get("max_drawdown", 2.0)),
         "turnover": float(cfg.get("turnover", 0.5)),
     }
+
+
+def deflate_against_study(
+    metrics: dict[str, Any], persisted: list[trials_store.TrialRecord]
+) -> dict[str, Any]:
+    """Re-deflate a winning trial's Sharpe against the study that produced it.
+
+    ``run_backtest_result`` scores each trial in isolation, so the
+    ``deflated_sharpe`` it stores is the single-trial figure. The study is the
+    selection: the winner is a maximum over every trial in it, and the store is
+    where that population lives. A **resumed** study counts its earlier trials
+    too — that history is part of the search whether or not it ran today.
+
+    The stored metrics dict is returned unchanged when the trial predates the
+    sample fields it needs, rather than overwriting a real number with a zero.
+    """
+    n_obs = int(metrics.get("num_bars") or 0)
+    if n_obs < 2 or not persisted:
+        return metrics
+
+    sharpe_std = trial_sharpe_std(
+        [t.metrics.get("sharpe", 0.0) for t in persisted]
+    )
+    out = dict(metrics)
+    out["num_trials"] = len(persisted)
+    out["deflated_sharpe"] = deflated_sharpe_ratio(
+        float(metrics.get("sharpe") or 0.0),
+        n_obs=n_obs,
+        skew=float(metrics.get("returns_skew") or 0.0),
+        kurtosis=float(metrics.get("returns_kurtosis") or NORMAL_KURTOSIS),
+        num_trials=len(persisted),
+        sharpe_std=sharpe_std,
+        periods_per_year=int(metrics.get("periods_per_year") or 252),
+    )
+    return out
 
 
 def score_metrics(metric: str, m: BacktestMetrics) -> float:
@@ -374,7 +410,7 @@ def run_study(
         best_trial_id=matching.trial_id,
         best_optuna_number=int(best.number),
         best_params=matching.params,
-        best_metrics=matching.metrics,
+        best_metrics=deflate_against_study(matching.metrics, persisted),
         best_value=float(matching.objective_value),
         metric=metric,
         duration_seconds=duration,
@@ -428,6 +464,8 @@ def run_optimise_cli(
         f"  duration         {contract['duration_seconds']:.1f}s\n"
         f"  best.trial_id    {bt['trial_id']}\n"
         f"  best.value       {bt['value']:.4f} ({bt['metric']})\n"
+        f"  best.dsr         {bt['metrics'].get('deflated_sharpe', 0.0):.3f}"
+        f" (deflated by {bt['metrics'].get('num_trials', 1)} trials)\n"
         f"  best.params      {bt['params']}"
     )
 

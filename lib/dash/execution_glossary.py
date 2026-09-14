@@ -111,6 +111,21 @@ MECHANICS_ROWS: tuple[dict[str, str], ...] = (
         'accumulation': 'Not meaningful',
         'rebalancing': 'Meaningful',
     },
+    # Order Type is orthogonal to Execution Type — it is the same answer in all
+    # three columns, and saying so is the point of the row. Which knob does
+    # what is the single most common confusion these two settings cause.
+    {
+        'label': 'Order type',
+        'trading': 'Any — market, limit, stop',
+        'accumulation': 'Any — entries only',
+        'rebalancing': 'Any — market, limit, stop',
+    },
+    {
+        'label': 'Exit handling',
+        'trading': 'Close check, stop order or bracket',
+        'accumulation': 'None — it never exits',
+        'rebalancing': 'Close check, stop order or bracket',
+    },
 )
 
 # Cells worth flagging visually: (row label, mode) -> tone.
@@ -125,6 +140,7 @@ CELL_TONES: dict[tuple[str, str], str] = {
     ('Repeat buy signals', 'trading'): 'warn',
     ('Trailing stop', 'rebalancing'): 'warn',
     ('Take profit', 'rebalancing'): 'warn',
+    ('Exit handling', 'accumulation'): 'off',
 }
 
 # Which Trade Setup controls do anything, per mode. Drives the "these knobs are
@@ -133,9 +149,15 @@ ACTIVE_CONTROLS: dict[str, tuple[str, ...]] = {
     'trading': (
         'Strategy preset', 'Min holding period', 'Trailing stop', 'Scale-in %',
         'Take profit', 'Kelly win rate', 'Kelly win/loss ratio',
+        'Order type', 'Order offset', 'Time in force', 'Exit handling',
     ),
-    'accumulation': ('Amount per buy',),
-    'rebalancing': ('Min holding period', 'Trailing stop', 'Take profit', '% of portfolio'),
+    # Accumulation never exits, so Exit Handling is inert there — but the entry
+    # side of the order model still applies.
+    'accumulation': ('Amount per buy', 'Order type', 'Order offset', 'Time in force'),
+    'rebalancing': (
+        'Min holding period', 'Trailing stop', 'Take profit', '% of portfolio',
+        'Order type', 'Order offset', 'Time in force', 'Exit handling',
+    ),
 }
 
 EXECUTION_SECTIONS: list[dict[str, str]] = [

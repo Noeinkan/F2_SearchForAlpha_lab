@@ -57,8 +57,8 @@ The codebase identifies its users through what is wired, not through declared pe
 - **Optuna studies** — RDB storage in `state/optuna.db` with namespace `study_*` plus mirrored rows in `sfa_trials` and `sfa_walkforward`.
 - **Promotion record** — appended to `sfa_promotions` (SQLite), `config/param_history.yaml` (audit log), and overwritten into `config/strategy_config.yaml` (active `live_params`).
 - **Paper-trade ledger** — every fill persisted via `lib/store/fills.py`; runner heartbeat in `lib/store/state.py` writes `sfa_runner_state` with equity, positions, and guard status each bar.
-- **Dashboard routes** — `/` (default ticker terminal), `/ticker/<ticker>`, `/fundamentals/<ticker>`, `/flow/<ticker>`, `/flow_report.html` (serves `flow_report.html` from the repo root, or a stub when missing).
-- **Static artifacts** — Parquet (`results/`), Excel (`export/`), `flow_report.html` + `flow_report.json`, `Signal_Combination.pbix`.
+- **Dashboard routes** — `/` (default ticker terminal), `/ticker/<ticker>`, `/fundamentals/<ticker>`, `/flow/<ticker>`, `/flow_report.html?ticker=<ticker>` (that ticker's stored HTML report; the bare URL serves a CLI-written `flow_report.html` from the repo root, or a stub when missing).
+- **Static artifacts** — Parquet (`results/`), Excel (`export/`), per-ticker flow reports in `state/flow/<TICKER>.json` + `.html` (refreshed in the background while the dashboard runs), `Signal_Combination.pbix`.
 
 ## Benefits & Value Proposition
 
@@ -109,7 +109,7 @@ The codebase identifies its users through what is wired, not through declared pe
 - **Strategy mode names diverge from UI presets** — engine modes are `trading|accumulation|rebalancing` while UI quick-presets are `swing|position|trend` (configured in `lib/dash/layout/right_panel.py`, not engine modes).
 - **Portuguese/Italian documentation only partially translates** — `docs/` contains both EN and `.it.md` variants for backtest/optimiser guides; CLI contract is English-only.
 - **Dashboard does not write back to disk** — UI presets flow through `config/ui_presets.json`, but most panel state is in-memory (`lib/dash/state.py` `dashboard_state`).
-- **Options-flow scan is HTTP-best-effort** — `scripts/flow_scanner.py` queries the Yahoo screener (`YAHOO_SCREENER_URL`); when the report is absent `flow_report.html` serves a stub.
+- **Options chains come from Yahoo only** — `lib/options/chain_source.py` retries throttled requests and tolerates a failed expiry, but there is no second chain source (ROADMAP 6.9), and a persistent Yahoo rate limit shows as `RATE LIMITED` until it lifts.
 
 ## Extensibility & Integration Points
 

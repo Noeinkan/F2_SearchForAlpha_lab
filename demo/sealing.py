@@ -4,7 +4,8 @@ Two refusals, both enforced in the server process rather than by hiding
 buttons:
 
 1. **No outbound network.** Every Python socket connection to a non-loopback
-   address raises ``DemoRefused``, and so does name resolution. ``yfinance``
+   address raises ``DemoRefused``, and so does name resolution -- except the
+   single mail server ``allow_outbound`` names, which sends sign-in codes. ``yfinance``
    is replaced by a stub whose every attribute raises, because its transport
    (``curl_cffi``) is C code that never goes through Python's ``socket``.
    The data the demo shows comes from ``demo/fixtures/`` and nowhere else.
@@ -109,6 +110,39 @@ def _address_host(address: Any) -> Any:
     return None  # AF_UNIX paths and the like carry no host
 
 
+# The one door the seal can open: the mail server that sends sign-in codes
+# (demo.access.mailer). A host:port is allowed by name, and the addresses that
+# name resolves to are allowed as they come back from the lookup -- so the
+# connection can reach that server and nothing else on the same machine.
+_ALLOWED_HOSTS: set[tuple[str, int]] = set()
+_ALLOWED_ADDRESSES: set[tuple[str, int]] = set()
+
+
+def allow_outbound(host: str, port: int) -> None:
+    """Let the demo process connect to ``host:port`` (and to nothing else new)."""
+    _ALLOWED_HOSTS.add((host.strip().lower(), int(port)))
+
+
+def _port(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _host_allowed(host: Any, port: Any) -> bool:
+    if host is None:
+        return False
+    text = (host.decode() if isinstance(host, bytes) else str(host)).lower()
+    return (text, _port(port)) in _ALLOWED_HOSTS
+
+
+def _address_allowed(address: Any) -> bool:
+    if not (isinstance(address, tuple) and len(address) >= 2):
+        return False
+    return (str(address[0]), _port(address[1])) in _ALLOWED_ADDRESSES
+
+
 def _refuse(host: Any) -> NetworkRefused:
     return NetworkRefused(
         f"Outbound network to {host!r} is disabled in the public demo; "
@@ -118,28 +152,34 @@ def _refuse(host: Any) -> NetworkRefused:
 
 def _sealed_connect(self: socket.socket, address: Any):
     host = _address_host(address)
-    if self.family in (socket.AF_INET, socket.AF_INET6) and not _is_local(host):
+    if self.family in (socket.AF_INET, socket.AF_INET6) and not _is_local(host) and not _address_allowed(address):
         raise _refuse(host)
     return _ORIGINAL["connect"](self, address)
 
 
 def _sealed_connect_ex(self: socket.socket, address: Any):
     host = _address_host(address)
-    if self.family in (socket.AF_INET, socket.AF_INET6) and not _is_local(host):
+    if self.family in (socket.AF_INET, socket.AF_INET6) and not _is_local(host) and not _address_allowed(address):
         raise _refuse(host)
     return _ORIGINAL["connect_ex"](self, address)
 
 
 def _sealed_getaddrinfo(host: Any, *args: Any, **kwargs: Any):
     # host=None is a passive lookup for binding a listening socket.
-    if host is not None and not _is_local(host):
+    if host is None or _is_local(host):
+        return _ORIGINAL["getaddrinfo"](host, *args, **kwargs)
+    port = args[0] if args else kwargs.get("port")
+    if not _host_allowed(host, port):
         raise _refuse(host)
-    return _ORIGINAL["getaddrinfo"](host, *args, **kwargs)
+    results = _ORIGINAL["getaddrinfo"](host, *args, **kwargs)
+    for *_ignored, sockaddr in results:
+        _ALLOWED_ADDRESSES.add((str(sockaddr[0]), _port(sockaddr[1])))
+    return results
 
 
 def _sealed_create_connection(address: Any, *args: Any, **kwargs: Any):
     host = _address_host(address)
-    if not _is_local(host):
+    if not _is_local(host) and not _host_allowed(host, address[1] if len(address) > 1 else None):
         raise _refuse(host)
     return _ORIGINAL["create_connection"](address, *args, **kwargs)
 
@@ -181,6 +221,8 @@ def remove_network_seal(real_yfinance: types.ModuleType | None = None) -> None:
     socket.socket.connect_ex = _ORIGINAL["connect_ex"]  # type: ignore[method-assign]
     socket.getaddrinfo = _ORIGINAL["getaddrinfo"]  # type: ignore[assignment]
     socket.create_connection = _ORIGINAL["create_connection"]  # type: ignore[assignment]
+    _ALLOWED_HOSTS.clear()
+    _ALLOWED_ADDRESSES.clear()
     if real_yfinance is not None:
         sys.modules["yfinance"] = real_yfinance
         for module in list(sys.modules.values()):

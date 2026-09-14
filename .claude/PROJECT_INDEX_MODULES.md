@@ -19,16 +19,20 @@ Hub: [PROJECT_INDEX.md](PROJECT_INDEX.md)
 | [lib/ticker_universe.py](../lib/ticker_universe.py) | Loads `config/tickers_universe.csv` — symbol lookup, sector / asset-class facets |
 | [lib/timeframes.py](../lib/timeframes.py) | Interval metadata + `clamp_window()` (Yahoo's 728d intraday lookback limit, stale-range relocation) + `resample_ohlcv()` (session-anchored 4h buckets) |
 | [lib/sessions.py](../lib/sessions.py) | **The session model.** `session_starts()`, `session_ids()`, `resolve_session_starts()` — where one trading session ends and the next begins, inferred from bar timestamps. No exchange calendar |
+| [lib/orders.py](../lib/orders.py) | **The order model.** `Order`, `Fill`, `OrderBook`, `fill_price()`, `bracket_orders()`, `PRIORITY_RULE`. Pure: it decides which resting orders a bar touches and at what price, and holds no cash, position or portfolio state — `lib/engine/` owns all of that |
+| [lib/panel.py](../lib/panel.py) | **Multi-symbol alignment.** `align_panel()`, `Panel` — many symbols on one union index, `Tradable` / `Mark` splitting execution from valuation on a hole, signals filled `0` (a reindexed `_Buy` is a truthy `NaN`), and `Session_Start` inferred once on the merged index. Pure data; `lib/portfolio.py` consumes it |
 | [lib/agent_strategy.py](../lib/agent_strategy.py) | Resolves agent strategy bundles (`config/agent.yaml`) to executable backtests |
 
 ### Backtesting Engine
 | File | Key Functions |
 |------|--------------|
-| [lib/strategy.py](../lib/strategy.py) | `backtest()`, `run_backtest()` — 3 strategy modes |
+| [lib/strategy.py](../lib/strategy.py) | `backtest()`, `run_backtest()`, `calculate_metrics()` — the single-symbol entry point and the execution-model docstring; re-exports the sizers, `ValidationError`, `BacktestError` and friends from `lib/engine/` |
+| [lib/portfolio.py](../lib/portfolio.py) | `backtest_portfolio(panel, ...)`, `PortfolioResult` (provisional), `equal_weight_benchmark()` — many symbols, one cash account |
+| [lib/engine/](../lib/engine/) | **The bar loop.** `state.py` (`EngineConfig`, `Account`, `SymbolContext`, `PendingBuy`), `setup.py` (args → config + per-symbol contexts, result frame), `steps.py` (exits, signal gating, sizing, fills), `resting.py` (order book walk, brackets, exit-order sync), `allocation.py` (`water_fill`, `CASH_ALLOCATION_RULE`), `loop.py` (`run_bars`, phase-major), plus `sizing.py`, `signal_inputs.py`, `results.py`, `errors.py` |
 | [lib/backtest_result.py](../lib/backtest_result.py) | `BacktestResult`, `run_backtest_result()`, `metrics_from_result_df()` — runs a backtest and wraps it; computes nothing |
-| [lib/metrics/](../lib/metrics/) | **The metrics engine.** `compute_metrics()`, `BacktestMetrics`, the trade-ledger shape, and the metric-name registry. The only place any metric is implemented |
+| [lib/metrics/](../lib/metrics/) | **The metrics engine.** `compute_metrics()`, `BacktestMetrics`, the trade-ledger shape, and the metric-name registry. The only place any metric is implemented. `benchmark.py` holds everything measured against buy-and-hold (alpha, beta, capture); `deflated.py` holds the Probabilistic and Deflated Sharpe ratios |
 
-**Strategy modes** (`strategy_mode`), sized in `_execute_buy` / `_execute_sell`:
+**Strategy modes** (`strategy_mode`), sized in `size_buy` / `size_sell` (`lib/engine/steps.py`):
 - `trading` — Kelly size × `position_scaling`; scaling ramps each *order* and stacks, with no target cap
 - `accumulation` — fixed `amount_per_buy`; sell signals discarded, trailing stop pinned to `inf`
 - `rebalancing` — `position_size_pct` of **portfolio value** on both sides (not of cash / units held)
@@ -61,7 +65,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 |------|--------------|
 | [lib/dash/helpers.py](../lib/dash/helpers.py) | `evaluate_signal_combination()`, `compute_robustness_scores()` — the live combinatorial search |
 | [lib/bayesian_optimization.py](../lib/bayesian_optimization.py) | `run_study()`, `run_optimise_cli()`, Optuna trials |
-| [lib/execution_params.py](../lib/execution_params.py) | `partition_params()`, shared execution search-space keys |
+| [lib/execution_params.py](../lib/execution_params.py) | `partition_params()`, shared execution search-space keys, `ORDER_PARAM_KEYS` / `ORDER_SEARCH_SPACE` for sweeping the order model |
 | [lib/grid_search.py](../lib/grid_search.py) | `run_grid_search()` — capped cartesian grid over unified space |
 | [lib/dash/optimizer_space_viz.py](../lib/dash/optimizer_space_viz.py) | Combo estimate card, param range bars, param landscape figures |
 
@@ -71,6 +75,9 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | [lib/walkforward/runner.py](../lib/walkforward/runner.py) | `run_walkforward()`, `run_walkforward_cli()` |
 | [lib/walkforward/verdict.py](../lib/walkforward/verdict.py) | `WindowVerdict`, `aggregate()` — OOS degradation gates |
 | [lib/walkforward/spaces.py](../lib/walkforward/spaces.py) | `suggest_from_space()`, `validate_space()` |
+| [lib/regimes/calendar.py](../lib/regimes/calendar.py) | `load_calendar()`, `parse_calendar()` — `config/regimes.yaml` (twin of the RESEARCH.md regime table) |
+| [lib/regimes/slicer.py](../lib/regimes/slicer.py) | `score_regimes()`, `judge()` — per-regime backtest slices, pass / fail / inconclusive |
+| [lib/regimes/runner.py](../lib/regimes/runner.py) | `fetch_calendar_tape()`, `run_bundle_regimes()`, `run_regimes_cli()` |
 | [lib/promotion/gate.py](../lib/promotion/gate.py) | `evaluate_gate()`, `promote()`, `run_promote_cli()` |
 | [lib/promotion/registry.py](../lib/promotion/registry.py) | `update_live_params()`, `record_promotion()`, `diff_params()` |
 
@@ -93,7 +100,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 |------|---------|
 | [lib/cli/app.py](../lib/cli/app.py) | Typer app entry — `build_app()` |
 | [lib/cli/contracts.py](../lib/cli/contracts.py) | Stable JSON contract dataclasses (don't rename fields) |
-| [lib/cli/commands/](../lib/cli/commands/) | 12 subcommands — see table below |
+| [lib/cli/commands/](../lib/cli/commands/) | 14 subcommands — see table below |
 
 | Command module | sfa subcommand |
 |----------------|----------------|
@@ -103,6 +110,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | `grid_search_cmd` | `grid-search` |
 | `trials_cmd` | `trials` |
 | `walkforward_cmd` | `walkforward` |
+| `regimes_cmd` | `regimes` |
 | `promote_cmd` | `promote` |
 | `run_cmd` | `run --mode paper` |
 | `status_cmd` | `status` |
@@ -126,6 +134,9 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | [lib/dash/routes.py](../lib/dash/routes.py) | URL route parsing — terminal, fundamentals, flow, ticker_terminal |
 | [lib/dash/flow_glossary.py](../lib/dash/flow_glossary.py) | Shared term/flag definitions, `score_breakdown()`, `interpretive_banner()` for Flow Scanner |
 | [lib/dash/flow_view.py](../lib/dash/flow_view.py) | Pure render — `render_flow_reports()`, `render_ticker_card()`, native Dash DataTable |
+| [lib/dash/flow_store.py](../lib/dash/flow_store.py) | One flow report per ticker in `state/flow/` — `load_report()`, `scan_into_store()` (a failed scan never replaces a good report) |
+| [lib/dash/flow_refresh.py](../lib/dash/flow_refresh.py) | Background rescan of stale flow reports — `start_flow_refresh()` from `run_dashboard`, `is_due()`, `refresh_once()` |
+| [lib/options/chain_source.py](../lib/options/chain_source.py) | Every Yahoo call the Flow Scanner makes — `fetch_option_chain()` (retried, per-expiry tolerant), `fetch_most_active_symbols()` |
 | [lib/dash/execution_glossary.py](../lib/dash/execution_glossary.py) | Execution Type copy — `MODE_SPECS`, `MECHANICS_ROWS`, `PREDICT_QUESTIONS` (pure data) |
 | [lib/dash/execution_sim.py](../lib/dash/execution_sim.py) | `simulate()`, `first_entry_summary()` — runs the real `backtest()` on a fixed tape so explainer figures cannot drift |
 | [lib/dash/execution_view.py](../lib/dash/execution_view.py) | Pure render — `render_execution_learn_content()`, `render_mechanics_matrix()`, `render_fingerprint()` |
@@ -135,10 +146,14 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | [lib/dash/components.py](../lib/dash/components.py) | Reusable component builders shared across `layout/` regions |
 | [lib/dash/helpers.py](../lib/dash/helpers.py) | Callback-side data prep and optimisation utilities |
 | [lib/dash/combo_walkforward.py](../lib/dash/combo_walkforward.py) | `ComboSpec`, `run_combo_walkforward()` — signal-combo walk-forward for Optimizer OOS |
+| [lib/dash/combo_regimes.py](../lib/dash/combo_regimes.py) | `run_combo_regimes()` — regime slicing of the Optimizer combo winner |
+| [lib/dash/regime_view.py](../lib/dash/regime_view.py) | Pure render — `render_regime_panel()` |
 | [lib/dash/optimizer_history.py](../lib/dash/optimizer_history.py) | `summarize_run`, `append_history`, `history_for_ticker` — compact run history |
 | [lib/dash/optimizer_landscape.py](../lib/dash/optimizer_landscape.py) | `build_return_sharpe_figure()` — Return vs Sharpe scatter |
 | [lib/dash/styles.py](../lib/dash/styles.py) | `get_styles(theme)` — theme-derived inline style dicts |
 | [lib/dash/preset_storage.py](../lib/dash/preset_storage.py) | `config/ui_presets.json` atomic load/save |
+| [lib/dash/ui_session_storage.py](../lib/dash/ui_session_storage.py) | `state/ui_session.json` — last session's workspace, load/save; `SFA_RESTORE_SESSION=0` turns it off |
+| [lib/dash/error_boundary.py](../lib/dash/error_boundary.py) | `handle_callback_error` — `on_error` hook rendering unhandled callback exceptions into `#error-boundary` |
 
 **Layout** (`lib/dash/layout/` — one file per UI region):
 | File | Region |
@@ -154,6 +169,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | `overlays.py` | Fundamentals + Flow Scanner overlays (incl. Flow learn modal) |
 | `command_palette.py` | Ctrl+K command palette |
 | `symbol_search.py` | Ctrl+/ (or bare `/`) symbol-search modal — search, sector/asset filters, watchlists |
+| `empty_states.py` | `empty_state()` + copy for chart / backtest results / signal list before content |
 
 The Execution Type explainer modal (`execution-learn-modal`) is emitted by `backtest_panel.py`, not by `shell.py`.
 
@@ -178,12 +194,13 @@ The Execution Type explainer modal (`execution-learn-modal`) is emitted by `back
 | `fundamentals.py` | Fundamentals overlay — register + re-exports |
 | `fundamentals_formulas.py` | Valuation formulas + explainability helpers |
 | `fundamentals_render.py` | Fundamentals tables / charts / `_render_payload` |
-| `flow.py` | Flow Scanner overlay — rescan subprocess, JSON load, native `#flow-content` render |
+| `flow.py` | Flow Scanner overlay — per-ticker report load and RESCAN via `flow_store`, minute poll for a refreshed report, native `#flow-content` render |
 | `misc_ui.py` | Keyboard shortcuts, palette dispatch bridge, misc UI hooks |
 | `layout.py` | Panel collapse, splitter, theme |
 | `command_palette.py` | Command palette actions |
 | `symbol_search.py` | Symbol-search modal — query, sector/asset options, watchlist mutations |
 | `status.py` | Status-bar activity indicator (WORKING…/READY/ERROR) |
+| `ui_session.py` | Last-session restore (via `preset-apply-store`, no ticker) and save-on-change |
 | `shared.py` | Re-export hub for shared helpers (not registered) |
 | `shared_enrichment.py` | Test-window slice + indicator enrichment cache |
 | `shared_signals.py` | Signal labels / option rows / plot toggles |
@@ -234,10 +251,10 @@ The Execution Type explainer modal (`execution-learn-modal`) is emitted by `back
 | Dashboard | `test_dashboard`, `test_dashboard_startup`, `test_bootstrap`, `test_data_loading`, `test_data_table`, `test_test_window`, `test_layout`, `test_dash_routing`, `test_dash_no_writeback`, `test_dash_enriched_cache`, `test_command_palette`, `test_ticker_search`, `test_symbol_search`, `test_watchlist_storage`, `test_radio_seg_css` |
 | Chart (Lightweight Charts) | `test_chart_payload`, `test_chart_meta`, `test_chart_assets`, `test_chart_regime_panes` |
 | Execution explainer | `test_execution_sim`, `test_execution_view` |
-| Flow Scanner | `test_flow_scanner_json`, `test_flow_view` |
+| Flow Scanner | `test_flow_scanner_json`, `test_flow_view`, `test_chain_source`, `test_flow_refresh` |
 | Fundamentals | `test_fundamentals`, `test_fundamentals_explainability`, `test_fundamentals_formula_rendering` |
 | Data | `test_data_processing`, `test_ticker_universe`, `test_timeframes` |
-| Metrics | `test_metrics` — formula values, unit/sign contract, ledger-sourced trade stats |
+| Metrics | `test_metrics` — formula values, unit/sign contract, ledger-sourced trade stats. `test_metrics_benchmark` — alpha vs excess return, PSR/DSR, leaderboard deflation |
 | Sessions | `test_sessions` — boundary inference, session-anchored resampling, overnight gap fills |
 
 Run: `rtk python -m pytest lib/tests/ -q`

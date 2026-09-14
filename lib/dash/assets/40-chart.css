@@ -169,3 +169,20 @@
 
 .sfa-chart-tools .bbg-button-ghost { padding: 2px 7px; }
 
+
+/* ---- Empty state over the canvas (callbacks/chart.py toggles [hidden]).
+   Same stacking recipe as .sfa-chart-loading; click-through so it never
+   blocks the chart underneath once bars arrive. */
+.sfa-chart-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 3;
+    background: var(--bg-primary);
+}
+.sfa-chart-empty[hidden] { display: none; }
+.sfa-chart-empty .sfa-empty-state__glyph { font-size: 32px; }
+.sfa-chart-empty .sfa-empty-state__hint { max-width: 44ch; }

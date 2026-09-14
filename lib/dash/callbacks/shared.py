@@ -50,6 +50,7 @@ from .shared_presets import (  # noqa: F401
 )
 from .shared_optimization_ui import (  # noqa: F401
     OPTIMIZATION_BATCH_SIZE,
+    build_overfitting_note,
     _create_best_strategy_highlight,
     _create_optimization_table,
     _create_optimization_table_mini,

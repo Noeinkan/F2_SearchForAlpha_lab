@@ -54,6 +54,43 @@ _SANDBOX_CLOSES: tuple[float, ...] = (
     96.0, 100.0, 104.0, 108.0, 110.0, 114.0, 118.0, 120.0,
 )
 
+# Opens, highs and lows for the same 24 bars.
+#
+# Before order types existed the sandbox could get away with ``High = close ×
+# 1.01`` and ``Low = close × 0.99``, because every fill was at the close and no
+# rule ever looked at the range. A limit or a stop is *only* the range, so a
+# tape whose bars are cosmetic decoration around the close cannot demonstrate
+# one: every limit either fills immediately or never fills at all.
+#
+# These bars are hand-written to make the mechanics visible in whole numbers:
+#
+# * bars 4 and 17 dip several points below their close, so a resting buy limit
+#   fills intrabar at a price the close never printed;
+# * bar 10 opens at 114 and closes at 110 having traded down to 108 — a bar
+#   that trips a stop the close-only check would miss entirely;
+# * bar 12 gaps: it opens at 101 against the previous close of 104, so a stop
+#   between the two fills at the open, below the level it was working at;
+# * bar 21 runs up through 116 before closing at 114, so a sell limit resting
+#   above the close is reachable.
+#
+# Every row satisfies Low ≤ min(Open, Close) ≤ max(Open, Close) ≤ High, which
+# is what makes it a tape rather than four unrelated series.
+_SANDBOX_OPENS: tuple[float, ...] = (
+    100.0, 100.5, 102.5, 105.5, 104.5, 108.5, 112.5, 115.5,
+    118.5, 119.5, 114.0, 109.0, 101.0, 97.0, 93.5, 90.5,
+    92.5, 96.5, 100.5, 104.5, 108.5, 110.5, 114.5, 118.5,
+)
+_SANDBOX_HIGHS: tuple[float, ...] = (
+    100.5, 102.5, 105.5, 106.0, 108.5, 112.5, 115.5, 118.5,
+    121.0, 120.0, 114.5, 109.5, 102.0, 97.5, 94.0, 92.5,
+    96.5, 100.5, 104.5, 108.5, 111.0, 116.0, 118.5, 120.5,
+)
+_SANDBOX_LOWS: tuple[float, ...] = (
+    99.0, 100.0, 102.0, 103.5, 102.0, 107.5, 111.5, 114.5,
+    117.5, 115.5, 108.0, 103.5, 97.5, 93.5, 89.0, 90.0,
+    92.0, 95.0, 100.0, 103.5, 107.5, 109.5, 113.5, 117.5,
+)
+
 # Signal bars are chosen so every mode has something to show: buys clustered in
 # the rally (so scale-in ramps visibly), buys during the dip (so DCA averages
 # down), and sells on the way up and the way down.
@@ -66,7 +103,7 @@ class LedgerRow:
     """One bar of the sandbox, in the terms a reader cares about."""
 
     bar: int
-    price: float
+    price: float         # the bar's close, i.e. what the chart shows
     signal: str          # 'buy' | 'sell' | ''
     action: str          # human phrase, e.g. 'bought $1,667'
     order_value: float   # signed: + bought, - sold, 0 nothing happened
@@ -74,6 +111,11 @@ class LedgerRow:
     cash: float
     equity: float
     note: str = ''       # why nothing happened, when nothing happened
+    # What actually traded. ``fill_price`` is the market price the order got,
+    # which equals ``price`` for a market order and deliberately does not for a
+    # limit or a stop — that difference is the whole point of the order model.
+    fill_price: float = 0.0
+    order_type: str = ''
 
 
 @dataclass(frozen=True)
@@ -93,12 +135,20 @@ class SandboxRun:
     final_equity: float
     total_return_pct: float
     ever_fully_exited: bool
+    order_type: str = 'market'
+    exit_order_mode: str = 'close'
+    # Fills that came off a resting order rather than the bar's close. Zero on
+    # a market run, and the number the order-type explainer quotes.
+    resting_fills: int = 0
     extras: Mapping[str, Any] = field(default_factory=dict)
 
 
 def build_sandbox_frame() -> pd.DataFrame:
     """The fixed tape. Same shape the engine gets from a real data load."""
     close = np.asarray(_SANDBOX_CLOSES, dtype=float)
+    open_ = np.asarray(_SANDBOX_OPENS, dtype=float)
+    high = np.asarray(_SANDBOX_HIGHS, dtype=float)
+    low = np.asarray(_SANDBOX_LOWS, dtype=float)
     n = len(close)
     buy = np.zeros(n, dtype=int)
     sell = np.zeros(n, dtype=int)
@@ -107,9 +157,9 @@ def build_sandbox_frame() -> pd.DataFrame:
 
     return pd.DataFrame(
         {
-            'Open': close,
-            'High': close * 1.01,
-            'Low': close * 0.99,
+            'Open': open_,
+            'High': high,
+            'Low': low,
             'Close': close,
             'Volume': np.full(n, 1_000_000),
             BUY_COLUMN: buy,
@@ -126,6 +176,13 @@ def default_params(mode: str) -> dict[str, Any]:
         'trailing_stop_pct': 15.0,
         'take_profit_pct': 0.0,
         'capital': SANDBOX_CAPITAL,
+        # Order Type is orthogonal to Execution Type, so it defaults the same
+        # way in every mode — and the default is the engine's own: market
+        # orders at the close, exits checked against the close.
+        'order_type': 'market',
+        'order_offset_pct': 2.0,
+        'order_tif': 'gtc',
+        'exit_order_mode': 'close',
     }
     if mode == 'accumulation':
         return {**common, 'amount_per_buy': 1_000.0}
@@ -143,6 +200,31 @@ def _money(value: float) -> str:
     return f"${value:,.0f}"
 
 
+# Short reader-facing words for the ledger's exit reasons. Kept next to the
+# renderer that uses them rather than in lib.metrics.ledger, which owns the
+# vocabulary itself and should not also own how a modal phrases it.
+_EXIT_REASON_WORDS = {
+    'trailing_stop': 'stop',
+    'take_profit': 'take profit',
+    'bracket_stop': 'bracket stop',
+    'bracket_target': 'target',
+}
+
+
+def _fills_by_bar(result: pd.DataFrame) -> dict[int, dict[str, Any]]:
+    """Index the engine's fill ledger by bar.
+
+    The ledger is the only place that knows what price an order actually got.
+    Reconstructing it from ``Units_to_buy × Close`` was fine while every fill was
+    at the close; a limit that filled 3 points below it would be reported at a
+    price that never traded.
+    """
+    fills = result.attrs.get('fills')
+    if fills is None or getattr(fills, 'empty', True):
+        return {}
+    return {int(row['bar']): dict(row) for _, row in fills.iterrows()}
+
+
 def _build_rows(result: pd.DataFrame, mode: str) -> tuple[LedgerRow, ...]:
     """Turn the engine's result frame into reader-facing ledger rows."""
     rows: list[LedgerRow] = []
@@ -152,6 +234,7 @@ def _build_rows(result: pd.DataFrame, mode: str) -> tuple[LedgerRow, ...]:
     units = result['Units'].to_numpy(dtype=float)
     cash = result['Cash_Value'].to_numpy(dtype=float)
     equity = result['Portfolio_Value'].to_numpy(dtype=float)
+    fills = _fills_by_bar(result)
 
     buy_raw = result[BUY_COLUMN].to_numpy(dtype=float)
     sell_raw = result[SELL_COLUMN].to_numpy(dtype=float)
@@ -168,19 +251,37 @@ def _build_rows(result: pd.DataFrame, mode: str) -> tuple[LedgerRow, ...]:
         action = '—'
         note = ''
 
+        fill = fills.get(i)
+        # The market price the order got. Falls back to the close only when
+        # there is no fill row at all, which is every bar that did not trade.
+        fill_price = float(fill['price']) if fill else float(close[i])
+        order_type = str(fill['order_type']) if fill else ''
+        reason = str(fill['reason']) if fill else ''
+
         if bought[i] > 0:
-            order_value = bought[i] * close[i]
+            order_value = bought[i] * fill_price
             action = f"bought {_money(order_value)}"
         elif sold[i] > 0:
-            order_value = -sold[i] * close[i]
+            order_value = -sold[i] * fill_price
             action = f"sold {_money(-order_value)}"
-            if prev_units > 0 and units[i] <= 1e-9 and not signalled_sell:
+            # The ledger names the reason outright now. It used to be guessed
+            # from "position went flat without a sell signal", which called a
+            # bracket's profit target a stop.
+            if reason and reason != 'signal':
+                note = _EXIT_REASON_WORDS.get(reason, reason.replace('_', ' '))
+                action += f" ({note})"
+            elif prev_units > 0 and units[i] <= 1e-9 and not signalled_sell:
                 action += " (stop)"
                 note = 'trailing stop'
         elif signalled_sell and mode == 'accumulation':
             note = 'sell signals are ignored in this mode'
         elif signalled_buy and cash[i] <= 1e-9:
             note = 'out of cash'
+
+        if fill and order_type != 'market':
+            # Say what the order was and what it got, because the price it got
+            # is not on the chart — that is precisely what a resting order does.
+            action += f" · {order_type.replace('_', '-')} @ ${fill_price:,.2f}"
 
         rows.append(
             LedgerRow(
@@ -193,6 +294,8 @@ def _build_rows(result: pd.DataFrame, mode: str) -> tuple[LedgerRow, ...]:
                 cash=float(cash[i]),
                 equity=float(equity[i]),
                 note=note,
+                fill_price=fill_price if fill else 0.0,
+                order_type=order_type,
             )
         )
         prev_units = float(units[i])
@@ -236,6 +339,16 @@ def _simulate_cached(mode: str, param_items: tuple[tuple[str, Any], ...]) -> San
         trailing_stop_loss=float(params.get('trailing_stop_pct', 15.0)) / 100.0,
         take_profit=float(params.get('take_profit_pct', 0.0)) / 100.0,
         allow_fractional=True,
+        # The order model, translated the same way the Backtest tab does it:
+        # one offset serves both the limit and the stop distance, and Exit
+        # Handling picks between the close check, a resting trailing stop and an
+        # OCO bracket whose legs are the trailing-stop and take-profit numbers.
+        order_type=str(params.get('order_type', 'market')),
+        limit_offset_pct=float(params.get('order_offset_pct', 2.0)) / 100.0,
+        stop_offset_pct=float(params.get('order_offset_pct', 2.0)) / 100.0,
+        time_in_force=str(params.get('order_tif', 'gtc')),
+        trailing_stop_orders=params.get('exit_order_mode') == 'stop_order',
+        use_brackets=params.get('exit_order_mode') == 'bracket',
         **_SANDBOX_COSTS,
     )
 
@@ -265,6 +378,16 @@ def _simulate_cached(mode: str, param_items: tuple[tuple[str, Any], ...]) -> San
         final_equity=equity[-1] if equity else capital,
         total_return_pct=(equity[-1] / capital - 1.0) * 100 if equity else 0.0,
         ever_fully_exited=any(r.units <= 1e-9 for r in rows[1:]),
+        # Read back from the frame, not from the params: the engine turns the
+        # exit orders off in accumulation mode, and the sandbox must report
+        # what ran rather than what was asked for.
+        order_type=str(result.attrs.get('order_type', 'market')),
+        exit_order_mode=(
+            'bracket' if result.attrs.get('use_brackets')
+            else 'stop_order' if result.attrs.get('trailing_stop_orders')
+            else 'close'
+        ),
+        resting_fills=sum(1 for r in rows if r.order_type not in ('', 'market')),
     )
 
 
@@ -296,3 +419,32 @@ def first_entry_summary(mode: str, **params: Any) -> str:
         f"first entry ≈ {_money(run.first_entry_value)} "
         f"({run.first_entry_pct:.1%} of {_money(run.capital)})"
     )
+
+
+# Reader-facing names for the exit modes, so the copy and the tooltips agree.
+_EXIT_MODE_NAMES = {
+    'close': 'close check',
+    'stop_order': 'trailing stop order',
+    'bracket': 'OCO bracket',
+}
+
+
+def order_model_summary(mode: str, **params: Any) -> str:
+    """One honest line about what the order model did on the fixed tape.
+
+    Like :func:`first_entry_summary`, this is generated by running the engine —
+    the counts are the run's own, not a description of what limit orders are
+    supposed to do. A market run says so plainly rather than padding itself out.
+    """
+    run = simulate(mode, **params)
+    exit_name = _EXIT_MODE_NAMES.get(run.exit_order_mode, run.exit_order_mode)
+
+    if run.order_type == 'market' and run.exit_order_mode == 'close':
+        return f"market orders at the close · {run.buy_count + run.sell_count} fills, all on the close"
+
+    parts = [f"{run.order_type.replace('_', '-')} orders", exit_name]
+    if run.resting_fills:
+        parts.append(f"{run.resting_fills} of {run.buy_count + run.sell_count} fills off the close")
+    else:
+        parts.append('nothing rested long enough to fill away from the close')
+    return ' · '.join(parts)

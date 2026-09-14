@@ -127,6 +127,12 @@ def register(app: typer.Typer) -> None:
             f"  num_trades      {m['num_trades']}\n"
             f"  win_rate        {m['win_rate']:.3f}\n"
             f"  profit_factor   {m['profit_factor']:.3f}\n"
+            f"  benchmark_ret   {m['benchmark_return']:+.4f}\n"
+            f"  excess_return   {m['excess_return']:+.4f}\n"
+            f"  alpha           {m['alpha']:+.4f}\n"
+            f"  beta            {m['beta']:+.3f}\n"
+            f"  info_ratio      {m['information_ratio']:.3f}\n"
+            f"  psr             {m['psr']:.3f}\n"
             f"  duration_seconds {contract['duration_seconds']:.2f}",
             file=sys.stderr if json_output else sys.stdout,
         )

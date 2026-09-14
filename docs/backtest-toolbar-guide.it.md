@@ -158,6 +158,53 @@ l'app sa dove finisce ogni sessione di negoziazione:
   barra 4h poteva contenere la coda di una sessione e l'inizio della successiva — una
   candela che non è mai esistita.
 
+**Sempre mostrato — Order Model.** Tutto quanto sopra decide *quando* e *quanto*. Queste
+quattro impostazioni decidono **come viene lavorato l'ordine** — e finora la risposta era
+sempre "compra o vendi tutto al prezzo di chiusura della barra successiva", che è
+un'assunzione vera e propria, non una scelta neutra.
+
+- **Order Type**
+  - **Market (at the close)** — il predefinito, e ciò che ogni risultato precedente a
+    questa funzione dava per scontato. L'ordine viene eseguito alla chiusura della barra
+    successiva, qualunque essa sia.
+  - **Limit (patient)** — l'ordine resta *sotto* la chiusura per un acquisto, *sopra* per
+    una vendita, e viene eseguito solo se il mercato ci arriva. O ottieni un prezzo
+    migliore, o non ottieni niente. Segnali che ti piacevano semplicemente non
+    accadranno.
+  - **Stop (confirmation)** — l'immagine speculare: l'ordine resta *oltre* la chiusura
+    (sopra, per un acquisto) e viene eseguito solo se il movimento è continuato. Paghi un
+    prezzo peggiore in cambio della prova di avere avuto ragione.
+  - **Stop-limit (capped)** — uno stop che diventa un limit quando scatta, così metti un
+    tetto a quanto può essere brutta l'esecuzione. Il rovescio della medaglia è reale: se
+    il mercato sfonda il tuo limit **non** esci, e resti in posizione.
+- **Order Offset (%)** — quanto lontano dalla chiusura resta l'ordine. Più grande = più
+  paziente, e meno esecuzioni. Ignorato dagli ordini Market.
+- **Time in Force** — quanto a lungo aspetta un ordine in attesa: **GTC** finché non viene
+  eseguito, **DAY** fino alla fine della sessione (su barre giornaliere è una sola barra),
+  **IOC** per esattamente una barra. Ignorato dagli ordini Market.
+- **Exit Handling**
+  - **Close check** (predefinito) — il trailing stop viene confrontato con la chiusura di
+    ogni barra, come è sempre stato.
+  - **Trailing stop order** — lo stop diventa un *vero ordine in attesa*. Una barra il cui
+    minimo lo tocca esce allo stop, anche se la chiusura era risalita. Più severo, e di
+    solito con un risultato peggiore. È esattamente il punto.
+  - **OCO bracket** — la tua entrata riceve uno stop fisso e un target di profitto fisso,
+    entrambi appesi al prezzo medio di entrata, usando le distanze di **Trailing Stop** e
+    **Take Profit** che hai già impostato sopra. Il primo che viene eseguito cancella
+    l'altro. A differenza del trailing stop, nessuna delle due gambe si muove.
+
+> ⚠️ **Cambiare Order Type o Exit Handling cambia i tuoi risultati.** Una strategia che
+> sembra buona con esecuzioni al mercato può non valere nulla con i limit — le entrate di
+> cui aveva bisogno non sono mai avvenute — e una strategia che sembra buona con lo stop
+> basato solo sulla chiusura può peggiorare molto quando un vero ordine stop può essere
+> toccato dal minimo di una barra. Confronta cose confrontabili: cambia una cosa sola,
+> riesegui, e leggi il numero di operazioni con la stessa attenzione del rendimento.
+
+**Quando una barra tocca entrambe le gambe del bracket.** Una singola candela può
+raggiungere sia il tuo stop sia il tuo target, e i dati OHLC non possono dire quale sia
+arrivato prima. Il motore non tira a indovinare a tuo favore: esegue lo **stop**.
+Qualsiasi altra scelta farebbe sembrare gratuito ogni bracket largo.
+
 **Sempre mostrata — Consecutive Signals:** controlla cosa succede quando lo stesso
 segnale scatta più volte su barre consecutive:
 - **Scale-in** (predefinito) — agisce ogni volta. *(I buy ripetuti si accumulano.)*
@@ -226,6 +273,31 @@ strategia che vince solo *prima* dei costi non è una strategia reale.
 > sotto il 40% è un avviso, non una vittoria — potrebbe essere stato fortunato su una o
 > due operazioni. Guarda tutte e sei le schede insieme.
 
+### VS BUY & HOLD
+
+Ogni scheda qui sopra misura la strategia contro sé stessa. Nessuna risponde alla domanda
+che decide se il lavoro è servito: *avrei fatto meglio a limitarmi a tenere il titolo?* Ci
+pensa un secondo blocco di quattro schede.
+
+| Pagella | Cosa significa | Buon segno |
+|---|---|---|
+| **Excess Return** | Il tuo rendimento meno quello del buy-and-hold sulle stesse identiche barre (mostrato come **B&H**). | Positivo. Negativo significa che tenere il titolo ti ha battuto. |
+| **Alpha** | L'**alpha di Jensen** annualizzato — l'excess return che sopravvive una volta prezzato il tuo **BETA** verso il buy-and-hold. | Positivo. |
+| **Info Ratio** | Rendimento attivo ÷ **TE** (tracking error): premio per unità di scostamento dal buy-and-hold. | Positivo; sopra 0,5 è rispettabile. |
+| **PSR** | **Probabilistic Sharpe** — la probabilità che lo Sharpe vero sia sopra zero, dato quanto è lungo il campione e quanto sono asimmetrici e a code spesse i rendimenti. | ≥ 95% (**CREDIBLE**). |
+
+> **Excess Return e Alpha non sono lo stesso numero, e la distanza fra i due è il punto.**
+> Una strategia semplicemente investita più a lungo in un mercato che sale guadagna molto
+> excess return con un alpha vicino a zero: quella è leva sul movimento del mercato, non
+> abilità. L'excess dice *quanto in più hai guadagnato*; l'alpha dice *se te lo sei
+> meritato*. Quando l'Excess Return è grande e l'Alpha è ~0, guarda il **BETA** — stai
+> probabilmente guardando una cavalcata lunga, non un vantaggio.
+
+> **PSR non è la stessa cosa di uno Sharpe grande.** Uno Sharpe di 2 su 40 barre, guadagnato
+> vendendo le code, può uscire sotto il 50%. Uno Sharpe di 0,9 su dieci anni esce quasi
+> certo. Se sei arrivato qui dall'Optimizer, la sua colonna **DSR** è la cugina più severa:
+> alza l'asticella di tante combinazioni quante ne sono state cercate.
+
 ---
 
 ## 5. Esempi di workflow
@@ -256,7 +328,21 @@ strategia che vince solo *prima* dei costi non è una strategia reale.
 2. Ripristina i costi realistici (FX `0.15`, Slippage `0.05`) ed esegui di nuovo.
 3. La differenza è il tuo **COST DRAG** — la prova che il vantaggio sopravviva o meno all'attrito del mondo reale.
 
-### Workflow 5 — "Non so quali segnali scegliere" → usa l'Optimizer
+### Workflow 5 — "Avrei davvero ottenuto quelle esecuzioni?" (verifica del modello d'ordine)
+1. Esegui una strategia qualsiasi con i valori predefiniti — **Order Type: Market**,
+   **Exit Handling: Close check**. Annota **Total Return** e **Trade Count**.
+2. Cambia **Order Type** in **Limit** con un **Order Offset** dello `0,5%` e riesegui. Il
+   Trade Count scenderà: alcune entrate su cui contavi non sono mai state eseguite al
+   prezzo che volevi. Giudica la strategia su ciò che è sopravvissuto, non sulle entrate
+   che il mercato non ha mai offerto.
+3. Rimetti Order Type su Market e cambia **Exit Handling** in **Trailing stop order**. Il
+   rendimento di solito *peggiora*: il controllo sulla sola chiusura stava perdonando in
+   silenzio ogni barra che scendeva sotto il tuo stop e risaliva prima della chiusura.
+4. Se una strategia sembra ancora buona dopo entrambi i cambiamenti, il suo vantaggio non
+   è un artefatto di come il simulatore esegue gli ordini. Se crolla, hai imparato
+   qualcosa a poco prezzo.
+
+### Workflow 6 — "Non so quali segnali scegliere" → usa l'Optimizer
 Passa al tab **Optimizer** (accanto a Backtest). Invece di tirare a indovinare, **prova
 per te molte combinazioni di segnali** e le classifica in base alla metrica che scegli
 (Return, Sharpe, Drawdown o Trades). Poi clicca **Apply Best Strategy** per inserire la
@@ -289,9 +375,15 @@ della barra viene memorizzata. Ricaricala in qualsiasi momento dal menu a tendin
 ## 8. Il modello mentale in 30 secondi
 
 1. **Carica i dati** (sinistra) → 2. **Scegli uno stile** (Execution Type) → 3. **Regola
-le manopole** (Trade Setup) → 4. **Scegli i trigger** (Signals) → 5. **Mantieni
-l'onestà** (Costs) → 6. **RUN** → 7. **Leggi le sei schede** → 8. **Salva** se è buona,
-oppure aggiusta e ripeti.
+le manopole** (Trade Setup) → 4. **Decidi come lavorare gli ordini** (Order Model) →
+5. **Scegli i trigger** (Signals) → 6. **Mantieni l'onestà** (Costs) → 7. **RUN** →
+8. **Leggi le sei schede** → 9. **Salva** se è buona, oppure aggiusta e ripeti.
+
+Execution Type e Order Type rispondono a domande diverse ed è facile confonderli.
+**Execution Type** è *quanto* scambiare — oscillazioni dimensionate con Kelly, un importo
+fisso in dollari, o un peso di portafoglio costante. **Order Type** è *come viene lavorato
+l'ordine* una volta decisa quella dimensione — alla chiusura, oppure in attesa sul mercato
+di un certo prezzo. Imposti entrambi, e non si sovrappongono.
 
 Quel ciclo — *idea → test → misura → affina* — è tutto il senso della barra. Ti permette
 di sbagliare a poco prezzo e spesso, così le idee che sopravvivono sono quelle che

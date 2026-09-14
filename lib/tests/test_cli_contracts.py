@@ -113,6 +113,21 @@ def test_backtest_contract_shape():
         "win_rate",
         "profit_factor",
         "turnover",
+        "benchmark_return",
+        "excess_return",
+        "alpha",
+        "beta",
+        "information_ratio",
+        "tracking_error",
+        "up_capture",
+        "down_capture",
+        "psr",
+        "deflated_sharpe",
+        "num_trials",
+        "num_bars",
+        "returns_skew",
+        "returns_kurtosis",
+        "periods_per_year",
     ):
         assert key in metrics, f"missing metric {key!r}"
     assert isinstance(metrics["num_trades"], int)

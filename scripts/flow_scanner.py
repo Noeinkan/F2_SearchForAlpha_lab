@@ -19,8 +19,6 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-import requests
-import yfinance as yf
 from rich.console import Console
 from rich.progress_bar import ProgressBar
 from rich.table import Table
@@ -38,24 +36,17 @@ from lib.dash.flow_glossary import (
     score_breakdown,
     ticker_sentiment,
 )
+from lib.fetch_errors import TransientFetchError
+from lib.options.chain_source import (
+    FALLBACK_SYMBOLS,  # noqa: F401 -- re-exported for callers of the old path
+    fetch_most_active_symbols,
+    fetch_option_chain,
+)
 from lib.options.greeks import build_gex_ladders, build_vanna_model
 
 logger = logging.getLogger(__name__)
 
 ET = ZoneInfo("America/New_York")
-
-FALLBACK_SYMBOLS = [
-    "SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "GOOGL",
-    "AMD", "AVGO", "JPM", "BAC", "XOM", "COIN", "PLTR", "SMCI", "ARM", "SNOW",
-    "MARA", "RIOT", "NFLX", "CRM", "ORCL", "DIS", "BA", "KO", "PEP", "F",
-]
-
-YAHOO_SCREENER_URL = (
-    "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
-    "?formatted=true&lang=en-US&region=US&scrIds=most_actives"
-    "&start=0&count={count}&enableSectorIndustryLabelFix=true"
-    "&corsDomain=finance.yahoo.com"
-)
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +118,10 @@ class TickerReport:
     # Per-expiry OI Vanna Model: { "YYYY-MM-DD": { strikes, delta_notional } }
     vanna_model: dict[str, dict] = field(default_factory=dict)
     error: str | None = None
+    # "rate_limited" when Yahoo throttled the fetch (retry later), "error" otherwise.
+    error_kind: Literal["rate_limited", "error"] | None = None
+    # Expiries left out of an otherwise good report: { "YYYY-MM-DD": reason }
+    failed_expiries: dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -166,25 +161,6 @@ def load_watchlist(path: str) -> list[str]:
     return tickers
 
 
-def fetch_most_active_symbols(n: int = 50) -> list[str]:
-    """Best-effort most-actives list via Yahoo's private screener JSON endpoint."""
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; flow_scanner/1.0)"}
-    try:
-        resp = requests.get(YAHOO_SCREENER_URL.format(count=n), headers=headers, timeout=15)
-        resp.raise_for_status()
-        quotes = resp.json()["finance"]["result"][0]["quotes"]
-        symbols = [q["symbol"] for q in quotes if q.get("symbol")]
-        if symbols:
-            return symbols[:n]
-    except Exception as exc:
-        logger.warning("Screener fetch failed (%s); using fallback list", exc)
-    return FALLBACK_SYMBOLS[:n]
-
-
-def _parse_expiry(exp_str: str) -> date:
-    return datetime.strptime(exp_str, "%Y-%m-%d").date()
-
-
 def _contracts_from_chain(
     ticker: str,
     expiry: date,
@@ -210,37 +186,6 @@ def _contracts_from_chain(
             )
         )
     return rows
-
-
-def _spot_from_ticker(tk: yf.Ticker) -> tuple[float, float, float, float, float, float]:
-    info = {}
-    try:
-        info = tk.info or {}
-    except Exception:
-        info = {}
-
-    spot = _safe_float(
-        info.get("currentPrice") or info.get("regularMarketPrice"),
-    )
-    prev = _safe_float(info.get("previousClose"))
-    day_low = _safe_float(info.get("dayLow"))
-    day_high = _safe_float(info.get("dayHigh"))
-    wk52_low = _safe_float(info.get("fiftyTwoWeekLow"))
-    wk52_high = _safe_float(info.get("fiftyTwoWeekHigh"))
-
-    if spot <= 0:
-        try:
-            fi = tk.fast_info
-            spot = _safe_float(getattr(fi, "last_price", None) or getattr(fi, "lastPrice", None))
-            prev = prev or _safe_float(getattr(fi, "previous_close", None))
-            day_low = day_low or _safe_float(getattr(fi, "day_low", None))
-            day_high = day_high or _safe_float(getattr(fi, "day_high", None))
-            wk52_low = wk52_low or _safe_float(getattr(fi, "year_low", None))
-            wk52_high = wk52_high or _safe_float(getattr(fi, "year_high", None))
-        except Exception:
-            pass
-
-    return spot, prev, day_low, day_high, wk52_low, wk52_high
 
 
 def detect_flags(
@@ -491,30 +436,24 @@ def fetch_ticker_report(
 ) -> TickerReport:
     ticker = ticker.upper()
     try:
-        tk = yf.Ticker(ticker)
-        spot, prev, day_low, day_high, wk52_low, wk52_high = _spot_from_ticker(tk)
+        snapshot = fetch_option_chain(ticker, expirations)
 
         contracts: list[Contract] = []
-        try:
-            expiries = list(tk.options or [])[:expirations]
-        except Exception:
-            expiries = []
+        for chain in snapshot.chains:
+            contracts.extend(_contracts_from_chain(ticker, chain.expiry, chain.calls, "C"))
+            contracts.extend(_contracts_from_chain(ticker, chain.expiry, chain.puts, "P"))
 
-        for exp_str in expiries:
-            expiry = _parse_expiry(exp_str)
-            chain = tk.option_chain(exp_str)
-            contracts.extend(_contracts_from_chain(ticker, expiry, chain.calls, "C"))
-            contracts.extend(_contracts_from_chain(ticker, expiry, chain.puts, "P"))
-
+        quote = snapshot.quote
         report = TickerReport(
             ticker=ticker,
-            spot=spot,
-            prev_close=prev,
-            day_low=day_low,
-            day_high=day_high,
-            wk52_low=wk52_low,
-            wk52_high=wk52_high,
+            spot=quote.spot,
+            prev_close=quote.prev_close,
+            day_low=quote.day_low,
+            day_high=quote.day_high,
+            wk52_low=quote.wk52_low,
+            wk52_high=quote.wk52_high,
             contracts=contracts,
+            failed_expiries=dict(snapshot.failed_expiries),
         )
         report.flags = detect_flags(report, min_premium, min_size)
         compute_metrics(report)
@@ -531,6 +470,7 @@ def fetch_ticker_report(
             wk52_low=0,
             wk52_high=0,
             error=str(exc),
+            error_kind="rate_limited" if isinstance(exc, TransientFetchError) else "error",
         )
         report.flags = [
             UnusualFlag(kind="error", contract=None, message=str(exc)),
@@ -594,8 +534,14 @@ def print_terminal_summary(reports: list[TickerReport], console: Console, scan_m
 
     for report in reports:
         if report.error:
-            console.print(f"[red]{report.ticker}[/red] ERROR: {report.error}")
+            label = "RATE LIMITED" if report.error_kind == "rate_limited" else "ERROR"
+            console.print(f"[red]{report.ticker}[/red] {label}: {report.error}")
             continue
+        if report.failed_expiries:
+            console.print(
+                f"[yellow]{report.ticker}: partial chain, missing expiries "
+                f"{', '.join(sorted(report.failed_expiries))}[/yellow]"
+            )
 
         header = (
             f"{report.ticker}  ${report.spot:,.2f}  "
@@ -802,6 +748,8 @@ def _report_to_dict(report: TickerReport, today: date | None = None) -> dict:
         "put_pct": report.put_pct,
         "unusual_score": report.unusual_score,
         "error": report.error,
+        "error_kind": report.error_kind,
+        "failed_expiries": report.failed_expiries,
         "top_call_strikes": report.top_call_strikes,
         "top_put_strikes": report.top_put_strikes,
         "strike_ladders": report.strike_ladders,
@@ -829,9 +777,10 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
     cards = []
     for report in sorted(reports, key=lambda r: r.unusual_score, reverse=True):
         if report.error:
+            label = "RATE LIMITED — try again in a minute. " if report.error_kind == "rate_limited" else ""
             cards.append(
                 f'<div class="card"><h2>{escape(report.ticker)}</h2>'
-                f'<p class="err">{escape(report.error)}</p></div>'
+                f'<p class="err">{escape(label)}{escape(report.error)}</p></div>'
             )
             continue
 

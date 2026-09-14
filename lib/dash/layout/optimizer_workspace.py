@@ -830,6 +830,18 @@ def _create_optimize_results_pane(styles: dict, theme: dict) -> html.Div:
                         title="OOS validation",
                         item_id='viz-oos',
                     ),
+                    dbc.AccordionItem(
+                        [
+                            html.Div(
+                                "Click REGIMES after a search to score the winner in each "
+                                "market regime since 2019.",
+                                id='optimizer-regimes-panel',
+                                className='sfa-optimize-oos',
+                            ),
+                        ],
+                        title="Regime slicing",
+                        item_id='viz-regimes',
+                    ),
                 ],
                 id='optimize-visuals-accordion',
                 className='compact-accordion sfa-optimize-results-accordion',
@@ -859,6 +871,15 @@ def _create_optimize_results_pane(styles: dict, theme: dict) -> html.Div:
                         },
                         n_clicks=0,
                     ),
+                    html.Button(
+                        "REGIMES",
+                        id='validate-regimes-btn',
+                        style={
+                            **styles['button_outline'],
+                            'flex': '1 1 auto',
+                        },
+                        n_clicks=0,
+                    ),
                 ], style={
                     'display': 'flex',
                     'flexDirection': 'row',
@@ -876,6 +897,14 @@ def _create_optimize_results_pane(styles: dict, theme: dict) -> html.Div:
                     "rolling windows. Prefer this before Apply if #1 looks too perfect. "
                     "Click again while running to STOP.",
                     target='validate-oos-btn',
+                    placement='top',
+                ),
+                dbc.Tooltip(
+                    "Regime stress test: backtest the leaderboard winner separately in "
+                    "each market regime since 2019 (the RESEARCH.md calendar) and check "
+                    "for positive Sortino in 3 of 7, including the 2022 bear. "
+                    "Click again while running to STOP.",
+                    target='validate-regimes-btn',
                     placement='top',
                 ),
             ], style={'display': 'none'}),

@@ -21,6 +21,7 @@ from lib.dash.dash_config import (
     INDICATOR_SETTING_SCHEMA,
     CHART_PLOT_HELP, CHART_OVERLAY_HELP,
 )
+from lib.dash.bootstrap import BootstrapSnapshot
 from lib.dash.components import bloomberg_section
 from lib.dash.layout.symbol_search import build_symbol_search_trigger
 
@@ -31,14 +32,21 @@ _SIGNAL_HELP = {
 }
 
 
-def _default_ticker_option() -> list[dict[str, str]]:
+def _default_ticker_option(symbol: str = DEFAULT_TICKER) -> list[dict[str, str]]:
     """Minimal seed until startup-interval loads the full ticker index."""
-    return [{"value": DEFAULT_TICKER, "label": DEFAULT_TICKER}]
+    return [{"value": symbol, "label": symbol}]
 
 
-def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
-    """Create the left sidebar with controls."""
+def _create_sidebar(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Aside:
+    """Create the left sidebar with controls.
+
+    ``ticker-dropdown`` starts on the bootstrapped symbol — the last session's,
+    when one was saved — so a bare ``/`` does not show that chart under a
+    TSLA label and then refetch TSLA over it.
+    """
     help_icon_style = styles['help_icon']
+    initial_ticker = (bootstrap.ticker if bootstrap else '') or DEFAULT_TICKER
+    initial_ticker = str(initial_ticker).strip().upper()
 
     market_section = html.Div([
         html.Div([
@@ -61,12 +69,12 @@ def _create_sidebar(styles: dict, theme: dict) -> html.Aside:
                 html.Div(
                     dmc.Select(
                         id='ticker-dropdown',
-                        value=DEFAULT_TICKER,
+                        value=initial_ticker,
                         searchable=True,
                         clearable=False,
                         comboboxProps={"withinPortal": True, "shadow": "md"},
                         size="xs",
-                        data=_default_ticker_option(),
+                        data=_default_ticker_option(initial_ticker),
                     ),
                     style={'display': 'none'},
                 ),

@@ -172,14 +172,24 @@ def _patch_symbols() -> None:
 
 
 def _patch_writes() -> None:
-    """Presets and watchlists stay in the visitor's browser; nothing reaches config/."""
+    """Presets and watchlists stay in the visitor's browser; nothing reaches config/.
+
+    The last-session file is switched off in both directions: it is one file
+    for the whole process, so one visitor's workspace would become every next
+    visitor's starting point.
+    """
     from lib.dash.watchlist_storage import normalize
 
     rebind("lib.dash.preset_storage", "save_presets", lambda path, data: None)
     rebind("lib.dash.watchlist_storage", "save_watchlists", lambda path, data: normalize(data))
+    rebind("lib.dash.ui_session_storage", "load_ui_session", lambda path: None)
+    rebind("lib.dash.ui_session_storage", "save_ui_session", lambda path, payload: False)
 
 
 def _patch_flow() -> None:
+    from pathlib import Path
+
+    import lib.dash.flow_store as flow_store
     import lib.dash.integrated_dashboard as dashboard
 
     def refuse_scan(*args: Any, **kwargs: Any) -> tuple[int, str]:  # noqa: ARG001
@@ -188,6 +198,8 @@ def _patch_flow() -> None:
     # run_flow_scan starts scripts/flow_scanner.py as a subprocess, which the
     # in-process network seal would not cover.
     rebind("scripts.flow_runner", "run_flow_scan", refuse_scan)
+    # No stored per-ticker reports either, whatever the host's state/ holds.
+    flow_store.FLOW_DIR = Path("/nonexistent/flow")
     dashboard.DEFAULT_FLOW_REPORT = "/nonexistent/flow_report.html"
     dashboard._FLOW_STUB_HTML = (
         "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Flow Scanner</title>"

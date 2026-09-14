@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
-import json
-import os
 from datetime import datetime
+from urllib.parse import quote
 
 from dash import ALL, MATCH, callback_context, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_TERMINAL, get_theme
+from lib.dash import flow_store
+from lib.dash.dash_config import (
+    DEFAULT_THEME,
+    DEFAULT_TICKER,
+    FLOW_REFRESH_MINUTES,
+    ROUTE_TERMINAL,
+    get_theme,
+)
 from lib.dash.flow_chain import table_from_report
 from lib.dash.flow_inventory import figure_from_report
 from lib.dash.flow_gex import figure_from_gex_report
@@ -23,20 +29,25 @@ from lib.dash.flow_view import (
 )
 from lib.dash.routes import build_flow_path, extract_path_ticker, is_flow_route, is_fundamentals_route, ticker_from_search
 from lib.dash.state import dashboard_state
-from scripts.flow_runner import run_flow_scan
-
-_FLOW_REPORT = os.path.join(os.getcwd(), "flow_report.html")
-_FLOW_JSON = os.path.join(os.getcwd(), "flow_report.json")
 
 
-def _load_flow_json() -> dict | None:
-    if not os.path.exists(_FLOW_JSON):
-        return None
+def _flow_ticker(pathname: str | None, selected_ticker: str | None) -> str:
+    return flow_store.normalize_ticker(extract_path_ticker(pathname) or selected_ticker or DEFAULT_TICKER)
+
+
+def _report_time(payload: dict | None) -> str:
+    """``generated_at`` as HH:MM today, or with the date when older."""
+    raw = (payload or {}).get("generated_at")
     try:
-        with open(_FLOW_JSON, encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, json.JSONDecodeError):
-        return None
+        stamp = datetime.fromisoformat(str(raw))
+    except (TypeError, ValueError):
+        return "an earlier scan"
+    return stamp.strftime("%H:%M" if stamp.date() == datetime.now().date() else "%b %d %H:%M")
+
+
+def _loaded_status(payload: dict) -> str:
+    refresh = f" · auto-refresh every {FLOW_REFRESH_MINUTES} min" if FLOW_REFRESH_MINUTES > 0 else ""
+    return f"Report from {_report_time(payload)}{refresh}"
 
 
 def _render_from_payload(payload: dict | None, theme: dict, *, show_glossary: bool = False):
@@ -127,14 +138,27 @@ def register_flow_callbacks(app) -> None:
         raise PreventUpdate
 
     @app.callback(
-        [Output("flow-overlay", "style"), Output("flow-overlay", "className")],
+        [
+            Output("flow-overlay", "style"),
+            Output("flow-overlay", "className"),
+            Output("flow-open-tab-link", "href"),
+            Output("flow-refresh-interval", "disabled"),
+        ],
         [Input("app-url", "pathname"), Input("theme-store", "data")],
-        [State("flow-overlay", "style"), State("flow-overlay", "className")],
+        [
+            State("flow-overlay", "style"),
+            State("flow-overlay", "className"),
+            State("ticker-dropdown", "value"),
+        ],
         prevent_initial_call=False,
     )
-    def apply_flow_route(pathname, theme_name, overlay_style, overlay_class):
+    def apply_flow_route(pathname, theme_name, overlay_style, overlay_class, selected_ticker):
         theme = get_theme(theme_name or DEFAULT_THEME)
         on_flow = is_flow_route(pathname)
+        href = f"/flow_report.html?ticker={quote(_flow_ticker(pathname, selected_ticker), safe='')}"
+        # Poll for a newer stored report only while the page is open and the
+        # background refresh can actually produce one.
+        poll_disabled = not (on_flow and FLOW_REFRESH_MINUTES > 0)
 
         style = dict(overlay_style or {})
         style.update(
@@ -163,7 +187,7 @@ def register_flow_callbacks(app) -> None:
         class_name = f"{base_class} sfa-flow-route" if on_flow else base_class
         if overlay_class == class_name:
             class_name = no_update
-        return style, class_name
+        return style, class_name, href, poll_disabled
 
     @app.callback(
         [
@@ -188,61 +212,78 @@ def register_flow_callbacks(app) -> None:
         if not is_flow_route(pathname):
             return no_update, no_update, no_update, False
 
-        if triggered != "flow-rescan-button":
-            payload = _load_flow_json()
-            if payload:
-                return (
-                    _render_from_payload(payload, theme),
-                    "Last report loaded",
-                    payload,
-                    False,
-                )
-            return (
-                render_flow_placeholder(theme),
-                "No report yet. Click RESCAN NOW.",
-                no_update,
-                False,
-            )
+        ticker = _flow_ticker(pathname, selected_ticker)
 
-        if not rescan_clicks:
-            payload = _load_flow_json()
+        if triggered != "flow-rescan-button" or not rescan_clicks:
+            payload = flow_store.load_report(ticker)
             if payload:
-                return (
-                    _render_from_payload(payload, theme),
-                    "Last report loaded",
-                    payload,
-                    False,
-                )
-            return (
-                render_flow_placeholder(theme),
-                "No report yet. Click RESCAN NOW.",
-                no_update,
-                False,
-            )
+                return _render_from_payload(payload, theme), _loaded_status(payload), payload, False
+            message = f"No report for {ticker} yet. Click RESCAN NOW."
+            return render_flow_placeholder(theme, message), message, None, False
 
-        ticker = str(extract_path_ticker(pathname) or selected_ticker or DEFAULT_TICKER).strip().upper()
-        tickers = [ticker]
-        rc, tail = run_flow_scan(tickers, _FLOW_REPORT, quiet=True)
-        if rc != 0:
-            return no_update, f"Scan failed (rc={rc}): {tail}", no_update, False
+        outcome = flow_store.scan_into_store(ticker)
+        payload = outcome.payload
+        content = _render_from_payload(payload, theme) if payload else no_update
+        store = payload if payload else no_update
+
+        if outcome.error_kind == "scan_failed":
+            return content, outcome.message, store, False
 
         dashboard_state.flow_last_scan_at = datetime.now()
-        dashboard_state.flow_last_scan_path = _FLOW_REPORT
-        payload = _load_flow_json()
-        if not payload:
-            return (
-                no_update,
-                f"Rescanned {ticker} but JSON report missing",
-                no_update,
-                False,
-            )
+        dashboard_state.flow_last_scan_path = str(flow_store.html_path(ticker))
+        if outcome.error_kind is None:
+            status = f"Rescanned {ticker} at {datetime.now().strftime('%H:%M:%S')}"
+        elif not outcome.promoted:
+            # The scan failed but an earlier good report exists: keep showing it.
+            reason = "RATE LIMITED" if outcome.error_kind == "rate_limited" else f"Rescan failed: {outcome.message}"
+            status = f"{reason} — kept the report from {_report_time(payload)}"
+        elif outcome.error_kind == "rate_limited":
+            status = f"RATE LIMITED — RESCAN {ticker} in a minute"
+        else:
+            status = f"Rescan of {ticker} failed"
+        return content, status, store, False
 
-        return (
-            _render_from_payload(payload, theme),
-            f"Rescanned {ticker} at {datetime.now().strftime('%H:%M:%S')}",
-            payload,
-            False,
-        )
+    # Two steps so the minute poll never touches flow-content (see the note on
+    # flow-refresh-interval in layout/overlays.py): the first only notices a
+    # newer stored report, the second renders it.
+    @app.callback(
+        Output("flow-refresh-signal", "data"),
+        Input("flow-refresh-interval", "n_intervals"),
+        State("app-url", "pathname"),
+        State("ticker-dropdown", "value"),
+        State("flow-data-store", "data"),
+        prevent_initial_call=True,
+    )
+    def notice_refreshed_flow_report(_n, pathname, selected_ticker, flow_data):
+        if not is_flow_route(pathname):
+            raise PreventUpdate
+        ticker = _flow_ticker(pathname, selected_ticker)
+        payload = flow_store.load_report(ticker)
+        generated = (payload or {}).get("generated_at")
+        if not generated or generated == (flow_data or {}).get("generated_at"):
+            raise PreventUpdate
+        return {"ticker": ticker, "generated_at": generated}
+
+    @app.callback(
+        Output("flow-content", "children", allow_duplicate=True),
+        Output("flow-status", "children", allow_duplicate=True),
+        Output("flow-data-store", "data", allow_duplicate=True),
+        Input("flow-refresh-signal", "data"),
+        State("app-url", "pathname"),
+        State("ticker-dropdown", "value"),
+        State("theme-store", "data"),
+        prevent_initial_call=True,
+    )
+    def render_refreshed_flow_report(signal, pathname, selected_ticker, theme_name):
+        ticker = (signal or {}).get("ticker")
+        # The visitor may have moved to another symbol since the poll noticed.
+        if not is_flow_route(pathname) or ticker != _flow_ticker(pathname, selected_ticker):
+            raise PreventUpdate
+        payload = flow_store.load_report(ticker)
+        if not payload:
+            raise PreventUpdate
+        theme = get_theme(theme_name or DEFAULT_THEME)
+        return _render_from_payload(payload, theme), _loaded_status(payload), payload
 
     @app.callback(
         Output("flow-glossary", "children"),

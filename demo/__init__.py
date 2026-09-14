@@ -10,6 +10,7 @@ workspace itself carries no demo branches:
 - ``patches``    swaps the live data seams for the snapshot
 - ``guards``     wraps the Dash callbacks that start CPU work
 - ``banner``     the demo banner and the header badge
+- ``access``     the email sign-in, the trial, the usage log and ``/admin``
 - ``server``     the WSGI entry point (``python -m demo.server``)
 
 ``DEMO_MODE`` is the kill switch. Unset or false, ``demo.server`` serves a 404

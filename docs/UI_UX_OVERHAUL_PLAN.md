@@ -12,7 +12,7 @@
 > | 4 — accessibility & theming | Shipped — CVD palette in `dash_config.py`, `:focus-visible` rings across the sheets |
 > | 5 — command palette | Shipped — `layout/command_palette.py`, `callbacks/command_palette.py`, incl. the shortcuts help of 5.3 |
 > | 6 — remove dead TradingView branch | Shipped, then reversed by design — Lightweight Charts is now *the* chart |
-> | 7 — loading / empty / error states | **Partial** — status bar wired to the callback lifecycle; no global error boundary (7.3), empty states unpolished (7.2) |
+> | 7 — loading / empty / error states | Shipped — status bar wired to the callback lifecycle; global error boundary (7.3) in `lib/dash/error_boundary.py`; empty states (7.2) in `layout/empty_states.py`. The 7.3 retry button for 429/5xx was not built: the header refresh already retries with `force=True` |
 > | 8 — performance | Superseded — client-side LWC handles large tapes; bar-count meta in `lib/dash/chart_meta.py` |
 > | 9 — tests + docs | Shipped — `docs/ui-architecture.md`, layout tests in `lib/tests/` |
 

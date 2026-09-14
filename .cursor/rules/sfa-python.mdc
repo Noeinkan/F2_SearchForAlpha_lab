@@ -25,7 +25,7 @@ Aggregator in `lib/signals/indicators.py` collects columns matching these patter
 4. Add defaults to `config/strategy_config.yaml`
 
 ## Strategy modes (`lib/strategy.py`, `strategy_mode`)
-Sizing rules live in `_execute_buy` / `_execute_sell`:
+Sizing rules live in `size_buy` / `size_sell` (`lib/engine/steps.py`):
 - `trading` — Kelly size × `position_scaling`; scaling ramps each *order* and stacks (no target cap)
 - `accumulation` — fixed `amount_per_buy`; sell signals discarded, stop pinned to `inf`
 - `rebalancing` — `position_size_pct` of **portfolio value**, both sides (not of cash/units)

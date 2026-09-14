@@ -30,9 +30,9 @@ COPY repo/demo/ /app/demo/
 # The order path is not merely switched off in this image: it is absent.
 # Tests and capture configs have no business in a public container either.
 RUN rm -rf /app/lib/live /app/lib/tests /app/demo/shotkit.demo.config.mjs \
- && mkdir -p /app/state \
+ && mkdir -p /app/state /app/data \
  && useradd --create-home --uid 10001 demo \
- && chown demo:demo /app/state
+ && chown demo:demo /app/state /app/data
 
 USER demo
 

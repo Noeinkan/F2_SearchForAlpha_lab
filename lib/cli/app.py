@@ -20,6 +20,7 @@ from lib.cli.commands import (
     list_cmd,
     optimise_cmd,
     promote_cmd,
+    regimes_cmd,
     run_cmd,
     sample_universe_cmd,
     status_cmd,
@@ -54,6 +55,7 @@ def build_app() -> typer.Typer:
     grid_search_cmd.register(app)
     trials_cmd.register(app)
     walkforward_cmd.register(app)
+    regimes_cmd.register(app)
     promote_cmd.register(app)
     run_cmd.register(app)
     status_cmd.register(app)

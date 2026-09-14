@@ -17,11 +17,13 @@ from dash import html
 from lib.dash.dash_config import (
     DEFAULT_INDICATOR_SETTINGS,
     DEFAULT_TICKER,
+    UI_SESSION_FILE_PATH,
     get_theme,
     merge_indicator_settings,
 )
 from lib.dash.helpers import fetch_data_with_cache
 from lib.dash.state import dashboard_state
+from lib.dash.ui_session_storage import load_ui_session, session_ticker
 from lib.timeframes import full_history_window, normalize_interval
 from lib.signals.indicators import (
     add_indicators,
@@ -169,16 +171,36 @@ def load_market_session(
     )
 
 
+def startup_ticker() -> str:
+    """The symbol a fresh start opens on: the last session's, else DEFAULT_TICKER.
+
+    One answer for the three places that must agree on it — the server
+    bootstrap, the sidebar's initial ``ticker-dropdown`` value and the URL the
+    browser is opened at — so a restart cannot fetch one symbol and show
+    another. A deep link still wins over it; see callbacks/ui_session.py.
+    """
+    return session_ticker(load_ui_session(UI_SESSION_FILE_PATH)) or DEFAULT_TICKER
+
+
 def try_bootstrap_default_session() -> BootstrapSnapshot | None:
-    """Preload DEFAULT_TICKER (TSLA) at process start; None on failure."""
-    try:
-        snapshot = load_market_session(DEFAULT_TICKER)
-        logger.info(
-            "Bootstrapped default session: %s (%s)",
-            snapshot.header_symbol,
-            snapshot.data_status,
-        )
-        return snapshot
-    except Exception as exc:
-        logger.warning("Default session bootstrap failed: %s", exc)
-        return None
+    """Preload the startup ticker at process start; None on failure.
+
+    Falls back to DEFAULT_TICKER when the last session's symbol will not load
+    (delisted, or a typo saved from a deep link), so one bad symbol cannot
+    leave every restart on an empty chart.
+    """
+    candidates = [startup_ticker()]
+    if DEFAULT_TICKER not in candidates:
+        candidates.append(DEFAULT_TICKER)
+    for ticker in candidates:
+        try:
+            snapshot = load_market_session(ticker)
+            logger.info(
+                "Bootstrapped default session: %s (%s)",
+                snapshot.header_symbol,
+                snapshot.data_status,
+            )
+            return snapshot
+        except Exception as exc:
+            logger.warning("Session bootstrap failed for %s: %s", ticker, exc)
+    return None

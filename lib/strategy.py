@@ -3,6 +3,11 @@
 Backtesting engine for trading strategies with comprehensive error handling,
 logging, and optimized operations for performance.
 
+This module is the public entry point; the engine's internals live in
+:mod:`lib.engine`, and everything callers have always imported from here is
+re-exported. :func:`backtest` runs one symbol; :func:`lib.portfolio.backtest_portfolio`
+runs a basket through the same loop.
+
 Execution model (read this before interpreting any result)
 ----------------------------------------------------------
 * **Signal lag.** Bar ``i`` is executed against the signal observed on bar
@@ -10,6 +15,37 @@ Execution model (read this before interpreting any result)
   filled at bar ``t+1``'s close, so the engine never trades on information it
   could not have had. ``delay=0`` fills on the signal bar itself and is
   look-ahead by construction — use it only for diagnostics.
+* **Order types.** By default every order is a market order and fills at a
+  bar's close, which is what every result before roadmap 3.7 assumed.
+  ``order_type='limit' | 'stop' | 'stop_limit'`` instead *rests* the order in a
+  book (:mod:`lib.orders`) and lets a later bar's High/Low decide whether it
+  trades at all. A resting order is worked at the start of each bar, before
+  that bar's own signals, because it was placed earlier; a fill consumes the
+  bar the way a trailing-stop exit always has. Nothing is reserved when an
+  order is placed — quantities are re-clamped to the cash and units available
+  at fill time, which is the one place this model is kinder than a broker.
+  ``time_in_force`` and ``order_expiry_bars`` decide how long it waits, counted
+  from the first bar it could actually trade against.
+* **Where a resting order rests.** ``limit_offset_pct`` puts a limit that far
+  *away* from the signal bar's close (buys below, sells above); ``stop_offset_pct``
+  puts a stop that far *beyond* it (buy stops above, sell stops below). Orders
+  are sized against the level they will fill at, not against the close, so the
+  notional that lands is the notional that was asked for. One working
+  signal-driven order per side at a time: a new signal replaces the old order
+  rather than stacking a second one against the same cash.
+* **Exits as orders.** ``trailing_stop_orders=True`` expresses the trailing
+  stop as a resting sell stop instead of the close-based check below — the
+  level still ratchets every bar, but it is tested against ``Low`` and fills at
+  the stop, which is stricter and usually worse. ``use_brackets=True`` attaches
+  an OCO pair to every entry, fixed at the average entry price, and whichever
+  leg trades cancels the other. A working bracket owns the exits: the built-in
+  trailing stop is skipped, and so is ``take_profit`` when a target leg exists.
+  Both flags change results and both are off by default.
+* **Two orders touched on one bar.** OHLC cannot say which came first, so the
+  book applies a stated, pessimistic rule: orders marketable at the open fill
+  first, then stops before limits, then nearest the open. A bar that touches
+  both legs of a bracket is therefore scored as the stop — ranking the
+  profitable leg first would make every wide bracket look free.
 * **Simultaneous buy and sell.** Buy wins. The branches are ordered
   ``if allow_buy: ... elif allow_sell: ...``, so a bar carrying both an accepted
   buy and an accepted sell is treated as a buy and the sell is dropped silently
@@ -23,6 +59,10 @@ Execution model (read this before interpreting any result)
   ``use_low_for_stops=True`` to test the breach against ``Low`` instead; the
   fill is then taken at ``min(stop_level, Close)``, which charges the stop level
   on an intrabar breach and the (worse) close on a gap-down.
+  ``trailing_stop_orders=True`` is the newer and stricter answer to the same
+  question: the stop becomes a resting order and fills at the stop level itself,
+  or at the ``Open`` when the market gapped through it — never at a close that
+  had recovered.
 * **Sessions and overnight gaps.** The loop is positionally indexed, but it is
   no longer session-blind. ``lib.sessions`` infers where each trading session
   begins from the timestamps (every bar on a daily tape; the overnight step on
@@ -46,566 +86,67 @@ Execution model (read this before interpreting any result)
   entry commission, FX fee and slippage folded in. ``take_profit`` triggers off
   ``Avg_Entry_Price``, so a 10% take profit fires on a 10% *price* move and the
   realised net return is slightly lower once round-trip fees are paid.
+* **Many symbols, one account.** Each bar runs phase by phase across the basket
+  — every symbol's sells, then every symbol's buys — so a same-bar sale funds a
+  same-bar buy, and buys that outrun the cash share it by
+  ``CASH_ALLOCATION_RULE`` (:mod:`lib.engine.allocation`). A bar a symbol did
+  not print is valued at its carried-forward mark and never traded. With one
+  symbol all of this reduces to the rules above, bar for bar.
+  [docs/portfolio-semantics.md](../docs/portfolio-semantics.md) is the full model.
 """
 
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Dict, List, Optional, Sequence, Union
 
-import numpy as np
 import pandas as pd
+
+from lib.engine.errors import BacktestError, ValidationError
+from lib.engine.loop import run_bars
+from lib.engine.results import calculate_returns, create_result_dataframe
+from lib.engine.setup import (
+    ATR_STOP_COLUMN,
+    CONSECUTIVE_SIGNAL_MODES,
+    STOP_MODES,
+    STRATEGY_MODES,
+    build_symbol,
+    resolve_config,
+    symbol_result_frame,
+    validate_backtest_inputs,
+)
+from lib.engine.signal_inputs import calculate_signal_strengths
+from lib.engine.sizing import (
+    atr_risk_based,
+    fixed_dollar_amount,
+    get_position_sizer,
+    kelly_criterion,
+    percentage_of_portfolio,
+    risk_based,
+    volatility_based,
+)
+from lib.engine.state import Account
 
 # The ledger's shape lives in lib.metrics.ledger so the metrics engine can read
 # a ledger without importing this module. EXIT_REASONS and TRADE_COLUMNS are
 # there too, for anyone who needs the vocabulary.
 from lib.metrics.ledger import trades_to_frame
-from lib.sessions import resolve_session_starts
+
+# ``ORDER_TYPES`` and ``TIME_IN_FORCE`` are re-exported from here, so a caller
+# configuring the engine has one import for the whole execution vocabulary.
+# lib.orders owns the definitions.
+from lib.orders import ORDER_TYPES, TIME_IN_FORCE
 
 # Configure module logger
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    'ATR_STOP_COLUMN', 'BacktestError', 'CONSECUTIVE_SIGNAL_MODES', 'ORDER_TYPES',
+    'STOP_MODES', 'STRATEGY_MODES', 'TIME_IN_FORCE', 'ValidationError',
+    'atr_risk_based', 'backtest', 'calculate_metrics', 'calculate_returns',
+    'calculate_signal_strengths', 'create_result_dataframe', 'fixed_dollar_amount',
+    'get_position_sizer', 'kelly_criterion', 'percentage_of_portfolio', 'risk_based',
+    'run_backtest', 'validate_backtest_inputs', 'volatility_based',
+]
 
-class BacktestError(Exception):
-    """Custom exception for backtest-related errors."""
-    pass
-
-
-class ValidationError(Exception):
-    """Custom exception for input validation errors."""
-    pass
-
-
-# Position sizers that need a third, per-bar argument (volatility or ATR).
-_EXTRA_ARG_SIZERS = frozenset({"volatility_based", "atr_risk_based"})
-
-# Column written by ATR_TradingStrategy holding the Chandelier long stop level.
-ATR_STOP_COLUMN = 'ATR_Stop_Long'
-
-STOP_MODES = ('percent', 'atr')
-STRATEGY_MODES = ('trading', 'accumulation', 'rebalancing')
-CONSECUTIVE_SIGNAL_MODES = ('scale_in', 'edge', 'cooldown', 'reset_cooldown')
-
-# Quantities below this are treated as flat (fractional-share rounding noise).
-_UNIT_EPS = 1e-9
-
-
-def _numeric_column(df: pd.DataFrame, column: str) -> Optional[np.ndarray]:
-    """Return *column* as a float array, or None when it is missing/all-NaN."""
-    if column not in df.columns:
-        return None
-    values = pd.to_numeric(df[column], errors='coerce').to_numpy(dtype=float)
-    if not np.isfinite(values).any():
-        return None
-    return values
-
-
-def _validate_choice(value: str, allowed: Sequence[str], name: str) -> str:
-    """Lowercase *value* and check it against *allowed*, mirroring STOP_MODES."""
-    normalised = (value or allowed[0]).lower()
-    if normalised not in allowed:
-        raise ValidationError(
-            f"Unknown {name}: '{value}'. Available: {', '.join(allowed)}"
-        )
-    return normalised
-
-
-def _resolve_atr_stops(df: pd.DataFrame, stop_mode: str) -> Optional[np.ndarray]:
-    """
-    Resolve the per-bar ATR stop levels for ``stop_mode='atr'``.
-
-    Returns None — meaning "use percentage stops" — when percent mode was asked
-    for, or when the ATR column is absent. Bundles that don't include the ATR
-    strategy simply won't have written ``ATR_Stop_Long``; that degrades to the
-    percentage stop with a warning rather than raising, so an ATR run over a
-    non-ATR bundle still produces a result.
-    """
-    mode = _validate_choice(stop_mode, STOP_MODES, 'stop_mode')
-    if mode != 'atr':
-        return None
-
-    values = _numeric_column(df, ATR_STOP_COLUMN)
-    if values is None:
-        logger.warning(
-            "stop_mode='atr' requested but '%s' is missing or empty — "
-            "falling back to percentage trailing stops.", ATR_STOP_COLUMN
-        )
-    return values
-
-
-def validate_backtest_inputs(
-    df: pd.DataFrame,
-    initial_capital: float,
-    buy_indicators: List[str],
-    sell_indicators: List[str]
-) -> None:
-    """
-    Validate inputs to the backtest function.
-
-    Args:
-        df: DataFrame with price data and signals.
-        initial_capital: Starting capital for backtest.
-        buy_indicators: List of buy signal column names.
-        sell_indicators: List of sell signal column names.
-
-    Raises:
-        ValidationError: If any inputs are invalid.
-    """
-    if df is None or df.empty:
-        raise ValidationError("DataFrame is empty or None")
-
-    if initial_capital <= 0:
-        raise ValidationError(f"Initial capital must be positive, got {initial_capital}")
-
-    required_columns = ['Close']
-    missing_cols = [col for col in required_columns if col not in df.columns]
-    if missing_cols:
-        raise ValidationError(f"Missing required columns: {missing_cols}")
-
-    # Check for buy/sell indicator columns
-    missing_buy = [col for col in buy_indicators if col not in df.columns]
-    if missing_buy:
-        raise ValidationError(f"Missing buy indicator columns: {missing_buy}")
-
-    # Sell indicators are optional (for accumulation/rebalancing modes)
-    if sell_indicators:
-        missing_sell = [col for col in sell_indicators if col not in df.columns]
-        if missing_sell:
-            raise ValidationError(f"Missing sell indicator columns: {missing_sell}")
-
-    # Check for NaN in Close prices
-    nan_count = df['Close'].isna().sum()
-    if nan_count > 0:
-        logger.warning(f"DataFrame contains {nan_count} NaN values in 'Close' column")
-
-
-# --------------------------------------------------------------------------- #
-# Engine state
-# --------------------------------------------------------------------------- #
-
-@dataclass
-class _PositionState:
-    """Mutable per-bar state carried across the simulation loop.
-
-    Holding this in one object rather than in a dozen loop-local names is what
-    lets the exit / buy / sell steps live in their own functions: each reads the
-    previous bar's values off the state, mutates them, and the loop body
-    snapshots the result into the output arrays.
-    """
-    units: float = 0.0
-    cash: float = 0.0
-    position_size: float = 0.0
-    avg_entry: float = 0.0        # average execution price, fees excluded
-    cost_basis: float = 0.0       # average execution price, fees included
-    trailing_stop: float = np.inf
-    buy_cooldown: int = 0
-    sell_cooldown: int = 0
-    buy_wait_reset: bool = False
-    sell_wait_reset: bool = False
-
-
-@dataclass
-class _OpenTrade:
-    """Accumulator for the round trip currently in progress."""
-    entry_bar: int
-    units_bought: float = 0.0
-    units_sold: float = 0.0
-    gross_cost: float = 0.0       # notional paid, fees excluded
-    gross_proceeds: float = 0.0   # notional received, fees excluded
-    entry_fees: float = 0.0
-    exit_fees: float = 0.0
-    exit_reason: str = 'signal'
-
-
-@dataclass
-class _EngineContext:
-    """Per-run configuration plus the output arrays being filled in."""
-    # Price / signal inputs
-    close_prices: np.ndarray
-    low_prices: Optional[np.ndarray]
-    open_prices: Optional[np.ndarray]
-    session_start: np.ndarray
-    session_id: np.ndarray
-    dates: Any
-    buy_signal_raw: np.ndarray
-    sell_signal_raw: np.ndarray
-
-    # Behaviour switches
-    delay: int
-    strategy_mode: str
-    consecutive_signal_mode: str
-    cooldown_bars: int
-    min_holding_period: int
-    position_scaling: float
-    position_size_pct: float
-    amount_per_buy: Optional[float]
-    take_profit: float
-    fee_rate: float
-    slippage_pct: float
-    use_low_for_stops: bool
-    gap_fills: bool
-
-    # Callables
-    size_position: Callable[[float, float, int], float]
-    long_stop_level: Callable[[int, float], float]
-    round_units: Callable[[float], float]
-
-    # Output arrays
-    units_to_buy: np.ndarray
-    units_to_sell: np.ndarray
-    buy_signal_counter: np.ndarray
-    sell_signal_counter: np.ndarray
-    buy_triggered: np.ndarray
-    buy_rejected: np.ndarray
-    sell_triggered: np.ndarray
-    sell_rejected: np.ndarray
-    holding_period: np.ndarray
-    holding_sessions: np.ndarray
-
-    # Trade ledger
-    trades: List[dict] = field(default_factory=list)
-    open_trade: Optional[_OpenTrade] = None
-
-
-# --------------------------------------------------------------------------- #
-# Trade ledger
-# --------------------------------------------------------------------------- #
-
-def _record_entry(ctx: _EngineContext, bar: int, qty: float, value: float, fee: float) -> None:
-    """Fold a fill into the open round trip, opening one if the book was flat."""
-    if ctx.open_trade is None:
-        ctx.open_trade = _OpenTrade(entry_bar=bar)
-    trade = ctx.open_trade
-    trade.units_bought += qty
-    trade.gross_cost += value
-    trade.entry_fees += fee
-
-
-def _record_exit(
-    ctx: _EngineContext, bar: int, qty: float, value: float, fee: float, reason: str
-) -> None:
-    """Fold a sell into the open round trip, closing it once the book is flat."""
-    trade = ctx.open_trade
-    if trade is None:
-        return
-    trade.units_sold += qty
-    trade.gross_proceeds += value
-    trade.exit_fees += fee
-    trade.exit_reason = reason
-    if trade.units_sold >= trade.units_bought - _UNIT_EPS:
-        ctx.trades.append(_finalise_trade(ctx, trade, bar, is_open=False))
-        ctx.open_trade = None
-
-
-def _finalise_trade(
-    ctx: _EngineContext, trade: _OpenTrade, exit_bar: int, is_open: bool
-) -> dict:
-    """Turn an accumulated round trip into a ledger row.
-
-    An ``is_open`` trade is the position still held on the final bar; it is
-    marked to market at that bar's close so the ledger reconciles with the
-    equity curve. Its ``exit_reason`` is ``'open'`` and the realised-performance
-    metrics (win rate, profit factor) exclude it.
-
-    ``avg_entry_price`` is fee-exclusive; ``avg_cost_basis`` is the same average
-    with entry fees folded in.
-    """
-    units = trade.units_bought
-    gross_proceeds = trade.gross_proceeds
-    if is_open:
-        remaining = max(units - trade.units_sold, 0.0)
-        gross_proceeds += remaining * ctx.close_prices[exit_bar]
-
-    avg_entry = trade.gross_cost / units if units > 0 else 0.0
-    avg_cost_basis = (trade.gross_cost + trade.entry_fees) / units if units > 0 else 0.0
-    exit_price = gross_proceeds / units if units > 0 else 0.0
-    gross_pnl = gross_proceeds - trade.gross_cost
-    fees = trade.entry_fees + trade.exit_fees
-
-    return {
-        'entry_bar': int(trade.entry_bar),
-        'entry_date': ctx.dates[trade.entry_bar],
-        'exit_bar': int(exit_bar),
-        'exit_date': ctx.dates[exit_bar],
-        'units': float(units),
-        'avg_entry_price': float(avg_entry),
-        'avg_cost_basis': float(avg_cost_basis),
-        'exit_price': float(exit_price),
-        'exit_reason': 'open' if is_open else trade.exit_reason,
-        'gross_pnl': float(gross_pnl),
-        'net_pnl': float(gross_pnl - fees),
-        'fees': float(fees),
-        'holding_bars': int(exit_bar - trade.entry_bar),
-        'holding_sessions': int(
-            ctx.session_id[exit_bar] - ctx.session_id[trade.entry_bar]
-        ),
-        'is_open': bool(is_open),
-    }
-
-
-# --------------------------------------------------------------------------- #
-# Per-bar steps
-# --------------------------------------------------------------------------- #
-
-def _hold(ctx: _EngineContext, state: _PositionState, bar: int) -> None:
-    """No fill this bar: carry the position and ratchet the trailing stop.
-
-    The stop only ever moves up. Every no-fill path routes through here so a
-    rejected, undersized or unaffordable order cannot leave the stop stale.
-    """
-    if ctx.strategy_mode == 'accumulation' or state.units <= 0:
-        state.trailing_stop = np.inf
-    else:
-        state.trailing_stop = max(
-            state.trailing_stop, ctx.long_stop_level(bar, ctx.close_prices[bar])
-        )
-
-
-def _close_position(
-    ctx: _EngineContext, state: _PositionState, bar: int, price: float, reason: str
-) -> None:
-    """Liquidate the whole position at *price* (pre-slippage) and log the exit."""
-    qty = state.units
-    ctx.units_to_sell[bar] = qty
-    execution_price = price * (1 - ctx.slippage_pct)
-    value = qty * execution_price
-    fee = value * ctx.fee_rate
-
-    state.units = 0.0
-    state.cash += value - fee
-    state.position_size = 0.0
-    state.trailing_stop = np.inf
-    state.avg_entry = 0.0
-    state.cost_basis = 0.0
-
-    _record_exit(ctx, bar, qty, value, fee, reason)
-
-
-def _check_exits(ctx: _EngineContext, state: _PositionState, bar: int) -> bool:
-    """Apply trailing stop and take profit. Returns True if the bar was consumed.
-
-    Ordering is deliberate: the stop is tested first and ignores
-    ``min_holding_period``; take profit is tested second and respects it. Both
-    are disabled entirely in accumulation mode (long-term hold).
-    """
-    if ctx.strategy_mode == 'accumulation' or state.units <= 0:
-        return False
-
-    close_price = ctx.close_prices[bar]
-    stop_level = state.trailing_stop
-
-    if np.isfinite(stop_level):
-        # An overnight gap is not an intrabar move. The stop could not be
-        # worked while the exchange was shut, so a reopen at or below it fills
-        # at the open — the first price anyone could actually trade — however
-        # the bar goes on to close.
-        if ctx.gap_fills and ctx.session_start[bar] and ctx.open_prices is not None:
-            open_price = ctx.open_prices[bar]
-            if np.isfinite(open_price) and open_price <= stop_level:
-                _close_position(ctx, state, bar, open_price, 'trailing_stop')
-                return True
-        if ctx.use_low_for_stops:
-            # Intrabar breach: a resting stop order would have filled at the stop,
-            # unless the bar closed below it (gap), where the close is the worse
-            # and more honest assumption.
-            if ctx.low_prices[bar] <= stop_level:
-                _close_position(ctx, state, bar, min(stop_level, close_price), 'trailing_stop')
-                return True
-        elif close_price <= stop_level:
-            _close_position(ctx, state, bar, close_price, 'trailing_stop')
-            return True
-
-    if (
-        ctx.take_profit > 0
-        and state.avg_entry > 0
-        and close_price >= state.avg_entry * (1 + ctx.take_profit)
-        and ctx.holding_period[bar] >= ctx.min_holding_period
-    ):
-        _close_position(ctx, state, bar, close_price, 'take_profit')
-        return True
-
-    return False
-
-
-def _execute_buy(
-    ctx: _EngineContext, state: _PositionState, bar: int, prev_portfolio_value: float
-) -> None:
-    """Size, clamp to affordable cash, and fill a buy at *bar*'s close."""
-    ctx.buy_triggered[bar] = True
-    ctx.buy_signal_counter[bar] = ctx.buy_signal_counter[bar - 1] + 1
-
-    close_price = ctx.close_prices[bar]
-    prev_units = state.units
-
-    if not np.isfinite(close_price) or close_price <= 0:
-        _hold(ctx, state, bar)
-        return
-
-    if ctx.strategy_mode == 'accumulation':
-        # Fixed dollar amount per buy (DCA style), capped by cash on hand.
-        buy_amount = ctx.amount_per_buy if ctx.amount_per_buy else 1000.0
-        buy_amount = min(float(buy_amount), state.cash)
-        qty = ctx.round_units(buy_amount / close_price)
-    elif ctx.strategy_mode == 'rebalancing':
-        # Target weight: trade ``pct`` of *portfolio value*, so repeated buys stay
-        # equal-weight instead of decaying against a shrinking cash balance. The
-        # affordability clamp below caps an over-weight request at available cash.
-        pct = (ctx.position_size_pct or 100) / 100.0
-        qty = ctx.round_units((prev_portfolio_value * pct) / close_price)
-    else:
-        state.position_size = min(state.position_size + ctx.position_scaling, 1)
-        raw = ctx.size_position(prev_portfolio_value, close_price, bar)
-        qty = ctx.round_units(raw * state.position_size)
-
-    if qty > 0:
-        execution_price = close_price * (1 + ctx.slippage_pct)
-        total_cost_per_unit = execution_price * (1 + ctx.fee_rate)
-        affordable = (
-            ctx.round_units(state.cash / total_cost_per_unit)
-            if total_cost_per_unit > 0 else 0.0
-        )
-        qty = 0.0 if affordable <= 0 else min(qty, affordable)
-
-    if qty <= 0:
-        _hold(ctx, state, bar)
-        return
-
-    ctx.units_to_buy[bar] = qty
-    execution_price = close_price * (1 + ctx.slippage_pct)
-    value = qty * execution_price
-    fee = value * ctx.fee_rate
-
-    state.units = prev_units + qty
-    state.cash -= value + fee
-    state.avg_entry = ((state.avg_entry * prev_units) + value) / state.units
-    state.cost_basis = ((state.cost_basis * prev_units) + value + fee) / state.units
-
-    if ctx.strategy_mode == 'accumulation':
-        state.trailing_stop = np.inf  # No trailing stop for accumulation
-    else:
-        level = ctx.long_stop_level(bar, close_price)
-        # Scaling into an existing position must never loosen a stop that has
-        # already ratcheted up; only a fresh entry sets the level outright.
-        state.trailing_stop = max(state.trailing_stop, level) if prev_units > 0 else level
-
-    if ctx.consecutive_signal_mode in ('cooldown', 'reset_cooldown') and ctx.cooldown_bars > 0:
-        state.buy_cooldown = ctx.cooldown_bars + 1
-    if ctx.consecutive_signal_mode == 'reset_cooldown':
-        state.buy_wait_reset = True
-
-    _record_entry(ctx, bar, qty, value, fee)
-
-
-def _execute_sell(
-    ctx: _EngineContext, state: _PositionState, bar: int, prev_portfolio_value: float
-) -> None:
-    """Size and fill a discretionary (signal-driven) sell at *bar*'s close."""
-    ctx.sell_triggered[bar] = True
-
-    if ctx.holding_period[bar] < ctx.min_holding_period:
-        _hold(ctx, state, bar)
-        return
-
-    ctx.sell_signal_counter[bar] = ctx.sell_signal_counter[bar - 1] + 1
-    close_price = ctx.close_prices[bar]
-    prev_units = state.units
-
-    if not np.isfinite(close_price) or close_price <= 0:
-        _hold(ctx, state, bar)
-        return
-
-    if ctx.strategy_mode == 'rebalancing':
-        # Mirror of the buy side: shed ``pct`` of portfolio value, capped at what
-        # is actually held so a large target weight liquidates rather than errors.
-        pct = (ctx.position_size_pct or 100) / 100.0
-        qty = min(ctx.round_units((prev_portfolio_value * pct) / close_price), prev_units)
-    else:
-        state.position_size = max(state.position_size - ctx.position_scaling, 0)
-        raw = ctx.size_position(prev_portfolio_value, close_price, bar)
-        qty = min(ctx.round_units(raw * (1 - state.position_size)), prev_units)
-
-    if qty <= 0:
-        _hold(ctx, state, bar)
-        return
-
-    ctx.units_to_sell[bar] = qty
-    execution_price = close_price * (1 - ctx.slippage_pct)
-    value = qty * execution_price
-    fee = value * ctx.fee_rate
-
-    state.units = prev_units - qty
-    state.cash += value - fee
-
-    if state.units <= _UNIT_EPS:
-        state.units = 0.0
-        state.trailing_stop = np.inf
-        state.avg_entry = 0.0
-        state.cost_basis = 0.0
-    else:
-        state.trailing_stop = max(
-            state.trailing_stop, ctx.long_stop_level(bar, close_price)
-        )
-
-    if ctx.consecutive_signal_mode in ('cooldown', 'reset_cooldown') and ctx.cooldown_bars > 0:
-        state.sell_cooldown = ctx.cooldown_bars + 1
-    if ctx.consecutive_signal_mode == 'reset_cooldown':
-        state.sell_wait_reset = True
-
-    _record_exit(ctx, bar, qty, value, fee, 'signal')
-
-
-def _process_signals(
-    ctx: _EngineContext, state: _PositionState, bar: int, prev_portfolio_value: float
-) -> None:
-    """Gate the lagged signals through the consecutive-signal policy and route.
-
-    The signal read for bar ``i`` is the one printed on bar ``i - delay``; edge
-    detection compares that bar against ``i - delay - 1``. When both a buy and a
-    sell survive gating the buy wins (see the module docstring).
-    """
-    signal_bar = bar - ctx.delay
-    prev_signal_bar = signal_bar - 1
-
-    current_buy = bool(ctx.buy_signal_raw[signal_bar])
-    current_sell = bool(ctx.sell_signal_raw[signal_bar])
-    prev_buy = bool(ctx.buy_signal_raw[prev_signal_bar]) if prev_signal_bar >= 0 else False
-    prev_sell = bool(ctx.sell_signal_raw[prev_signal_bar]) if prev_signal_bar >= 0 else False
-
-    mode = ctx.consecutive_signal_mode
-    if mode == 'reset_cooldown':
-        if not current_buy:
-            state.buy_wait_reset = False
-        if not current_sell:
-            state.sell_wait_reset = False
-
-    if mode == 'edge':
-        allow_buy = current_buy and not prev_buy
-        allow_sell = current_sell and not prev_sell
-    elif mode == 'cooldown':
-        allow_buy = current_buy and state.buy_cooldown == 0
-        allow_sell = current_sell and state.sell_cooldown == 0
-    elif mode == 'reset_cooldown':
-        allow_buy = current_buy and state.buy_cooldown == 0 and not state.buy_wait_reset
-        allow_sell = current_sell and state.sell_cooldown == 0 and not state.sell_wait_reset
-    else:
-        allow_buy = current_buy
-        allow_sell = current_sell
-
-    if current_buy and not allow_buy:
-        ctx.buy_rejected[bar] = True
-    if current_sell and not allow_sell:
-        ctx.sell_rejected[bar] = True
-
-    if allow_buy:
-        _execute_buy(ctx, state, bar, prev_portfolio_value)
-    elif ctx.strategy_mode != 'accumulation' and allow_sell:
-        _execute_sell(ctx, state, bar, prev_portfolio_value)
-    else:
-        _hold(ctx, state, bar)
-
-
-# --------------------------------------------------------------------------- #
-# Public entry point
-# --------------------------------------------------------------------------- #
 
 def backtest(
     df: pd.DataFrame,
@@ -637,7 +178,16 @@ def backtest(
     fx_fee_pct: float = 0.0015,
     use_low_for_stops: bool = False,
     gap_fills: bool = True,
-    allow_fractional: bool = False
+    allow_fractional: bool = False,
+    order_type: str = 'market',
+    limit_offset_pct: float = 0.002,
+    stop_offset_pct: float = 0.002,
+    time_in_force: str = 'gtc',
+    order_expiry_bars: int = 0,
+    trailing_stop_orders: bool = False,
+    use_brackets: bool = False,
+    bracket_stop_pct: float = 0.0,
+    bracket_target_pct: float = 0.0
 ) -> pd.DataFrame:
     """
     Run a backtest on the provided DataFrame.
@@ -691,13 +241,50 @@ def backtest(
             ``lib.sessions``, or from a ``Session_Start`` column on ``df``.
         allow_fractional: Permit fractional share quantities (Trading 212 supports
             them). Default False keeps whole-share truncation.
+        order_type: How an accepted signal is worked — ``'market'`` (the
+            default: fill at the bar's close, the only behaviour the engine had
+            before order types existed), ``'limit'``, ``'stop'`` or
+            ``'stop_limit'``. Anything but ``'market'`` rests the order in the
+            book and fills it against a later bar's range, or never. Fill rules
+            and the multi-touch priority rule live in :mod:`lib.orders`.
+        limit_offset_pct: How far *away* from the signal bar's close a limit
+            rests, as a fraction (0.002 = 20 bps). Buys rest below, sells above.
+            Also the slippage cap between a stop-limit's stop and its limit.
+        stop_offset_pct: How far *beyond* the signal bar's close a stop rests,
+            as a fraction. Buy stops rest above (breakout confirmation), sell
+            stops below.
+        time_in_force: ``'gtc'`` (rest until filled or cancelled), ``'day'``
+            (cancelled at the next session boundary) or ``'ioc'`` (one bar of
+            range, then cancelled). Applies to signal-driven orders only —
+            protective exits are always GTC, because a stop that expires
+            overnight is not a stop.
+        order_expiry_bars: Hard age cap in bars on any resting order, applied on
+            top of ``time_in_force``. 0 disables it.
+        trailing_stop_orders: Express the trailing stop as a resting stop order
+            instead of the built-in close-based check. The level still ratchets
+            every bar, but it is now tested against the bar's ``Low`` and fills
+            at the stop (or at the ``Open`` on a gap), which is stricter and
+            usually worse than the default. **This changes results.**
+        use_brackets: On every entry, attach an OCO pair — a protective stop and
+            a profit target, both fixed at the average entry price — and let
+            whichever trades first cancel the other. While a bracket is working
+            it owns the exits: the built-in trailing stop is skipped, and so is
+            ``take_profit`` when a target leg exists. **This changes results.**
+        bracket_stop_pct: Bracket stop distance below entry, as a fraction.
+            Defaults to ``trailing_stop_loss`` when left at 0.
+        bracket_target_pct: Bracket target distance above entry, as a fraction.
+            Defaults to ``take_profit`` when left at 0. A bracket with neither
+            leg is not a bracket, and ``use_brackets`` turns itself off.
 
     Returns:
         DataFrame with backtest results including portfolio values and metrics,
         plus ``Session_Start`` and ``Holding_Sessions``.
-        ``result_df.attrs['trades']`` holds the round-trip trade ledger;
-        ``attrs['stop_mode']`` and ``attrs['position_sizing_strategy']`` record
-        what was actually applied after any fallback.
+        ``result_df.attrs['trades']`` holds the round-trip trade ledger and
+        ``attrs['fills']`` the execution-level fill ledger (one row per fill,
+        market orders included);
+        ``attrs['stop_mode']``, ``attrs['order_type']`` and
+        ``attrs['position_sizing_strategy']`` record what was actually applied
+        after any fallback.
 
     Raises:
         ValidationError: If inputs are invalid.
@@ -708,256 +295,57 @@ def backtest(
         validate_backtest_inputs(df, initial_capital, buy_indicators, sell_indicators)
         logger.info(f"Starting backtest with {len(df)} rows, initial capital: ${initial_capital:,.2f}")
 
-        num_rows = len(df)
-        signal_window = max(0, int(signal_window or 0))
-        strategy_mode = _validate_choice(strategy_mode, STRATEGY_MODES, 'strategy_mode')
-        consecutive_signal_mode = _validate_choice(
-            consecutive_signal_mode, CONSECUTIVE_SIGNAL_MODES, 'consecutive_signal_mode'
-        )
-        cooldown_bars = max(0, int(cooldown_bars or 0))
-        delay = max(0, int(delay or 0))
-        min_holding_period = max(0, int(min_holding_period or 0))
-
-        # Initialize arrays
-        units = np.zeros(num_rows)
-        cash_value = np.full(num_rows, float(initial_capital))
-        stocks_value = np.zeros(num_rows)
-        portfolio_value = np.full(num_rows, float(initial_capital))
-        units_to_buy = np.zeros(num_rows)
-        units_to_sell = np.zeros(num_rows)
-        buy_signal_counter = np.zeros(num_rows, dtype=int)
-        sell_signal_counter = np.zeros(num_rows, dtype=int)
-        buy_triggered = np.zeros(num_rows, dtype=bool)
-        buy_rejected = np.zeros(num_rows, dtype=bool)
-        sell_triggered = np.zeros(num_rows, dtype=bool)
-        sell_rejected = np.zeros(num_rows, dtype=bool)
-        holding_period = np.zeros(num_rows, dtype=int)
-        holding_sessions = np.zeros(num_rows, dtype=int)
-        trailing_stop = np.full(num_rows, np.inf)
-        avg_entry_price = np.zeros(num_rows)
-        avg_cost_basis = np.zeros(num_rows)
-
-        # Resolve the stop source before sizing — an ATR sizer that cannot find
-        # its column has to be sized off whatever stop will actually be applied.
-        atr_stop_values = _resolve_atr_stops(df, stop_mode)
-        effective_stop_mode = 'atr' if atr_stop_values is not None else 'percent'
-
-        position_sizing_params = dict(position_sizing_params or {})
-        if position_sizing_strategy == "atr_risk_based" and _numeric_column(df, 'ATR') is None:
-            logger.warning(
-                "position_sizing_strategy='atr_risk_based' requested but 'ATR' is "
-                "missing or empty — falling back to percentage risk_based sizing."
-            )
-            position_sizing_strategy = "risk_based"
-            position_sizing_params = {
-                "stop_loss_percent": max(float(trailing_stop_loss or 0), 0.01),
-                "risk_percent": position_sizing_params.get("risk_percent", 0.01),
-            }
-
-        # Get position sizer function
-        position_sizer = get_position_sizer(
-            position_sizing_strategy, fractional=allow_fractional, **position_sizing_params
-        )
-
-        if use_signal_strength:
-            buy_signal_strength, sell_signal_strength = calculate_signal_strengths(
-                df, buy_indicators, sell_indicators, indicator_weights
-            )
-        else:
-            buy_signal_strength = _combine_signals(df, buy_indicators, signal_logic, signal_window)
-            if sell_indicators:
-                sell_signal_strength = _combine_signals(df, sell_indicators, signal_logic, signal_window)
-            else:
-                sell_signal_strength = np.zeros(num_rows)
-
-        if use_signal_strength:
-            buy_signal_raw = buy_signal_strength > buy_threshold
-            sell_signal_raw = sell_signal_strength > sell_threshold
-        else:
-            buy_signal_raw = buy_signal_strength > 0
-            sell_signal_raw = sell_signal_strength > 0
-        buy_signal_raw = np.asarray(buy_signal_raw, dtype=bool)
-        sell_signal_raw = np.asarray(sell_signal_raw, dtype=bool)
-
-        # Calculate volatility
-        df = df.copy()
-        df['Volatility'] = df['Close'].pct_change().rolling(window=volatility_window).std()
-
-        # Per-bar third argument for the sizers that need one.
-        if position_sizing_strategy == "volatility_based":
-            sizer_extra = df['Volatility'].to_numpy(dtype=float)
-        elif position_sizing_strategy == "atr_risk_based":
-            sizer_extra = pd.to_numeric(df['ATR'], errors='coerce').to_numpy(dtype=float)
-        else:
-            sizer_extra = None
-
-        def size_position(pv, price, bar: int) -> float:
-            """Call the configured sizer, passing its per-bar argument if it takes one."""
-            if sizer_extra is not None:
-                return position_sizer(pv, price, sizer_extra[bar])
-            return position_sizer(pv, price)
-
-        def long_stop_level(bar: int, price) -> float:
-            """Trailing stop level for a long held at *bar*.
-
-            In ATR mode the level is the Chandelier stop the ATR strategy wrote.
-            That stop is anchored to a rolling high, so after a sharp drop it can
-            sit at or above the current close — using it there would fire on the
-            very next bar regardless of the trade, so those bars fall back to the
-            percentage stop.
-            """
-            if atr_stop_values is not None:
-                level = atr_stop_values[bar]
-                if np.isfinite(level) and 0 < level < price:
-                    return level
-            return price * (1 - trailing_stop_loss)
-
-        if allow_fractional:
-            def round_units(value: float) -> float:
-                """Fractional shares: keep the exact quantity, floor at zero."""
-                return float(value) if value > 0 else 0.0
-        else:
-            def round_units(value: float) -> float:
-                """Whole shares: truncate toward zero, as a broker lot would."""
-                return float(int(value)) if value > 0 else 0.0
-
-        close_prices = df['Close'].to_numpy(dtype=float)
-
-        low_prices = None
-        if use_low_for_stops:
-            low_prices = _numeric_column(df, 'Low')
-            if low_prices is None:
-                logger.warning(
-                    "use_low_for_stops=True but 'Low' is missing or empty — "
-                    "falling back to close-only stop checks."
-                )
-                use_low_for_stops = False
-
-        # Session marks come from the timestamps unless the caller supplied a
-        # Session_Start column. Without an Open column there is no gap price to
-        # fill at, so gap handling turns itself off rather than inventing one.
-        session_start = resolve_session_starts(df)
-        session_id = np.cumsum(session_start) - 1 if num_rows else np.zeros(0, dtype=int)
-        open_prices = None
-        if gap_fills:
-            open_prices = _numeric_column(df, 'Open')
-            if open_prices is None:
-                logger.warning(
-                    "gap_fills=True but 'Open' is missing or empty — overnight "
-                    "gaps through the trailing stop will fill at the close."
-                )
-                gap_fills = False
-
-        # Market returns, guarded against a zero/NaN previous close.
-        returns = np.zeros(num_rows)
-        if num_rows > 1:
-            prev_close = close_prices[:-1]
-            positive = prev_close > 0
-            with np.errstate(divide='ignore', invalid='ignore'):
-                step = np.where(
-                    positive,
-                    np.diff(close_prices) / np.where(positive, prev_close, 1.0),
-                    0.0,
-                )
-            returns[1:] = np.nan_to_num(step, nan=0.0, posinf=0.0, neginf=0.0)
-
-        take_profit = max(0.0, float(take_profit or 0))
-        fee_rate = max(0.0, float(commission_per_trade or 0)) + max(0.0, float(fx_fee_pct or 0))
-        slippage_pct = max(0.0, float(slippage_pct or 0))
-
-        ctx = _EngineContext(
-            close_prices=close_prices,
-            low_prices=low_prices,
-            open_prices=open_prices,
-            session_start=session_start,
-            session_id=session_id,
-            dates=df.index,
-            buy_signal_raw=buy_signal_raw,
-            sell_signal_raw=sell_signal_raw,
-            delay=delay,
+        cfg = resolve_config(
             strategy_mode=strategy_mode,
             consecutive_signal_mode=consecutive_signal_mode,
             cooldown_bars=cooldown_bars,
+            delay=delay,
             min_holding_period=min_holding_period,
             position_scaling=position_scaling,
             position_size_pct=position_size_pct,
             amount_per_buy=amount_per_buy,
             take_profit=take_profit,
-            fee_rate=fee_rate,
+            trailing_stop_loss=trailing_stop_loss,
+            commission_per_trade=commission_per_trade,
             slippage_pct=slippage_pct,
+            fx_fee_pct=fx_fee_pct,
+            allow_fractional=allow_fractional,
+            order_type=order_type,
+            limit_offset_pct=limit_offset_pct,
+            stop_offset_pct=stop_offset_pct,
+            time_in_force=time_in_force,
+            order_expiry_bars=order_expiry_bars,
+            trailing_stop_orders=trailing_stop_orders,
+            use_brackets=use_brackets,
+            bracket_stop_pct=bracket_stop_pct,
+            bracket_target_pct=bracket_target_pct,
+        )
+        account = Account(cash=float(initial_capital))
+        # A single-symbol run is a basket of one: the same loop, one context.
+        ctx = build_symbol(
+            '', df, cfg, account,
+            position_sizing_strategy=position_sizing_strategy,
+            position_sizing_params=position_sizing_params,
+            buy_indicators=buy_indicators,
+            sell_indicators=sell_indicators,
+            use_signal_strength=use_signal_strength,
+            indicator_weights=indicator_weights,
+            buy_threshold=buy_threshold,
+            sell_threshold=sell_threshold,
+            signal_logic=signal_logic,
+            signal_window=signal_window,
+            trailing_stop_loss=trailing_stop_loss,
+            stop_mode=stop_mode,
+            volatility_window=volatility_window,
+            allow_fractional=allow_fractional,
             use_low_for_stops=use_low_for_stops,
             gap_fills=gap_fills,
-            size_position=size_position,
-            long_stop_level=long_stop_level,
-            round_units=round_units,
-            units_to_buy=units_to_buy,
-            units_to_sell=units_to_sell,
-            buy_signal_counter=buy_signal_counter,
-            sell_signal_counter=sell_signal_counter,
-            buy_triggered=buy_triggered,
-            buy_rejected=buy_rejected,
-            sell_triggered=sell_triggered,
-            sell_rejected=sell_rejected,
-            holding_period=holding_period,
-            holding_sessions=holding_sessions,
         )
 
-        state = _PositionState(cash=float(initial_capital))
+        tape = run_bars(cfg, account, [ctx], len(df))
+        result_df = symbol_result_frame(ctx, tape.cash_value, tape.portfolio_value)
 
-        # Bar 0 is the opening state, and bars before `delay` have no observable
-        # signal yet, so the first tradable bar is max(1, delay).
-        for i in range(max(1, delay), num_rows):
-            close_price = close_prices[i]
-            prev_portfolio_value = portfolio_value[i - 1]
-
-            holding_period[i] = holding_period[i - 1] + 1 if state.units > 0 else 0
-            # Bars held is a positional count; sessions crossed is the same
-            # hold measured against the calendar. entry_bar is recoverable
-            # because holding_period counts up one per bar from the fill.
-            holding_sessions[i] = session_id[i] - session_id[i - holding_period[i]]
-
-            if not _check_exits(ctx, state, i):
-                _process_signals(ctx, state, i, prev_portfolio_value)
-
-            units[i] = state.units
-            cash_value[i] = state.cash
-            trailing_stop[i] = state.trailing_stop
-            avg_entry_price[i] = state.avg_entry
-            avg_cost_basis[i] = state.cost_basis
-            stocks_value[i] = state.units * close_price
-            portfolio_value[i] = state.cash + stocks_value[i]
-
-            # Cooldowns are armed with cooldown_bars + 1 at fill time precisely
-            # because this decrement also runs on the arming bar; the counter is
-            # therefore non-zero on exactly the next `cooldown_bars` bars.
-            if state.buy_cooldown > 0:
-                state.buy_cooldown -= 1
-            if state.sell_cooldown > 0:
-                state.sell_cooldown -= 1
-
-        # A position still open on the last bar is marked to market so the ledger
-        # reconciles with the equity curve; it carries exit_reason='open'.
-        if ctx.open_trade is not None and num_rows > 0:
-            ctx.trades.append(_finalise_trade(ctx, ctx.open_trade, num_rows - 1, is_open=True))
-            ctx.open_trade = None
-
-        # Calculate returns and create result DataFrame
-        strategy_returns, cumulative_returns, cumulative_market_returns = calculate_returns(portfolio_value, returns)
-
-        result_df = create_result_dataframe(
-            df, units, units_to_buy, units_to_sell, cash_value, stocks_value, portfolio_value,
-            buy_signal_raw, sell_signal_raw,
-            returns, strategy_returns, cumulative_returns, cumulative_market_returns,
-            holding_period, trailing_stop, buy_triggered, buy_rejected, sell_triggered, sell_rejected,
-            avg_entry_price=avg_entry_price, avg_cost_basis=avg_cost_basis,
-            session_start=session_start, holding_sessions=holding_sessions
-        )
-        # Record what was actually applied, not what was asked for — either may
-        # have been downgraded to the percentage fallback above.
-        result_df.attrs['stop_mode'] = effective_stop_mode
-        result_df.attrs['position_sizing_strategy'] = position_sizing_strategy
-        result_df.attrs['trades'] = trades_to_frame(ctx.trades)
-
+        portfolio_value = tape.portfolio_value
         final_return = (portfolio_value[-1] / initial_capital - 1) * 100
         logger.info(f"Backtest complete. Final portfolio: ${portfolio_value[-1]:,.2f} ({final_return:+.2f}%)")
 
@@ -968,319 +356,6 @@ def backtest(
     except Exception as e:
         logger.error(f"Error during backtest: {str(e)}")
         raise BacktestError(f"Backtest failed: {str(e)}") from e
-
-
-def calculate_signal_strengths(
-    df: pd.DataFrame,
-    buy_indicators: List[str],
-    sell_indicators: List[str],
-    indicator_weights: Optional[Dict[str, float]] = None
-) -> tuple:
-    """
-    Calculate weighted signal strengths for buy and sell indicators (vectorized).
-
-    Args:
-        df: DataFrame with signal columns.
-        buy_indicators: List of buy indicator column names.
-        sell_indicators: List of sell indicator column names.
-        indicator_weights: Optional weights for each indicator.
-
-    Returns:
-        Tuple of (buy_signal_strength, sell_signal_strength) numpy arrays.
-    """
-    if indicator_weights is not None:
-        buy_weights = np.array([indicator_weights.get(ind, 1.0) for ind in buy_indicators])
-        sell_weights = np.array([indicator_weights.get(ind, 1.0) for ind in sell_indicators])
-
-        buy_signal_strength = (df[buy_indicators].values * buy_weights).sum(axis=1)
-        sell_signal_strength = (df[sell_indicators].values * sell_weights).sum(axis=1)
-    else:
-        buy_signal_strength = df[buy_indicators].sum(axis=1).values
-        sell_signal_strength = df[sell_indicators].sum(axis=1).values
-
-    return buy_signal_strength, sell_signal_strength
-
-
-def _combine_signals(
-    df: pd.DataFrame,
-    columns: List[str],
-    logic: str,
-    window: int
-) -> np.ndarray:
-    """
-    Combine multiple signal columns into a single 0/1 array.
-
-    Args:
-        df: DataFrame with signal columns.
-        columns: Signal column names to combine.
-        logic: 'or' (any signal) or 'and' (all signals).
-        window: Rolling window for confirmation (0 disables).
-    """
-    if not columns:
-        return np.zeros(len(df), dtype=int)
-
-    valid_cols = [col for col in columns if col in df.columns]
-    if not valid_cols:
-        return np.zeros(len(df), dtype=int)
-
-    signals = df[valid_cols].fillna(0)
-    window = max(0, int(window or 0))
-    logic = (logic or 'or').lower()
-
-    if logic == 'and' and window > 0:
-        windowed = signals.rolling(window=window + 1, min_periods=1).max()
-        combined = (windowed > 0).all(axis=1)
-    elif logic == 'and':
-        combined = signals.gt(0).all(axis=1)
-    else:
-        combined = signals.gt(0).any(axis=1)
-
-    return combined.astype(int).values
-
-
-def calculate_returns(portfolio_value: np.ndarray, returns: np.ndarray) -> tuple:
-    """Calculate strategy and market returns.
-
-    A portfolio that reaches zero would divide by zero on the next bar; those
-    bars are reported as a flat 0% rather than inf/NaN, which pins the cumulative
-    curve at zero instead of poisoning the whole series.
-    """
-    pv = np.asarray(portfolio_value, dtype=float)
-    market = np.asarray(returns, dtype=float)
-    strategy_returns = np.zeros_like(market, dtype=float)
-
-    if pv.size > 1:
-        prev = pv[:-1]
-        positive = prev > 0
-        with np.errstate(divide='ignore', invalid='ignore'):
-            step = np.where(positive, (pv[1:] - prev) / np.where(positive, prev, 1.0), 0.0)
-        strategy_returns[1:] = np.nan_to_num(step, nan=0.0, posinf=0.0, neginf=0.0)
-
-    cumulative_returns = np.cumprod(1 + strategy_returns)
-    cumulative_market_returns = np.cumprod(1 + market)
-    return strategy_returns, cumulative_returns, cumulative_market_returns
-
-
-def create_result_dataframe(
-    df: pd.DataFrame,
-    units: np.ndarray,
-    units_to_buy: np.ndarray,
-    units_to_sell: np.ndarray,
-    cash_value: np.ndarray,
-    stocks_value: np.ndarray,
-    portfolio_value: np.ndarray,
-    buy_position: np.ndarray,
-    sell_position: np.ndarray,
-    returns: np.ndarray,
-    strategy_returns: np.ndarray,
-    cumulative_returns: np.ndarray,
-    cumulative_market_returns: np.ndarray,
-    holding_period: np.ndarray,
-    trailing_stop: np.ndarray,
-    buy_triggered: np.ndarray,
-    buy_rejected: np.ndarray,
-    sell_triggered: np.ndarray,
-    sell_rejected: np.ndarray,
-    avg_entry_price: Optional[np.ndarray] = None,
-    avg_cost_basis: Optional[np.ndarray] = None,
-    session_start: Optional[np.ndarray] = None,
-    holding_sessions: Optional[np.ndarray] = None
-) -> pd.DataFrame:
-    df = df.copy()
-    df['Units'] = units
-    df['Units_to_buy'] = units_to_buy
-    df['Units_to_sell'] = units_to_sell
-    df['Cash_Value'] = cash_value
-    df['Stocks_Value'] = stocks_value
-    df['Portfolio_Value'] = portfolio_value
-    # These mirror the boolean arrays the simulation actually consumed, so a bar
-    # flagged here is a bar the engine saw a signal on — before the `delay` lag
-    # is applied at execution time.
-    df['Buy_Position'] = buy_position
-    df['Sell_Position'] = sell_position
-    df['Returns'] = returns
-    df['Strategy_Returns'] = strategy_returns
-    df['Cumulative_Returns'] = cumulative_returns
-    df['Cumulative_Market_Returns'] = cumulative_market_returns
-    df['Holding_Period'] = holding_period
-    df['Trailing_Stop'] = trailing_stop
-    df['Buy_Trigger_Accepted'] = buy_triggered
-    df['Buy_Trigger_Rejected'] = buy_rejected
-    df['Sell_Trigger_Accepted'] = sell_triggered
-    df['Sell_Trigger_Rejected'] = sell_rejected
-    if avg_entry_price is not None:
-        df['Avg_Entry_Price'] = avg_entry_price
-    if avg_cost_basis is not None:
-        df['Avg_Cost_Basis'] = avg_cost_basis
-    # Session_Start is written even when it came in on df, so the result always
-    # states which boundaries the run actually used rather than leaving the
-    # reader to re-infer them.
-    if session_start is not None:
-        df['Session_Start'] = session_start
-    if holding_sessions is not None:
-        df['Holding_Sessions'] = holding_sessions
-    return df
-
-
-def get_position_sizer(strategy: str, fractional: bool = False, **kwargs) -> Callable:
-    """
-    Get the position sizing function for the specified strategy.
-
-    Args:
-        strategy: Name of the position sizing strategy.
-        fractional: Return the exact (unrounded) quantity instead of whole
-            shares. The engine sets this from ``backtest(allow_fractional=...)``;
-            the truncation otherwise happens inside the sizer, where the engine
-            cannot undo it.
-        **kwargs: Additional parameters for the strategy.
-
-    Returns:
-        Callable position sizing function.
-
-    Raises:
-        ValueError: If strategy is not recognized.
-    """
-    strategies = {
-        "percentage_of_portfolio": lambda pv, cp: _size_percentage_of_portfolio(
-            pv, cp, kwargs.get('percent', 0.01)
-        ),
-        "fixed_dollar_amount": lambda pv, cp: _size_fixed_dollar_amount(
-            cp, kwargs.get('amount', 1000)
-        ),
-        "volatility_based": lambda pv, cp, vol: _size_volatility_based(
-            pv, cp, vol, kwargs.get('target_volatility', 0.01)
-        ),
-        "kelly_criterion": lambda pv, cp: _size_kelly_criterion(
-            kwargs['win_rate'], kwargs['win_loss_ratio'], pv, cp
-        ),
-        "risk_based": lambda pv, cp: _size_risk_based(
-            pv, cp, kwargs['stop_loss_percent'], kwargs.get('risk_percent', 0.01)
-        ),
-        "atr_risk_based": lambda pv, cp, atr: _size_atr_risk_based(
-            pv, cp, atr, kwargs.get('atr_multiplier', 1.5), kwargs.get('risk_percent', 0.01)
-        )
-    }
-
-    if strategy not in strategies:
-        available = ", ".join(strategies.keys())
-        raise ValueError(f"Unknown position sizing strategy: '{strategy}'. Available: {available}")
-
-    sizer = strategies[strategy]
-    if fractional:
-        return sizer
-    return lambda *args: int(sizer(*args))
-
-
-# The `_size_*` helpers return the exact, unrounded quantity. The public
-# functions below wrap them with the whole-share truncation callers expect.
-
-def _size_percentage_of_portfolio(portfolio_value: float, close_price: float, percent: float) -> float:
-    if close_price <= 0:
-        return 0.0
-    return (portfolio_value * percent) / close_price
-
-
-def _size_fixed_dollar_amount(close_price: float, amount: float) -> float:
-    if close_price <= 0:
-        return 0.0
-    return amount / close_price
-
-
-def _size_volatility_based(
-    portfolio_value: float, close_price: float, volatility: float, target_volatility: float
-) -> float:
-    if close_price <= 0 or volatility <= 0:
-        return 0.0
-    return ((target_volatility / volatility) * portfolio_value) / close_price
-
-
-def _size_kelly_criterion(
-    win_rate: float, win_loss_ratio: float, portfolio_value: float, close_price: float
-) -> float:
-    if close_price <= 0 or win_loss_ratio <= 0:
-        return 0.0
-    kelly_percentage = win_rate - ((1 - win_rate) / win_loss_ratio)
-    kelly_percentage = max(0, min(kelly_percentage, 1))
-    return (kelly_percentage * portfolio_value) / close_price
-
-
-def _size_risk_based(
-    portfolio_value: float, close_price: float, stop_loss_percent: float, risk_percent: float
-) -> float:
-    if close_price <= 0 or stop_loss_percent <= 0:
-        return 0.0
-    return (portfolio_value * risk_percent) / (close_price * stop_loss_percent)
-
-
-def _size_atr_risk_based(
-    portfolio_value: float, close_price: float, atr: float,
-    atr_multiplier: float, risk_percent: float
-) -> float:
-    if close_price <= 0 or not np.isfinite(atr) or atr <= 0 or atr_multiplier <= 0:
-        return 0.0
-    return (portfolio_value * risk_percent) / (atr * atr_multiplier)
-
-
-def percentage_of_portfolio(portfolio_value: float, close_price: float, percent: float = 0.02) -> int:
-    """Calculate position size as percentage of portfolio."""
-    return int(_size_percentage_of_portfolio(portfolio_value, close_price, percent))
-
-def fixed_dollar_amount(close_price: float, amount: float = 500) -> int:
-    """Calculate position size based on fixed dollar amount."""
-    return int(_size_fixed_dollar_amount(close_price, amount))
-
-
-def volatility_based(
-    portfolio_value: float,
-    close_price: float,
-    volatility: float,
-    target_volatility: float = 0.01
-) -> int:
-    """Calculate position size based on asset volatility."""
-    return int(_size_volatility_based(portfolio_value, close_price, volatility, target_volatility))
-
-
-def kelly_criterion(
-    win_rate: float,
-    win_loss_ratio: float,
-    portfolio_value: float,
-    close_price: float
-) -> int:
-    """Calculate position size using Kelly Criterion."""
-    return int(_size_kelly_criterion(win_rate, win_loss_ratio, portfolio_value, close_price))
-
-
-def risk_based(
-    portfolio_value: float,
-    close_price: float,
-    stop_loss_percent: float,
-    risk_percent: float = 0.01
-) -> int:
-    """Calculate position size based on fixed risk per trade."""
-    return int(_size_risk_based(portfolio_value, close_price, stop_loss_percent, risk_percent))
-
-
-def atr_risk_based(
-    portfolio_value: float,
-    close_price: float,
-    atr: float,
-    atr_multiplier: float = 1.5,
-    risk_percent: float = 0.01
-) -> int:
-    """
-    Size a position so that ``atr_multiplier`` ATRs of adverse move costs
-    ``risk_percent`` of the portfolio.
-
-    This is ``risk_based`` with the fixed stop percentage replaced by the
-    instrument's own volatility, so a low-vol utility gets a larger position
-    than a high-beta name for the same dollar risk. ``atr_multiplier`` defaults
-    to 1.5 to match ``ATR_TradingStrategy``'s stop multiplier, so sizing and
-    ``stop_mode='atr'`` agree on the same risk unit.
-
-    Returns 0 for a non-finite or non-positive ATR (warmup bars) — a position
-    whose risk cannot be measured is not taken.
-    """
-    return int(_size_atr_risk_based(portfolio_value, close_price, atr, atr_multiplier, risk_percent))
 
 
 # --------------------------------------------------------------------------- #
@@ -1356,7 +431,16 @@ def run_backtest(
     fx_fee_pct: float = 0.0015,
     use_low_for_stops: bool = False,
     gap_fills: bool = True,
-    allow_fractional: bool = False
+    allow_fractional: bool = False,
+    order_type: str = 'market',
+    limit_offset_pct: float = 0.002,
+    stop_offset_pct: float = 0.002,
+    time_in_force: str = 'gtc',
+    order_expiry_bars: int = 0,
+    trailing_stop_orders: bool = False,
+    use_brackets: bool = False,
+    bracket_stop_pct: float = 0.0,
+    bracket_target_pct: float = 0.0
 ) -> pd.DataFrame:
     """
     Convenience function to run a backtest with default Kelly Criterion sizing.
@@ -1428,5 +512,14 @@ def run_backtest(
         fx_fee_pct=fx_fee_pct,
         use_low_for_stops=use_low_for_stops,
         gap_fills=gap_fills,
-        allow_fractional=allow_fractional
+        allow_fractional=allow_fractional,
+        order_type=order_type,
+        limit_offset_pct=limit_offset_pct,
+        stop_offset_pct=stop_offset_pct,
+        time_in_force=time_in_force,
+        order_expiry_bars=order_expiry_bars,
+        trailing_stop_orders=trailing_stop_orders,
+        use_brackets=use_brackets,
+        bracket_stop_pct=bracket_stop_pct,
+        bracket_target_pct=bracket_target_pct
     )

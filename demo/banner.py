@@ -6,9 +6,9 @@ Three pieces, all added to the app from outside the layout modules:
    ``DEMO · DATA 11 SEP 2026`` with an amber dot. It is always on screen, so no
    frame of the demo can be mistaken for a live terminal.
 2. **Banner** -- one dismissible line (per browser session) saying what is
-   frozen, what is switched off and where the limits are written down. It is
-   plain HTML in the index page, outside React, so it shows before the app
-   has loaded.
+   frozen, what is switched off and where the limits are written down, plus
+   who is signed in and until when. It is plain HTML in the index page,
+   outside React, so it shows before the app has loaded.
 3. **Wall** -- the ``demo-wall`` notice ``demo.guards`` opens when a cap or a
    rate limit refuses something.
 
@@ -24,6 +24,7 @@ from typing import Any, Iterator
 from dash import Input, Output, html
 
 from demo import snapshot
+from demo.access.gate import ACCOUNT_MARKER
 from demo.guards import WALL_BODY_ID, WALL_ID
 from demo.settings import DemoSettings
 
@@ -40,6 +41,10 @@ _CSS = """
 .sfa-demo-banner button,.sfa-demo-wall button{background:none;border:0;color:var(--text-secondary,#a8a8a8);
   font-size:16px;line-height:1;cursor:pointer;padding:2px 4px}
 .sfa-demo-banner[hidden]{display:none}
+.sfa-demo-account{display:block;margin-top:3px;color:var(--text-secondary,#a8a8a8)}
+.sfa-demo-account b{color:var(--text-primary,#e8e8e8);font-weight:600}
+.sfa-demo-account form{display:inline}
+.sfa-demo-banner .sfa-demo-signout{font:inherit;color:var(--accent,#FFA726);text-decoration:underline;padding:0}
 .sfa-demo-wall{position:fixed;top:54px;left:50%;transform:translateX(-50%);z-index:3100;
   display:flex;align-items:flex-start;gap:10px;max-width:min(640px,calc(100vw - 24px));padding:10px 10px 10px 14px;
   background:#141414;color:var(--text-primary,#e8e8e8);border:1px solid #2a2a2a;border-radius:4px;
@@ -74,7 +79,9 @@ def banner_html(settings: DemoSettings) -> str:
         '<div id="sfa-demo-banner" class="sfa-demo-banner" role="region" aria-label="About this demo">'
         '<span><strong>PUBLIC DEMO</strong> &nbsp;Prices and fundamentals are frozen at the '
         f'{label} close and never refresh. No broker connection, no orders. '
-        f'Optimiser runs are capped (up to {settings.max_combos} combinations a search) so every visitor gets a turn.</span>'
+        f'Optimiser runs are capped (up to {settings.max_combos} combinations a search) so every visitor gets a turn.'
+        # demo.access.gate swaps this for "Signed in as … · free trial until …" per request.
+        f"{ACCOUNT_MARKER}</span>"
         f'<a href="{DOCS_URL}" target="_blank" rel="noopener noreferrer">What is limited</a>'
         '<button type="button" id="sfa-demo-banner-close" aria-label="Dismiss the demo banner">×</button>'
         "</div>"

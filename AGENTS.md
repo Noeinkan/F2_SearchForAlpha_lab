@@ -50,6 +50,8 @@ Always pass `--json`. Non-zero exit code = error. Prefix with `rtk` when availab
 3. `sfa optimise --name <s> --trials <n> --metric <sortino|sharpe|calmar|composite>`.
 4. `sfa trials --name <s> --top 10` — inspect leaderboard; flag boundary params.
 5. `sfa walkforward --name <s> --params <trial_id|json>` — OOS validation.
+   `sfa regimes --name <s> --params <trial_id|json>` — score each RESEARCH.md regime
+   separately; `verdict.status` is `pass` / `fail` / `inconclusive` (not enough data, never a fail).
 6. `sfa promote --name <s> --trial <trial_id>` — only after human approval.
 7. `sfa run --name <s> --mode paper` — start runner.
 8. `sfa status` / `sfa kill` — observe and stop.
@@ -63,6 +65,6 @@ Details: research sweeps, regime metrics, promotion gates → `docs/openclaw-res
 - Guard triggered (`sfa status --json`) → `sfa kill` immediately, no wait.
 - Never retry a command more than twice; never paste full JSON in replies.
 - JSON contracts: `lib/cli/contracts.py` — field names are stable.
-- Backtest `window` includes `interval` (`1d`|`1h`|`4h`, default `1d`). Pass `--interval` on backtest/optimise/sweep-single/walkforward. Yahoo intraday lookback is 730d but a full-730d window returns empty, so the clamp uses 728d; see `docs/openclaw-research.md`.
+- Backtest `window` includes `interval` (`1d`|`1h`|`4h`, default `1d`). Pass `--interval` on backtest/optimise/sweep-single/walkforward/regimes. Yahoo intraday lookback is 730d but a full-730d window returns empty, so the clamp uses 728d; see `docs/openclaw-research.md`.
 
 Full rule set → `docs/openclaw-research.md`.

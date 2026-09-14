@@ -11,6 +11,7 @@ from dash import dcc, html
 from lib.dash.dash_config import FONT_SIZES, FONT_FAMILY
 from lib.dash.components import ticker_pill
 from lib.dash.bootstrap import BootstrapSnapshot
+from .empty_states import CHART_EMPTY_HINT, CHART_EMPTY_TITLE, empty_state
 
 CHART_TYPES = [
     {'label': 'Candles', 'value': 'candles'},
@@ -163,6 +164,21 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
                             children=html.Div(id='chart-render-target'),
                         ),
                         className='sfa-chart-loading',
+                    ),
+                    # Shown while the payload has no bars — before the first
+                    # load, or when a load failed. Hidden on first paint when
+                    # the server bootstrap already fetched data, so a normal
+                    # start does not flash it. Toggled by callbacks/chart.py.
+                    html.Div(
+                        empty_state(
+                            CHART_EMPTY_TITLE,
+                            CHART_EMPTY_HINT,
+                            title_id='chart-empty-title',
+                            hint_id='chart-empty-hint',
+                        ),
+                        id='chart-empty-state',
+                        className='sfa-chart-empty',
+                        hidden=bootstrap is not None,
                     ),
                 ],
                 id='chart-frame',

@@ -29,6 +29,7 @@ from .command_palette import _create_command_palette
 from .symbol_search import _create_symbol_search_modal
 from .feedback import _create_feedback_modal
 from lib.dash.bootstrap import BootstrapSnapshot
+from lib.dash.error_boundary import build_error_boundary
 
 
 def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Div:
@@ -51,6 +52,11 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Store(id='presets-store', data={'presets': {}}),
         dcc.Store(id='active-preset-name', data=None),
         dcc.Store(id='preset-apply-store', data=None),
+        # Last-session restore (callbacks/ui_session.py). Saves are refused
+        # until `restored` is set, so the page defaults that load first cannot
+        # overwrite the file before it has been read back.
+        dcc.Store(id='ui-session-restored', data=False),
+        dcc.Store(id='ui-session-saved-at', data=None),
         dcc.Store(id='optimization-running', data=False),
         dcc.Store(id='optimization-state', data={
             'running': False,
@@ -75,8 +81,11 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Store(id='fundamentals-store', data=None, storage_type='session'),
         dcc.Store(id='fundamentals-period-store', data=DEFAULT_FUNDAMENTALS_PERIOD, storage_type='session'),
         # Memory (not session): each page load starts with no prior ticker
-        # choice so python main.py always opens on DEFAULT_TICKER (TSLA).
-        # Session persistence previously restored SPY and reloaded the wrong chart.
+        # choice. Browser sessionStorage once restored SPY here while the
+        # server had bootstrapped TSLA, and reloaded the wrong chart. The last
+        # symbol is now restored server-side instead, where the bootstrap, the
+        # sidebar default and the landing URL all read the same value
+        # (bootstrap.startup_ticker).
         dcc.Store(id='user-ticker-store', data=None),
         dcc.Store(id='route-ticker-store', data=None),
         dcc.Input(id='fundamentals-esc-signal', type='text', value='', style={'display': 'none'}),
@@ -93,6 +102,7 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Interval(id='bayesian-interval', interval=500, disabled=True, n_intervals=0),
         dcc.Interval(id='grid-interval', interval=500, disabled=True, n_intervals=0),
         dcc.Interval(id='optimizer-oos-interval', interval=400, disabled=True, n_intervals=0),
+        dcc.Interval(id='optimizer-regimes-interval', interval=500, disabled=True, n_intervals=0),
         dcc.Store(id='flow-state-store', data={'last_scan_at': None, 'tickers': []}, storage_type='session'),
         dcc.Store(id='flow-data-store', data=None, storage_type='session'),
         dcc.Interval(id='flow-rescan-interval', interval=2000, max_intervals=1, disabled=True),
@@ -178,9 +188,12 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         # Header sits outside #terminal-shell so SFA / FUNDAMENTALS / FLOW
         # stay reachable when alt workspaces hide the shell.
         _create_header(styles, theme, bootstrap=bootstrap),
+        # Unhandled callback exceptions render here (lib/dash/error_boundary.py).
+        # Fixed-position, so it sits over every workspace, overlays included.
+        build_error_boundary(),
         html.Div([
             html.Div([
-                _create_sidebar(styles, theme),
+                _create_sidebar(styles, theme, bootstrap=bootstrap),
                 _create_chart_area(styles, theme, bootstrap=bootstrap),
                 # Phase 4: tabIndex + role make the splitter keyboard-resizable
                 # (left/right arrow keys) in addition to the existing mousedown

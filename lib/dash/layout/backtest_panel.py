@@ -17,6 +17,7 @@ from lib.dash.bootstrap import BootstrapSnapshot
 from lib.dash.execution_glossary import MODE_ORDER, MODE_SPECS
 from lib.dash.execution_view import mode_accent, render_fingerprint, render_mode_preview
 from lib.signals.indicators import get_signal_categories
+from .empty_states import BACKTEST_EMPTY_HINT, BACKTEST_EMPTY_TITLE, empty_state
 
 
 def _strategy_mode_options(theme: dict, help_icon_style: dict) -> list[dict]:
@@ -507,6 +508,148 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                     "this % from average entry (after min holding). 0 = off.",
                                     'help-take-profit', 'take-profit-pct',
                                 ),
+                                # --- order model (roadmap 3.7) -----------------
+                                # Market is the default and reproduces every
+                                # result the engine produced before order types
+                                # existed. The other three rest an order and let
+                                # a later bar's range decide.
+                                html.Div([
+                                    html.Div(id='order-type-options', children=[
+                                        _trade_setup_field_label(
+                                            "Order Type", 'help-order-type',
+                                            help_icon_style, theme,
+                                        ),
+                                        dcc.Dropdown(
+                                            id='order-type',
+                                            options=[
+                                                {'label': 'Market (at the close)', 'value': 'market'},
+                                                {'label': 'Limit (patient)', 'value': 'limit'},
+                                                {'label': 'Stop (confirmation)', 'value': 'stop'},
+                                                {'label': 'Stop-limit (capped)', 'value': 'stop_limit'},
+                                            ],
+                                            value='market',
+                                            clearable=False,
+                                            style={'fontSize': FONT_SIZES['sm']},
+                                            className='dark-dropdown',
+                                        ),
+                                    ], style={
+                                        **_trade_setup_panel_style(theme, visible=True),
+                                        'flex': '1',
+                                        'minWidth': 0,
+                                        'marginBottom': 0,
+                                    }),
+                                    html.Div(id='order-offset-options', children=[
+                                        _trade_setup_field_label(
+                                            "Order Offset", 'help-order-offset',
+                                            help_icon_style, theme, unit="%",
+                                        ),
+                                        _trade_setup_stepper(dcc.Input(
+                                            id='order-offset-pct',
+                                            type='number',
+                                            value=0.2,
+                                            min=0,
+                                            max=25,
+                                            step=0.05,
+                                            placeholder='% from close',
+                                            style=_trade_setup_input_style(styles),
+                                        )),
+                                    ], style={
+                                        **_trade_setup_panel_style(theme, visible=True),
+                                        'flex': '1',
+                                        'minWidth': 0,
+                                        'marginBottom': 0,
+                                    }),
+                                ], style={
+                                    'display': 'flex',
+                                    'gap': '8px',
+                                    'marginBottom': '8px',
+                                    'alignItems': 'flex-start',
+                                }),
+                                *_tip(
+                                    "How an accepted signal is worked. Market fills at the "
+                                    "next bar's close — the engine's original behaviour. "
+                                    "Limit rests below (buys) or above (sells) and may never "
+                                    "fill. Stop rests beyond the close and only fills if the "
+                                    "move continues. Stop-limit caps how much slippage the "
+                                    "stop will accept, and can leave you in a position.",
+                                    'help-order-type', 'order-type',
+                                ),
+                                *_tip(
+                                    "How far from the signal bar's close the order rests, in "
+                                    "percent. Bigger = more patient, fewer fills. Ignored by "
+                                    "Market orders.",
+                                    'help-order-offset', 'order-offset-pct',
+                                ),
+                                html.Div([
+                                    html.Div(id='order-tif-options', children=[
+                                        _trade_setup_field_label(
+                                            "Time in Force", 'help-order-tif',
+                                            help_icon_style, theme,
+                                        ),
+                                        dcc.Dropdown(
+                                            id='order-tif',
+                                            options=[
+                                                {'label': 'GTC — rest until filled', 'value': 'gtc'},
+                                                {'label': 'DAY — this session only', 'value': 'day'},
+                                                {'label': 'IOC — one bar only', 'value': 'ioc'},
+                                            ],
+                                            value='gtc',
+                                            clearable=False,
+                                            style={'fontSize': FONT_SIZES['sm']},
+                                            className='dark-dropdown',
+                                        ),
+                                    ], style={
+                                        **_trade_setup_panel_style(theme, visible=True),
+                                        'flex': '1',
+                                        'minWidth': 0,
+                                        'marginBottom': 0,
+                                    }),
+                                    html.Div(id='exit-order-options', children=[
+                                        _trade_setup_field_label(
+                                            "Exit Handling", 'help-exit-order-mode',
+                                            help_icon_style, theme,
+                                        ),
+                                        dcc.Dropdown(
+                                            id='exit-order-mode',
+                                            options=[
+                                                {'label': 'Close check (default)', 'value': 'close'},
+                                                {'label': 'Trailing stop order', 'value': 'stop_order'},
+                                                {'label': 'OCO bracket', 'value': 'bracket'},
+                                            ],
+                                            value='close',
+                                            clearable=False,
+                                            style={'fontSize': FONT_SIZES['sm']},
+                                            className='dark-dropdown',
+                                        ),
+                                    ], style={
+                                        **_trade_setup_panel_style(theme, visible=True),
+                                        'flex': '1',
+                                        'minWidth': 0,
+                                        'marginBottom': 0,
+                                    }),
+                                ], style={
+                                    'display': 'flex',
+                                    'gap': '8px',
+                                    'marginBottom': '8px',
+                                    'alignItems': 'flex-start',
+                                }),
+                                *_tip(
+                                    "How long a resting order stays in the market. GTC waits "
+                                    "indefinitely; DAY dies at the next session boundary "
+                                    "(on daily bars that is one bar); IOC gets exactly one "
+                                    "bar of range. Ignored by Market orders.",
+                                    'help-order-tif', 'order-tif',
+                                ),
+                                *_tip(
+                                    "Close check is the original behaviour: the trailing stop "
+                                    "is compared against each bar's close. Trailing stop order "
+                                    "rests a real stop that the bar's low can trip — stricter, "
+                                    "and usually worse. OCO bracket hangs a fixed stop and "
+                                    "profit target off your entry price (using the Trailing "
+                                    "Stop and Take Profit distances above) and cancels one "
+                                    "when the other fills. Both change results.",
+                                    'help-exit-order-mode', 'exit-order-mode',
+                                ),
                                 html.Div(id='consecutive-signal-options', children=[
                                     _trade_setup_field_label(
                                         "Consecutive Signals", 'help-consecutive-signals',
@@ -994,7 +1137,12 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
             type='circle',
             color=theme['accent_blue'],
             delay_show=200,
-            children=html.Div(id='backtest-results', style={'marginTop': '10px'}),
+            # The first run replaces the empty state wholesale.
+            children=html.Div(
+                empty_state(BACKTEST_EMPTY_TITLE, BACKTEST_EMPTY_HINT),
+                id='backtest-results',
+                style={'marginTop': '10px'},
+            ),
         ),
 
         # --- Execution Type explainer -----------------------------------------

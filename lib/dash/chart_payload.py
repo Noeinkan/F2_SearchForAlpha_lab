@@ -620,8 +620,15 @@ def build_chart_payload(df: pd.DataFrame, config: Dict, theme: dict) -> Dict[str
     }
 
 
-def empty_payload(theme: dict, message: str = 'Load data to view chart') -> Dict[str, Any]:
-    """Placeholder payload. The glue renders the message and no series."""
+EMPTY_PAYLOAD_MESSAGE = 'Load data to view chart'
+
+
+def empty_payload(theme: dict, message: str = EMPTY_PAYLOAD_MESSAGE) -> Dict[str, Any]:
+    """Placeholder payload: no series, plus the reason in ``meta.message``.
+
+    The glue refuses to draw it; ``#chart-empty-state`` shows the message
+    instead (callbacks/chart.py), unless it is just the default.
+    """
     return {
         'meta': {'ticker': '', 'interval': '', 'subdaily': False, 'bars': 0,
                  'precision': 2, 'message': message},

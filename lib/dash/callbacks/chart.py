@@ -20,6 +20,7 @@ What Dash 4 rejects is two writers reached in the *same* layer.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 
@@ -30,9 +31,10 @@ from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 
 from lib.dash.bootstrap import build_default_chart_config
-from lib.dash.chart_payload import build_chart_payload, empty_payload
+from lib.dash.chart_payload import EMPTY_PAYLOAD_MESSAGE, build_chart_payload, empty_payload
 from lib.dash.components import ticker_pill
 from lib.dash.dash_config import DEFAULT_INDICATOR_SETTINGS, get_theme
+from lib.dash.layout.empty_states import CHART_EMPTY_HINT
 from lib.dash.signal_markers import trigger_counts
 from lib.dash.state import dashboard_state
 from lib.dash.callbacks.shared import (
@@ -201,6 +203,26 @@ def register_chart_callbacks(app) -> None:
          Input('theme-store', 'data'),
          Input('chart-type-store', 'data'),
          Input('price-scale-store', 'data')],
+    )
+
+    # Empty state over the canvas. The glue rejects a payload with no bars, so
+    # without this the frame is just black. A payload carrying a non-default
+    # message (a chart build error) shows that message as the hint. A null
+    # payload is the page still booting: leave the first-paint state alone.
+    app.clientside_callback(
+        """
+        function(payload) {
+            var noUpdate = window.dash_clientside.no_update;
+            if (!payload) { return [noUpdate, noUpdate]; }
+            if (payload.candles && payload.candles.length) { return [true, noUpdate]; }
+            var message = (payload.meta && payload.meta.message) || '';
+            var hint = (message && message !== %s) ? message : %s;
+            return [false, hint];
+        }
+        """ % (json.dumps(EMPTY_PAYLOAD_MESSAGE), json.dumps(CHART_EMPTY_HINT)),
+        Output('chart-empty-state', 'hidden'),
+        Output('chart-empty-hint', 'children'),
+        Input('chart-payload-store', 'data'),
     )
 
     # Data tab row click → scroll the chart to that window. No rebuild: the

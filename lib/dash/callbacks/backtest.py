@@ -21,6 +21,37 @@ logger = logging.getLogger(__name__)
 # here, so 'controlled' means at or below 20%, not 'greater than -20'.
 MAX_DRAWDOWN_CONTROLLED = 0.20
 WIN_RATE_TARGET = 0.50
+# Probabilistic Sharpe above which the edge counts as demonstrated rather than
+# merely observed. The conventional 95% significance bar.
+PSR_CREDIBLE = 0.95
+
+
+def _order_model_kwargs(order_type, order_offset_pct, order_tif, exit_order_mode) -> dict:
+    """Translate the four Order Model toolbar controls into engine kwargs.
+
+    The toolbar deliberately exposes fewer knobs than ``backtest()`` takes:
+    one offset covers both the limit and the stop distance (an order is never
+    both), and Exit Handling is one choice because a trailing stop order and an
+    OCO bracket are competing answers to the same question. The bracket's two
+    legs are the Trailing Stop and Take Profit distances already on screen —
+    passing 0 for both makes the engine default to exactly those.
+
+    Everything here is defaulted so that the untouched toolbar produces the
+    engine's pre-3.7 behaviour: market orders, no resting exits.
+    """
+    offset = max(0.0, float(order_offset_pct or 0)) / 100.0
+    exit_mode = exit_order_mode or 'close'
+    return {
+        'order_type': order_type or 'market',
+        'limit_offset_pct': offset,
+        'stop_offset_pct': offset,
+        'time_in_force': order_tif or 'gtc',
+        # A bracket's legs are fixed at the entry price — that is what makes it
+        # a bracket rather than a trail — so the two modes stay exclusive here
+        # even though the engine can compose them.
+        'trailing_stop_orders': exit_mode == 'stop_order',
+        'use_brackets': exit_mode == 'bracket',
+    }
 
 
 def register_backtest_callbacks(app) -> None:
@@ -49,7 +80,11 @@ def register_backtest_callbacks(app) -> None:
          State('signal-window', 'value'),
          State('fx-fee-pct', 'value'),
          State('slippage-pct', 'value'),
-         State('commission-pct', 'value')]
+         State('commission-pct', 'value'),
+         State('order-type', 'value'),
+         State('order-offset-pct', 'value'),
+         State('order-tif', 'value'),
+         State('exit-order-mode', 'value')]
     )
     def run_backtest_callback(n_clicks, ticker, initial_capital,
                               test_window_start, test_window_end,
@@ -58,7 +93,8 @@ def register_backtest_callbacks(app) -> None:
                               kelly_win_rate, kelly_win_loss_ratio,
                               min_holding_period, trailing_stop_pct, stop_mode, position_scaling_pct,
                               take_profit_pct, consecutive_signal_mode, signal_cooldown_bars,
-                              signal_logic, signal_window, fx_fee_pct, slippage_pct, commission_pct):
+                              signal_logic, signal_window, fx_fee_pct, slippage_pct, commission_pct,
+                              order_type, order_offset_pct, order_tif, exit_order_mode):
         """Run backtest and display results."""
         if not n_clicks:
             raise PreventUpdate
@@ -97,6 +133,14 @@ def register_backtest_callbacks(app) -> None:
         kelly_win_loss_ratio = float(kelly_win_loss_ratio) if kelly_win_loss_ratio is not None else 1.5
         kelly_win_loss_ratio = max(0.01, kelly_win_loss_ratio)
 
+        # One toolbar number drives both offsets: a limit and a stop are never
+        # both live on the same order, so two inputs would only ever be half
+        # relevant. Exit Handling is a single choice because a trailing stop
+        # order and a bracket are two answers to the same question, and the
+        # bracket reuses the Trailing Stop / Take Profit distances above rather
+        # than asking for them twice.
+        order_kwargs = _order_model_kwargs(order_type, order_offset_pct, order_tif, exit_order_mode)
+
         try:
             results = run_backtest(
                 df, initial_capital, buy_signals, sell_signals,
@@ -116,7 +160,8 @@ def register_backtest_callbacks(app) -> None:
                 signal_window=signal_window or 0,
                 commission_per_trade=commission_per_trade,
                 slippage_pct=slippage_pct,
-                fx_fee_pct=fx_fee_pct
+                fx_fee_pct=fx_fee_pct,
+                **order_kwargs
             )
             metrics = compute_metrics(
                 results,
@@ -153,7 +198,8 @@ def register_backtest_callbacks(app) -> None:
                     signal_window=signal_window or 0,
                     commission_per_trade=0.0,
                     slippage_pct=0.0,
-                    fx_fee_pct=0.0
+                    fx_fee_pct=0.0,
+                    **order_kwargs
                 )
 
             baseline_metrics = (
@@ -199,17 +245,31 @@ def register_backtest_callbacks(app) -> None:
                                "exit. A position still open at the end is not counted.",
                 "Win Rate": "Percent of closed round trips that were profitable.",
                 "Profit Factor": "Gross profits divided by gross losses.",
+                "Excess Return": "Strategy return minus what buy-and-hold returned "
+                                 "over the same bars. Negative means you'd have done "
+                                 "better just holding the symbol.",
+                "Alpha": "Annualised Jensen's alpha — the excess return left over once "
+                         "the strategy's beta to buy-and-hold is priced in. Being long "
+                         "more of the time earns excess return, not alpha.",
+                "Info Ratio": "Active return over tracking error, annualised: reward "
+                              "per unit of deviation from buy-and-hold.",
+                "PSR": "Probabilistic Sharpe — the chance the true Sharpe is above "
+                       "zero, given how long this sample is and how skewed and "
+                       "fat-tailed its returns are. 95% is the usual bar.",
             }
             drawdown_controlled = metrics.max_drawdown <= MAX_DRAWDOWN_CONTROLLED
             win_rate_healthy = metrics.win_rate >= WIN_RATE_TARGET
             profit_factor_healthy = metrics.profit_factor >= 1
             sharpe_robust = metrics.sharpe >= 1
+            beat_benchmark = metrics.excess_return >= 0
+            psr_credible = metrics.psr >= PSR_CREDIBLE
 
             return_color = theme['accent_green'] if metrics.total_return >= 0 else theme['accent_red']
             sharpe_color = theme['accent_green'] if sharpe_robust else theme['accent_red']
             drawdown_color = theme['accent_green'] if drawdown_controlled else theme['accent_red']
             win_rate_color = theme['accent_green'] if win_rate_healthy else theme['accent_red']
             profit_factor_color = theme['accent_green'] if profit_factor_healthy else theme['accent_red']
+            psr_color = theme['accent_green'] if psr_credible else theme['accent_orange']
             cost_color = theme['accent_green'] if cost_drag >= 0 else theme['accent_red']
 
             return html.Div([
@@ -343,6 +403,62 @@ def register_backtest_callbacks(app) -> None:
                     ),
                 ], style={
                     'marginTop': '12px',
+                    'display': 'grid',
+                    'gridTemplateColumns': 'repeat(2, minmax(0, 1fr))',
+                    'gap': '6px',
+                }),
+                # Against buy-and-hold on the same bars, plus the one number
+                # that says how much of the Sharpe to believe. Everything above
+                # measures the strategy on its own; nothing above answers
+                # "would I have done better just holding the thing?".
+                html.Div([
+                    html.Span("VS BUY & HOLD", style={
+                        'color': theme['text_secondary'], 'letterSpacing': '1.5px',
+                        'fontSize': '10px',
+                    }),
+                ], style={'marginTop': '14px', 'marginBottom': '4px'}),
+                html.Div([
+                    kpi_cell(
+                        "Excess Return",
+                        format_canonical('excess_return', metrics.excess_return),
+                        delta="B&H " + format_canonical(
+                            'benchmark_return', metrics.benchmark_return
+                        ),
+                        delta_color=theme['accent_blue'],
+                        theme=theme,
+                        info_text=metric_help["Excess Return"],
+                        is_positive=beat_benchmark,
+                    ),
+                    kpi_cell(
+                        "Alpha",
+                        format_canonical('alpha', metrics.alpha),
+                        delta=f"BETA {metrics.beta:+.2f}",
+                        delta_color=theme['accent_blue'],
+                        theme=theme,
+                        info_text=metric_help["Alpha"],
+                        is_positive=metrics.alpha >= 0,
+                    ),
+                    kpi_cell(
+                        "Info Ratio",
+                        format_canonical('information_ratio', metrics.information_ratio),
+                        delta="TE " + format_canonical(
+                            'tracking_error', metrics.tracking_error
+                        ),
+                        delta_color=theme['accent_blue'],
+                        theme=theme,
+                        info_text=metric_help["Info Ratio"],
+                        is_positive=metrics.information_ratio >= 0,
+                    ),
+                    kpi_cell(
+                        "PSR",
+                        format_canonical('psr', metrics.psr),
+                        delta='CREDIBLE' if psr_credible else 'UNPROVEN',
+                        delta_color=psr_color,
+                        theme=theme,
+                        info_text=metric_help["PSR"],
+                        is_positive=psr_credible,
+                    ),
+                ], style={
                     'display': 'grid',
                     'gridTemplateColumns': 'repeat(2, minmax(0, 1fr))',
                     'gap': '6px',

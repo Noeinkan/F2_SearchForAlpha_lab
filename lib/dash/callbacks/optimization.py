@@ -25,6 +25,7 @@ from lib.dash.helpers import (
     extract_signals,
     generate_signal_combinations,
     evaluate_signal_combination,
+    apply_deflated_sharpe,
     compute_robustness_scores,
     filter_signal_universe,
     apply_optimizer_constraints,
@@ -36,6 +37,7 @@ from lib.dash.state import dashboard_state
 from lib.dash.styles import get_styles
 from lib.dash.callbacks.shared import (
     OPTIMIZATION_BATCH_SIZE,
+    build_overfitting_note,
     _create_best_strategy_highlight,
     _create_optimization_table,
     _create_optimization_table_mini,
@@ -62,8 +64,19 @@ def build_eval_kwargs(
     fx_fee_pct: Any = None,
     slippage_pct: Any = None,
     commission_pct: Any = None,
+    order_type: Any = None,
+    order_offset_pct: Any = None,
+    order_tif: Any = None,
+    exit_order_mode: Any = None,
 ) -> dict[str, Any]:
-    """Build ``run_backtest`` kwargs for realistic ranking (empty = idealized)."""
+    """Build ``run_backtest`` kwargs for realistic ranking (empty = idealized).
+
+    The order model rides along with the costs because it belongs to the same
+    question: what the leaderboard is ranking. A combination scored with market
+    fills at the close and one scored with resting limit orders are not
+    comparable, so the optimizer takes the toolbar's Order Model settings
+    whenever realistic ranking is on, and ignores them entirely when it is off.
+    """
     if not realistic:
         return {}
     try:
@@ -94,6 +107,29 @@ def build_eval_kwargs(
         'fx_fee_pct': fx,
         'slippage_pct': slip,
         'commission_per_trade': comm,
+        **_order_model_kwargs(order_type, order_offset_pct, order_tif, exit_order_mode),
+    }
+
+
+def _order_model_kwargs(order_type, order_offset_pct, order_tif, exit_order_mode) -> dict:
+    """The four Order Model toolbar controls, as engine kwargs.
+
+    Same translation the Backtest tab does, kept here rather than imported so
+    that importing the optimizer callbacks does not drag in the backtest tab.
+    Defaults reproduce the engine's pre-3.7 behaviour.
+    """
+    try:
+        offset = max(0.0, float(order_offset_pct or 0)) / 100.0
+    except (TypeError, ValueError):
+        offset = 0.002
+    exit_mode = exit_order_mode or 'close'
+    return {
+        'order_type': order_type or 'market',
+        'limit_offset_pct': offset,
+        'stop_offset_pct': offset,
+        'time_in_force': order_tif or 'gtc',
+        'trailing_stop_orders': exit_mode == 'stop_order',
+        'use_brackets': exit_mode == 'bracket',
     }
 
 
@@ -298,8 +334,15 @@ def _rank_results_df(
     sort_by: str | None,
     max_dd_pct: float | None = None,
     min_sharpe: float | None = None,
+    num_trials: int | None = None,
 ) -> pd.DataFrame:
-    """Score and sort optimization result rows; empty if none are usable."""
+    """Score and sort optimization result rows; empty if none are usable.
+
+    ``num_trials`` is how many combinations the sweep actually attempted, which
+    is what the Deflated Sharpe deflates by. It is larger than the row count
+    whenever a combination errored out or a constraint filtered it away, and
+    those attempts still count against the winner: the search looked at them.
+    """
     results_df = pd.DataFrame(results)
     if results_df.empty:
         return results_df
@@ -310,6 +353,12 @@ def _rank_results_df(
 
     if results_df.empty:
         return results_df
+
+    # Deflate before the constraints prune anything: the dispersion of the
+    # whole sweep is the evidence for how easy a high Sharpe was to hit here.
+    results_df = apply_deflated_sharpe(
+        results_df, num_trials=num_trials if num_trials else len(results)
+    )
 
     results_df = apply_optimizer_constraints(results_df, max_dd_pct, min_sharpe)
     if results_df.empty:
@@ -343,14 +392,16 @@ def _build_origin_note(best: pd.Series, theme: dict, *, realistic: bool = False)
     ranking already used the panel friction snapshot.
     """
     total_return = best.get('Total_Return_%', None)
-    alpha = best.get('Alpha_%', None)
+    # The plain difference against buy-and-hold, not Jensen's alpha: this line
+    # reconciles two headline returns, so it has to be the same kind of number.
+    excess = best.get('Excess_Return_%', None)
     low_sample = bool(best.get('Low_Sample', False))
 
     headline = (
         f"{float(total_return):+.1f}%" if total_return is not None else "—"
     )
     alpha_txt = (
-        f" ({float(alpha):+.1f}% vs buy & hold)" if alpha is not None else ""
+        f" ({float(excess):+.1f}% vs buy & hold)" if excess is not None else ""
     )
 
     if realistic:
@@ -629,6 +680,10 @@ def register_optimization_callbacks(app) -> None:
          State('fx-fee-pct', 'value'),
          State('slippage-pct', 'value'),
          State('commission-pct', 'value'),
+         State('order-type', 'value'),
+         State('order-offset-pct', 'value'),
+         State('order-tif', 'value'),
+         State('exit-order-mode', 'value'),
          State('opt-max-dd-pct', 'value'),
          State('opt-min-sharpe', 'value')],
         prevent_initial_call=True
@@ -655,6 +710,10 @@ def register_optimization_callbacks(app) -> None:
         fx_fee_pct,
         slippage_pct,
         commission_pct,
+        order_type,
+        order_offset_pct,
+        order_tif,
+        exit_order_mode,
         max_dd_pct,
         min_sharpe,
     ):
@@ -721,6 +780,10 @@ def register_optimization_callbacks(app) -> None:
             fx_fee_pct,
             slippage_pct,
             commission_pct,
+            order_type,
+            order_offset_pct,
+            order_tif,
+            exit_order_mode,
         )
 
         try:
@@ -892,6 +955,7 @@ def register_optimization_callbacks(app) -> None:
                 state.get('sort_by'),
                 max_dd_pct=max_dd_pct,
                 min_sharpe=min_sharpe,
+                num_trials=total,
             )
 
             if results_df.empty:
@@ -921,13 +985,7 @@ def register_optimization_callbacks(app) -> None:
                     html.Span(f"Completed! Tested {total} combinations",
                              style={'fontSize': FONT_SIZES['xs'], 'color': theme['accent_green']})
                 ]),
-                html.Div(
-                    f"Ranked from {total} combos \u2014 the more you test, the more likely the top "
-                    "result is luck. Re-run the winner on the Backtest tab with real costs, and "
-                    "ideally on a different date range.",
-                    style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'],
-                           'marginTop': '4px', 'fontStyle': 'italic'}
-                ),
+                build_overfitting_note(results_df.iloc[0], total, theme),
             ])
 
             records = results_df.to_dict('records')

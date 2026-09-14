@@ -125,7 +125,13 @@ def _build_indicator_settings_panel(
 
     header = html.Div(
         schema['label'],
-        style={'fontSize': FONT_SIZES['sm'], 'color': styles['panel_title']['color'], 'fontWeight': '600'}
+        style={
+            'fontSize': FONT_SIZES['sm'],
+            'color': styles['panel_title']['color'],
+            'fontWeight': '600',
+            'cursor': 'help',
+        },
+        title=schema.get('help', schema['label']),
     )
     fields = []
     for field in schema['fields']:
@@ -144,12 +150,23 @@ def _build_indicator_settings_panel(
         if 'max' in field:
             input_kwargs['max'] = field['max']
 
+        # Hover copy explaining what the parameter does and which way to move
+        # it. Native `title=` rather than dbc.Tooltip, matching the Chart
+        # Settings checklist in layout/sidebar.py — these panels are rebuilt on
+        # every settings change, and a Tooltip per field would mean dozens of
+        # extra components churning with them.
+        help_text = field.get('help')
+        label_style = dict(styles['indicator_setting_label'])
+        if help_text:
+            label_style['cursor'] = 'help'
+
         fields.append(html.Div(
             [
-                html.Span(field['label'], style=styles['indicator_setting_label']),
+                html.Span(field['label'], style=label_style),
                 dcc.Input(**input_kwargs),
             ],
-            style=styles['indicator_setting_row']
+            style=styles['indicator_setting_row'],
+            title=help_text or field['label'],
         ))
 
     return html.Div([header] + fields, style=styles['indicator_settings_panel'])

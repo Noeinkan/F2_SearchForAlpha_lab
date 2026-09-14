@@ -17,6 +17,7 @@ from .optimize_workspace import register_optimize_workspace_callbacks
 from .optimizer_sync import register_optimizer_sync_callbacks
 from .optimizer_help import register_optimizer_help_callbacks
 from .optimizer_phase3 import register_optimizer_phase3_callbacks
+from .optimizer_regimes import register_optimizer_regimes_callbacks
 from .optimizer_grid import register_optimizer_grid_callbacks
 from .fundamentals import register_fundamentals_callbacks
 from .flow import register_flow_callbacks
@@ -27,6 +28,7 @@ from .command_palette import register_command_palette_callbacks
 from .symbol_search import register_symbol_search_callbacks
 from .status import register_status_callbacks
 from .feedback import register_feedback_callbacks
+from .ui_session import register_ui_session_callbacks
 
 
 def register_callbacks(app) -> None:
@@ -46,6 +48,7 @@ def register_callbacks(app) -> None:
     register_optimizer_sync_callbacks(app)
     register_optimizer_help_callbacks(app)
     register_optimizer_phase3_callbacks(app)
+    register_optimizer_regimes_callbacks(app)
     register_optimizer_grid_callbacks(app)
     register_routing_callbacks(app)
     register_fundamentals_callbacks(app)
@@ -56,3 +59,4 @@ def register_callbacks(app) -> None:
     register_symbol_search_callbacks(app)
     register_status_callbacks(app)
     register_feedback_callbacks(app)
+    register_ui_session_callbacks(app)

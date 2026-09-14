@@ -15,6 +15,11 @@ without touching the modules that define them:
   started one may poll or stop it, instead of the next visitor's click
   cancelling it.
 - **The Flow Scanner** is answered with a notice: it needs a live options chain.
+- **Usage and the daily cap per person** go through ``access`` (a
+  ``demo.access.gate.AccessGate``, or None with the gate off): every backtest,
+  data load, fundamentals load, optimiser run and refusal is recorded against
+  the signed-in email, and an optimiser run past that email's daily cap is
+  refused like any other limit.
 
 A refused request never raises into the browser. It returns a normal callback
 response that changes nothing except ``demo-wall``, a notice saying what ran
@@ -104,10 +109,11 @@ def _as_int(value: Any) -> int | None:
 
 
 class DemoGuards:
-    def __init__(self, app, store: sessions.SessionStore, settings: DemoSettings) -> None:
+    def __init__(self, app, store: sessions.SessionStore, settings: DemoSettings, access=None) -> None:
         self.app = app
         self.store = store
         self.settings = settings
+        self.access = access
         self.gate = JobGate(settings.max_concurrent_jobs, settings.job_timeout_seconds)
         self.actions = SlidingWindowLimiter(settings.actions_per_ip_per_minute, 60)
         self.jobs = SlidingWindowLimiter(settings.jobs_per_ip_per_hour, 3600)
@@ -147,13 +153,13 @@ class DemoGuards:
                 layers.append("clamp")
 
             if "backtest-results.children" in outputs and "run-backtest-btn.n_clicks" in inputs:
-                func = self._rate_limited(func, "backtests")
+                func = self._rate_limited(func, "backtests", "backtest")
                 layers.append("actions")
             elif "data-loaded-store.data" in outputs and "load-data-button.n_clicks" in inputs:
-                func = self._rate_limited(func, "data loads")
+                func = self._rate_limited(func, "data loads", "data_load")
                 layers.append("actions")
             elif "fundamentals-store.data" in outputs:
-                func = self._rate_limited(func, "fundamentals loads")
+                func = self._rate_limited(func, "fundamentals loads", "fundamentals_load")
                 layers.append("actions")
 
             if "run-optimization-btn.n_clicks" in inputs and "optimization-state.data" in outputs:
@@ -200,35 +206,51 @@ class DemoGuards:
 
         return clamped
 
-    def _rate_limited(self, func: Callable, label: str) -> Callable:
+    def _track(self, kind: str, detail: str | None = None) -> None:
+        if self.access is not None:
+            self.access.record(kind, detail)
+
+    def _ticker(self) -> str | None:
+        sid = sessions.current_sid.get()
+        state = self.store.peek(sid) if sid else None
+        return getattr(state, "ticker", None)
+
+    def _rate_limited(self, func: Callable, label: str, kind: str) -> Callable:
         limit = self.settings.actions_per_ip_per_minute
 
         def limited(*args: Any, **kwargs: Any):
             wait = self.actions.hit(client_ip())
             if wait:
+                self._track("limit", f"{label} per minute")
                 return wall_response(
                     f"That is {limit} {label} and other runs in the last minute from your connection, "
                     f"the most this public demo allows. The next one is available in {_seconds(wait)}."
                 )
-            return func(*args, **kwargs)
+            raw = func(*args, **kwargs)
+            self._track(kind, self._ticker())
+            return raw
 
         return limited
 
     def _refuse_job(self, kind: str) -> str | None:
         """Common admission checks for any optimiser run. None means go."""
         owner = sessions.current_sid.get() or ""
+        refusal = None
         if not self.gate.admit(kind, owner):
-            return (
+            refusal = (
                 f"{self.settings.max_concurrent_jobs} optimiser runs are already going on this demo, "
                 "shared by everyone visiting it. Try again in a minute; backtests still run meanwhile."
             )
-        wait = self.jobs.hit(client_ip())
-        if wait:
-            return (
+        elif self.access is not None and (daily := self.access.refuse_job()):
+            refusal = daily
+        elif wait := self.jobs.hit(client_ip()):
+            refusal = (
                 f"This demo allows {self.settings.jobs_per_ip_per_hour} optimiser runs an hour per visitor. "
                 f"The next one is available in {_seconds(wait)}."
             )
-        return None
+        if refusal:
+            self._track("limit", f"{kind}: {refusal[:80]}")
+        return refusal
 
     @contextmanager
     def _serialised(self, key: str) -> Iterator[None]:
@@ -276,6 +298,7 @@ class DemoGuards:
                     cancel=lambda reason: self._stop_combos(state, reason),
                     polled=True,
                 )
+                self._track("optimizer", f"combos {state.ticker}")
             return raw
 
         return start
@@ -353,6 +376,7 @@ class DemoGuards:
                     job["cancelled"] = True
 
                 self.gate.register(kind, sid, probe=lambda job=job: bool(job.get("running")), cancel=cancel)
+                self._track("optimizer", f"{kind} {self._ticker() or ''}".strip())
             return raw
 
         return start

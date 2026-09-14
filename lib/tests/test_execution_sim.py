@@ -18,6 +18,7 @@ from lib.dash.execution_sim import (
     build_sandbox_frame,
     default_params,
     first_entry_summary,
+    order_model_summary,
     simulate,
 )
 from lib.dash.execution_glossary import MODE_ORDER
@@ -45,6 +46,25 @@ class TestSandboxTape:
         assert df[SELL_COLUMN].sum() >= 2
         peak_to_trough = close.max() / close[np.argmax(close):].min() - 1
         assert peak_to_trough > 0.20, "need a drawdown deep enough to trip a stop"
+
+    def test_the_bars_are_a_tape_and_not_four_unrelated_series(self):
+        """Low <= min(Open, Close) <= max(Open, Close) <= High, on every bar."""
+        df = build_sandbox_frame()
+        o, h, l, c = (df[k].to_numpy(dtype=float) for k in ('Open', 'High', 'Low', 'Close'))
+        assert (h >= np.maximum(o, c)).all()
+        assert (l <= np.minimum(o, c)).all()
+
+    def test_bars_have_range_a_resting_order_could_actually_reach(self):
+        """The old tape was High = close x 1.01: decoration, not a range."""
+        df = build_sandbox_frame()
+        close = df['Close'].to_numpy(dtype=float)
+        low = df['Low'].to_numpy(dtype=float)
+        high = df['High'].to_numpy(dtype=float)
+        # At least a few bars have to dip meaningfully below their close, or a
+        # buy limit resting under the close can never fill.
+        dips = (close - low) / close
+        assert (dips > 0.02).sum() >= 3, "no bar dips far enough for a limit to fill"
+        assert ((high - low) / close > 0.02).sum() >= 5, "ranges are too narrow to teach with"
 
 
 class TestDeterminism:
@@ -146,3 +166,76 @@ class TestDefaults:
         params = default_params(mode)
         assert 'capital' in params
         assert simulate(mode, **params).buy_count > 0
+
+
+# --------------------------------------------------------------------------- #
+# The order model on the fixed tape (roadmap 3.7.8)
+# --------------------------------------------------------------------------- #
+
+class TestOrderModelInTheSandbox:
+    @pytest.mark.parametrize('mode', MODE_ORDER)
+    def test_the_default_run_is_still_market_orders_at_the_close(self, mode):
+        run = simulate(mode)
+        assert run.order_type == 'market'
+        assert run.exit_order_mode == 'close'
+        assert run.resting_fills == 0
+        traded = [r for r in run.rows if r.order_value]
+        assert traded
+        # Market fills land on the close, with the one documented exception the
+        # rebuilt tape finally makes visible: a trailing stop the market
+        # reopened through fills at the Open (3.9.4). It could never show up
+        # while the sandbox's Open was a copy of its Close.
+        opens = build_sandbox_frame()['Open'].to_numpy(dtype=float)
+        for row in traded:
+            assert (
+                row.fill_price == pytest.approx(row.price)
+                or row.fill_price == pytest.approx(opens[row.bar])
+            )
+
+    @pytest.mark.parametrize('kind', ['limit', 'stop', 'stop_limit'])
+    def test_a_resting_order_type_actually_fills_away_from_the_close(self, kind):
+        """This is what the rebuilt tape exists to make possible."""
+        run = simulate('trading', order_type=kind, order_offset_pct=2.0)
+        assert run.order_type == kind
+        assert run.resting_fills > 0
+        away = [r for r in run.rows if r.order_value and r.fill_price != r.price]
+        assert away, f"{kind} never filled at a price other than the close"
+
+    def test_a_limit_buy_fills_below_the_close_it_was_placed_from(self):
+        run = simulate('trading', order_type='limit', order_offset_pct=2.0)
+        closes = [r.price for r in run.rows]
+        buys = [r for r in run.rows if r.order_value > 0 and r.order_type == 'limit']
+        assert buys
+        for row in buys:
+            # It rested 2% below the *signal* bar's close, one bar earlier.
+            assert row.fill_price <= closes[row.bar - 1] * 0.98 + 1e-9
+
+    def test_the_ledger_names_a_bracket_target_a_target_and_not_a_stop(self):
+        """The old heuristic called every unsignalled exit a stop."""
+        run = simulate('trading', exit_order_mode='bracket', take_profit_pct=10.0)
+        notes = {r.note for r in run.rows if r.order_value < 0}
+        assert 'target' in notes
+        assert run.exit_order_mode == 'bracket'
+
+    def test_accumulation_reports_the_exit_mode_the_engine_actually_ran(self):
+        """It has no exits, so asking for a bracket must not claim to have one."""
+        run = simulate('accumulation', exit_order_mode='bracket')
+        assert run.exit_order_mode == 'close'
+
+    def test_the_order_model_summary_describes_the_run_it_measured(self):
+        market = order_model_summary('trading')
+        assert 'market' in market and 'close' in market
+
+        limit = order_model_summary('trading', order_type='limit', order_offset_pct=2.0)
+        assert 'limit' in limit
+        assert 'off the close' in limit
+
+    @pytest.mark.parametrize('tif', ['gtc', 'day', 'ioc'])
+    def test_time_in_force_reaches_the_engine(self, tif):
+        run = simulate('trading', order_type='limit', order_offset_pct=2.0, order_tif=tif)
+        assert len(run.rows) == 24
+
+    def test_a_more_patient_limit_fills_no_more_often_than_an_eager_one(self):
+        eager = simulate('trading', order_type='limit', order_offset_pct=0.5)
+        patient = simulate('trading', order_type='limit', order_offset_pct=6.0)
+        assert patient.buy_count <= eager.buy_count

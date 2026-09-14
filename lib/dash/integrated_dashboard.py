@@ -37,7 +37,11 @@ from lib.dash.styles import CUSTOM_CSS
 from lib.dash.layout import create_dashboard_layout as _create_dashboard_layout
 from lib.dash.layout.shell import wire_command_palette_is_open
 from lib.dash.callbacks import register_callbacks
-from lib.dash.bootstrap import try_bootstrap_default_session
+from lib.dash.bootstrap import startup_ticker, try_bootstrap_default_session
+from lib.dash.error_boundary import handle_callback_error
+from lib.dash import flow_store
+from lib.dash.flow_refresh import start_flow_refresh
+from lib.dash.state import dashboard_state
 
 # Re-export so callers like `from lib.dash.integrated_dashboard import
 # create_dashboard_layout` keep working unchanged.
@@ -169,9 +173,14 @@ def _schedule_browser_open(host: str, port: int, path: str = "/") -> None:
     threading.Thread(target=_open_when_ready, daemon=True).start()
 
 
-def _default_browser_path() -> str:
-    """Default landing URL includes the bootstrap ticker as a suffix."""
-    symbol = str(DEFAULT_TICKER or "").strip().upper()
+def _default_browser_path(ticker: str | None = None) -> str:
+    """Landing URL: ``/ticker/<symbol>``, for the symbol the server bootstrapped.
+
+    Without a ticker it falls back to DEFAULT_TICKER. The URL has to name the
+    bootstrapped symbol because a route ticker overrides everything else on
+    the page — open the last session's NVDA at ``/ticker/TSLA`` and TSLA wins.
+    """
+    symbol = str(ticker or DEFAULT_TICKER or "").strip().upper()
     if not symbol:
         return "/"
     return f"{ROUTE_TICKER_TERMINAL}/{symbol}"
@@ -219,7 +228,10 @@ def create_app() -> dash.Dash:
         suppress_callback_exceptions=True,
         eager_loading=False,
         update_title=None,  # keep static tab title (clock Interval would flash "Updating...")
-        meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}]
+        meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
+        # A callback that raises lands in #error-boundary instead of failing
+        # silently — see lib/dash/error_boundary.py.
+        on_error=handle_callback_error,
     )
 
     app.index_string = f'''
@@ -254,10 +266,16 @@ def create_app() -> dash.Dash:
 
     @app.server.route("/flow_report.html")
     def serve_flow_report():
-        if os.path.exists(DEFAULT_FLOW_REPORT):
-            resp = send_file(DEFAULT_FLOW_REPORT, mimetype="text/html")
-            resp.headers["Cache-Control"] = "no-store"
-            return resp
+        # ?ticker=AAPL serves that ticker's stored report (state/flow/); the
+        # bare URL still serves a flow_report.html from a manual CLI run.
+        ticker = request.args.get("ticker", "")
+        candidates = [str(flow_store.html_path(ticker))] if flow_store.normalize_ticker(ticker) else []
+        candidates.append(DEFAULT_FLOW_REPORT)
+        for path in candidates:
+            if os.path.exists(path):
+                resp = send_file(path, mimetype="text/html")
+                resp.headers["Cache-Control"] = "no-store"
+                return resp
         return Response(_FLOW_STUB_HTML, mimetype="text/html")
 
     def _serve_dash_shell(**_route_kwargs):
@@ -299,13 +317,20 @@ def run_dashboard(dev_mode: bool = False) -> None:
     host = "127.0.0.1" if dev_mode else os.getenv("DASH_HOST", "127.0.0.1").strip()
     port = _get_env_port(START_PORT)
     _kill_stale_port_listener(port)
-    _schedule_browser_open(host, port, _default_browser_path())
+    # dashboard_state.ticker is what create_app actually bootstrapped, which is
+    # the last session's symbol unless that one failed to load.
+    _schedule_browser_open(host, port, _default_browser_path(dashboard_state.ticker or startup_ticker()))
     extra_files = _configure_dev_server(app, dev_mode)
     # Reloader is opt-in via DASH_RELOAD=1. Werkzeug's reloader on Windows
     # spawns a child process that can silently exit the parent; defaulting
     # it off keeps `python main.py` reliable. Debug error pages still honour
     # dev_mode.
     use_reloader = os.getenv("DASH_RELOAD", "0") == "1"
+    # With the reloader on, this function runs in a watcher parent and again
+    # in the serving child (WERKZEUG_RUN_MAIN=true); refresh only in the child,
+    # or every stale ticker gets scanned twice.
+    if not use_reloader or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        start_flow_refresh()
     logger.info("Starting dashboard on %s:%s", host, port)
     app.run(
         debug=dev_mode,

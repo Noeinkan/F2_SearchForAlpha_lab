@@ -4,7 +4,7 @@ Preset management callbacks.
 
 import copy
 
-from dash import callback_context
+from dash import callback_context, no_update
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 
@@ -28,14 +28,22 @@ def register_preset_callbacks(app) -> None:
         prevent_initial_call=True
     )
     def load_preset_to_store(preset_name, presets_data):
-        """Load preset data into a store for fan-out callbacks."""
+        """Load preset data into a store for fan-out callbacks.
+
+        An empty or unknown selection clears the name but leaves
+        ``preset-apply-store`` alone. Every consumer ignores ``None`` anyway,
+        and writing it is not harmless: ``load_presets_on_startup`` resets the
+        selector on every page load, and the ``None`` landed a moment after the
+        last-session restore had written the same store, wiping it before any
+        control was set (callbacks/ui_session.py).
+        """
         if not preset_name:
-            return None, None, ""
+            return no_update, None, ""
 
         presets = (presets_data or {}).get("presets", {})
         preset = presets.get(preset_name)
         if not preset:
-            return None, None, ""
+            return no_update, None, ""
 
         return preset, preset_name, preset_name
 

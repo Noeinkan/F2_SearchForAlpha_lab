@@ -1,6 +1,12 @@
 # alpha — the public demo of SearchForAlpha Lab (Dash on waitress, frozen snapshot).
-# No secrets: the demo needs none. /opt/sites/alpha/.env exists (site-deploy.sh
-# creates it, 0600) but should stay empty.
+# Email-gated: visitors verify an address and get a trial (demo/access/).
+# The mail account and the admin token live ONLY in /opt/sites/alpha/.env
+# (site-deploy.sh creates it, 0600), never in this file:
+#   DEMO_SMTP_HOST, DEMO_SMTP_PORT, DEMO_SMTP_SECURITY, DEMO_SMTP_USER,
+#   DEMO_SMTP_PASSWORD, DEMO_MAIL_FROM, DEMO_ADMIN_TOKEN
+# They are deliberately not listed under `environment:` below, because a key
+# there overrides the same key in .env. Without DEMO_SMTP_HOST and
+# DEMO_MAIL_FROM the demo refuses to start (docs/DEMO.md, "Access").
 services:
   web:
     build:
@@ -32,7 +38,25 @@ services:
       DEMO_JOB_TIMEOUT_SECONDS: "120"
       DEMO_ACTIONS_PER_IP_PER_MINUTE: "30"
       DEMO_JOBS_PER_IP_PER_HOUR: "20"
+      # Access gate and trial (defaults in demo/access/settings.py).
+      DEMO_ACCESS_GATE: "true"
+      DEMO_ACCESS_DB: /app/data/access.sqlite3
+      DEMO_PUBLIC_URL: https://alpha.demos.noeinsolutions.com
+      DEMO_MAIL_BACKEND: smtp
+      DEMO_TRIAL_DAYS: "7"
+      DEMO_JOBS_PER_EMAIL_PER_DAY: "25"
+      DEMO_RETENTION_DAYS: "365"
+      DEMO_CODE_MINUTES: "15"
+      DEMO_CODE_ATTEMPTS: "5"
+      DEMO_CODES_PER_EMAIL_PER_HOUR: "3"
+      DEMO_CODES_PER_HOUR: "60"
+      DEMO_SIGNUPS_PER_IP_PER_DAY: "5"
       SFA_LOG_LEVEL: INFO
+    volumes:
+      # The one thing the demo keeps across restarts and redeploys: who has
+      # access and what they used. `docker compose down` keeps it; only
+      # `down -v` or `docker volume rm` deletes it.
+      - access-data:/app/data
     networks:
       - edge
     restart: unless-stopped
@@ -67,6 +91,9 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  access-data:
 
 networks:
   edge:

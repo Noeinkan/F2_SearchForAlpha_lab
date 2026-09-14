@@ -4,7 +4,7 @@ Where the project stands, in one page. `[x]` is shipped and in the repo today; `
 Details behind the ticks live in [CHANGELOG.md](CHANGELOG.md) (what changed) and
 [product.md](product.md) (what the platform does).
 
-**Last reviewed:** 2026-08-21
+**Last reviewed:** 2026-09-14
 
 ---
 
@@ -46,8 +46,9 @@ Details behind the ticks live in [CHANGELOG.md](CHANGELOG.md) (what changed) and
 
 The open headlines below were each one line until 2026-08-21. They are broken out here
 in the order they should be built. The metrics foundation came first, because all three
-either add metrics or change what existing metrics mean; it and the session model are now
-shipped.
+either add metrics or change what existing metrics mean; it, the session model, the
+benchmark-relative metrics and the order model are now shipped. What remains is
+multi-asset portfolios (3.8), whose engine is built and whose readers are not.
 
 ### 3.11 Metrics foundation — one metrics engine ✅
 
@@ -77,43 +78,57 @@ the wall clock, so bars straddled the overnight boundary. Session boundaries now
 - [x] 3.9.5 Holding period measured in session time, so a five-bar hold cannot silently span a weekend — `Holding_Sessions`, `holding_sessions`, `avg_holding_sessions` <!-- size: S -->
 - [x] 3.9.6 Session model documented in the execution-model docstring and the backtest toolbar guide, both languages <!-- size: S -->
 
-### 3.10 Deflated Sharpe and benchmark-relative metrics — also closes 4.13
+### 3.10 Deflated Sharpe and benchmark-relative metrics ✅ — also closes 4.13
 
-Alpha % exists only in the combo-search path and is a naive arithmetic difference. The benchmark
-series is already on every result frame and never rendered.
+Alpha % existed only in the combo-search path and was a naive arithmetic difference; the
+benchmark series sat on every result frame and was never rendered. Both are fixed, and the
+naive figure kept its place under the name it always deserved — `Excess_Return_%`, with
+`Alpha_%` now meaning annualised Jensen's alpha. New maths lives in
+[lib/metrics/benchmark.py](lib/metrics/benchmark.py) and
+[lib/metrics/deflated.py](lib/metrics/deflated.py).
 
-- [ ] 3.10.1 Benchmark return series promoted from an unrendered column into the metrics object <!-- size: S -->
-- [ ] 3.10.2 Benchmark-relative metrics — alpha, beta, information ratio, tracking error, up/down capture — available to CLI, optimizer and Backtest tab alike <!-- size: M -->
-- [ ] 3.10.3 Probabilistic Sharpe Ratio, skew- and kurtosis-aware, replacing the assumption that returns are normal <!-- size: M -->
-- [ ] 3.10.4 Deflated Sharpe Ratio with the trial count folded in, wired to the combo count and the trials store <!-- size: M -->
-- [ ] 3.10.5 New metrics exposed through the JSON contract, the leaderboard columns and the sort options <!-- size: M -->
-- [ ] 3.10.6 Computed overfitting number replaces the prose honesty caption, in the app and in the optimizer guide <!-- size: S -->
+- [x] 3.10.1 Benchmark return series promoted from an unrendered column into the metrics object — `benchmark_return`, read from `Returns` <!-- size: S -->
+- [x] 3.10.2 Benchmark-relative metrics — alpha, beta, information ratio, tracking error, up/down capture — on `BacktestMetrics`, so CLI, optimizer and the Backtest tab's new VS BUY & HOLD block all read the same numbers <!-- size: M -->
+- [x] 3.10.3 Probabilistic Sharpe Ratio, skew- and kurtosis-aware, replacing the assumption that returns are normal <!-- size: M -->
+- [x] 3.10.4 Deflated Sharpe Ratio with the trial count folded in — `apply_deflated_sharpe` re-deflates the whole leaderboard against the combo count and the spread of the trials' Sharpes <!-- size: M -->
+- [x] 3.10.5 New metrics exposed through the JSON contract, the leaderboard columns and the sort options <!-- size: M -->
+- [x] 3.10.6 Computed overfitting number replaces the prose honesty caption, in the app and in both optimizer guides <!-- size: S -->
 
-### 3.7 Limit / stop / bracket order simulation — unblocks 8.11
+### 3.7 Limit / stop / bracket order simulation ✅ — unblocks 8.11
 
-Every fill is at the close of the bar; realism comes only from the signal lag. There is no order
-abstraction at all — the closest precedent is the low-based trailing-stop check.
+Every fill used to be at the close of the bar, with realism coming only from the signal lag,
+and there was no order abstraction at all — the closest precedent was the low-based
+trailing-stop check. [lib/orders.py](lib/orders.py) is now that layer, and the engine can rest
+an order and let a later bar's range decide. Every default reproduces the pre-3.7 numbers:
+the pinned snapshot is unchanged.
 
-- [ ] 3.7.1 Order and Fill types with a resting-order book, market-only at first — a pure refactor that must leave the pinned engine snapshot unchanged <!-- size: L -->
-- [ ] 3.7.2 Intrabar touch-and-fill against High and Low, generalising the existing low-based stop check <!-- size: M -->
-- [ ] 3.7.3 A documented rule for bars where more than one resting order is touched <!-- size: S -->
-- [ ] 3.7.4 Limit orders with a time-in-force knob <!-- size: M -->
-- [ ] 3.7.5 Stop and stop-limit orders, with the bespoke trailing-stop branch expressed as a resting stop <!-- size: M -->
-- [ ] 3.7.6 Bracket and OCO orders, extending the exit reasons and the trade ledger <!-- size: M -->
-- [ ] 3.7.7 Order type reachable from the optimizers, the shared execution search space and the backtest toolbar <!-- size: M -->
-- [ ] 3.7.8 Execution sandbox tape given real intrabar range so limit and stop fills can be demonstrated, plus an order-type mechanics row <!-- size: M -->
-- [ ] 3.7.9 Order model documented in the execution-model docstring and both toolbar guides, with a results-change warning in the changelog <!-- size: S -->
+- [x] 3.7.1 Order and Fill types with a resting-order book, market-only at first — [lib/orders.py](lib/orders.py); `attrs['fills']` is the new execution-level ledger and `test_strategy_snapshot` is untouched <!-- size: L -->
+- [x] 3.7.2 Intrabar touch-and-fill against High and Low — a limit fills at its level or at the **open** when the bar opened through it; a stop the same, generalising the 3.9.4 gap rule to every resting order <!-- size: M -->
+- [x] 3.7.3 Multi-touch rule stated and enforced — open-marketable first, then stops before limits, then nearest the open; an ambiguous bracket bar is scored as the **stop** <!-- size: S -->
+- [x] 3.7.4 Limit orders with `time_in_force` (`gtc` / `day` / `ioc`) and an `order_expiry_bars` cap, counted from the first bar the order could actually trade against <!-- size: M -->
+- [x] 3.7.5 Stop and stop-limit orders, plus `trailing_stop_orders` expressing the bespoke trailing-stop branch as a resting stop — stricter than the close-only check it replaces <!-- size: M -->
+- [x] 3.7.6 OCO brackets with `bracket_stop` / `bracket_target` exit reasons, and `entry_order_type` / `exit_order_type` on the trade ledger — mechanism as distinct from cause <!-- size: M -->
+- [x] 3.7.7 Order model reachable from the backtest toolbar (four controls), the optimizer's realistic ranking, and the shared execution search space, which now sweeps `order_type` <!-- size: M -->
+- [x] 3.7.8 Sandbox tape rebuilt with real intrabar range — the old Open/High/Low were cosmetic multiples of the close, so no resting fill could be shown and the 3.9.4 gap fill was invisible; plus order-type and exit-handling mechanics rows and live sandbox controls <!-- size: M -->
+- [x] 3.7.9 Order model documented in the execution-model docstring and both toolbar guides, with the results-change warning in the changelog <!-- size: S -->
 
 ### 3.8 Multi-asset portfolio backtests — converges with 4.14
 
-The engine is scalar top to bottom: single `units`, single `cash`, 1-D price arrays, one ticker
-per bundle. The live side is already multi-symbol; the backtest side is not.
+The engine was scalar top to bottom: single `units`, single `cash`, 1-D price arrays, one ticker
+per bundle. The semantics are settled in [docs/portfolio-semantics.md](docs/portfolio-semantics.md),
+so each item implements a stated model rather than re-arguing it. The data layer
+([lib/panel.py](lib/panel.py)) and the engine ([lib/engine/](lib/engine/)) are now built:
+[lib/portfolio.py](lib/portfolio.py) backtests a basket against one cash account, and a
+single-symbol `backtest()` is the same loop over a basket of one — 603 configurations were
+compared bit for bit before and after. What is missing is everything that *reads* a basket
+result: its final shape, the contract, the metrics, the CLI and the dashboard. Nothing
+outside the tests calls `backtest_portfolio` yet.
 
-- [ ] 3.8.1 Portfolio semantics decided and written down — shared cash or per-sleeve, rebalance cadence, and what happens when two symbols signal on one bar and cash is short <!-- size: S -->
-- [ ] 3.8.2 Aligned multi-symbol panel on a common session-aware index <!-- size: M -->
-- [ ] 3.8.3 Engine state generalised from scalars to per-symbol maps, with the single-symbol path preserved as the one-symbol case <!-- size: L -->
-- [ ] 3.8.4 Portfolio-level cash, sizing and affordability across competing orders on the same bar <!-- size: L -->
-- [ ] 3.8.5 Multi-symbol trade ledger and result frame <!-- size: M -->
+- [x] 3.8.1 Portfolio semantics decided and written down — one cash account, sizing off total portfolio value, and an order-independent equal-share water-fill (`CASH_ALLOCATION_RULE`) when competing buys outrun the cash — [docs/portfolio-semantics.md](docs/portfolio-semantics.md) <!-- size: S -->
+- [x] 3.8.2 Aligned multi-symbol panel on a common session-aware index — [lib/panel.py](lib/panel.py); the union of the members' bars, holes marked `Tradable=False` with the last close carried as `Mark`, signal columns filled `0` rather than a truthy `NaN`, and one `Session_Start` inferred on the merged index <!-- size: M -->
+- [x] 3.8.3 Engine state generalised from scalars to per-symbol maps, with the single-symbol path preserved as the one-symbol case — [lib/engine/](lib/engine/); shared `EngineConfig`, one `Account`, a `SymbolContext` per symbol, and `lib/strategy.py` down from 2,016 lines to a thin entry point. `test_strategy_snapshot` untouched <!-- size: L -->
+- [x] 3.8.4 Portfolio-level cash, sizing and affordability across competing orders on the same bar — [lib/portfolio.py](lib/portfolio.py) `backtest_portfolio()`; phase-major bars (every sell settles before any buy, so a same-bar sale funds a same-bar buy), sizing off total portfolio value, `water_fill` for contention, holes valued but never traded, and a result identical to the last bit under any ticker order. The optional per-symbol `max_weight` cap from §1 is not built <!-- size: L -->
+- [ ] 3.8.5 Multi-symbol trade ledger and result frame, plus a `Buy_Unfunded` column — affordability never set `Buy_Trigger_Rejected`, and contention makes that ambiguity common <!-- size: M -->
 - [ ] 3.8.6 Contract decision for a result that names many tickers instead of one, since external agents parse the current shape <!-- size: M -->
 - [ ] 3.8.7 Portfolio-level metrics — contribution by symbol, correlation, concentration <!-- size: M -->
 - [ ] 3.8.8 Ticker lists accepted by the CLI and the bundle schema, reusing the existing benchmark-group registry <!-- size: M -->
@@ -133,9 +148,9 @@ per bundle. The live side is already multi-symbol; the backtest side is not.
 - [x] 4.10 Rolling walk-forward with a `WindowVerdict` robustness flag — [lib/walkforward/](lib/walkforward/) <!-- size: L -->
 - [x] 4.11 Walk-forward validation launched from the optimizer panel — [lib/dash/combo_walkforward.py](lib/dash/combo_walkforward.py) <!-- size: M -->
 - [x] 4.12 Gated promotion with an audit trail — [lib/promotion/gate.py](lib/promotion/gate.py), `config/param_history.yaml` <!-- size: L -->
-- [ ] 4.13 Compute the multiple-testing correction (deflated Sharpe), not just the honesty caption <!-- size: M -->
+- [x] 4.13 Multiple-testing correction computed, not just captioned — the `DSR %` column and the completion line, deflated by the combination count (see 3.10) <!-- size: M -->
 - [ ] 4.14 Multi-ticker sweep from the UI — CLI-only today via `sfa sweep-single` <!-- size: L -->
-- [ ] 4.15 Automated regime slicing against the [RESEARCH.md](RESEARCH.md) regime calendar <!-- size: L -->
+- [x] 4.15 Automated regime slicing against the [RESEARCH.md](RESEARCH.md) regime calendar. A strategy is backtested separately in each of the seven regimes and judged by RESEARCH.md's rule: positive Sortino in 3 of 7, including the 2022 bear. The rule returns **pass / fail / inconclusive**, and it is inconclusive when regimes missing data could still change the answer, as with intraday history that reaches back only ~2 years. The calendar is machine-readable in `config/regimes.yaml`, and a test fails if it drifts from the RESEARCH.md table. Available as `sfa regimes` and as the optimizer's **REGIMES** button — [lib/regimes/](lib/regimes/) <!-- size: L -->
 - [ ] 4.16 Persist and compare optimizer runs across sessions <!-- size: M -->
 
 ## 5. 🖥️ Dashboard & UX
@@ -152,9 +167,9 @@ per bundle. The live side is already multi-symbol; the backtest side is not.
 - [x] 5.10 Deep-link routes: `/`, `/ticker/<t>`, `/fundamentals/<t>`, `/flow/<t>`, `/flow_report.html` — [lib/dash/routes.py](lib/dash/routes.py) <!-- size: M -->
 - [x] 5.11 UI presets saved to `config/ui_presets.json` <!-- size: S -->
 - [x] 5.12 Data table with OHLCV / Indicators / Signals / Portfolio column groups and outlier highlighting <!-- size: L -->
-- [ ] 5.13 Global `error-boundary` for unhandled callback exceptions — planned in the UI overhaul, never built <!-- size: M -->
-- [ ] 5.14 Empty-state polish for the chart area, results panel and signal list before first load <!-- size: S -->
-- [ ] 5.15 Persist panel state to disk — [lib/dash/state.py](lib/dash/state.py) is in-memory; only presets and watchlists survive a restart <!-- size: M -->
+- [x] 5.13 Global error boundary — a callback that raises shows a dismissible alert naming what failed and flips the status bar to `ERROR`, instead of failing silently with the bar stuck on `WORKING…` — [lib/dash/error_boundary.py](lib/dash/error_boundary.py) <!-- size: M -->
+- [x] 5.14 Empty states for the chart area, backtest results and signal list, from one shared builder; the chart's overlay also shows why a payload came back empty — [lib/dash/layout/empty_states.py](lib/dash/layout/empty_states.py) <!-- size: S -->
+- [x] 5.15 Last session restored on restart — symbol, interval, test window, capital, chart toggles, indicator settings, signals, trade setup, costs and order model, in `state/ui_session.json`. Results are not kept. `SFA_RESTORE_SESSION=0` turns it off — [lib/dash/ui_session_storage.py](lib/dash/ui_session_storage.py) <!-- size: M -->
 - [ ] 5.16 Options pricing tab (see below) <!-- size: S -->
 
 ## 6. 🧊 Options & Flow
@@ -164,9 +179,10 @@ per bundle. The live side is already multi-symbol; the backtest side is not.
 - [x] 6.3 Gamma-exposure and Vanna ladders — [lib/options/greeks.py](lib/options/greeks.py), [lib/dash/flow_gex.py](lib/dash/flow_gex.py), [lib/dash/flow_vanna.py](lib/dash/flow_vanna.py) <!-- size: L -->
 - [x] 6.4 Chain panel with filtering, contract inventory and a fullscreen diagram <!-- size: M -->
 - [x] 6.5 Flow glossary and an educational modal (calls vs puts, strikes, volume vs OI, how the unusual score works) <!-- size: M -->
-- [ ] 6.6 The Options pricing tab from [docs/OPTIONS_INTEGRATION.md](docs/OPTIONS_INTEGRATION.md) — payoff and greeks surface, `lib/dash/callbacks/options_pricing.py`, the `sfa options` command. Only the shared greeks module exists today, and it serves the flow panels <!-- size: XL -->
-- [ ] 6.7 Replace the best-effort Yahoo-screener scrape with a resilient chain source <!-- size: M -->
-- [ ] 6.8 Schedule [scripts/flow_runner.py](scripts/flow_runner.py) so reports refresh without a manual run <!-- size: S -->
+- [x] 6.7 Resilient chain fetch — every Yahoo call retried with the shared backoff, one failed expiry dropped and named instead of losing the ticker, a persistent throttle shown as `RATE LIMITED`, and `--scan` on `yfinance.screen` instead of the private screener URL — [lib/options/chain_source.py](lib/options/chain_source.py). Resilience on the one source; a second source is 6.9 <!-- size: M -->
+- [x] 6.8 Scheduled refresh inside the dashboard process — watchlist plus already-scanned tickers, every `SFA_FLOW_REFRESH_MINUTES` in market hours and once after the close, one report per ticker in `state/flow/`, and a failed scan never overwrites a good report — [lib/dash/flow_refresh.py](lib/dash/flow_refresh.py), [lib/dash/flow_store.py](lib/dash/flow_store.py) <!-- size: S -->
+- [ ] 6.6 The Options pricing tab from [docs/OPTIONS_INTEGRATION.md](docs/OPTIONS_INTEGRATION.md) — payoff and greeks surface, `lib/dash/callbacks/options_pricing.py`, the `sfa options` command. Only the shared greeks module exists today, and it serves the flow panels. **The plan is stale** (it edits a tab switcher and line numbers that no longer exist) and needs redoing before work starts; decided 2026-09-14 that the pricing maths is written in-house on top of `greeks.py`, not the `optlib` submodule the plan proposes <!-- size: XL -->
+- [ ] 6.9 A second option-chain source behind `fetch_option_chain` — **needs an account**: the free candidates in the options plan either require one (Tradier sandbox) or cap requests at a handful a day (FlashAlpha). Reopens if an account is acceptable <!-- size: M -->
 
 ## 7. 📊 Fundamentals
 
@@ -182,7 +198,7 @@ per bundle. The live side is already multi-symbol; the backtest side is not.
 
 ## 8. 🤖 Research CLI & Paper Trading
 
-- [x] 8.1 Thirteen `sfa` subcommands, every one with `--json` — [lib/cli/commands/](lib/cli/commands/) <!-- size: XL -->
+- [x] 8.1 Fourteen `sfa` subcommands, every one with `--json` — [lib/cli/commands/](lib/cli/commands/) <!-- size: XL -->
 - [x] 8.2 Stable JSON contracts for external agents — [lib/cli/contracts.py](lib/cli/contracts.py) <!-- size: M -->
 - [x] 8.3 `sfa instructions` agent briefing (mode-aware, with rules and a numbered loop) <!-- size: M -->
 - [x] 8.4 Seeded determinism — every trial records seed, wall time and git commit — [lib/seeds.py](lib/seeds.py) <!-- size: M -->
@@ -192,7 +208,7 @@ per bundle. The live side is already multi-symbol; the backtest side is not.
 - [x] 8.8 Paper runner with PID-file lifecycle, `sfa status` and `sfa kill --flatten` <!-- size: L -->
 - [x] 8.9 `--mode live` refused unconditionally; the IB broker rejects the live port <!-- size: S -->
 - [ ] 8.10 Decide whether live mode is ever unlocked, and what evidence would justify it — today it is a hard code-level refusal <!-- size: M -->
-- [ ] 8.11 Limit orders in the live path — `Order` carries `limit_price` but only `MKT` is sent <!-- size: M -->
+- [ ] 8.11 Limit orders in the live path — `Order` carries `limit_price` but only `MKT` is sent. **Unblocked by 3.7**: the backtest side now models limit, stop and stop-limit orders with a stated fill and priority model ([lib/orders.py](lib/orders.py)), so the live path has a semantics to match rather than invent <!-- size: M -->
 - [ ] 8.12 Multi-symbol / multi-strategy runner — one strategy and one ticker per process <!-- size: L -->
 - [ ] 8.13 Reconnect and resume across the IB Gateway daily restart <!-- size: M -->
 - [ ] 8.14 Alerting when a guard trips (the runner exits silently apart from the state row) <!-- size: S -->

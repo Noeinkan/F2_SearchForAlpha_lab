@@ -148,17 +148,23 @@ def resolve_session_starts(df: pd.DataFrame) -> np.ndarray:
     return session_starts(df.index)
 
 
-def bars_per_session(index: Any) -> Optional[float]:
-    """Mean number of bars a complete session emits on this tape.
+def bars_per_session_from_starts(starts: Any) -> Optional[float]:
+    """Mean bars per complete session, given the boundary mask directly.
 
-    Used to check :data:`lib.timeframes.PERIODS_PER_YEAR` against what the tape
-    actually contains. The first and last sessions are dropped because a fetch
-    window almost always cuts them mid-session.
+    The counting half of :func:`bars_per_session`, split out for callers that
+    already hold a mask and must not re-infer one — a multi-symbol panel infers
+    its sessions once on the merged index (:mod:`lib.panel`), and re-deriving
+    them per member would give each symbol's own tape the last word.
     """
-    ids = session_ids(index)
-    if ids.size == 0:
+    mask = np.asarray(starts, dtype=bool)
+    if mask.size == 0:
         return None
-    counts = np.bincount(ids)
+    if not mask[0]:
+        # A mask that does not open a session on bar 0 would number the first
+        # session -1. The tape has to begin somewhere.
+        mask = mask.copy()
+        mask[0] = True
+    counts = np.bincount(np.cumsum(mask) - 1)
     if counts.size > 2:
         counts = counts[1:-1]
     if counts.size == 0:
@@ -166,11 +172,22 @@ def bars_per_session(index: Any) -> Optional[float]:
     return float(counts.mean())
 
 
+def bars_per_session(index: Any) -> Optional[float]:
+    """Mean number of bars a complete session emits on this tape.
+
+    Used to check :data:`lib.timeframes.PERIODS_PER_YEAR` against what the tape
+    actually contains. The first and last sessions are dropped because a fetch
+    window almost always cuts them mid-session.
+    """
+    return bars_per_session_from_starts(session_starts(index))
+
+
 __all__ = [
     'SESSION_BREAK_RATIO',
     'SESSION_START_COLUMN',
     'bar_spacing_ns',
     'bars_per_session',
+    'bars_per_session_from_starts',
     'resolve_session_starts',
     'session_ids',
     'session_starts',

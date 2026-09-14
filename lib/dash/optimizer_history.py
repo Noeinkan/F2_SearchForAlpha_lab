@@ -43,6 +43,10 @@ def summarize_run(
             "Sharpe_Ratio": (top or {}).get("Sharpe_Ratio"),
             "Max_Drawdown_%": (top or {}).get("Max_Drawdown_%"),
             "Trades": (top or {}).get("Trades"),
+            # Deflated against ``total_combos`` — the one figure that says
+            # whether this run's winner was worth more than the search that
+            # found it. Entries written before it existed report None.
+            "DSR_%": (top or {}).get("DSR_%"),
         }
         if top
         else None,

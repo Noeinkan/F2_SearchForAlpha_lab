@@ -1301,13 +1301,26 @@ def render_summary_cards(reports: Sequence[Mapping[str, Any]], theme: dict) -> h
 def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0) -> html.Details:
     ticker = str(report.get("ticker", ""))
     if report.get("error"):
+        # A throttled fetch is not a bad ticker: say so, the way the terminal's
+        # data loader does, so nobody goes hunting for a typo.
+        rate_limited = report.get("error_kind") == "rate_limited"
+        error_style = {"color": theme["accent_red"], "margin": "8px 0 0"}
+        body: list[Any] = []
+        if rate_limited:
+            body.append(html.P(
+                "RATE LIMITED — Yahoo is throttling option-chain requests. "
+                "Nothing is wrong with the symbol; RESCAN in a minute.",
+                style={"color": theme["accent_orange"], "margin": "8px 0 0", "fontWeight": 600},
+            ))
+            error_style = {"color": theme["text_secondary"], "fontSize": FONT_SIZES["xs"], "margin": "8px 0 0"}
+        body.append(html.P(str(report["error"]), style=error_style))
         return html.Details(
             [
                 html.Summary(ticker, style={
                     **_panel_summary_style(theme),
                     "fontSize": FONT_SIZES["lg"],
                 }),
-                html.P(str(report["error"]), style={"color": theme["accent_red"], "margin": "8px 0 0"}),
+                *body,
             ],
             open=True,
             className="sfa-flow-panel sfa-flow-ticker-card",
@@ -1413,6 +1426,16 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
             },
         ),
     ]
+    failed_expiries = sorted((report.get("failed_expiries") or {}).keys())
+    if failed_expiries:
+        card_children.append(html.P(
+            f"Partial chain: {len(failed_expiries)} "
+            f"expir{'y' if len(failed_expiries) == 1 else 'ies'} could not be fetched "
+            f"({', '.join(failed_expiries)}) and {'is' if len(failed_expiries) == 1 else 'are'} "
+            "missing from every figure below.",
+            className="sfa-flow-partial-chain",
+            style={"color": theme["accent_orange"], "fontSize": FONT_SIZES["xs"], "margin": "0 0 8px"},
+        ))
     if insight_block is not None:
         card_children.append(insight_block)
     if score_chips is not None:
