@@ -5,7 +5,8 @@
 #   NEO_SMTP_HOST, NEO_SMTP_PORT, NEO_SMTP_USER, NEO_SMTP_PASS, EMAIL_FROM,
 #   DEMO_ADMIN_TOKEN
 # The mail names and values are Capsar's Neo account, copied from its .env --
-# except NEO_SMTP_PORT, which must be 587 here: this server blocks outbound 465.
+# except NEO_SMTP_PORT, which must be 587 here (this server blocks outbound 465),
+# and EMAIL_FROM, which is support@noeinsolutions.com (an alias of the mailbox).
 # They are deliberately not listed under `environment:` below, because a key
 # there overrides the same key in .env. Without the host, user and password
 # the demo refuses to start (docs/DEMO.md, "Deploying the gate").

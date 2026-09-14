@@ -33,6 +33,12 @@ class DashboardState:
         self._optimization_state: Dict[str, Any] = self._create_empty_optimization_state()
         self.flow_last_scan_at: datetime | None = None
         self.flow_last_scan_path: str | None = None
+        # The BootstrapSnapshot of the last market-session load, and the one the
+        # static page layout was built from at server start. A page opened
+        # after the session moved on still shows the second until it is sent
+        # the first (callbacks/data_loading.py).
+        self.session_snapshot: Any = None
+        self.layout_snapshot: Any = None
 
     @staticmethod
     def _create_empty_optimization_state() -> Dict[str, Any]:

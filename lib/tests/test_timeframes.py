@@ -31,13 +31,23 @@ def test_full_history_window_daily_is_unbounded():
     """Daily has no Yahoo cap, so "everything" really means everything."""
     start, end = full_history_window("1d", as_of=_AS_OF)
     assert start == EARLIEST_HISTORY
-    assert end == "2026-08-04"
+    # yfinance's end is exclusive; an end of 2026-08-04 would drop that day's bar.
+    assert end == "2026-08-05"
 
 
 @pytest.mark.parametrize("interval", ["1h", "4h"])
 def test_full_history_window_intraday_uses_the_lookback_cap(interval):
     start, end = full_history_window(interval, as_of=_AS_OF)
-    assert (pd.Timestamp(end) - pd.Timestamp(start)).days == 728
+    assert (_AS_OF - pd.Timestamp(start)).days == 728
+    assert end == "2026-08-05"
+
+
+@pytest.mark.parametrize("interval", ["1d", "1h", "4h"])
+def test_fetch_asks_yahoo_for_todays_bars(interval):
+    """The window reaching fetch_data must still end after today once clamped."""
+    window = full_history_window(interval, as_of=_AS_OF)
+    _, end = clamp_window(*window, interval, as_of=_AS_OF)
+    assert pd.Timestamp(end) > _AS_OF
 
 
 @pytest.mark.parametrize("interval", ["1d", "1h", "4h"])
@@ -90,7 +100,7 @@ def test_clamp_window_relocates_stale_intraday_range():
     start, end = clamp_window(
         "2018-05-01", "2020-07-27", "4h", as_of=as_of, relocate=True
     )
-    assert end == "2026-07-31"
+    assert end == "2026-08-01"  # exclusive end: includes 2026-07-31
     assert start == "2024-08-02"  # duration exceeds lookback → clipped to it
 
 

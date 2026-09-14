@@ -520,6 +520,15 @@ def test_smtp_mailer_speaks_implicit_tls_to_neo_as_the_mailbox(monkeypatch):
         def noop(self):
             calls.append(("noop",))
 
+        def mail(self, address):
+            calls.append(("mail", address))
+            if address == "support@noeinsolutions.example":
+                return 553, b"5.7.1 <support@noeinsolutions.example>: Sender address rejected: not owned by user"
+            return 250, b"2.1.0 Ok"
+
+        def rset(self):
+            calls.append(("rset",))
+
         def close(self):
             calls.append(("close",))
 
@@ -546,10 +555,17 @@ def test_smtp_mailer_speaks_implicit_tls_to_neo_as_the_mailbox(monkeypatch):
     assert calls[0][1] == "FakeSMTP" and calls[-1][1] == "Named <n@example.com>"
     assert sender("") == ""
 
-    # The start-up check signs in and out and sends nothing.
+    # The start-up check signs in, offers the sender, cancels: nothing is sent.
     calls.clear()
     SmtpMailer(neo).check()
-    assert [c[0] for c in calls] == ["connect", "login", "noop"]
+    assert calls[1:] == [("login", "owner@noeinsolutions.example", "pw"), ("mail", "owner@noeinsolutions.example"), ("rset",)]
+
+    # A From address that is not an alias of the mailbox is caught before any visitor asks.
+    calls.clear()
+    not_an_alias = AccessSettings(**{**neo.__dict__, "mail_from": "support@noeinsolutions.example"})
+    with pytest.raises(MailError, match="sender support@noeinsolutions.example refused: 553"):
+        SmtpMailer(not_an_alias).check()
+    assert not any(c[0] == "send" for c in calls)
 
 
 def test_the_mail_check_reports_a_blocked_port_as_a_mail_error(monkeypatch):

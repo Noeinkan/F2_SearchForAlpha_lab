@@ -151,7 +151,7 @@ def load_market_session(
     # from live sidebar state — seeding it from here would serialise a megabyte
     # of bars into the page that the renderer then immediately replaces.
     symbol = (ticker or DEFAULT_TICKER).upper()
-    return BootstrapSnapshot(
+    snapshot = BootstrapSnapshot(
         ticker=ticker,
         data_status=f"{len(df)} ROWS",
         strategy_order=format_strategy_order_debug_text(),
@@ -169,6 +169,8 @@ def load_market_session(
         unified_rows=unified_rows,
         data_display=data_display,
     )
+    dashboard_state.session_snapshot = snapshot
+    return snapshot
 
 
 def startup_ticker() -> str:

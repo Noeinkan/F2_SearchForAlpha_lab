@@ -7,8 +7,9 @@ The mail account uses the same variable names as Capsar (W3_capsar_io,
 ``server/services/emailService.js``), so one block of credentials serves both:
 ``NEO_SMTP_HOST`` / ``_PORT`` / ``_USER`` / ``_PASS`` and ``EMAIL_FROM``, with
 the generic ``SMTP_*`` names as a fallback. Neo is the mail host of
-noeinsolutions.com: ``smtp0001.neo.space``, signed in as the mailbox, sending as
-that mailbox. On the Hetzner server the port must be 587 (STARTTLS): outbound
+noeinsolutions.com: ``smtp0001.neo.space``, signed in as the owner's mailbox,
+sending as ``support@noeinsolutions.com`` -- an alias of that mailbox, since Neo
+refuses any other From. On the Hetzner server the port must be 587 (STARTTLS): outbound
 465 is blocked there, even though Capsar's local ``.env`` says 465.
 """
 
@@ -63,7 +64,7 @@ def _port(raw: str, default: int) -> int:
 
 
 def _default_contact() -> str:
-    return _str("SFA_FEEDBACK_EMAIL", "andrea.aita@noeinsolutions.com")
+    return _str("SFA_FEEDBACK_EMAIL", "support@noeinsolutions.com")
 
 
 @dataclass(frozen=True)

@@ -110,6 +110,8 @@ _QUARTERLY_FORMS = frozenset({"10-Q", "10-Q/A", "10-K", "10-K/A"})
 # A 13-week quarter is 91 days and a 14-week one 98.
 _QUARTER_MIN_DAYS, _QUARTER_MAX_DAYS = 80, 100
 _QUARTER_END_SHIFT = pd.Timedelta(days=7)
+# How far two concepts may differ on a shared period and still be stitched.
+_STITCH_TOLERANCE = 0.02
 
 SecPeriod = Literal["annual", "quarterly"]
 QuarterKey = tuple[int, int]
@@ -294,26 +296,52 @@ def _best_sec_series(
     concept_names: list[str],
     series_fn: Callable[[dict[str, Any], str], tuple[dict[Any, float], dict[Any, pd.Timestamp]]] | None = None,
 ) -> tuple[dict[Any, float], dict[Any, pd.Timestamp]]:
-    """Pick the alternate XBRL concept with the best recent coverage.
+    """Pick the alternate XBRL concept with the best recent coverage, then fill its gaps.
 
     Filers rename tags over time (PPE vs ProductiveAssets).  The first
     non-empty concept is not enough — a single ancient year would mask a
     complete modern series.
+
+    The pick alone left a hole where the rename happened: Apple moved revenue
+    from ``SalesRevenueNet`` to ``RevenueFromContractWithCustomer...`` in 2018,
+    so its quarters before 2017-Q4 had no revenue. A period the pick lacks is
+    now taken from the next-best concept, but only from one that agrees with
+    the series built so far, within ``_STITCH_TOLERANCE``, on every period
+    both report. Without a shared period there is nothing to check a stitch
+    against, so none is made (an ancient PPE year stays out of a
+    ProductiveAssets series).
     """
     series_fn = series_fn or _sec_annual_series_and_ends
-    best: dict[Any, float] = {}
-    best_ends: dict[Any, pd.Timestamp] = {}
-    best_score: tuple[Any, int] | None = None  # (latest period, count)
+    candidates: list[tuple[tuple[Any, int], dict[Any, float], dict[Any, pd.Timestamp]]] = []
     for concept in concept_names:
         series, ends = series_fn(usgaap, concept)
-        if not series:
+        if series:
+            candidates.append(((max(series), len(series)), series, ends))  # (latest period, count)
+    if not candidates:
+        return {}, {}
+    # Stable: on a tied score the concept listed first keeps priority.
+    candidates.sort(key=lambda candidate: candidate[0], reverse=True)
+    _score, first, first_ends = candidates[0]
+    best, best_ends = dict(first), dict(first_ends)
+    for _score, series, ends in candidates[1:]:
+        if not _agrees_where_both_report(best, series):
             continue
-        score = (max(series), len(series))
-        if best_score is None or score > best_score:
-            best_score = score
-            best = series
-            best_ends = ends
+        for key, value in series.items():
+            if key not in best:
+                best[key] = value
+                best_ends[key] = ends[key]
     return best, best_ends
+
+
+def _agrees_where_both_report(series: dict[Any, float], other: dict[Any, float]) -> bool:
+    shared = [key for key in other if key in series]
+    if not shared:
+        return False
+    for key in shared:
+        scale = max(abs(series[key]), abs(other[key]))
+        if scale and abs(series[key] - other[key]) / scale > _STITCH_TOLERANCE:
+            return False
+    return True
 
 
 # ---------------------------------------------------------------------------

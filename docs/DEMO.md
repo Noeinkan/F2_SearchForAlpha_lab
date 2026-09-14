@@ -95,29 +95,47 @@ mailbox Capsar (W3_capsar_io) already sends its codes from — with the same
 variable names, so its lines are copied as they are. Nothing needs setting up
 at the provider or in DNS: the domain already publishes Neo's SPF record
 (`include:spf0001.neo.space`) and a Neo DKIM key (selector `neo1`), which is
-what gets the codes into inboxes. The code emails go out as
-`SearchForAlpha Lab demo <the mailbox address>`; Neo will not send as an
-address the mailbox does not own.
+what gets the codes into inboxes.
+
+**Visitors only ever see `support@noeinsolutions.com`**: it is the sender of
+the code emails (`SearchForAlpha Lab demo <support@noeinsolutions.com>`) and
+the contact on the sign-in and trial-ended pages. The owner's own address is
+only the Neo *login*. Neo lets a mailbox send as another address only when that
+address is an **alias** of the mailbox; otherwise it answers "553 Sender
+address rejected: not owned by user", and every code fails. The start-up mail
+check offers the sender to Neo without sending anything, so a missing alias
+shows up in the log as "NOT usable … add that address as an alias".
 
 Neo lets one mailbox send about 1,000 emails a day, and that budget is shared
 with your own mail and with Capsar's. The demo stops sending sign-in codes
 after `DEMO_CODES_PER_DAY` (200) in any 24 hours; a visitor past that sees "the
 demo is sending a lot of sign-in emails right now".
 
-1. **Copy the mail lines from Capsar.** Open
-   `C:\Users\andre\Downloads\W3_capsar_io\.env` and copy the five lines
-   starting with `NEO_SMTP_HOST`, `NEO_SMTP_PORT`, `NEO_SMTP_USER`,
-   `NEO_SMTP_PASS` and `EMAIL_FROM`. They read
-   `smtp0001.neo.space`, `465`, the mailbox address, its password, and the
-   mailbox address again. **Change `465` to `587` for the server**: Hetzner
-   blocks outgoing connections on port 465 (and 25), so a send on 465 waits
-   and times out. Port 587 starts plain and switches to encryption before the
-   password is sent (STARTTLS), and the demo picks that up from the port.
-2. **Make an admin token**, at least 24 characters:
+1. **Make `support@` an alias of the mailbox, once.** Sign in to Neo Webmail
+   with the mailbox you log in with (or to the Neo Email Control Panel as the
+   domain admin), open the mailbox's **email alias** settings and add
+   `support@noeinsolutions.com`. Neo allows up to 10 aliases a mailbox. Mail to
+   support@ then lands in that mailbox, and the mailbox may send as support@.
+   Neo's own walkthrough: <https://support.neo.space/hc/en-us/articles/14465294068761-Email-Alias>.
+   *If support@ already exists as a separate mailbox, Neo will not let you
+   reuse the name as an alias; either delete that mailbox first or log the
+   demo in as support@ with its own password instead. A forwarder will not do:
+   it receives but cannot send.*
+2. **Copy the mail lines from Capsar.** Open
+   `C:\Users\andre\Downloads\W3_capsar_io\.env` and copy the four lines
+   starting with `NEO_SMTP_HOST`, `NEO_SMTP_PORT`, `NEO_SMTP_USER` and
+   `NEO_SMTP_PASS`. They read `smtp0001.neo.space`, `465`, the mailbox address
+   and its password. **Change `465` to `587` for the server**: Hetzner blocks
+   outgoing connections on port 465 (and 25), so a send on 465 waits and times
+   out. Port 587 starts plain and switches to encryption before the password
+   is sent (STARTTLS), and the demo picks that up from the port. Add
+   `EMAIL_FROM=support@noeinsolutions.com` yourself (Capsar's says the owner's
+   address).
+3. **Make an admin token**, at least 24 characters:
    `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Keep it in
    your password manager.
-3. **Write the secrets on the server.** Paste the five lines from step 1 and
-   the token in place of the placeholders:
+4. **Write the secrets on the server.** Paste the lines from step 2 and the
+   token in place of the placeholders:
 
    ```bash
    ssh root@77.42.70.26
@@ -126,8 +144,8 @@ demo is sending a lot of sign-in emails right now".
    NEO_SMTP_PORT=587
    NEO_SMTP_USER=the-mailbox-address
    NEO_SMTP_PASS='the-mailbox-password'
-   EMAIL_FROM=the-mailbox-address
-   DEMO_ADMIN_TOKEN=the-token-from-step-2
+   EMAIL_FROM=support@noeinsolutions.com
+   DEMO_ADMIN_TOKEN=the-token-from-step-3
    EOF
    chmod 600 /opt/sites/alpha/.env
    ```
@@ -138,15 +156,17 @@ demo is sending a lot of sign-in emails right now".
    quoted, it arrives exactly as written.
    *If the Neo password is ever changed, Capsar and the demo both stop sending
    until this file and Capsar's `.env` are updated.*
-4. **Deploy**: commit, push, then `bash deploy-demo.sh` from the repo root.
-5. **Check it**: open the demo in a private window — it should land on the
+5. **Deploy**: commit, push, then `bash deploy-demo.sh` from the repo root.
+6. **Check it**: open the demo in a private window — it should land on the
    sign-in page. Sign in with your own address; the email should arrive within
-   a minute. Then open `/admin` and find yourself in the table.
+   a minute, from support@noeinsolutions.com. Then open `/admin` and find
+   yourself in the table.
    *If the page says "The sign-in email could not be sent", read the log:
    `ssh root@77.42.70.26 "docker logs site-alpha-web 2>&1 | grep 'demo access'"`.
    Right after every start the demo signs in to the mail server once and
    writes either "mail server … reachable" or "NOT usable" with the reason.
-   "timed out" means a blocked port; "535" means a wrong user or password.*
+   "timed out" means a blocked port; "535" means a wrong user or password;
+   "553 … not owned" means support@ is not yet an alias of the mailbox.*
 
 To change the numbers, edit the `DEMO_*` values in `.deploy/compose.yml` and
 redeploy. To reach the gate without mail on your own machine, see "Run it

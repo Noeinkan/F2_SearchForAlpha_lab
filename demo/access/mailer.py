@@ -8,15 +8,18 @@ connection there simply times out. Neo already signs and authorises that
 domain's mail (SPF and DKIM are published), which is why codes from it reach
 inboxes rather than spam.
 
-``check`` signs in and out without sending. The server runs it once at start
-and logs the result, because a mail server the demo cannot reach is otherwise
+``check`` signs in, announces the From address and cancels, so nothing is
+sent. The server runs it once at start and logs the result, because a mail
+server the demo cannot reach -- or a sender Neo will not accept -- is otherwise
 invisible until a visitor asks for a code.
 The demo process is sealed off from the network (``demo.sealing``); the server
 opens exactly one door in that seal, to the SMTP host and port.
 
-The From header is the mailbox with a display name added ("SearchForAlpha Lab
-demo <andrea.aita@…>"): Neo refuses to send as any address the mailbox does
-not own, but the name in front of it is free.
+The login is the owner's mailbox; the From address is
+``support@noeinsolutions.com`` (``EMAIL_FROM``), which Neo accepts only once
+it is an alias of that mailbox -- otherwise it answers "553 Sender address
+rejected: not owned by user". A display name goes in front ("SearchForAlpha
+Lab demo <support@…>").
 
 ``ConsoleMailer`` logs the message instead and keeps it in ``outbox``: for a
 local run without a mail account, and for the tests.
@@ -95,12 +98,16 @@ class SmtpMailer:
         return client
 
     def check(self) -> None:
-        """Sign in and out without sending. Raises ``MailError`` when that fails."""
+        """Sign in, offer the From address, cancel. Sends nothing. Raises ``MailError`` on any refusal."""
+        address = parseaddr(self.settings.mail_from)[1] or self.settings.smtp_user
         try:
             with self._session() as client:
-                client.noop()
+                code, reply = client.mail(address)
+                client.rset()
         except (OSError, smtplib.SMTPException) as exc:
             raise MailError(f"{type(exc).__name__}: {exc}") from exc
+        if code != 250:
+            raise MailError(f"sender {address} refused: {code} {reply.decode(errors='replace')}")
 
     def send(self, mail: Mail) -> None:
         s = self.settings

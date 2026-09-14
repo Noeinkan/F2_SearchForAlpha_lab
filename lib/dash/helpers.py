@@ -6,6 +6,8 @@ Utility functions for data processing and optimization.
 import logging
 import itertools
 import math
+import time
+from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional
 
 import pandas as pd
@@ -35,6 +37,53 @@ def format_df_for_display(df: pd.DataFrame) -> pd.DataFrame:
         if df[col].dtype == 'float64':
             df[col] = df[col].round(2)
     return df
+
+
+# When each in-memory OHLCV frame was stored, by fetch_data_with_cache key.
+_memory_stored_at: dict[str, float] = {}
+
+
+def _memory_copy_current(cache_key: str, path: Path, interval: str) -> bool:
+    """Whether the in-memory frame may be served without looking at disk.
+
+    Only while its disk entry is fresh and no newer than the copy: past the
+    soft TTL the latest bar (today's, still forming) may have moved, and a
+    background revalidation may already have written a newer file. A frame
+    that never reached disk (a fallback vendor's) stays usable.
+    """
+    from lib.dash import ohlcv_disk_cache as ohlcv_cache
+
+    freshness = ohlcv_cache.classify_freshness(path, interval)
+    if freshness == "missing":
+        return True
+    if freshness != "fresh":
+        return False
+    try:
+        return path.stat().st_mtime <= _memory_stored_at.get(cache_key, 0.0)
+    except OSError:
+        return True
+
+
+def ohlcv_newer_on_disk(ticker: str, interval: str) -> bool:
+    """Whether a background revalidation has written bars newer than those in memory.
+
+    The disk path serves a stale file at once and refreshes it in a thread, so
+    the frame a session loaded (the server's startup load, typically) can be a
+    session behind the file by the time a page opens. False when nothing for
+    ``ticker``/``interval`` was loaded through ``fetch_data_with_cache``.
+    """
+    from lib.dash import ohlcv_disk_cache as ohlcv_cache
+    from lib.timeframes import normalize_interval
+
+    canon = normalize_interval(interval)
+    prefix = f"{ticker}_{canon}_"
+    stamps = [stamp for key, stamp in _memory_stored_at.items() if key.startswith(prefix)]
+    if not stamps:
+        return False
+    try:
+        return ohlcv_cache.cache_path(ticker, canon).stat().st_mtime > max(stamps)
+    except OSError:
+        return False
 
 
 def fetch_data_with_cache(
@@ -74,9 +123,10 @@ def fetch_data_with_cache(
 
     canon = normalize_interval(interval)
     cache_key = f"{ticker}_{canon}_{start_date}_{end_date}"
+    path = ohlcv_cache.cache_path(ticker, canon)
     cached = None if force else dashboard_state.get_cached_data(cache_key)
 
-    if cached is not None:
+    if cached is not None and _memory_copy_current(cache_key, path, canon):
         logger.debug(f"Cache hit for {cache_key}")
         return cached
 
@@ -103,14 +153,25 @@ def fetch_data_with_cache(
             return
         ohlcv_cache.write_frame(ticker, canon, df)
 
-    def _store(df: pd.DataFrame) -> pd.DataFrame:
+    def _store(df: pd.DataFrame, version: float | None = None) -> pd.DataFrame:
+        """Keep ``df`` in memory, stamped with the disk version it matches.
+
+        A copy read from disk carries that file's mtime, not the time it was
+        stored: a background revalidation may write a newer file before this
+        call returns, and the stamp must not hide it.
+        """
         windowed = ohlcv_cache.slice_window(df, start_date, end_date)
         if windowed is None or windowed.empty:
             raise ValueError(f"No data available for {ticker}")
         dashboard_state.set_cached_data(cache_key, windowed)
+        _memory_stored_at[cache_key] = time.time() if version is None else version
         return windowed
 
-    path = ohlcv_cache.cache_path(ticker, canon)
+    try:
+        # Read before the frame, so a write in between makes the stamp older, never newer.
+        disk_version = None if force else path.stat().st_mtime
+    except OSError:
+        disk_version = None
     disk_frame = None if force else ohlcv_cache.load_frame(ticker, canon)
     freshness = (
         "missing"
@@ -119,7 +180,7 @@ def fetch_data_with_cache(
     )
 
     if not force and disk_frame is not None and freshness == "fresh":
-        return _store(disk_frame)
+        return _store(disk_frame, disk_version)
 
     if not force and disk_frame is not None and freshness == "stale":
         ohlcv_cache.schedule_revalidate(
@@ -128,7 +189,7 @@ def fetch_data_with_cache(
             end_date,
             lambda start, end: _yahoo(start, end),
         )
-        return _store(disk_frame)
+        return _store(disk_frame, disk_version)
 
     # force, missing, or expired → blocking fetch
     try:
@@ -158,7 +219,7 @@ def fetch_data_with_cache(
                 ticker,
                 exc,
             )
-            return _store(disk_frame)
+            return _store(disk_frame, disk_version)
         # Transient failures keep their type so the UI can offer a retry
         # instead of showing a dead end. Only genuine not-found is flattened.
         if isinstance(exc, TransientFetchError):

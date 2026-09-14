@@ -199,10 +199,16 @@ def create_demo_app(settings: DemoSettings | None = None, access_settings=None, 
         s = access_settings
         try:
             access.mailer.check()
-            logger.info("demo access: mail server %s:%s reachable, sign-in accepted", s.smtp_host, s.smtp_port)
+            logger.info(
+                "demo access: mail server %s:%s reachable, sign-in accepted, sending as %s",
+                s.smtp_host, s.smtp_port, s.mail_from,
+            )
         except MailError as exc:
             reason = str(exc)
-            if "535" in reason or "Authentication" in reason:
+            if "553" in reason or "not owned" in reason:
+                hint = (f"The mailbox {s.smtp_user} may not send as EMAIL_FROM. In Neo's admin panel add that "
+                        "address as an alias of the mailbox, or set EMAIL_FROM to the mailbox itself.")
+            elif "535" in reason or "Authentication" in reason:
                 hint = ("Wrong user or password. In the server .env, wrap a password that contains $ in "
                         "single quotes: Docker Compose reads $ as a variable and cuts the value short.")
             elif "timed out" in reason.lower() or "Timeout" in reason:

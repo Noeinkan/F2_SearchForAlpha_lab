@@ -20,6 +20,57 @@ from lib.timeframes import full_history_window, normalize_interval
 logger = logging.getLogger(__name__)
 
 
+def _page_load_decision(ticker: str, interval: str) -> str:
+    """What a page's one-shot autoload does when the server already holds a session.
+
+    The layout is built once, at server start, from the startup load: every
+    page opened later starts with that header price, those signal lists and
+    that table, however the session has moved on since. So:
+
+    - ``reload``: the cache has refreshed this symbol's bars in the background
+      since they were loaded (today's bar, typically), so load them;
+    - ``show-session``: the session is newer than the page, so send its
+      snapshot, which costs no fetch and no indicator run;
+    - ``skip``: the page already shows the session, or the session holds
+      another symbol or interval, which the page's own ticker wiring loads.
+    """
+    from lib.dash.helpers import ohlcv_newer_on_disk
+
+    same = (
+        str(dashboard_state.ticker or '').upper() == ticker
+        and dashboard_state.interval == interval
+    )
+    if not same:
+        return 'skip'
+    if ohlcv_newer_on_disk(ticker, interval):
+        return 'reload'
+    snapshot = dashboard_state.session_snapshot
+    if snapshot is not None and snapshot is not dashboard_state.layout_snapshot:
+        return 'show-session'
+    return 'skip'
+
+
+def _snapshot_outputs(snapshot, interval: str, generation):
+    """The load callback's twelve outputs for a session snapshot."""
+    status = snapshot.data_status
+    if interval != "1d":
+        status = f"{status} · {interval.upper()}"
+    return (
+        status,
+        snapshot.strategy_order,
+        generation,
+        snapshot.buy_options,
+        snapshot.sell_options,
+        snapshot.unified_rows,
+        snapshot.chart_title,
+        snapshot.chart_subtitle,
+        snapshot.header_symbol,
+        snapshot.header_price,
+        snapshot.header_change,
+        snapshot.data_display,
+    )
+
+
 def register_data_loading_callbacks(app) -> None:
     @app.callback(
         [Output('ticker-dropdown', 'value'),
@@ -138,9 +189,13 @@ def register_data_loading_callbacks(app) -> None:
         if trigger_id == 'autoload-interval':
             if n_intervals is None or n_intervals < 1:
                 raise PreventUpdate
+            ticker = str(ticker or DEFAULT_TICKER).strip().upper()
             if dashboard_state.df is not None:
-                raise PreventUpdate
-            ticker = ticker or DEFAULT_TICKER
+                decision = _page_load_decision(ticker, canon)
+                if decision == 'skip':
+                    raise PreventUpdate
+                if decision == 'show-session':
+                    return _snapshot_outputs(dashboard_state.session_snapshot, canon, no_update)
         elif trigger_id == 'load-data-button':
             if not n_clicks:
                 raise PreventUpdate
@@ -168,24 +223,7 @@ def register_data_loading_callbacks(app) -> None:
                 interval=canon,
                 force=force,
             )
-            status = snapshot.data_status
-            if canon != "1d":
-                status = f"{status} · {canon.upper()}"
-
-            return (
-                status,
-                snapshot.strategy_order,
-                next_generation,
-                snapshot.buy_options,
-                snapshot.sell_options,
-                snapshot.unified_rows,
-                snapshot.chart_title,
-                snapshot.chart_subtitle,
-                snapshot.header_symbol,
-                snapshot.header_price,
-                snapshot.header_change,
-                snapshot.data_display,
-            )
+            return _snapshot_outputs(snapshot, canon, next_generation)
 
         except Exception as e:
             logger.error(f"Error loading data: {e}")

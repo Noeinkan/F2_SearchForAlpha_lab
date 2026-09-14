@@ -529,6 +529,40 @@ class TestBuildSecStatement(unittest.TestCase):
         df = _build_sec_statement(concepts, usgaap)
         self.assertTrue(np.isnan(df.loc["Operating Income", 2021]))
 
+    def test_renamed_tag_fills_the_years_before_the_rename(self):
+        """Apple: SalesRevenueNet until 2018, RevenueFromContractWithCustomer after, overlapping on 2017-2018."""
+        usgaap = {
+            "SalesRevenueNet": {"units": {"USD": [
+                _make_usgaap_entry(2015, 233_715), _make_usgaap_entry(2016, 215_639),
+                _make_usgaap_entry(2017, 229_234), _make_usgaap_entry(2018, 265_595),
+            ]}},
+            "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+                _make_usgaap_entry(2017, 229_234), _make_usgaap_entry(2018, 265_595),
+                _make_usgaap_entry(2019, 260_174), _make_usgaap_entry(2020, 274_515),
+            ]}},
+        }
+        from lib.fundamentals import _INCOME_CONCEPTS
+
+        df = _build_sec_statement(_INCOME_CONCEPTS, usgaap)
+        self.assertEqual(list(df.columns), [2015, 2016, 2017, 2018, 2019, 2020])
+        self.assertEqual(df.loc["Total Revenue", 2015], 233_715.0)
+        self.assertEqual(df.loc["Total Revenue", 2020], 274_515.0)
+
+    def test_concept_that_disagrees_on_shared_years_is_not_stitched(self):
+        usgaap = {
+            "Revenues": {"units": {"USD": [
+                _make_usgaap_entry(2019, 100.0), _make_usgaap_entry(2020, 110.0), _make_usgaap_entry(2021, 120.0),
+            ]}},
+            # A different measure (say, gross of pass-through costs), 10% higher where both report.
+            "RevenueFromContractWithCustomerIncludingAssessedTax": {"units": {"USD": [
+                _make_usgaap_entry(2017, 80.0), _make_usgaap_entry(2019, 110.0),
+            ]}},
+        }
+        concepts = [("Total Revenue", ["Revenues", "RevenueFromContractWithCustomerIncludingAssessedTax"], False)]
+        df = _build_sec_statement(concepts, usgaap)
+        self.assertEqual(list(df.columns), [2019, 2020, 2021])
+        self.assertEqual(df.loc["Total Revenue", 2019], 100.0)
+
     def test_falls_back_to_second_concept_when_first_is_absent(self):
         usgaap = {
             # First concept absent; second present

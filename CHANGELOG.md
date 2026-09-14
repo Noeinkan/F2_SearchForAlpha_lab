@@ -296,6 +296,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `metrics.risk_free_rate` in `config/agent.yaml`.
 
 ### Changed
+- **The dashboard's price data now includes today's bar, and results change.** The fetch
+  window ended at today, but yfinance's `end` is exclusive, so the chart, the header price,
+  the signals and every dashboard backtest ran one session behind until midnight, after the
+  close too; the Fundamentals page's live quote disagreed with the header all day.
+  `full_history_window` and `clamp_window` now end the window tomorrow. **While the market
+  is open, the last bar is today's, still forming**, as on TradingView: a backtest run
+  mid-session includes a bar that can move until the close. Daily cache files are no longer
+  fresh for the whole calendar day they were written: after an hour they are served while a
+  background refresh fetches the latest bars (`_SOFT_DAILY_SECONDS`), and the in-memory
+  copy gives way when that refresh has written newer bars. A page opened after the session
+  has moved on is now sent its current header, signal lists and table on load; before, it
+  showed the ones the server loaded at startup, however old.
 - **`sfa kill` stops the runner cleanly, and `--flatten` works** (ROADMAP 8.8). On Windows
   `sfa kill` used to terminate the process on the spot: no cancel, no disconnect. `--flatten`
   was refused outright. Now the command leaves a stop request in `state/running/`, and the
@@ -377,6 +389,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fell back to `Robustness_Score`.
 
 ### Fixed
+- **Revenue went missing around a renamed SEC tag.** Filers rename XBRL concepts; Apple
+  moved revenue to `RevenueFromContractWithCustomer...` in 2018, and only the newer tag was
+  read, so fiscal 2015-2016 and the quarters to 2017-Q3 had no revenue. A period the chosen
+  concept lacks is now filled from an alternate that agrees with it within 2% on every
+  period both report, and never from one with no shared period to check. AAPL, PG and JNJ
+  gain their 2016-2017 revenue, matching the filed figures. NVDA's 2016-2019 quarterly free
+  cash flow falls: its capital expenditure for those quarters was filed under the older
+  tag, was read as missing and counted as zero.
+- **The quarterly Fundamentals charts were unreadable**: 40 points, each with a value label.
+  Above 12 points the labels give way to the hover readout.
 - **SEC EPS was not adjusted for stock splits, so older fundamentals were wrong.** Filings
   report EPS on the share count of their day, while Yahoo's prices are split-adjusted.
   Apple's annual EPS fell from 9.21 (2017) to 2.98 (2018) at the 2020 four-for-one split,

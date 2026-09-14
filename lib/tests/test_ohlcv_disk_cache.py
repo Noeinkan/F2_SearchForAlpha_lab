@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from lib.dash import ohlcv_disk_cache as disk
-from lib.dash.helpers import fetch_data_with_cache
+from lib.dash.helpers import fetch_data_with_cache, ohlcv_newer_on_disk
 from lib.dash.state import dashboard_state
 
 
@@ -58,6 +58,9 @@ def test_classify_fresh_stale_expired_daily():
     path = disk.cache_path("BBB", "1d")
     now = path.stat().st_mtime
     assert disk.classify_freshness(path, "1d", now=now) == "fresh"
+    # Same calendar day but past the soft TTL: today's bar may have moved.
+    later_today = now + disk._SOFT_DAILY_SECONDS + 10
+    assert disk.classify_freshness(path, "1d", now=later_today) == "stale"
     tomorrow = (datetime.fromtimestamp(now) + timedelta(days=1)).timestamp()
     assert disk.classify_freshness(path, "1d", now=tomorrow) == "stale"
     far = now + disk._HARD_DAILY_SECONDS + 10
@@ -195,6 +198,34 @@ def test_stale_if_error_serves_disk():
     ):
         out = fetch_data_with_cache("JJJ", "1900-01-01", "2026-08-04")
         assert len(out) == 4
+
+
+def test_todays_forming_bar_is_refreshed_within_the_day():
+    """A daily file written earlier today no longer counts as fresh until midnight."""
+    morning = _ohlcv(5, start="2024-01-01")
+    morning.loc[morning.index[-1], "Close"] = 100.0  # the bar still forming
+    with patch("lib.data_processing.fetch_data", return_value=morning):
+        assert fetch_data_with_cache("KKK", "1900-01-01", "2026-08-05")["Close"].iloc[-1] == 100.0
+
+    # Two hours later, same day: the memory copy must not be served as is.
+    path = disk.cache_path("KKK", "1d")
+    two_hours_ago = datetime.now().timestamp() - 2 * 3600
+    __import__("os").utime(path, (two_hours_ago, two_hours_ago))
+    closed = morning.tail(2).copy()
+    closed.loc[closed.index[-1], "Close"] = 104.0
+    with patch("lib.data_processing.fetch_data", return_value=closed) as fetch:
+        served = fetch_data_with_cache("KKK", "1900-01-01", "2026-08-05")
+        assert fetch.call_count == 1  # background revalidation (sync in tests)
+    assert served["Close"].iloc[-1] == 100.0  # stale copy served while revalidating
+    # What the page-load autoload asks before skipping a reload.
+    assert ohlcv_newer_on_disk("KKK", "1d")
+
+    # The next load sees the revalidated file, not the old memory copy.
+    with patch("lib.data_processing.fetch_data") as fetch:
+        assert fetch_data_with_cache("KKK", "1900-01-01", "2026-08-05")["Close"].iloc[-1] == 104.0
+        fetch.assert_not_called()
+    assert not ohlcv_newer_on_disk("KKK", "1d")
+    assert not ohlcv_newer_on_disk("NEVER_LOADED", "1d")
 
 
 def test_miss_calls_yahoo():

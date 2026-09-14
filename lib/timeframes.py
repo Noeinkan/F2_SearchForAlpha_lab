@@ -142,7 +142,9 @@ def clamp_window(
         now = now.to_pydatetime()
     now = now.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
     earliest = now - timedelta(days=max_days)
-    latest = now
+    # yfinance's ``end`` is exclusive: tomorrow is the latest end that still
+    # returns today's bars.
+    latest = now + timedelta(days=1)
 
     orig_start, orig_end = start_dt, end_dt
 
@@ -211,6 +213,11 @@ def full_history_window(
     yfinance returns from the listing date. Intraday reuses ``MAX_LOOKBACK_DAYS``
     so this and ``clamp_window`` can never disagree about where the cap is.
 
+    The end is *tomorrow*, because yfinance's ``end`` is exclusive: an end of
+    today left today's bar out, so the chart, the header price, the signals
+    and every backtest ran one session behind until midnight -- after the
+    close too. While the market is open, today's bar is the one still forming.
+
     ``as_of`` is for tests; production uses ``datetime.now()``.
     """
     canon = normalize_interval(interval)
@@ -221,7 +228,7 @@ def full_history_window(
 
     max_days = MAX_LOOKBACK_DAYS[canon]
     start = EARLIEST_HISTORY if max_days is None else _fmt_date(now - timedelta(days=max_days))
-    return start, _fmt_date(now)
+    return start, _fmt_date(now + timedelta(days=1))
 
 
 _OHLCV_AGG = {

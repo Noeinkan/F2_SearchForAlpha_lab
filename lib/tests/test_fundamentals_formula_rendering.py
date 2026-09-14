@@ -174,3 +174,21 @@ def test_render_payload_quarterly_keeps_annual_valuation_and_big_five():
     )
     header = financials_band.children[0]
     assert any(getattr(node, 'id', None) == 'fundamentals-period-toggle' for node in header.children)
+
+
+def test_chart_labels_each_point_on_the_annual_view_but_not_on_40_quarters():
+    from lib.dash.callbacks.fundamentals_render import CHART_LABEL_MAX_POINTS, _metric_figure
+    from lib.dash.dash_config import DEFAULT_THEME, get_theme
+
+    theme = get_theme(DEFAULT_THEME)
+    years = list(range(2015, 2026))
+    annual = _metric_figure('Sales', [float(v) for v in range(11)], years, theme).data[0]
+    assert annual.mode == 'lines+markers+text'
+    assert annual.text[-1] == '10.00'
+
+    quarters = [f'{2016 + i // 4}-Q{i % 4 + 1}' for i in range(40)]
+    assert len(quarters) > CHART_LABEL_MAX_POINTS
+    quarterly = _metric_figure('Sales', [float(v) for v in range(40)], quarters, theme).data[0]
+    assert quarterly.mode == 'lines+markers'
+    assert not quarterly.text
+    assert '%{y' in quarterly.hovertemplate  # values stay readable on hover

@@ -209,6 +209,8 @@ def create_app() -> dash.Dash:
 
     logger.info("Bootstrapping default market session (%s)...", "TSLA")
     bootstrap = try_bootstrap_default_session()
+    # The static layout below is rendered from this snapshot, once.
+    dashboard_state.layout_snapshot = bootstrap
 
     # eager_loading=False: the terminal price chart is TradingView Lightweight
     # Charts (assets/10-sfa-chart.js), not Plotly. Embedding plotly.min.js

@@ -962,16 +962,22 @@ def _chart_card(label: str, values: list[float | None], years: list[Any], theme:
     return wrap_flow_diagram(card, index=f'fundamentals-{label}', theme=theme)
 
 
+# Above this many points the value labels overlap into a smear (40 SEC quarters
+# since ROADMAP 7.6), so they give way to the hover readout.
+CHART_LABEL_MAX_POINTS = 12
+
+
 def _metric_figure(label: str, values: list[float | None], years: list[Any], theme: dict) -> go.Figure:
     fig = go.Figure()
     y_values = [value * 100 if label == 'ROIC' and value is not None else value for value in values]
+    labelled = len(y_values) <= CHART_LABEL_MAX_POINTS
     fig.add_trace(go.Scatter(
         x=years,
         y=y_values,
-        mode='lines+markers+text',
+        mode='lines+markers+text' if labelled else 'lines+markers',
         line={'color': theme['accent_blue'], 'width': 2},
-        marker={'size': 6, 'color': theme['accent_blue']},
-        text=[_chart_text(value, label) for value in y_values],
+        marker={'size': 6 if labelled else 4, 'color': theme['accent_blue']},
+        text=[_chart_text(value, label) for value in y_values] if labelled else None,
         textposition='top center',
         textfont={'size': 9, 'color': theme['text_secondary']},
         hovertemplate='%{x}: %{y:,.2f}<extra></extra>',

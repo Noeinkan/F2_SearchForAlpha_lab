@@ -22,7 +22,7 @@
     "tracking": "SQLite on the access-data volume: sign-ins, page loads, backtests, data and fundamentals loads, optimiser runs, limits hit, per email",
     "admin": "/admin, unlocked by DEMO_ADMIN_TOKEN (server .env); CSV export; extend, revoke, delete",
     "privacy": "Sign-in page states what is stored and why; deleted 365 days after the last visit or on request",
-    "mail": "Neo mailbox of noeinsolutions.com (smtp0001.neo.space:587, STARTTLS; the Hetzner server blocks outbound 465), the same account and variable names as W3_capsar_io; SPF and DKIM already published for the domain; 200 sign-in emails a day at most, of Neo's ~1,000 shared by the mailbox",
+    "mail": "Neo mailbox of noeinsolutions.com (smtp0001.neo.space:587, STARTTLS; the Hetzner server blocks outbound 465), the same account and variable names as W3_capsar_io; sends as support@noeinsolutions.com, an alias of that mailbox, which is also the contact visitors see; SPF and DKIM already published for the domain; 200 sign-in emails a day at most, of Neo's ~1,000 shared by the mailbox",
     "secrets": ["NEO_SMTP_HOST", "NEO_SMTP_PORT", "NEO_SMTP_USER", "NEO_SMTP_PASS", "EMAIL_FROM", "DEMO_ADMIN_TOKEN"],
     "killSwitch": "DEMO_ACCESS_GATE=false opens the demo to anyone, unrecorded; local runs only"
   },

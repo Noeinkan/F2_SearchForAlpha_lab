@@ -287,7 +287,7 @@ KOFI_URL = f'https://ko-fi.com/{KOFI_USERNAME}'
 # Web3Forms and Formspree both work — and keep the real address in the relay's
 # dashboard instead of here.
 FEEDBACK_EMAIL = os.environ.get(
-    'SFA_FEEDBACK_EMAIL', 'andrea.aita@noeinsolutions.com'
+    'SFA_FEEDBACK_EMAIL', 'support@noeinsolutions.com'
 ).strip()
 FEEDBACK_ENDPOINT = os.environ.get('SFA_FEEDBACK_ENDPOINT', '').strip()
 FEEDBACK_ACCESS_KEY = os.environ.get('SFA_FEEDBACK_ACCESS_KEY', '').strip()

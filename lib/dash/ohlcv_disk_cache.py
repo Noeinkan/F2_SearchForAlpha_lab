@@ -13,7 +13,7 @@ import os
 import re
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 from typing import Callable, Literal, Optional
 
@@ -29,6 +29,7 @@ _DEFAULT_RELATIVE = Path("state") / "ohlcv_cache"
 # Soft = serve without network; hard = beyond this must block (or miss).
 _SOFT_INTRADAY_SECONDS = 3600
 _HARD_INTRADAY_SECONDS = 6 * 3600
+_SOFT_DAILY_SECONDS = 3600
 _HARD_DAILY_SECONDS = 7 * 24 * 3600
 
 _SAFE_KEY = re.compile(r"[^A-Za-z0-9._-]+")
@@ -87,9 +88,10 @@ def classify_freshness(
     clock = time.time() if now is None else now
     age = clock - mtime
     if interval == "1d":
-        mtime_day = datetime.fromtimestamp(mtime).date()
-        today = datetime.fromtimestamp(clock).date()
-        if mtime_day == today:
+        # Soft TTL, not "written today": a file written before the session
+        # opened, or while today's bar was still forming, used to be served
+        # as fresh until midnight.
+        if age <= _SOFT_DAILY_SECONDS:
             return "fresh"
         if age <= _HARD_DAILY_SECONDS:
             return "stale"

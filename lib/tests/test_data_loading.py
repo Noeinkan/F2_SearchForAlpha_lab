@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import dash
 import dash_bootstrap_components as dbc
+import pytest
 
 from lib.dash.callbacks import register_callbacks
+from lib.dash.callbacks.data_loading import _page_load_decision
 from lib.dash.dash_config import DEFAULT_THEME, get_theme
 from lib.dash.integrated_dashboard import create_dashboard_layout
+from lib.dash.state import dashboard_state
 
 
 def _load_data_spec(app):
@@ -104,3 +107,37 @@ def test_chart_glue_clicks_the_boot_button():
     # that race left a black chart frame with DATA rows still in the footer.
     assert "setTimeout(tick" in glue
     assert "payload.candles.length" in glue
+
+
+# --- page-load autoload against a session that has moved on -------------------
+
+@pytest.fixture
+def aapl_session(monkeypatch):
+    startup, later = object(), object()
+    monkeypatch.setattr(dashboard_state, "_ticker", "AAPL")
+    monkeypatch.setattr(dashboard_state, "_interval", "1d")
+    monkeypatch.setattr(dashboard_state, "layout_snapshot", startup)
+    monkeypatch.setattr(dashboard_state, "session_snapshot", startup)
+    monkeypatch.setattr("lib.dash.helpers.ohlcv_newer_on_disk", lambda ticker, interval: False)
+    return startup, later
+
+
+def test_page_built_from_the_current_session_loads_nothing(aapl_session):
+    assert _page_load_decision("AAPL", "1d") == "skip"
+
+
+def test_page_opened_after_the_session_moved_on_is_sent_the_session(aapl_session, monkeypatch):
+    """The layout still carries the startup header price; the session has a newer one."""
+    _startup, later = aapl_session
+    monkeypatch.setattr(dashboard_state, "session_snapshot", later)
+    assert _page_load_decision("AAPL", "1d") == "show-session"
+
+
+def test_bars_refreshed_in_the_background_are_reloaded(aapl_session, monkeypatch):
+    monkeypatch.setattr("lib.dash.helpers.ohlcv_newer_on_disk", lambda ticker, interval: True)
+    assert _page_load_decision("AAPL", "1d") == "reload"
+
+
+def test_session_on_another_symbol_or_interval_is_left_to_the_ticker_wiring(aapl_session):
+    assert _page_load_decision("MSFT", "1d") == "skip"
+    assert _page_load_decision("AAPL", "1h") == "skip"
