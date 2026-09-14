@@ -109,7 +109,10 @@ demo is sending a lot of sign-in emails right now".
    starting with `NEO_SMTP_HOST`, `NEO_SMTP_PORT`, `NEO_SMTP_USER`,
    `NEO_SMTP_PASS` and `EMAIL_FROM`. They read
    `smtp0001.neo.space`, `465`, the mailbox address, its password, and the
-   mailbox address again.
+   mailbox address again. **Change `465` to `587` for the server**: Hetzner
+   blocks outgoing connections on port 465 (and 25), so a send on 465 waits
+   and times out. Port 587 starts plain and switches to encryption before the
+   password is sent (STARTTLS), and the demo picks that up from the port.
 2. **Make an admin token**, at least 24 characters:
    `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Keep it in
    your password manager.
@@ -120,7 +123,7 @@ demo is sending a lot of sign-in emails right now".
    ssh root@77.42.70.26
    cat >> /opt/sites/alpha/.env <<'EOF'
    NEO_SMTP_HOST=smtp0001.neo.space
-   NEO_SMTP_PORT=465
+   NEO_SMTP_PORT=587
    NEO_SMTP_USER=the-mailbox-address
    NEO_SMTP_PASS=the-mailbox-password
    EMAIL_FROM=the-mailbox-address
@@ -129,17 +132,17 @@ demo is sending a lot of sign-in emails right now".
    chmod 600 /opt/sites/alpha/.env
    ```
 
-   Port 465 means the connection is encrypted from the first byte; the demo
-   works that out from the port (`DEMO_SMTP_SECURITY=auto`).
    *If the Neo password is ever changed, Capsar and the demo both stop sending
    until this file and Capsar's `.env` are updated.*
 4. **Deploy**: commit, push, then `bash deploy-demo.sh` from the repo root.
 5. **Check it**: open the demo in a private window — it should land on the
    sign-in page. Sign in with your own address; the email should arrive within
    a minute. Then open `/admin` and find yourself in the table.
-   *If the page says "The sign-in email could not be sent", the SMTP values
-   are wrong: `ssh root@77.42.70.26 "docker logs site-alpha-web --tail 50"`
-   shows the provider's reason.*
+   *If the page says "The sign-in email could not be sent", read the log:
+   `ssh root@77.42.70.26 "docker logs site-alpha-web 2>&1 | grep 'demo access'"`.
+   Right after every start the demo signs in to the mail server once and
+   writes either "mail server … reachable" or "NOT usable" with the reason.
+   "timed out" means a blocked port; "535" means a wrong user or password.*
 
 To change the numbers, edit the `DEMO_*` values in `.deploy/compose.yml` and
 redeploy. To reach the gate without mail on your own machine, see "Run it

@@ -2,9 +2,15 @@
 
 ``SmtpMailer`` speaks plain SMTP through the standard library, so nothing new is
 installed. In production it signs in to the Neo mailbox that hosts
-noeinsolutions.com mail -- the same account Capsar sends from -- over implicit
-TLS on port 465. Neo already signs and authorises that domain's mail (SPF and
-DKIM are published), which is why codes from it reach inboxes rather than spam.
+noeinsolutions.com mail -- the same account Capsar sends from -- on port 587
+with STARTTLS. Not 465: the Hetzner server blocks outbound 465 (and 25), so a
+connection there simply times out. Neo already signs and authorises that
+domain's mail (SPF and DKIM are published), which is why codes from it reach
+inboxes rather than spam.
+
+``check`` signs in and out without sending. The server runs it once at start
+and logs the result, because a mail server the demo cannot reach is otherwise
+invisible until a visitor asks for a code.
 The demo process is sealed off from the network (``demo.sealing``); the server
 opens exactly one door in that seal, to the SMTP host and port.
 
@@ -58,6 +64,9 @@ class ConsoleMailer:
     def __init__(self) -> None:
         self.outbox: list[Mail] = []
 
+    def check(self) -> None:
+        return None
+
     def send(self, mail: Mail) -> None:
         self.outbox.append(mail)
         logger.warning("DEMO_MAIL_BACKEND=console, not sending. To %s: %s\n%s", mail.to, mail.subject, mail.text)
@@ -66,6 +75,32 @@ class ConsoleMailer:
 class SmtpMailer:
     def __init__(self, settings: AccessSettings) -> None:
         self.settings = settings
+
+    def _session(self):
+        """Connected, encrypted and signed in; use as a context manager."""
+        s = self.settings
+        mode = s.tls_mode
+        if mode == "ssl":
+            client = smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, timeout=15, context=ssl.create_default_context())
+        else:
+            client = smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=15)
+        try:
+            if mode == "starttls":
+                client.starttls(context=ssl.create_default_context())
+            if s.smtp_user:
+                client.login(s.smtp_user, s.smtp_password)
+        except BaseException:
+            client.close()
+            raise
+        return client
+
+    def check(self) -> None:
+        """Sign in and out without sending. Raises ``MailError`` when that fails."""
+        try:
+            with self._session() as client:
+                client.noop()
+        except (OSError, smtplib.SMTPException) as exc:
+            raise MailError(f"{type(exc).__name__}: {exc}") from exc
 
     def send(self, mail: Mail) -> None:
         s = self.settings
@@ -79,17 +114,8 @@ class SmtpMailer:
         message["Auto-Submitted"] = "auto-generated"
         message.set_content(mail.text)
         message.add_alternative(mail.html, subtype="html")
-        mode = s.tls_mode
         try:
-            if mode == "ssl":
-                client = smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, timeout=15, context=ssl.create_default_context())
-            else:
-                client = smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=15)
-            with client:
-                if mode == "starttls":
-                    client.starttls(context=ssl.create_default_context())
-                if s.smtp_user:
-                    client.login(s.smtp_user, s.smtp_password)
+            with self._session() as client:
                 client.send_message(message)
         except (OSError, smtplib.SMTPException) as exc:
             logger.error("sign-in email to %s failed: %s", mail.to.rpartition("@")[2], exc)

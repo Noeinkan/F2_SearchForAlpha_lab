@@ -4,7 +4,8 @@
 # (site-deploy.sh creates it, 0600), never in this file:
 #   NEO_SMTP_HOST, NEO_SMTP_PORT, NEO_SMTP_USER, NEO_SMTP_PASS, EMAIL_FROM,
 #   DEMO_ADMIN_TOKEN
-# The mail names and values are Capsar's Neo account, copied from its .env.
+# The mail names and values are Capsar's Neo account, copied from its .env --
+# except NEO_SMTP_PORT, which must be 587 here: this server blocks outbound 465.
 # They are deliberately not listed under `environment:` below, because a key
 # there overrides the same key in .env. Without the host, user and password
 # the demo refuses to start (docs/DEMO.md, "Deploying the gate").

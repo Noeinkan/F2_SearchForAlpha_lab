@@ -189,6 +189,26 @@ def create_demo_app(settings: DemoSettings | None = None, access_settings=None, 
                 logger.exception("demo housekeeping failed")
 
     threading.Thread(target=housekeeping, name="demo-housekeeping", daemon=True).start()
+
+    def check_mail() -> None:
+        # Off the start-up path: a mail server that hangs must not hold the
+        # health check. The log line is the whole point -- without it, a
+        # blocked port stays invisible until a visitor asks for a code.
+        from demo.access.mailer import MailError
+
+        s = access_settings
+        try:
+            access.mailer.check()
+            logger.info("demo access: mail server %s:%s reachable, sign-in accepted", s.smtp_host, s.smtp_port)
+        except MailError as exc:
+            logger.error(
+                "demo access: mail server %s:%s NOT usable (%s); every sign-in code will fail. "
+                "On the Hetzner server outbound 465 is blocked: use NEO_SMTP_PORT=587.",
+                s.smtp_host, s.smtp_port, exc,
+            )
+
+    if access is not None and access_settings.mail_backend == "smtp":
+        threading.Thread(target=check_mail, name="demo-mail-check", daemon=True).start()
     app.demo_store = store
     app.demo_guards = guards
     app.demo_settings = settings

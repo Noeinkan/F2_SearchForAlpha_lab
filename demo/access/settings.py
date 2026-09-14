@@ -7,8 +7,9 @@ The mail account uses the same variable names as Capsar (W3_capsar_io,
 ``server/services/emailService.js``), so one block of credentials serves both:
 ``NEO_SMTP_HOST`` / ``_PORT`` / ``_USER`` / ``_PASS`` and ``EMAIL_FROM``, with
 the generic ``SMTP_*`` names as a fallback. Neo is the mail host of
-noeinsolutions.com: ``smtp0001.neo.space``, port 465, implicit TLS, signed in
-as the mailbox, sending as that mailbox.
+noeinsolutions.com: ``smtp0001.neo.space``, signed in as the mailbox, sending as
+that mailbox. On the Hetzner server the port must be 587 (STARTTLS): outbound
+465 is blocked there, even though Capsar's local ``.env`` says 465.
 """
 
 from __future__ import annotations
@@ -86,7 +87,7 @@ class AccessSettings:
     # Mail (secret file). Names shared with Capsar; SMTP_* is the fallback for each.
     mail_backend: str = "smtp"             # DEMO_MAIL_BACKEND: smtp | console (console logs the code; local runs only)
     smtp_host: str = ""                    # NEO_SMTP_HOST, else SMTP_HOST: smtp0001.neo.space
-    smtp_port: int = 587                   # NEO_SMTP_PORT, else SMTP_PORT: 465 for Neo
+    smtp_port: int = 587                   # NEO_SMTP_PORT, else SMTP_PORT: 587 (the Hetzner server blocks 465)
     smtp_security: str = "auto"            # DEMO_SMTP_SECURITY: auto (465 -> ssl, else starttls) | ssl | starttls | none
     smtp_user: str = ""                    # NEO_SMTP_USER, else SMTP_USER: the mailbox address
     smtp_password: str = ""                # NEO_SMTP_PASS, else SMTP_PASS

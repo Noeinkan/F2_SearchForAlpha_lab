@@ -480,6 +480,12 @@ def test_smtp_mailer_speaks_implicit_tls_to_neo_as_the_mailbox(monkeypatch):
         def send_message(self, message):
             calls.append(("send", message["From"], message["To"]))
 
+        def noop(self):
+            calls.append(("noop",))
+
+        def close(self):
+            calls.append(("close",))
+
     class FakeSMTP_SSL(FakeSMTP):
         pass
 
@@ -502,6 +508,25 @@ def test_smtp_mailer_speaks_implicit_tls_to_neo_as_the_mailbox(monkeypatch):
     assert [c[0] for c in calls] == ["connect", "starttls", "login", "send"]
     assert calls[0][1] == "FakeSMTP" and calls[-1][1] == "Named <n@example.com>"
     assert sender("") == ""
+
+    # The start-up check signs in and out and sends nothing.
+    calls.clear()
+    SmtpMailer(neo).check()
+    assert [c[0] for c in calls] == ["connect", "login", "noop"]
+
+
+def test_the_mail_check_reports_a_blocked_port_as_a_mail_error(monkeypatch):
+    import smtplib
+
+    from demo.access.mailer import SmtpMailer
+
+    def blocked(*args, **kwargs):
+        raise TimeoutError("timed out")  # what outbound 465 looks like on the Hetzner server
+
+    monkeypatch.setattr(smtplib, "SMTP_SSL", blocked)
+    settings = AccessSettings(smtp_host="smtp0001.neo.space", smtp_port=465, smtp_user="u", smtp_password="p")
+    with pytest.raises(MailError, match="TimeoutError"):
+        SmtpMailer(settings).check()
 
 
 def test_network_seal_opens_only_the_mail_server(monkeypatch):
