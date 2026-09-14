@@ -242,7 +242,10 @@ class AccessGate:
                 ),
                 429,
             )
-        if self.store.codes_sent_since(now - 3600) >= s.codes_per_hour:
+        if (
+            self.store.codes_sent_since(now - 3600) >= s.codes_per_hour
+            or self.store.codes_sent_since(now - DAY) >= s.codes_per_day
+        ):
             return _html(
                 pages.signin_page(
                     s, next_path=next_path, email=address,
@@ -271,6 +274,7 @@ class AccessGate:
         try:
             self.mailer.send(mail)
         except MailError:
+            self.store.cancel_code(link)
             return _html(
                 pages.signin_page(
                     s, next_path=next_path, email=address,
@@ -278,6 +282,7 @@ class AccessGate:
                 ),
                 503,
             )
+        self.store.sent(email)
         return _html(pages.sent_page(s, address=address, next_path=next_path))
 
     def _code(self):

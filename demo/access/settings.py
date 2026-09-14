@@ -1,8 +1,14 @@
 """Access-gate settings. Every one is an environment variable with a default.
 
-Numbers and switches live in ``.deploy/compose.yml``. The three secrets --
-``DEMO_SMTP_PASSWORD``, ``DEMO_ADMIN_TOKEN`` and, if the provider wants one,
-``DEMO_SMTP_USER`` -- live only in ``/opt/sites/alpha/.env`` on the server.
+Numbers and switches live in ``.deploy/compose.yml``. The secrets live only in
+``/opt/sites/alpha/.env`` on the server: the admin token, and the mail account.
+
+The mail account uses the same variable names as Capsar (W3_capsar_io,
+``server/services/emailService.js``), so one block of credentials serves both:
+``NEO_SMTP_HOST`` / ``_PORT`` / ``_USER`` / ``_PASS`` and ``EMAIL_FROM``, with
+the generic ``SMTP_*`` names as a fallback. Neo is the mail host of
+noeinsolutions.com: ``smtp0001.neo.space``, port 465, implicit TLS, signed in
+as the mailbox, sending as that mailbox.
 """
 
 from __future__ import annotations
@@ -39,6 +45,22 @@ def _bool(name: str, default: bool) -> bool:
     return default
 
 
+def _first(*names: str) -> str:
+    """The first of ``names`` that is set and not blank."""
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _port(raw: str, default: int) -> int:
+    try:
+        return int(raw) if raw else default
+    except ValueError:
+        return default
+
+
 def _default_contact() -> str:
     return _str("SFA_FEEDBACK_EMAIL", "andrea.aita@noeinsolutions.com")
 
@@ -55,17 +77,20 @@ class AccessSettings:
     code_minutes: int = 15                 # DEMO_CODE_MINUTES: a code or link stops working after this
     code_attempts: int = 5                 # DEMO_CODE_ATTEMPTS: wrong codes before that code is dead
     codes_per_email_per_hour: int = 3      # DEMO_CODES_PER_EMAIL_PER_HOUR: sign-in emails to one address
-    codes_per_hour: int = 60               # DEMO_CODES_PER_HOUR: sign-in emails in total (protects the mail quota)
+    codes_per_hour: int = 60               # DEMO_CODES_PER_HOUR: sign-in emails in total, per hour
+    # Neo allows a mailbox about 1,000 sent emails a day, and that budget is
+    # shared with the owner's own mail and with Capsar's; a bot must not spend it.
+    codes_per_day: int = 200               # DEMO_CODES_PER_DAY: sign-in emails in total, per day
     signups_per_ip_per_day: int = 5        # DEMO_SIGNUPS_PER_IP_PER_DAY: new addresses from one connection
     blocked_domains: frozenset[str] = field(default_factory=frozenset)  # DEMO_BLOCKED_EMAIL_DOMAINS: comma list, added to emails.DISPOSABLE_DOMAINS
-    # Mail
+    # Mail (secret file). Names shared with Capsar; SMTP_* is the fallback for each.
     mail_backend: str = "smtp"             # DEMO_MAIL_BACKEND: smtp | console (console logs the code; local runs only)
-    smtp_host: str = ""                    # DEMO_SMTP_HOST
-    smtp_port: int = 587                   # DEMO_SMTP_PORT
-    smtp_security: str = "starttls"        # DEMO_SMTP_SECURITY: starttls | ssl | none
-    smtp_user: str = ""                    # DEMO_SMTP_USER (secret file)
-    smtp_password: str = ""                # DEMO_SMTP_PASSWORD (secret file)
-    mail_from: str = ""                    # DEMO_MAIL_FROM: e.g. "SearchForAlpha Lab <demo@noeinsolutions.com>"
+    smtp_host: str = ""                    # NEO_SMTP_HOST, else SMTP_HOST: smtp0001.neo.space
+    smtp_port: int = 587                   # NEO_SMTP_PORT, else SMTP_PORT: 465 for Neo
+    smtp_security: str = "auto"            # DEMO_SMTP_SECURITY: auto (465 -> ssl, else starttls) | ssl | starttls | none
+    smtp_user: str = ""                    # NEO_SMTP_USER, else SMTP_USER: the mailbox address
+    smtp_password: str = ""                # NEO_SMTP_PASS, else SMTP_PASS
+    mail_from: str = ""                    # EMAIL_FROM, else SMTP_FROM, else the mailbox: Neo sends only as the mailbox or its aliases
     public_url: str = ""                   # DEMO_PUBLIC_URL: base of the link in the email; empty uses the request's host
     contact_email: str = field(default_factory=_default_contact)  # DEMO_CONTACT_EMAIL: shown on the privacy note and the trial-ended page
     # Admin
@@ -85,15 +110,17 @@ class AccessSettings:
             code_attempts=_int("DEMO_CODE_ATTEMPTS", base.code_attempts),
             codes_per_email_per_hour=_int("DEMO_CODES_PER_EMAIL_PER_HOUR", base.codes_per_email_per_hour),
             codes_per_hour=_int("DEMO_CODES_PER_HOUR", base.codes_per_hour),
+            codes_per_day=_int("DEMO_CODES_PER_DAY", base.codes_per_day),
             signups_per_ip_per_day=_int("DEMO_SIGNUPS_PER_IP_PER_DAY", base.signups_per_ip_per_day),
             blocked_domains=frozenset(extra),
             mail_backend=_str("DEMO_MAIL_BACKEND", base.mail_backend).lower(),
-            smtp_host=_str("DEMO_SMTP_HOST", base.smtp_host),
-            smtp_port=_int("DEMO_SMTP_PORT", base.smtp_port),
+            smtp_host=_first("NEO_SMTP_HOST", "SMTP_HOST"),
+            smtp_port=_port(_first("NEO_SMTP_PORT", "SMTP_PORT"), base.smtp_port),
             smtp_security=_str("DEMO_SMTP_SECURITY", base.smtp_security).lower(),
-            smtp_user=_str("DEMO_SMTP_USER", base.smtp_user),
-            smtp_password=os.environ.get("DEMO_SMTP_PASSWORD", base.smtp_password),
-            mail_from=_str("DEMO_MAIL_FROM", base.mail_from),
+            smtp_user=_first("NEO_SMTP_USER", "SMTP_USER"),
+            # Not stripped: a password is taken exactly as written.
+            smtp_password=os.environ.get("NEO_SMTP_PASS") or os.environ.get("SMTP_PASS") or "",
+            mail_from=_first("EMAIL_FROM", "SMTP_FROM") or _first("NEO_SMTP_USER", "SMTP_USER"),
             public_url=_str("DEMO_PUBLIC_URL", base.public_url).rstrip("/"),
             contact_email=_str("DEMO_CONTACT_EMAIL", _default_contact()),
             admin_token=_str("DEMO_ADMIN_TOKEN", base.admin_token),
@@ -102,6 +129,13 @@ class AccessSettings:
     @property
     def admin_enabled(self) -> bool:
         return len(self.admin_token) >= MIN_ADMIN_TOKEN_LENGTH
+
+    @property
+    def tls_mode(self) -> str:
+        """How the SMTP connection is encrypted. 465 is implicit TLS (Neo), 587 upgrades with STARTTLS."""
+        if self.smtp_security == "auto":
+            return "ssl" if self.smtp_port == 465 else "starttls"
+        return self.smtp_security
 
     def problems(self) -> list[str]:
         """What stops the gate from working. The server refuses to start on any."""
@@ -112,11 +146,11 @@ class AccessSettings:
             found.append(f"DEMO_MAIL_BACKEND must be smtp or console, not {self.mail_backend!r}")
         if self.mail_backend == "smtp":
             if not self.smtp_host:
-                found.append("DEMO_SMTP_HOST is not set, so no sign-in email can be sent")
-            if not self.mail_from:
-                found.append("DEMO_MAIL_FROM is not set")
-            if self.smtp_security not in ("starttls", "ssl", "none"):
-                found.append(f"DEMO_SMTP_SECURITY must be starttls, ssl or none, not {self.smtp_security!r}")
+                found.append("NEO_SMTP_HOST (or SMTP_HOST) is not set, so no sign-in email can be sent")
+            if not self.smtp_user or not self.smtp_password:
+                found.append("NEO_SMTP_USER and NEO_SMTP_PASS (or SMTP_USER and SMTP_PASS) are needed to sign in to the mail server")
+            if self.smtp_security not in ("auto", "starttls", "ssl", "none"):
+                found.append(f"DEMO_SMTP_SECURITY must be auto, ssl, starttls or none, not {self.smtp_security!r}")
         return found
 
     def as_manifest_limits(self) -> dict[str, int]:
@@ -126,6 +160,7 @@ class AccessSettings:
             "code_minutes": self.code_minutes,
             "codes_per_email_per_hour": self.codes_per_email_per_hour,
             "codes_per_hour": self.codes_per_hour,
+            "codes_per_day": self.codes_per_day,
             "signups_per_ip_per_day": self.signups_per_ip_per_day,
             "retention_days": self.retention_days,
         }

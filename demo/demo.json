@@ -22,7 +22,8 @@
     "tracking": "SQLite on the access-data volume: sign-ins, page loads, backtests, data and fundamentals loads, optimiser runs, limits hit, per email",
     "admin": "/admin, unlocked by DEMO_ADMIN_TOKEN (server .env); CSV export; extend, revoke, delete",
     "privacy": "Sign-in page states what is stored and why; deleted 365 days after the last visit or on request",
-    "secrets": ["DEMO_SMTP_HOST", "DEMO_SMTP_PORT", "DEMO_SMTP_SECURITY", "DEMO_SMTP_USER", "DEMO_SMTP_PASSWORD", "DEMO_MAIL_FROM", "DEMO_ADMIN_TOKEN"],
+    "mail": "Neo mailbox of noeinsolutions.com (smtp0001.neo.space:465, implicit TLS), the same account and variable names as W3_capsar_io; SPF and DKIM already published for the domain; 200 sign-in emails a day at most, of Neo's ~1,000 shared by the mailbox",
+    "secrets": ["NEO_SMTP_HOST", "NEO_SMTP_PORT", "NEO_SMTP_USER", "NEO_SMTP_PASS", "EMAIL_FROM", "DEMO_ADMIN_TOKEN"],
     "killSwitch": "DEMO_ACCESS_GATE=false opens the demo to anyone, unrecorded; local runs only"
   },
 
@@ -68,12 +69,13 @@
     "perEmailOptimiserRunsPerDay": 25,
     "codesPerEmailPerHour": 3,
     "codesPerHour": 60,
+    "codesPerDay": 200,
     "newAddressesPerIpPerDay": 5,
     "note": "perIpPerHour counts optimiser runs started; perIpPerMinute counts backtests, data loads and fundamentals loads. Oversized requests are clamped server-side; refusals show a notice, never an error page. The date range is the snapshot's."
   },
 
   "resets": "Each visitor's dashboard state lives in memory and is dropped after 30 idle minutes (or when 60 visitors are held); optimiser studies are written to a tmpfs. Nothing a visitor does is visible to the next one. Only the access and usage log persists (access-data volume), and it is visible only at /admin.",
-  "costPerVisit": "none beyond one transactional email per sign-in (capped at 60 an hour)",
+  "costPerVisit": "none beyond one email per sign-in from the Neo mailbox (capped at 60 an hour, 200 a day)",
 
   "runLocally": "DEMO_MODE=true DEMO_MAIL_BACKEND=console python -m demo.server",
   "shots": [

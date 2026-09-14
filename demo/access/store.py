@@ -188,7 +188,10 @@ class AccessStore:
     # ----------------------------------------------------------------- sign-in
 
     def create_code(self, *, email: str, address: str, ip: str, user_agent: str, minutes: int) -> tuple[str, str]:
-        """Register a sign-in email about to be sent. Returns ``(code, link_token)``."""
+        """Register a sign-in email about to be sent. Returns ``(code, link_token)``.
+
+        Call ``sent`` once the mail server took it, or ``cancel_code`` if it did not.
+        """
         now = self._clock()
         code = f"{secrets.randbelow(10**6):06d}"
         link = secrets.token_urlsafe(32)
@@ -203,8 +206,27 @@ class AccessStore:
                 "INSERT INTO codes (email, code_hash, link_hash, created_at, expires_at, ip) VALUES (?, ?, ?, ?, ?, ?)",
                 (email, _hash("code", email, code), _hash("link", link), now, now + minutes * 60, ip),
             )
-            self._insert_event(email, now, "code_sent", None)
         return code, link
+
+    def sent(self, email: str) -> None:
+        self.record(email, "code_sent")
+
+    def cancel_code(self, link_token: str) -> None:
+        """Forget a code whose email never left. Otherwise the rate limits would
+        count, against this address and this connection, a message that never
+        arrived -- and a brand-new address would be kept for nothing."""
+        with self._lock, self._conn:
+            row = self._conn.execute(
+                "SELECT email FROM codes WHERE link_hash = ?", (_hash("link", link_token),)
+            ).fetchone()
+            if row is None:
+                return
+            self._conn.execute("DELETE FROM codes WHERE link_hash = ?", (_hash("link", link_token),))
+            self._conn.execute(
+                "DELETE FROM visitors WHERE email = ? AND verified_at IS NULL "
+                "AND NOT EXISTS (SELECT 1 FROM codes WHERE codes.email = visitors.email)",
+                (row["email"],),
+            )
 
     def verify_code(self, email: str, code: str, *, trial_days: int, max_attempts: int) -> Verification:
         now = self._clock()

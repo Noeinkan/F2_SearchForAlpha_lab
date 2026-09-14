@@ -2,11 +2,12 @@
 # Email-gated: visitors verify an address and get a trial (demo/access/).
 # The mail account and the admin token live ONLY in /opt/sites/alpha/.env
 # (site-deploy.sh creates it, 0600), never in this file:
-#   DEMO_SMTP_HOST, DEMO_SMTP_PORT, DEMO_SMTP_SECURITY, DEMO_SMTP_USER,
-#   DEMO_SMTP_PASSWORD, DEMO_MAIL_FROM, DEMO_ADMIN_TOKEN
+#   NEO_SMTP_HOST, NEO_SMTP_PORT, NEO_SMTP_USER, NEO_SMTP_PASS, EMAIL_FROM,
+#   DEMO_ADMIN_TOKEN
+# The mail names and values are Capsar's Neo account, copied from its .env.
 # They are deliberately not listed under `environment:` below, because a key
-# there overrides the same key in .env. Without DEMO_SMTP_HOST and
-# DEMO_MAIL_FROM the demo refuses to start (docs/DEMO.md, "Access").
+# there overrides the same key in .env. Without the host, user and password
+# the demo refuses to start (docs/DEMO.md, "Deploying the gate").
 services:
   web:
     build:
@@ -50,6 +51,9 @@ services:
       DEMO_CODE_ATTEMPTS: "5"
       DEMO_CODES_PER_EMAIL_PER_HOUR: "3"
       DEMO_CODES_PER_HOUR: "60"
+      # The Neo mailbox sends about 1,000 a day in total, shared with the
+      # owner's own mail and Capsar's; the demo may use a fifth of it.
+      DEMO_CODES_PER_DAY: "200"
       DEMO_SIGNUPS_PER_IP_PER_DAY: "5"
       SFA_LOG_LEVEL: INFO
     volumes:

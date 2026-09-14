@@ -185,10 +185,31 @@ def test_mail_failure_says_so_instead_of_pretending(world):
         def send(self, mail):
             raise MailError("connection refused")
 
+    working = world.gate.mailer
     world.gate.mailer = Broken()
-    response = world.server.test_client().post("/access", data={"email": "jane@example.com"})
-    assert response.status_code == 503
-    assert "could not be sent" in response.get_data(as_text=True)
+    client = world.server.test_client()
+    for _ in range(4):  # more than the 3-an-hour cap: failures must not count against it
+        response = client.post("/access", data={"email": "jane@example.com"})
+        assert response.status_code == 503
+        assert "could not be sent" in response.get_data(as_text=True)
+    assert world.store.visitor("jane@example.com") is None  # a new address that got nothing is not kept
+    assert world.store.recent_events() == []
+
+    world.gate.mailer = working
+    assert client.post("/access", data={"email": "jane@example.com"}).status_code == 200
+    assert [e["kind"] for e in world.store.recent_events()] == ["code_sent"]
+
+
+def test_sign_in_emails_are_capped_per_day_to_protect_the_shared_mailbox(world):
+    world.gate.settings = AccessSettings(**{**world.settings.__dict__, "codes_per_day": 3, "signups_per_ip_per_day": 50})
+    client = world.server.test_client()
+    statuses = []
+    for hour in range(4):
+        statuses.append(client.post("/access", data={"email": f"person{hour}@example.com"}).status_code)
+        world.clock.now += 3601  # step past the hourly cap each time
+    assert statuses == [200, 200, 200, 429]
+    world.clock.now += DAY
+    assert client.post("/access", data={"email": "late@example.com"}).status_code == 200
 
 
 # --- The trial ------------------------------------------------------------------
@@ -383,10 +404,45 @@ def test_return_paths_stay_on_the_site(value, expected):
     assert safe_next(value) == expected
 
 
-def test_settings_refuse_an_smtp_gate_with_no_server(monkeypatch):
-    for name in ("DEMO_SMTP_HOST", "DEMO_MAIL_FROM", "DEMO_MAIL_BACKEND", "DEMO_ACCESS_GATE"):
+_MAIL_VARS = (
+    "NEO_SMTP_HOST", "NEO_SMTP_PORT", "NEO_SMTP_USER", "NEO_SMTP_PASS",
+    "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "EMAIL_FROM", "SMTP_FROM",
+    "DEMO_SMTP_SECURITY", "DEMO_MAIL_BACKEND", "DEMO_ACCESS_GATE",
+)
+
+
+def test_mail_settings_read_capsars_neo_names_first(monkeypatch):
+    for name in _MAIL_VARS:
         monkeypatch.delenv(name, raising=False)
-    assert any("DEMO_SMTP_HOST" in p for p in AccessSettings.from_env().problems())
+    # The block from Capsar's .env, pasted as is.
+    monkeypatch.setenv("NEO_SMTP_HOST", "smtp0001.neo.space")
+    monkeypatch.setenv("NEO_SMTP_PORT", "465")
+    monkeypatch.setenv("NEO_SMTP_USER", "owner@noeinsolutions.example")
+    monkeypatch.setenv("NEO_SMTP_PASS", " pass word ")
+    monkeypatch.setenv("SMTP_HOST", "smtp-relay.fallback.example")
+    monkeypatch.setenv("SMTP_PORT", "587")
+    settings = AccessSettings.from_env()
+    assert (settings.smtp_host, settings.smtp_port, settings.tls_mode) == ("smtp0001.neo.space", 465, "ssl")
+    assert settings.smtp_password == " pass word "  # taken exactly as written
+    assert settings.mail_from == "owner@noeinsolutions.example"  # Neo sends only as the mailbox
+    assert settings.problems() == []
+
+    for name in ("NEO_SMTP_HOST", "NEO_SMTP_PORT"):
+        monkeypatch.delenv(name)
+    settings = AccessSettings.from_env()
+    assert (settings.smtp_host, settings.smtp_port, settings.tls_mode) == ("smtp-relay.fallback.example", 587, "starttls")
+    monkeypatch.setenv("EMAIL_FROM", "demo@noeinsolutions.example")
+    monkeypatch.setenv("DEMO_SMTP_SECURITY", "none")
+    settings = AccessSettings.from_env()
+    assert settings.mail_from == "demo@noeinsolutions.example" and settings.tls_mode == "none"
+
+
+def test_settings_refuse_an_smtp_gate_with_no_server(monkeypatch):
+    for name in _MAIL_VARS:
+        monkeypatch.delenv(name, raising=False)
+    problems = AccessSettings.from_env().problems()
+    assert any("NEO_SMTP_HOST" in p for p in problems)
+    assert any("NEO_SMTP_PASS" in p for p in problems)
     monkeypatch.setenv("DEMO_MAIL_BACKEND", "console")
     assert AccessSettings.from_env().problems() == []
     monkeypatch.setenv("DEMO_ACCESS_GATE", "false")
@@ -396,6 +452,56 @@ def test_settings_refuse_an_smtp_gate_with_no_server(monkeypatch):
     monkeypatch.setenv("DEMO_BLOCKED_EMAIL_DOMAINS", "Spam.example, junk.example")
     settings = AccessSettings.from_env()
     assert settings.trial_days == 3 and "spam.example" in settings.blocked_domains
+
+
+def test_smtp_mailer_speaks_implicit_tls_to_neo_as_the_mailbox(monkeypatch):
+    import smtplib
+
+    from demo.access.mailer import Mail, SmtpMailer, sender
+
+    calls = []
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=None, context=None):
+            calls.append(("connect", type(self).__name__, host, port, context is not None))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def starttls(self, context=None):
+            calls.append(("starttls",))
+
+        def login(self, user, password):
+            calls.append(("login", user, password))
+
+        def send_message(self, message):
+            calls.append(("send", message["From"], message["To"]))
+
+    class FakeSMTP_SSL(FakeSMTP):
+        pass
+
+    monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", FakeSMTP_SSL)
+    mail = Mail(to="jane@example.com", subject="s", text="t", html="<p>t</p>")
+
+    neo = AccessSettings(smtp_host="smtp0001.neo.space", smtp_port=465, smtp_user="owner@noeinsolutions.example",
+                         smtp_password="pw", mail_from="owner@noeinsolutions.example")
+    SmtpMailer(neo).send(mail)
+    assert calls == [
+        ("connect", "FakeSMTP_SSL", "smtp0001.neo.space", 465, True),
+        ("login", "owner@noeinsolutions.example", "pw"),
+        ("send", "SearchForAlpha Lab demo <owner@noeinsolutions.example>", "jane@example.com"),
+    ]
+
+    calls.clear()
+    SmtpMailer(AccessSettings(smtp_host="relay.example", smtp_port=587, smtp_user="u", smtp_password="p",
+                              mail_from="Named <n@example.com>")).send(mail)
+    assert [c[0] for c in calls] == ["connect", "starttls", "login", "send"]
+    assert calls[0][1] == "FakeSMTP" and calls[-1][1] == "Named <n@example.com>"
+    assert sender("") == ""
 
 
 def test_network_seal_opens_only_the_mail_server(monkeypatch):

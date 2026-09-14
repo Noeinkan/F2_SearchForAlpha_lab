@@ -86,36 +86,53 @@ optimiser runs, limits hit, sign-ins.
 
 The mail account and the admin token are secrets, so they go only in
 `/opt/sites/alpha/.env` on the server, never in the repo. The demo **refuses
-to start** without `DEMO_SMTP_HOST` and `DEMO_MAIL_FROM`; the deploy's health
+to start** without the mail host, user and password; the deploy's health
 check then fails and `site-deploy.sh` rolls back to the previous version, so a
 missing secret costs a failed deploy, not an outage.
 
-1. **Get an SMTP account that can send as a noeinsolutions.com address.**
-   Any provider works (Brevo's free plan sends 300 a day; Resend, Postmark or
-   the domain's own mailbox also do). In the provider's dashboard, verify the
-   sending domain — it will ask you to add SPF and DKIM records at the DNS
-   host — and create an SMTP key. Note the host, port, login and key.
-   *If the domain is not verified, codes land in spam or are refused.*
+**The mail account is Neo**, the host of noeinsolutions.com mail, and the same
+mailbox Capsar (W3_capsar_io) already sends its codes from — with the same
+variable names, so its lines are copied as they are. Nothing needs setting up
+at the provider or in DNS: the domain already publishes Neo's SPF record
+(`include:spf0001.neo.space`) and a Neo DKIM key (selector `neo1`), which is
+what gets the codes into inboxes. The code emails go out as
+`SearchForAlpha Lab demo <the mailbox address>`; Neo will not send as an
+address the mailbox does not own.
+
+Neo lets one mailbox send about 1,000 emails a day, and that budget is shared
+with your own mail and with Capsar's. The demo stops sending sign-in codes
+after `DEMO_CODES_PER_DAY` (200) in any 24 hours; a visitor past that sees "the
+demo is sending a lot of sign-in emails right now".
+
+1. **Copy the mail lines from Capsar.** Open
+   `C:\Users\andre\Downloads\W3_capsar_io\.env` and copy the five lines
+   starting with `NEO_SMTP_HOST`, `NEO_SMTP_PORT`, `NEO_SMTP_USER`,
+   `NEO_SMTP_PASS` and `EMAIL_FROM`. They read
+   `smtp0001.neo.space`, `465`, the mailbox address, its password, and the
+   mailbox address again.
 2. **Make an admin token**, at least 24 characters:
    `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Keep it in
    your password manager.
-3. **Write the secrets on the server** (replace the values):
+3. **Write the secrets on the server.** Paste the five lines from step 1 and
+   the token in place of the placeholders:
 
    ```bash
    ssh root@77.42.70.26
    cat >> /opt/sites/alpha/.env <<'EOF'
-   DEMO_SMTP_HOST=smtp-relay.brevo.com
-   DEMO_SMTP_PORT=587
-   DEMO_SMTP_SECURITY=starttls
-   DEMO_SMTP_USER=your-login@example.com
-   DEMO_SMTP_PASSWORD=the-smtp-key
-   DEMO_MAIL_FROM=SearchForAlpha Lab <demo@noeinsolutions.com>
+   NEO_SMTP_HOST=smtp0001.neo.space
+   NEO_SMTP_PORT=465
+   NEO_SMTP_USER=the-mailbox-address
+   NEO_SMTP_PASS=the-mailbox-password
+   EMAIL_FROM=the-mailbox-address
    DEMO_ADMIN_TOKEN=the-token-from-step-2
    EOF
    chmod 600 /opt/sites/alpha/.env
    ```
 
-   `DEMO_SMTP_SECURITY` is `starttls` for port 587 and `ssl` for port 465.
+   Port 465 means the connection is encrypted from the first byte; the demo
+   works that out from the port (`DEMO_SMTP_SECURITY=auto`).
+   *If the Neo password is ever changed, Capsar and the demo both stop sending
+   until this file and Capsar's `.env` are updated.*
 4. **Deploy**: commit, push, then `bash deploy-demo.sh` from the repo root.
 5. **Check it**: open the demo in a private window — it should land on the
    sign-in page. Sign in with your own address; the email should arrive within
@@ -160,7 +177,9 @@ Every limit is an environment variable; the defaults live in
 | `DEMO_PUBLIC_URL` | request host | base of the link in the email |
 | `DEMO_CONTACT_EMAIL` | `SFA_FEEDBACK_EMAIL` | shown on the privacy note and the trial-ended page |
 | `DEMO_MAIL_BACKEND` | smtp | `console` logs the email instead of sending it |
-| `DEMO_SMTP_HOST` / `_PORT` / `_SECURITY` / `_USER` / `_PASSWORD`, `DEMO_MAIL_FROM` | — / 587 / starttls | the mail account (server `.env` only) |
+| `DEMO_CODES_PER_DAY` | 200 | sign-in emails in total per 24 hours (a fifth of the Neo mailbox's daily budget) |
+| `NEO_SMTP_HOST` / `_PORT` / `_USER` / `_PASS`, `EMAIL_FROM` | — / 587 / — / — / the user | the Neo mail account, same names as Capsar; `SMTP_*` / `SMTP_FROM` read when unset (server `.env` only) |
+| `DEMO_SMTP_SECURITY` | auto | `auto` is implicit TLS on 465 and STARTTLS otherwise; or `ssl`, `starttls`, `none` |
 | `DEMO_ADMIN_TOKEN` | — | unlocks `/admin`; under 24 characters and `/admin` is a 404 (server `.env` only) |
 
 Under those, the container is capped at **2 CPUs and 1.5 GB** (`cpus` and

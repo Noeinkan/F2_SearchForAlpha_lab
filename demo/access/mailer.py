@@ -1,9 +1,16 @@
 """Sending the sign-in email.
 
-``SmtpMailer`` speaks plain SMTP through the standard library, so any provider
-works (Brevo, Resend, Postmark, a domain mailbox) and nothing new is installed.
+``SmtpMailer`` speaks plain SMTP through the standard library, so nothing new is
+installed. In production it signs in to the Neo mailbox that hosts
+noeinsolutions.com mail -- the same account Capsar sends from -- over implicit
+TLS on port 465. Neo already signs and authorises that domain's mail (SPF and
+DKIM are published), which is why codes from it reach inboxes rather than spam.
 The demo process is sealed off from the network (``demo.sealing``); the server
-opens exactly one door in that seal, to ``DEMO_SMTP_HOST:DEMO_SMTP_PORT``.
+opens exactly one door in that seal, to the SMTP host and port.
+
+The From header is the mailbox with a display name added ("SearchForAlpha Lab
+demo <andrea.aita@…>"): Neo refuses to send as any address the mailbox does
+not own, but the name in front of it is free.
 
 ``ConsoleMailer`` logs the message instead and keeps it in ``outbox``: for a
 local run without a mail account, and for the tests.
@@ -20,11 +27,19 @@ import smtplib
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
-from email.utils import formatdate, make_msgid, parseaddr
+from email.utils import formataddr, formatdate, make_msgid, parseaddr
 
 from demo.access.settings import AccessSettings
 
 logger = logging.getLogger(__name__)
+
+SENDER_NAME = "SearchForAlpha Lab demo"
+
+
+def sender(mail_from: str) -> str:
+    """``mail_from`` with a display name, unless it already carries one."""
+    name, address = parseaddr(mail_from)
+    return mail_from if name or not address else formataddr((SENDER_NAME, address))
 
 
 class MailError(Exception):
@@ -55,7 +70,7 @@ class SmtpMailer:
     def send(self, mail: Mail) -> None:
         s = self.settings
         message = EmailMessage()
-        message["From"] = s.mail_from
+        message["From"] = sender(s.mail_from)
         message["To"] = mail.to
         message["Subject"] = mail.subject
         message["Date"] = formatdate(localtime=False)
@@ -64,13 +79,14 @@ class SmtpMailer:
         message["Auto-Submitted"] = "auto-generated"
         message.set_content(mail.text)
         message.add_alternative(mail.html, subtype="html")
+        mode = s.tls_mode
         try:
-            if s.smtp_security == "ssl":
+            if mode == "ssl":
                 client = smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, timeout=15, context=ssl.create_default_context())
             else:
                 client = smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=15)
             with client:
-                if s.smtp_security == "starttls":
+                if mode == "starttls":
                     client.starttls(context=ssl.create_default_context())
                 if s.smtp_user:
                     client.login(s.smtp_user, s.smtp_password)
