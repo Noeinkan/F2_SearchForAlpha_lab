@@ -240,6 +240,25 @@ reale che puoi copiare.
 > caso migliore. Il pannello dei risultati ti mostra *entrambi*, così puoi vedere la
 > differenza.
 
+### Quick Swap — lo stesso test su un altro titolo
+Subito sopra RUN BACKTEST c'è una fila di pulsanti con i simboli: è la watchlist attiva
+della ricerca simboli (`Ctrl + /`, metti la stella a un simbolo per aggiungerlo). Clicca un
+simbolo, oppure premi `,` per il precedente e `.` per il successivo, e cambia solo il titolo:
+
+- la finestra di test mantiene le stesse date, mentre un normale cambio di simbolo la
+  riporta a tutto lo storico del nuovo titolo;
+- segnali, trade setup, costi e modello d'ordine restano come sono;
+- il backtest riparte da solo appena i nuovi dati sono caricati.
+
+Ogni esecuzione aggiunge una riga alla tabella **Same test, other symbols** (rendimento,
+buy & hold, Sharpe, max drawdown, operazioni). La lettera nella colonna **Test** dice se
+le righe sono confrontabili: se cambi un qualsiasi parametro, l'esecuzione successiva
+prende una lettera nuova. Un ⚠ accanto al simbolo vuol dire che il suo storico non copre
+tutta la finestra, quindi è stato misurato su meno barre. Clicca una riga per tornare a
+quel titolo. La tabella si svuota con **CLEAR** o ricaricando la pagina.
+
+I tasti non fanno nulla mentre stai scrivendo in un campo o è aperta una finestra di dialogo.
+
 ### Il pulsante — RUN BACKTEST
 Premilo. I risultati appaiono subito sotto.
 

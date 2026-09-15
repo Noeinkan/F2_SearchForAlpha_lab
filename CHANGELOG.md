@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Quick swap in the Backtest panel** (ROADMAP 5.17). A strip above RUN BACKTEST shows the
+  active watchlist; a click, or `,` / `.` for previous / next, changes the symbol and
+  nothing else. A normal symbol change resets the test window to the new stock's full
+  history; a swap keeps the exact dates, and a stock whose history starts later is simply
+  measured on fewer bars and marked ⚠. The backtest re-runs by itself once the new data has
+  loaded, and only then: a load that fails (rate limit, bad symbol) runs nothing. Each run
+  lands in a **Same test, other symbols** table, newest first. Its **Test** letter comes
+  from a fingerprint of every input except the symbol (interval, window, capital, signals,
+  trade setup, costs, order model, indicator settings), so a run made after changing a
+  stop gets a new letter instead of passing for a like-for-like comparison. The results
+  panel's WINDOW line now names the symbol. Rows are kept in memory only, like other results.
 - **Quarterly fundamentals from SEC filings** (ROADMAP 7.6). For U.S. filers, the
   Fundamentals page's quarterly view now reads the same SEC company-facts file as the annual
   view, so it shows up to 40 quarters instead of the last five Yahoo returns. Income items

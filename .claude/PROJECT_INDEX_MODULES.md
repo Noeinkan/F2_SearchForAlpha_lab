@@ -161,6 +161,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | [lib/dash/preset_storage.py](../lib/dash/preset_storage.py) | `config/ui_presets.json` atomic load/save |
 | [lib/dash/ui_session_storage.py](../lib/dash/ui_session_storage.py) | `state/ui_session.json` — last session's workspace, load/save; `SFA_RESTORE_SESSION=0` turns it off |
 | [lib/dash/error_boundary.py](../lib/dash/error_boundary.py) | `handle_callback_error` — `on_error` hook rendering unhandled callback exceptions into `#error-boundary` |
+| [lib/dash/quick_swap.py](../lib/dash/quick_swap.py) | Quick-swap logic — `neighbour_symbol`, `held_window`, `conditions_key` fingerprint, comparison rows and test letters |
 
 **Layout** (`lib/dash/layout/` — one file per UI region):
 | File | Region |
@@ -177,6 +178,7 @@ ADX/ATR/OBV also back the **regime-gated variants** in `config/strategy_config.y
 | `command_palette.py` | Ctrl+K command palette |
 | `symbol_search.py` | Ctrl+/ (or bare `/`) symbol-search modal — search, sector/asset filters, watchlists |
 | `empty_states.py` | `empty_state()` + copy for chart / backtest results / signal list before content |
+| `quick_swap.py` | Backtest panel quick-swap block — watchlist chips + "same test, other symbols" table |
 
 The Execution Type explainer modal (`execution-learn-modal`) is emitted by `backtest_panel.py`, not by `shell.py`.
 
@@ -192,7 +194,8 @@ The Execution Type explainer modal (`execution-learn-modal`) is emitted by `back
 | `execution_help.py` | Execution Type explainer — mode previews, sandbox, predict-then-reveal modal |
 | `signals.py` | Signal toggle callbacks |
 | `chart.py` | Sole `chart-payload-store` writer + the clientside renderer |
-| `backtest.py` | Run backtest from UI |
+| `backtest.py` | Run backtest from UI; also writes the run's row to `quick-swap-compare-store` |
+| `quick_swap.py` | Swap symbol with the test held, clientside autorun after load, comparison table |
 | `optimization.py` | In-dashboard optimisation (thread pool, cost estimate) |
 | `optimizer_phase3.py` | Landscape, run history, OOS validation, Bayesian sweep (Optimizer Phase 3) |
 | `optimizer_sync.py` | Bidirectional sync of `opt-*` mirrors ↔ Backtest SoT controls |
@@ -255,7 +258,7 @@ The Execution Type explainer modal (`execution-learn-modal`) is emitted by `back
 | Backtest & optimisation | `test_bayesian_optimizer`, `test_bayes_holdout`, `test_walkforward`, `test_promotion_gate` |
 | CLI contracts | `test_cli_contracts` |
 | Live runner | `test_runner_safety`, `test_guards`, `test_broker_mock` |
-| Dashboard | `test_dashboard`, `test_dashboard_startup`, `test_bootstrap`, `test_data_loading`, `test_data_table`, `test_test_window`, `test_layout`, `test_dash_routing`, `test_dash_no_writeback`, `test_dash_enriched_cache`, `test_command_palette`, `test_ticker_search`, `test_symbol_search`, `test_watchlist_storage`, `test_radio_seg_css` |
+| Dashboard | `test_dashboard`, `test_dashboard_startup`, `test_bootstrap`, `test_data_loading`, `test_data_table`, `test_test_window`, `test_layout`, `test_dash_routing`, `test_dash_no_writeback`, `test_dash_enriched_cache`, `test_command_palette`, `test_ticker_search`, `test_symbol_search`, `test_watchlist_storage`, `test_radio_seg_css`, `test_quick_swap` |
 | Chart (Lightweight Charts) | `test_chart_payload`, `test_chart_meta`, `test_chart_assets`, `test_chart_regime_panes` |
 | Execution explainer | `test_execution_sim`, `test_execution_view` |
 | Flow Scanner | `test_flow_scanner_json`, `test_flow_view`, `test_chain_source`, `test_flow_refresh` |

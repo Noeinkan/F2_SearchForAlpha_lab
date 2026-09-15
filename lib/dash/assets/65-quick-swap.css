@@ -1,0 +1,159 @@
+/* =============================================================================
+   Quick swap — symbol chips and the comparison table (Backtest panel)
+
+   Layout: lib/dash/layout/quick_swap.py. Loads after 60-execution (the panel
+   it sits in) and before 70-forms-responsive. Every selector is scoped to
+   `.sfa-qswap` and every colour comes from a token, so the light and CVD
+   themes flip without overrides of their own.
+   ========================================================================== */
+
+.sfa-qswap {
+    margin: 10px 0 10px;
+    padding: 8px;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+}
+
+.sfa-qswap-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.sfa-qswap-head--table {
+    margin-top: 10px;
+    margin-bottom: 4px;
+}
+
+.sfa-qswap-title,
+.sfa-qswap-subtitle {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.sfa-qswap-list {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    color: var(--text-tertiary);
+}
+
+.sfa-qswap-subtitle { flex: 1; }
+
+/* -----------------------------------------------------------------------------
+   Strip: ‹ chips ›
+   -------------------------------------------------------------------------- */
+
+.sfa-qswap-strip {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+}
+
+.sfa-qswap-chips {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.sfa-qswap button.sfa-qswap-chip,
+.sfa-qswap button.sfa-qswap-step,
+.sfa-qswap button.sfa-qswap-clear {
+    border: 1px solid var(--border-primary);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.sfa-qswap button.sfa-qswap-chip { padding: 5px 8px; }
+
+.sfa-qswap button.sfa-qswap-step {
+    padding: 0 8px;
+    font-size: 14px;
+}
+
+.sfa-qswap button.sfa-qswap-clear {
+    padding: 3px 7px;
+    font-family: var(--font-sans);
+    font-size: 10px;
+    letter-spacing: 0.6px;
+}
+
+.sfa-qswap button.sfa-qswap-chip:hover,
+.sfa-qswap button.sfa-qswap-step:hover,
+.sfa-qswap button.sfa-qswap-clear:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.sfa-qswap button.sfa-qswap-chip.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* -----------------------------------------------------------------------------
+   Comparison table
+   -------------------------------------------------------------------------- */
+
+.sfa-qswap-table-wrap {
+    overflow-x: auto;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.sfa-qswap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+}
+
+.sfa-qswap-table th {
+    position: sticky;
+    top: 0;
+    background: var(--table-header-bg);
+    color: var(--text-tertiary);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    text-align: right;
+    padding: 3px 4px;
+    white-space: nowrap;
+}
+
+.sfa-qswap-table td {
+    padding: 3px 4px;
+    text-align: right;
+    color: var(--text-primary);
+    border-top: 1px solid var(--border-secondary);
+    white-space: nowrap;
+}
+
+.sfa-qswap-table th:nth-child(-n+2),
+.sfa-qswap-table td.sfa-qswap-tag,
+.sfa-qswap-table td.sfa-qswap-symbol {
+    text-align: left;
+}
+
+.sfa-qswap-row { cursor: pointer; }
+.sfa-qswap-row:hover td { background: var(--table-row-hover); }
+
+.sfa-qswap-row.active td.sfa-qswap-symbol {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.sfa-qswap-tag { color: var(--text-tertiary); }
+.sfa-qswap-short { color: var(--warn); }

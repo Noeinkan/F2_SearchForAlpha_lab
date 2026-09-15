@@ -181,6 +181,7 @@ sorted filename order**, so the numeric prefixes *are* the cascade:
 | `50-fundamentals.css` | Fundamentals workspace |
 | `55-theme-light.css` | `.theme-light` palette flip + Bootstrap accordion overrides |
 | `60-execution.css` | strategy mode cards, Execution Type explainer, signal panel |
+| `65-quick-swap.css` | Backtest panel quick-swap chips and comparison table (keys in `65-quick-swap.js`) |
 | `70-forms-responsive.css` | trade-setup stepper, responsive layout, splitter, phone shell |
 | `80-command-palette.css` | command palette modal |
 | `85-feedback.css` | feedback modal + its header button |

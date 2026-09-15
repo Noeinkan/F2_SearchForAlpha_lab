@@ -18,6 +18,7 @@ from lib.dash.execution_glossary import MODE_ORDER, MODE_SPECS
 from lib.dash.execution_view import mode_accent, render_fingerprint, render_mode_preview
 from lib.signals.indicators import get_signal_categories
 from .empty_states import BACKTEST_EMPTY_HINT, BACKTEST_EMPTY_TITLE, empty_state
+from .quick_swap import create_quick_swap_block
 
 
 def _strategy_mode_options(theme: dict, help_icon_style: dict) -> list[dict]:
@@ -1089,6 +1090,8 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
             ],
             flush=True,
         ),
+
+        create_quick_swap_block(styles, theme),
 
         html.Button(
             "RUN BACKTEST",

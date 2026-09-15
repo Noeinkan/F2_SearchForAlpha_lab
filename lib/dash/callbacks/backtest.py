@@ -4,13 +4,14 @@ Backtest callbacks.
 
 import logging
 
-from dash import html
+from dash import html, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.dash.callbacks.shared import slice_df_to_window
 from lib.dash.components import build_alert, kpi_cell
-from lib.dash.dash_config import get_theme
+from lib.dash.dash_config import get_theme, merge_indicator_settings
+from lib.dash.quick_swap import build_row, conditions_key, upsert_row, window_short
 from lib.dash.state import dashboard_state
 from lib.metrics import compute_metrics, format_canonical
 from lib.strategy import run_backtest
@@ -56,7 +57,8 @@ def _order_model_kwargs(order_type, order_offset_pct, order_tif, exit_order_mode
 
 def register_backtest_callbacks(app) -> None:
     @app.callback(
-        Output('backtest-results', 'children'),
+        [Output('backtest-results', 'children'),
+         Output('quick-swap-compare-store', 'data')],
         [Input('run-backtest-btn', 'n_clicks')],
         [State('ticker-dropdown', 'value'),
          State('initial-capital', 'value'),
@@ -84,7 +86,9 @@ def register_backtest_callbacks(app) -> None:
          State('order-type', 'value'),
          State('order-offset-pct', 'value'),
          State('order-tif', 'value'),
-         State('exit-order-mode', 'value')]
+         State('exit-order-mode', 'value'),
+         State('indicator-settings-store', 'data'),
+         State('quick-swap-compare-store', 'data')]
     )
     def run_backtest_callback(n_clicks, ticker, initial_capital,
                               test_window_start, test_window_end,
@@ -94,8 +98,9 @@ def register_backtest_callbacks(app) -> None:
                               min_holding_period, trailing_stop_pct, stop_mode, position_scaling_pct,
                               take_profit_pct, consecutive_signal_mode, signal_cooldown_bars,
                               signal_logic, signal_window, fx_fee_pct, slippage_pct, commission_pct,
-                              order_type, order_offset_pct, order_tif, exit_order_mode):
-        """Run backtest and display results."""
+                              order_type, order_offset_pct, order_tif, exit_order_mode,
+                              indicator_settings, compare_rows):
+        """Run backtest, display results, and add the run to the quick-swap comparison."""
         if not n_clicks:
             raise PreventUpdate
 
@@ -103,7 +108,7 @@ def register_backtest_callbacks(app) -> None:
 
         full_df = dashboard_state.df
         if full_df is None:
-            return build_alert("Please load market data first", "warning", theme=theme)
+            return build_alert("Please load market data first", "warning", theme=theme), no_update
 
         # Same slice the optimizer takes, from the same helper. Skipping this is
         # what let the optimizer rank combinations over the test window while
@@ -112,10 +117,13 @@ def register_backtest_callbacks(app) -> None:
 
         # Validation based on strategy mode
         if not buy_signals:
-            return build_alert("Select at least one buy signal", "warning", theme=theme)
+            return build_alert("Select at least one buy signal", "warning", theme=theme), no_update
 
         if strategy_mode == 'trading' and not sell_signals:
-            return build_alert("Trading mode requires at least one sell signal", "warning", theme=theme)
+            return (
+                build_alert("Trading mode requires at least one sell signal", "warning", theme=theme),
+                no_update,
+            )
 
         # Use empty list for sell signals if not provided in accumulation/rebalancing modes
         sell_signals = sell_signals or []
@@ -177,6 +185,44 @@ def register_backtest_callbacks(app) -> None:
                 'sell_strategy': sell_signals,
                 **metrics.as_dict(),
             }
+
+            # Everything that shapes the result except the symbol. Two runs
+            # with the same fingerprint are the same test on different data,
+            # which is what the quick-swap table promises to compare.
+            conditions = {
+                'interval': dashboard_state.interval,
+                'window': [str(test_window_start or '')[:10], str(test_window_end or '')[:10]],
+                'initial_capital': initial_capital,
+                'buy_signals': buy_signals,
+                'sell_signals': sell_signals,
+                'strategy_mode': strategy_mode,
+                'amount_per_buy': amount_per_buy,
+                'position_size_pct': position_size_pct,
+                'kelly': [kelly_win_rate, kelly_win_loss_ratio],
+                'min_holding_period': min_holding_period,
+                'trailing_stop_loss': trailing_stop_loss,
+                'stop_mode': stop_mode,
+                'position_scaling': position_scaling,
+                'take_profit': take_profit,
+                'consecutive_signal_mode': consecutive_signal_mode,
+                'cooldown_bars': signal_cooldown_bars,
+                'signal_logic': signal_logic or 'or',
+                'signal_window': signal_window or 0,
+                'costs': [commission_per_trade, slippage_pct, fx_fee_pct],
+                'orders': order_kwargs,
+                'indicator_settings': merge_indicator_settings(indicator_settings),
+            }
+            compare_rows = upsert_row(compare_rows, build_row(
+                # The symbol of the data that actually ran, not the dropdown:
+                # after a failed load the two differ.
+                symbol=dashboard_state.ticker or ticker,
+                interval=dashboard_state.interval,
+                key=conditions_key(conditions),
+                window_label=window_label,
+                bars=len(df),
+                short=window_short(test_window_start, test_window_end, df),
+                metrics=metrics.as_dict(),
+            ))
 
             baseline_results = None
             if fx_fee_pct > 0 or slippage_pct > 0 or commission_per_trade > 0:
@@ -272,7 +318,7 @@ def register_backtest_callbacks(app) -> None:
             psr_color = theme['accent_green'] if psr_credible else theme['accent_orange']
             cost_color = theme['accent_green'] if cost_drag >= 0 else theme['accent_red']
 
-            return html.Div([
+            results_view = html.Div([
                 build_alert("Backtest completed successfully!", "success", dismissable=False, theme=theme),
                 # State the evaluated window explicitly. The metrics below mean
                 # nothing without it, and it is what the optimizer prints too —
@@ -281,7 +327,9 @@ def register_backtest_callbacks(app) -> None:
                     [
                         html.Span("WINDOW", style={'color': theme['text_secondary'], 'letterSpacing': '1.5px'}),
                         html.Span(
-                            f"{window_label} · {len(df):,} bars",
+                            # The symbol too: a quick swap re-runs this panel
+                            # by itself, so it must say which stock it is.
+                            f"{dashboard_state.ticker or ticker} · {window_label} · {len(df):,} bars",
                             className='num',
                             style={'color': theme['text_primary']},
                         ),
@@ -464,7 +512,8 @@ def register_backtest_callbacks(app) -> None:
                     'gap': '6px',
                 }),
             ], className='fade-in')
+            return results_view, compare_rows
 
         except Exception as e:
             logger.error(f"Backtest error: {e}")
-            return build_alert(f"Backtest failed: {str(e)[:60]}", "error", theme=theme)
+            return build_alert(f"Backtest failed: {str(e)[:60]}", "error", theme=theme), no_update

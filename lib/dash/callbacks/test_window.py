@@ -14,6 +14,7 @@ Output ownership, which Dash 4 enforces rather than merely prefers:
                                    in optimizer_sync (allow_duplicate; opt↔SoT)
   test-window-series-store.data <- sync_test_window   (this file, only writer)
   test-window-pending-store     <- sync_test_window + stage_preset_test_window
+                                   + swap_symbol (quick_swap.py, with hold=True)
   chart-focus-store.data        <- focus_chart_on_test_window (this file)
                                    + focus_chart_from_row (data_table.py)
 """
@@ -28,6 +29,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.dash.callbacks.shared import slice_df_to_window
+from lib.dash.quick_swap import held_window
 from lib.dash.state import dashboard_state
 
 logger = logging.getLogger(__name__)
@@ -122,7 +124,11 @@ def register_test_window_callbacks(app) -> None:
         if series_key == current_key and not pending:
             raise PreventUpdate
 
-        if pending:
+        if pending and pending.get('hold'):
+            # A quick swap: same dates on the new symbol, not clamped
+            # (lib/dash/quick_swap.py).
+            start, end = held_window(pending.get('start'), pending.get('end'), first, last)
+        elif pending:
             start, end = _clamp_to_loaded(pending.get('start'), pending.get('end'), first, last)
         else:
             start, end = first, last

@@ -74,6 +74,13 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         dcc.Store(id='optimizer-apply-store', data=None),
         dcc.Store(id='optimizer-autorun', data=None),
         dcc.Store(id='optimizer-autorun-sink', data=None),
+        # Quick swap (callbacks/quick_swap.py). `autorun` names the symbol a
+        # swap is waiting on, so the backtest re-runs only once *that* series
+        # has loaded. The comparison rows are memory-only: results are never
+        # kept across a reload, the same rule the last-session restore follows.
+        dcc.Store(id='quick-swap-autorun', data=None),
+        dcc.Store(id='quick-swap-autorun-sink', data=None),
+        dcc.Store(id='quick-swap-compare-store', data=[]),
         dcc.Store(id='signals-unified-store', data=bootstrap.unified_rows if bootstrap else []),
         dcc.Store(id='indicator-settings-store', data=DEFAULT_INDICATOR_SETTINGS),
         dcc.Store(id='bar-interval-store', data=DEFAULT_BAR_INTERVAL, storage_type='session'),

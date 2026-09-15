@@ -225,6 +225,24 @@ The hint *"Trading 212 UK: 0% commission, 0.15% FX fee"* is a real-broker preset
 > Leaving costs in gives you the **truth**. Setting them all to `0` gives you the
 > **fantasy** best case. The results panel shows you *both*, so you can see the gap.
 
+### Quick Swap — the same test on another stock
+Just above RUN BACKTEST sits a row of symbol buttons: the active watchlist from the symbol
+search (`Ctrl + /`, star a symbol to add it). Click one, or press `,` for the previous and
+`.` for the next, and only the stock changes:
+
+- the test window keeps its exact dates, where a normal symbol change resets it to the
+  new stock's full history;
+- signals, trade setup, costs and order model stay as they are;
+- the backtest re-runs by itself once the new data has loaded.
+
+Every run adds a row to the **Same test, other symbols** table (return, buy & hold,
+Sharpe, max drawdown, trades). The **Test** letter tells you whether rows are comparable:
+change any setting and the next run gets a new letter. A ⚠ next to a symbol means its
+history does not cover the whole window, so it was measured on fewer bars. Click a row to
+go back to that stock. The table is cleared by **CLEAR** or by reloading the page.
+
+The keys do nothing while you are typing in a field or a dialog is open.
+
 ### The button — RUN BACKTEST
 Press it. The results appear right below.
 

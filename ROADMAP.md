@@ -171,6 +171,7 @@ outside the tests calls `backtest_portfolio` yet.
 - [x] 5.14 Empty states for the chart area, backtest results and signal list, from one shared builder; the chart's overlay also shows why a payload came back empty — [lib/dash/layout/empty_states.py](lib/dash/layout/empty_states.py) <!-- size: S -->
 - [x] 5.15 Last session restored on restart — symbol, interval, test window, capital, chart toggles, indicator settings, signals, trade setup, costs and order model, in `state/ui_session.json`. Results are not kept. `SFA_RESTORE_SESSION=0` turns it off — [lib/dash/ui_session_storage.py](lib/dash/ui_session_storage.py) <!-- size: M -->
 - [ ] 5.16 Options pricing tab (see below) <!-- size: S -->
+- [x] 5.17 Quick swap — the Backtest panel steps through the active watchlist (chips, or `,` / `.`) with the test window held to its exact dates, re-runs the backtest by itself, and lists each run in a comparison table whose letter changes when any setting does — [lib/dash/quick_swap.py](lib/dash/quick_swap.py), [lib/dash/callbacks/quick_swap.py](lib/dash/callbacks/quick_swap.py) <!-- size: M -->
 
 ## 6. 🧊 Options & Flow
 
