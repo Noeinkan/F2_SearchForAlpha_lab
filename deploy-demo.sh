@@ -32,14 +32,14 @@ for candidate in \
 done
 
 if [ -z "${SKILL_DIR:-}" ]; then
-    echo "deploy.sh: cannot find the hetzner-site skill." >&2
+    echo "deploy-demo.sh: cannot find the hetzner-site skill." >&2
     echo "  Looked in ~/.claude/skills/hetzner-site and /c/Personal_utilities/hetzner-site." >&2
     echo "  Set HETZNER_SITE_SKILL=/path/to/hetzner-site and retry." >&2
     exit 1
 fi
 
 # site-deploy.sh reads ./.deploy/site.json from the working directory, so run
-# it from the repo root — this way `bash deploy.sh` also works from a subdir.
+# it from the repo root — this way `bash deploy-demo.sh` also works from a subdir.
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 exec bash "$SKILL_DIR/bin/site-deploy.sh" "$@"

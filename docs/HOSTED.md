@@ -7,7 +7,7 @@ for the owner only. Not the public demo (<https://alpha.demos.noeinsolutions.com
 | | Hosted workspace | Public demo |
 |---|---|---|
 | Code | `hosted/` (`python -m hosted.server`) | `demo/` |
-| Deploy config | `.deploy-app/` — `bash deploy-app.sh` | `.deploy/` — `bash deploy-demo.sh` |
+| Deploy config | `.deploy-app/` — `bash deploy.sh` | `.deploy/` — `bash deploy-demo.sh` |
 | Server slug | `alpha-lab` (`/opt/sites/alpha-lab/`) | `alpha` |
 | Data | live Yahoo + SEC, Flow Scanner refresh on | frozen snapshot |
 | Access | owner email + password | email code, 7-day trial |

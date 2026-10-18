@@ -23,9 +23,9 @@ param(
 # the owner login at https://alpha.noeinsolutions.com (docs/HOSTED.md). This
 # script restarts the old searchforalpha-dashboard service, which served the
 # workspace on http://77.42.70.26:8060 with no login -- running it would put
-# that back online. Deploy with:  bash deploy-app.sh
+# that back online. Deploy with:  bash deploy.sh
 Write-Host "deploy.ps1 is retired: it would reopen the old unprotected dashboard on :8060." -ForegroundColor Red
-Write-Host "Deploy the workspace with:  bash deploy-app.sh   (see docs/HOSTED.md)" -ForegroundColor Yellow
+Write-Host "Deploy the workspace with:  bash deploy.sh   (see docs/HOSTED.md)" -ForegroundColor Yellow
 exit 1
 
 $SERVER   = "root@77.42.70.26"

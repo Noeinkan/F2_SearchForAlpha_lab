@@ -1,4 +1,4 @@
-Commit current changes, push to the remote, and deploy to production via `bash deploy-app.sh`.
+Commit current changes, push to the remote, and deploy to production via `bash deploy.sh`.
 
 Usage: /ship [optional: deploy flags or "dry-run"]
 
@@ -32,7 +32,7 @@ Show:
 1. Branch + tracking status
 2. Files that will be committed (exclude junk: `__pycache__/`, `*.pyc`, local secrets)
 3. Proposed commit message
-4. Deploy command that will run (default `bash deploy-app.sh`; `dry-run` → `bash deploy-app.sh --dry-run`)
+4. Deploy command that will run (default `bash deploy.sh`; `dry-run` → `bash deploy.sh --dry-run`)
 
 Ask: proceed with **commit → push → deploy**?
 
@@ -63,7 +63,7 @@ If push fails (auth/network/non-fast-forward), stop and report — do **not** de
 
 ## 6. Deploy
 ```bash
-bash deploy-app.sh
+bash deploy.sh
 ```
 Pass `--dry-run` or `--rollback` through from the command.
 
@@ -77,5 +77,5 @@ Notes:
 Return:
 - Commit hash + subject
 - Push result (remote branch)
-- Deploy summary (ok / failures from `deploy-app.sh` output)
+- Deploy summary (ok / failures from `deploy.sh` output)
 - Prod URL reminder: https://alpha.noeinsolutions.com/
