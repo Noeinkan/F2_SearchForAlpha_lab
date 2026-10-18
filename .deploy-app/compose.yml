@@ -1,0 +1,62 @@
+# alpha-lab — the SearchForAlpha Lab research workspace (alpha.noeinsolutions.com).
+# Not the public demo (that is .deploy/, slug alpha). One user, behind the
+# owner login (hosted/login.py). The login lives ONLY in
+# /opt/sites/alpha-lab/.env (0600), never in this file:
+#   SITE_LOGIN_EMAIL, SITE_LOGIN_PASSWORD_HASH
+# Without both the app refuses to start, so the health check fails and the
+# deploy rolls back instead of serving the workspace open.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: site-alpha-lab:${SITE_TAG:-latest}
+    container_name: site-alpha-lab-web
+    env_file:
+      - .env
+    environment:
+      SITE_HOST: 0.0.0.0
+      SITE_PORT: "8050"
+      SITE_THREADS: "8"
+      DASH_DEV: "0"
+      SFA_LOG_LEVEL: INFO
+    volumes:
+      # state/, results/, export/ and config/ (watchlists, presets) -- see
+      # hosted/persist.py. `docker compose down` keeps it; only `down -v`
+      # or `docker volume rm` deletes it.
+      - workspace-data:/data
+    networks:
+      - edge
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Optimiser runs are CPU-heavy; this box also serves Capsar and the demos.
+    cpus: 3.0
+    mem_limit: 2560m
+    pids_limit: 512
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8050/healthz', timeout=5).status==200 else 1)\"",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  workspace-data:
+
+networks:
+  edge:
+    external: true

@@ -9,6 +9,7 @@ Python algorithmic trading research: Yahoo Finance OHLCV â†’ indicator signals â
 - Module index: [.claude/PROJECT_INDEX.md](.claude/PROJECT_INDEX.md) (detail: [PROJECT_INDEX_MODULES.md](.claude/PROJECT_INDEX_MODULES.md))
 - Scoped rules: [.cursor/rules/](.cursor/rules/) (load on demand by file path)
 - Token efficiency rationale: [docs/token-efficiency.md](docs/token-efficiency.md)
+- Hosted workspace (alpha.noeinsolutions.com, owner login, `hosted/`, `.deploy-app/`): [docs/HOSTED.md](docs/HOSTED.md). Public demo: [docs/DEMO.md](docs/DEMO.md)
 - **sfa research in Cursor:** read [docs/openclaw-research.md](docs/openclaw-research.md) first (`@`-mention it)
 
 ## Non-obvious essentials

@@ -1,0 +1,21 @@
+{
+  "slug": "alpha-lab",
+  "domain": "alpha.noeinsolutions.com",
+  "repo": "https://github.com/Noeinkan/F2_SearchForAlpha_lab.git",
+  "ref": "main",
+
+  "type": "node",
+  "buildCommand": "",
+  "outputDir": "",
+  "spa": false,
+
+  "port": 8050,
+  "healthPath": "/healthz",
+  "expectStatus": 200,
+
+  "memLimit": "2560m",
+  "maxBody": "24m",
+  "readTimeout": "300s",
+
+  "notes": "The SearchForAlpha Lab research workspace itself, not the public demo (slug alpha, .deploy/). Type is 'node' only because the pipeline has no Python type; the Dockerfile here is custom. waitress serves the Dash app hosted/server.py builds, with live Yahoo and SEC data and the Flow Scanner refresh thread. Behind the owner login (hosted/login.py): SITE_LOGIN_EMAIL and SITE_LOGIN_PASSWORD_HASH live in /opt/sites/alpha-lab/.env, and the app refuses to start without them. No broker: ib_async is not installed and lib/live/ is deleted in the image. Stateful: state/, results/, export/ and config/ live on the workspace-data volume (/data); config/ is refreshed from the image at every start except watchlists.json, ui_presets.json and param_history.yaml (hosted/persist.py). Replaces the old systemd service searchforalpha-dashboard (/opt/searchforalpha, port 8060, deploy.ps1). readTimeout 300s because an optimiser callback can run for minutes."
+}

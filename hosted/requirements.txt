@@ -1,0 +1,9 @@
+# Runtime dependencies of the hosted workspace image (.deploy-app/Dockerfile).
+#
+# The demo's pinned set -- already without ib_async, so the broker path cannot
+# be imported here either -- plus what only the live workspace uses:
+# lxml for pandas.read_html (Wikipedia ticker sources) and pyarrow for the
+# parquet files under results/.
+-r ../demo/requirements.txt
+lxml==6.0.2
+pyarrow==23.0.1

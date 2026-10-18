@@ -25,4 +25,5 @@ results/
 .shots/
 # Public demo: secrets never live in the deploy config; the freeze script stages here.
 .deploy/.env
+.deploy-app/.env
 demo/fixtures.staging/
