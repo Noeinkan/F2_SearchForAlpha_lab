@@ -1,12 +1,10 @@
-Commit current changes, push to the remote, and deploy to production via `.\deploy.ps1`.
+Commit current changes, push to the remote, and deploy to production via `bash deploy-app.sh`.
 
 Usage: /ship [optional: deploy flags or "dry-run"]
 
 Examples:
 - /ship
 - /ship dry-run
-- /ship -PushConfig
-- /ship -SkipPipInstall
 - /ship message: fix symbol search on prod
 
 Steps to follow:
@@ -34,7 +32,7 @@ Show:
 1. Branch + tracking status
 2. Files that will be committed (exclude junk: `__pycache__/`, `*.pyc`, local secrets)
 3. Proposed commit message
-4. Deploy command that will run (default `.\deploy.ps1`, or flags from the invocation; `dry-run` → `.\deploy.ps1 -DryRun`)
+4. Deploy command that will run (default `bash deploy-app.sh`; `dry-run` → `bash deploy-app.sh --dry-run`)
 
 Ask: proceed with **commit → push → deploy**?
 
@@ -64,20 +62,20 @@ git push -u origin HEAD
 If push fails (auth/network/non-fast-forward), stop and report — do **not** deploy a divergent local-only state unless the user explicitly overrides.
 
 ## 6. Deploy
-```powershell
-.\deploy.ps1
+```bash
+bash deploy-app.sh
 ```
-Pass through any flags from the command (`-PushConfig`, `-SkipPipInstall`, `-DryRun`, `-File …`, etc.).
+Pass `--dry-run` or `--rollback` through from the command.
 
 Notes:
-- Prod is Hetzner `root@77.42.70.26` → `/opt/searchforalpha` (see `deploy.ps1` / prod-parity rule).
-- Default deploy restarts the dashboard and may pip-install when `requirements.txt` changed.
-- `strategy_config.yaml` is **not** uploaded unless `-PushConfig`.
+- Prod is the `alpha-lab` container on Hetzner `root@77.42.70.26`, behind the owner login (see `docs/HOSTED.md`). The server deploys from the pushed `main`, so push first.
+- `config/` (including `strategy_config.yaml`) ships with every deploy; watchlists, presets and `param_history.yaml` stay on the server volume.
+- Never run `deploy.ps1`: it is retired and would reopen the old unprotected dashboard on :8060.
 - Deploy can take a few minutes — set a generous wait; do not background unless it clearly hangs.
 
 ## 7. Report
 Return:
 - Commit hash + subject
 - Push result (remote branch)
-- Deploy summary (ok / failures from `deploy.ps1` output)
-- Prod URL reminder: http://77.42.70.26:8060/
+- Deploy summary (ok / failures from `deploy-app.sh` output)
+- Prod URL reminder: https://alpha.noeinsolutions.com/
