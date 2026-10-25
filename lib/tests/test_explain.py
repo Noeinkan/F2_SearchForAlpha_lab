@@ -7,7 +7,8 @@ from flask import Flask, g
 
 from lib.dash.explain_route import HEADER, REQUESTS_PER_MINUTE, install_explain_routes
 from lib.explain import gemini
-from lib.explain.glossary import glossary_text
+from lib.explain.cache import AnswerCache
+from lib.explain.glossary import glossary_for, glossary_text
 
 HEADERS = {HEADER: "1"}
 
@@ -34,8 +35,11 @@ class FakeSession:
         return self.response
 
 
-def _answer(text):
-    return {"candidates": [{"content": {"parts": [{"text": "thinking...", "thought": True}, {"text": text}]}}]}
+def _answer(text, grounding=None):
+    candidate = {"content": {"parts": [{"text": "thinking...", "thought": True}, {"text": text}]}}
+    if grounding:
+        candidate["groundingMetadata"] = grounding
+    return {"candidates": [candidate]}
 
 
 # ------------------------------------------------------------------ prompt --
@@ -52,6 +56,33 @@ def test_glossary_carries_indicator_defaults_and_signal_rules():
     window = get_config().get_strategy_config("rsi")["rsi"]["window"]
     assert f"rsi.window={window}" in text
     assert "_Buy:" in text and "_Sell:" in text
+
+
+def test_glossary_for_sends_only_what_was_clicked():
+    full = glossary_text()
+    rsi = glossary_for("RSI", 'panel "Chart Settings"; control {"indicator":"rsi"}')
+    assert "rsi.window=" in rsi and "RSI_Oversold_Buy" in rsi
+    assert "macd.fast_period" not in rsi and "Sharpe_Ratio" not in rsi
+    assert len(rsi) < len(full) / 3
+
+    sharpe = glossary_for("1.42", 'column "Sharpe_Ratio"')
+    assert "Sharpe_Ratio" in sharpe and "rsi.window" not in sharpe
+
+    bands = glossary_for("BB_Breakout_Buy", "")
+    assert "bollinger_bands.window=" in bands and "BB_Breakout_Buy" in bands
+
+    control = glossary_for("Min Holding", 'panel "Trade Setup"')
+    assert "Metrics the app shows:" in control and "rsi" in control
+    assert len(control) < len(full) / 3
+
+
+def test_symbol_only_in_the_prompt_for_numbers():
+    assert "TSLA" in gemini.build_prompt("1.42", "Sharpe", "TSLA", "/ticker/TSLA")
+    word = gemini.build_prompt("RSI", "Chart Settings", "TSLA", "/ticker/TSLA")
+    assert "TSLA" not in word
+    assert gemini.cache_key("RSI", "Chart Settings", "TSLA", "/ticker/TSLA") == gemini.cache_key(
+        "RSI", "Chart Settings", "AAPL", "/ticker/AAPL")
+    assert gemini.cache_key("1.42", "Sharpe", "TSLA") != gemini.cache_key("1.42", "Sharpe", "AAPL")
 
 
 def test_prompt_carries_context_and_clips_long_input():
@@ -75,6 +106,32 @@ def test_explain_success_skips_thought_parts_and_sends_the_key(monkeypatch):
     url, kwargs = session.calls[0]
     assert gemini.DEFAULT_MODEL in url and kwargs["headers"]["x-goog-api-key"] == "test-key"
     assert "test-key" not in url
+
+
+def test_explain_searches_google_and_returns_its_sources(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    monkeypatch.delenv("GEMINI_SEARCH", raising=False)
+    web = lambda title, uri: {"web": {"title": title, "uri": uri}}
+    grounding = {
+        "groundingChunks": [
+            web("investopedia.com", "https://redirect/1"),
+            web("investopedia.com", "https://redirect/2"),  # same site twice: kept once
+            web("evil", "javascript:alert(1)"),             # not https: dropped
+            web("wikipedia.org", "https://redirect/3"),
+        ],
+        "searchEntryPoint": {"renderedContent": "<div class=chip>rsi</div>"},
+    }
+    session = FakeSession(FakeResponse(200, _answer("RSI is momentum.", grounding)))
+    result = gemini.explain("RSI", session=session)
+    assert session.calls[0][1]["json"]["tools"] == [{"google_search": {}}]
+    assert [s.title for s in result.sources] == ["investopedia.com", "wikipedia.org"]
+    assert result.suggestions == "<div class=chip>rsi</div>"
+
+    monkeypatch.setenv("GEMINI_SEARCH", "0")
+    off = FakeSession(FakeResponse(200, _answer("RSI is momentum.")))
+    gemini.explain("RSI", session=off)
+    assert "tools" not in off.calls[0][1]["json"]
+    assert "Google Search" not in gemini.build_prompt("RSI")
 
 
 @pytest.mark.parametrize("status, needle", [(429, "quota"), (403, "API key"), (404, "model"), (500, "HTTP 500")])
@@ -102,7 +159,7 @@ def test_explain_never_raises(monkeypatch):
 
 # --------------------------------------------------------------- routes ---
 
-def _app(mode=None, admin=False):
+def _app(mode=None, admin=False, cache=False):
     app = Flask("t")
     if mode:
         app.config["SFA_AUTH_MODE"] = mode
@@ -116,9 +173,10 @@ def _app(mode=None, admin=False):
 
     def fake_explain(selection, context, ticker, page):
         calls.append((selection, context, ticker, page))
-        return gemini.Explanation(True, f"explained {selection}")
+        sources = (gemini.Source("investopedia.com", "https://example.test/rsi"),)
+        return gemini.Explanation(True, f"explained {selection}", sources, "<b>chips</b>")
 
-    install_explain_routes(app, explain=fake_explain)
+    install_explain_routes(app, explain=fake_explain, cache=cache)
     return app.test_client(), calls
 
 
@@ -132,8 +190,42 @@ def test_local_run_is_admin_and_explains(monkeypatch):
     info = client.get("/api/session").get_json()
     assert info == {"mode": "local", "email": None, "admin": True, "explain": True}
     response = _post(client, {"selection": "1.42", "context": "Sharpe", "ticker": "TSLA", "page": "/"})
-    assert response.get_json() == {"ok": True, "text": "explained 1.42"}
+    body = response.get_json()
+    assert body["ok"] and body["text"] == "explained 1.42" and not body["cached"]
+    assert body["sources"] == [{"title": "investopedia.com", "url": "https://example.test/rsi"}]
     assert calls == [("1.42", "Sharpe", "TSLA", "/")]
+
+
+def test_second_ask_comes_from_the_cache_and_refresh_asks_again(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    client, calls = _app(cache=AnswerCache(tmp_path / "answers.sqlite3"))
+    question = {"selection": "RSI", "context": "Chart Settings", "ticker": "TSLA", "page": "/ticker/TSLA"}
+    first = _post(client, question).get_json()
+    # Another symbol, same control: same answer, no new call.
+    second = _post(client, {**question, "ticker": "AAPL", "page": "/ticker/AAPL"}).get_json()
+    assert len(calls) == 1
+    assert second["cached"] and second["cached_at"] and second["text"] == first["text"]
+    assert second["sources"] == first["sources"] and second["suggestions"] == "<b>chips</b>"
+
+    fresh = _post(client, {**question, "fresh": True}).get_json()
+    assert len(calls) == 2 and not fresh["cached"]
+
+
+def test_cached_answers_do_not_count_against_the_limit(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    client, calls = _app(cache=AnswerCache(tmp_path / "answers.sqlite3"))
+    for _ in range(REQUESTS_PER_MINUTE + 5):
+        assert _post(client, {"selection": "RSI"}).status_code == 200
+    assert len(calls) == 1
+
+
+def test_cache_expires_and_skips_failures(tmp_path):
+    cache = AnswerCache(tmp_path / "answers.sqlite3", max_age_days=-1)
+    cache.put("k", "RSI", gemini.Explanation(True, "text"))
+    assert cache.get("k") is None
+    cache = AnswerCache(tmp_path / "answers.sqlite3")
+    cache.put("bad", "RSI", gemini.Explanation(False, "quota"))
+    assert cache.get("bad") is None
 
 
 def test_explain_off_without_a_key(monkeypatch):

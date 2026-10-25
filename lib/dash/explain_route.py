@@ -9,11 +9,15 @@ load: no Explain button unless ``explain`` is true, and the account links
 included. It takes JSON and needs the ``X-SFA-Explain`` header: a browser
 will not send a custom header cross-site without a CORS pre-flight this server
 never approves, so another page cannot spend the Gemini quota with the
-owner's cookie. Requests are capped per user per minute.
+owner's cookie. Calls to Gemini are capped per user per minute; an answer
+already in the cache (``lib/explain/cache.py``) is free and not counted.
+``"fresh": true`` in the body skips the cache and replaces the entry -- the
+popover's Refresh button.
 """
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections import deque
@@ -22,6 +26,8 @@ from flask import Flask, abort, jsonify, request
 
 from lib.dash import auth_context
 from lib.explain import gemini
+
+logger = logging.getLogger(__name__)
 
 HEADER = "X-SFA-Explain"
 REQUESTS_PER_MINUTE = 20
@@ -49,10 +55,35 @@ def explain_enabled() -> bool:
     return auth_context.is_admin() and gemini.is_configured()
 
 
-def install_explain_routes(server: Flask, *, explain=None) -> None:
-    """``explain`` replaces ``gemini.explain`` (tests)."""
+def _payload(answer: gemini.Explanation, cached_at: float | None = None) -> dict:
+    return {
+        "ok": answer.ok,
+        "text": answer.text,
+        "sources": [{"title": s.title, "url": s.url} for s in answer.sources],
+        "suggestions": answer.suggestions,
+        "cached": cached_at is not None,
+        "cached_at": cached_at,
+    }
+
+
+def install_explain_routes(server: Flask, *, explain=None, cache=None) -> None:
+    """``explain`` replaces ``gemini.explain`` and ``cache`` the on-disk
+    ``AnswerCache`` (tests). The real cache is opened on the first question,
+    so the demo, where Explain is off, never creates the file."""
     ask = explain or gemini.explain
     limiter = _Limiter(REQUESTS_PER_MINUTE)
+    store = {"cache": cache}
+
+    def answers():
+        if store["cache"] is None:
+            try:
+                from lib.explain.cache import AnswerCache
+
+                store["cache"] = AnswerCache.from_env()
+            except Exception:
+                logger.warning("Explain cache unavailable; answering without it", exc_info=True)
+                store["cache"] = False
+        return store["cache"] or None
 
     @server.route("/api/session", methods=["GET"])
     def sfa_session_info():
@@ -73,21 +104,32 @@ def install_explain_routes(server: Flask, *, explain=None) -> None:
             abort(400)
         if not gemini.is_configured():
             return jsonify(ok=False, text="Explain is not configured: GEMINI_API_KEY is not set."), 503
-        who = auth_context.current_email() or request.remote_addr or "local"
-        if not limiter.allow(who):
-            return jsonify(ok=False, text=f"Slow down: at most {REQUESTS_PER_MINUTE} explanations a minute."), 429
         data = request.get_json(silent=True) or {}
         selection = str(data.get("selection") or "")
         if not selection.strip():
             return jsonify(ok=False, text="Select a number or a word first."), 400
         if len(selection) > gemini.MAX_SELECTION_CHARS:
             return jsonify(ok=False, text=f"Select at most {gemini.MAX_SELECTION_CHARS} characters."), 400
-        result = ask(
+        question = (
             selection,
             str(data.get("context") or "")[: gemini.MAX_CONTEXT_CHARS],
             str(data.get("ticker") or "")[:20],
             str(data.get("page") or "")[:60],
         )
-        response = jsonify(ok=result.ok, text=result.text)
+        cache = answers()
+        key = gemini.cache_key(*question) if cache else ""
+        hit = cache.get(key) if cache and not data.get("fresh") else None
+        if hit:
+            body = _payload(*hit)
+        else:
+            # Only a real call to Gemini counts against the limit.
+            who = auth_context.current_email() or request.remote_addr or "local"
+            if not limiter.allow(who):
+                return jsonify(ok=False, text=f"Slow down: at most {REQUESTS_PER_MINUTE} explanations a minute."), 429
+            result = ask(*question)
+            if cache and result.ok:
+                cache.put(key, selection, result)
+            body = _payload(result)
+        response = jsonify(body)
         response.headers["Cache-Control"] = "no-store"
         return response

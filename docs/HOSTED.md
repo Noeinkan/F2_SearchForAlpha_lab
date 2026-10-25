@@ -74,13 +74,27 @@ in English:
 
 Gemini receives the app's own definitions (`lib/explain/glossary.py`): the
 metrics from `lib/metrics/names.py`, the indicator defaults from
-`config/strategy_config.yaml`, and what each Buy/Sell signal means. The answer
+`config/strategy_config.yaml`, and what each Buy/Sell signal means — only the
+lines that match the clicked thing (`glossary_for`; ~850 prompt tokens instead
+of ~3,500), or the bare vocabulary when nothing matches.
+
+**Sources.** Gemini runs one Google Search per question (grounding) and the
+popover lists the sites it used, plus Google's search-suggestion chips, which
+Google's grounding terms require next to the answer (shown in a sandboxed
+iframe). A grounded answer takes ~20–25 s. `GEMINI_SEARCH=0` turns search off.
+
+**Cache.** Good answers are stored in `state/explain-cache/answers.sqlite3`
+(`SFA_EXPLAIN_CACHE`), keyed by model + full prompt, for 30 days. The symbol is
+part of the prompt only when the selection is a number, so a control or an
+indicator is asked once for every ticker. A cached answer returns at once,
+shows "saved 25 Oct" (the day it was stored) and does not count against the rate limit; **↻ Refresh**
+asks Gemini again and replaces the entry and its sources. The answer
 comes back in a light format — `**bold**`, `` `code` ``, `- ` bullets and a
 `$$ … $$` line for a formula in plain Unicode — which `95-explain.js` turns into
 DOM nodes (never HTML), converting stray LaTeX to symbols. Admins only; locally (`python main.py`) you are
 admin, and `main.py` reads `GEMINI_API_KEY` from the repo's `.env`.
-`GEMINI_MODEL` overrides the default `gemini-flash-latest`. 20 requests a
-minute per user.
+`GEMINI_MODEL` overrides the default `gemini-flash-latest`. 20 Gemini calls
+a minute per user.
 
 ## What survives a redeploy
 

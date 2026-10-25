@@ -8,21 +8,32 @@ Configuration (environment, or ``.env`` for a local run):
 - ``GEMINI_API_KEY`` -- required; without it Explain is switched off.
 - ``GEMINI_MODEL``   -- default ``gemini-flash-latest``, Google's alias for the
   newest Flash model, so a retired model id does not break the feature.
+- ``GEMINI_SEARCH``  -- ``0`` turns off Google Search grounding (the reference
+  links under each answer). On by default.
+
+With search on, Gemini runs a Google Search and returns its sources
+(``groundingMetadata``). Google's terms for grounding require showing the
+"Search Suggestions" it returns (``searchEntryPoint.renderedContent``, a small
+HTML snippet of chips); the browser shows it in a sandboxed iframe.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import re
 from dataclasses import dataclass
 
-from lib.explain.glossary import glossary_text
+from lib.explain.glossary import glossary_for
 
 logger = logging.getLogger(__name__)
 
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 DEFAULT_MODEL = "gemini-flash-latest"
-TIMEOUT_SECONDS = 25
+TIMEOUT_SECONDS = 60  # a grounded answer measured 18-26 s
+MAX_SOURCES = 4
+MAX_SUGGESTIONS_CHARS = 20_000
 
 MAX_SELECTION_CHARS = 300
 MAX_CONTEXT_CHARS = 600
@@ -40,6 +51,9 @@ If it is an indicator or overlay: say what it measures, the parameters this app 
 Use the app's own definitions below over textbook ones. If the context is not enough to be sure, say what it most likely is and what would confirm it.
 This is research software, not financial advice; do not tell the user to buy or sell anything."""
 
+SEARCH_INSTRUCTIONS = """\
+Always run one Google Search for the general concept (not for this app) to find 2-3 reputable reference pages, such as Investopedia, StockCharts ChartSchool, CFA Institute or Wikipedia. Do not write links or a reference list in the answer; the sources are attached separately."""
+
 
 def api_key() -> str:
     return os.environ.get("GEMINI_API_KEY", "").strip()
@@ -53,31 +67,80 @@ def is_configured() -> bool:
     return bool(api_key())
 
 
+def search_enabled() -> bool:
+    return os.environ.get("GEMINI_SEARCH", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
 def _clip(text: str | None, limit: int) -> str:
     value = " ".join((text or "").split())
     return value if len(value) <= limit else value[: limit - 1] + "…"
 
 
+def _section(page: str) -> str:
+    """"/ticker/TSLA" -> "ticker": the kind of page, not which symbol it shows."""
+    head = (page or "").strip("/").split("/", 1)[0]
+    return _clip(head, 30) or "main workspace"
+
+
 def build_prompt(selection: str, context: str = "", ticker: str = "", page: str = "") -> str:
+    """The symbol goes in only for a number: a control or an indicator means the
+    same on every ticker, so its prompt -- and its cache entry -- is shared."""
+    selection, context = _clip(selection, MAX_SELECTION_CHARS), _clip(context, MAX_CONTEXT_CHARS)
+    screen = [f"- Page: {_section(page)}"]
+    if re.search(r"\d", selection):
+        screen.append(f"- Symbol: {_clip(ticker, 20) or 'unknown'}")
+    screen.append(f"- Nearby label / surrounding text: {context or 'none'}")
     parts = [
         INSTRUCTIONS,
+        *([SEARCH_INSTRUCTIONS] if search_enabled() else []),
         "",
-        glossary_text(),
+        glossary_for(selection, context),
         "",
         "What is on screen:",
-        f"- Page: {_clip(page, 60) or 'main workspace'}",
-        f"- Symbol: {_clip(ticker, 20) or 'unknown'}",
-        f"- Nearby label / surrounding text: {_clip(context, MAX_CONTEXT_CHARS) or 'none'}",
+        *screen,
         "",
-        f"Selected text: {_clip(selection, MAX_SELECTION_CHARS)}",
+        f"Selected text: {selection}",
     ]
     return "\n".join(parts)
+
+
+def cache_key(selection: str, context: str = "", ticker: str = "", page: str = "") -> str:
+    """Same model, same prompt -> same answer; a config change alters the prompt."""
+    raw = "\n".join([model_name(), str(search_enabled()), build_prompt(selection, context, ticker, page)])
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class Source:
+    title: str
+    url: str
 
 
 @dataclass(frozen=True)
 class Explanation:
     ok: bool
     text: str
+    sources: tuple[Source, ...] = ()
+    suggestions: str = ""  # Google's Search Suggestions HTML, shown sandboxed
+
+
+def _extract_sources(payload: dict) -> tuple[tuple[Source, ...], str]:
+    for candidate in payload.get("candidates") or []:
+        meta = (candidate or {}).get("groundingMetadata") or {}
+        seen, sources = set(), []
+        for chunk in meta.get("groundingChunks") or []:
+            web = (chunk or {}).get("web") or {}
+            url, title = str(web.get("uri") or ""), str(web.get("title") or "").strip()
+            if not url.startswith("https://") or not title or title in seen:
+                continue
+            seen.add(title)
+            sources.append(Source(title[:80], url))
+            if len(sources) >= MAX_SOURCES:
+                break
+        html = str(((meta.get("searchEntryPoint") or {}).get("renderedContent")) or "")
+        if sources or html:
+            return tuple(sources), html if len(html) <= MAX_SUGGESTIONS_CHARS else ""
+    return (), ""
 
 
 def _extract_text(payload: dict) -> str:
@@ -97,6 +160,8 @@ def explain(selection: str, context: str = "", ticker: str = "", page: str = "",
     if not (selection or "").strip():
         return Explanation(False, "Select a number or a word first.")
     body = {"contents": [{"role": "user", "parts": [{"text": build_prompt(selection, context, ticker, page)}]}]}
+    if search_enabled():
+        body["tools"] = [{"google_search": {}}]
     try:
         if session is None:
             import requests as session
@@ -123,9 +188,11 @@ def explain(selection: str, context: str = "", ticker: str = "", page: str = "",
             reason = ""
         return Explanation(False, f"Gemini answered HTTP {response.status_code}" + (f": {reason}" if reason else "."))
     try:
-        text = _extract_text(response.json())
-    except ValueError:
+        payload = response.json()
+        text = _extract_text(payload)
+        sources, suggestions = _extract_sources(payload)
+    except (ValueError, AttributeError):
         text = ""
     if not text:
         return Explanation(False, "Gemini returned no text (the answer may have been blocked).")
-    return Explanation(True, text)
+    return Explanation(True, text, sources, suggestions)
