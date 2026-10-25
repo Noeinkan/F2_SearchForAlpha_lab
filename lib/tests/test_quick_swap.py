@@ -219,6 +219,22 @@ def test_sync_test_window_keeps_held_dates_on_the_new_series(app, loaded_frame):
     assert response["test-window-series-store"]["data"] == "AAA|1d"
 
 
+def test_plain_symbol_change_resets_to_the_selected_preset(app, loaded_frame):
+    """Without a held window the new series opens on the shortcut (YTD by default)."""
+    key = callback_key(app, "test-window-series-store.data")
+    status, body = post_callback(app, key, "data-loaded-store.data", {
+        "data-loaded-store.data": 2,
+        "test-window-preset.value": "ytd",
+        "test-window-series-store.data": "OLD|1d",
+        "test-window-pending-store.data": None,
+    })
+    assert status == 200
+    response = body["response"]
+    last = loaded_frame.index.max()
+    assert response["test-window-start"]["date"] == f"{last.year}-01-01"
+    assert response["test-window-end"]["date"] == last.date().isoformat()
+
+
 def test_backtest_adds_its_run_to_the_comparison(app, loaded_frame):
     key = callback_key(app, "backtest-results.children")
     values = {

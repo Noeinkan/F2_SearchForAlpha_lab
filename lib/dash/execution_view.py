@@ -100,7 +100,7 @@ def render_mode_preview(theme: Mapping[str, Any], mode: str, **params: Any) -> h
         first_entry_summary(mode, **params),
         className='sfa-exec-preview',
         style={
-            'fontSize': '10px',
+            'fontSize': '11px',
             'fontFamily': FONT_MONO,
             'color': mode_accent(theme, mode),
             'marginTop': '3px',

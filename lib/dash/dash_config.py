@@ -319,6 +319,9 @@ TEST_WINDOW_PRESETS = [
     {'label': '1M', 'value': '1m'},
     {'label': 'YTD', 'value': 'ytd'},
 ]
+# Selected on every page load, and applied whenever a new symbol or bar size
+# loads (sync_test_window). The last session's window is not restored over it.
+DEFAULT_TEST_WINDOW_PRESET = 'ytd'
 
 # =============================================================================
 # PRESET STORAGE
@@ -423,11 +426,7 @@ CHART_ELEMENT_DEFINITIONS = [
         'value': 'signals',
         'help': 'Strategy entry/exit markers drawn on price when the selected signals fire.',
     },
-    {
-        'label': 'Legend',
-        'value': 'legend',
-        'help': 'Show series labels for overlays and panes on the chart.',
-    },
+    # No 'Legend' toggle: nothing read it, and the pane labels are always on.
 ]
 
 INDICATOR_DEFINITIONS = [
@@ -650,10 +649,13 @@ PLOT_OPTIONS = [('Candlestick', 'candlestick')] + [
 # panel where their behaviour is actually implemented.
 OVERLAY_ONLY_INDICATOR_KEYS = frozenset({'bollinger', 'sma', 'ema'})
 
+# 'candlestick' is not offered either: the price pane is always drawn, so that
+# box did nothing, and it sat next to the Overlays 'Candlesticks' box that does
+# (candles vs a close line). Kept in PLOT_OPTIONS for saved presets.
 PLOT_INDICATOR_OPTIONS = [
     (label, value)
     for label, value in PLOT_OPTIONS
-    if value not in OVERLAY_ONLY_INDICATOR_KEYS
+    if value not in OVERLAY_ONLY_INDICATOR_KEYS and value != 'candlestick'
 ]
 
 CHART_ELEMENT_OPTIONS = [

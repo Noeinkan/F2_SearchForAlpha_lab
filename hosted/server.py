@@ -1,11 +1,12 @@
 """WSGI entry point for the hosted workspace (alpha.noeinsolutions.com).
 
-    SITE_LOGIN_EMAIL=... SITE_LOGIN_PASSWORD_HASH=... python -m hosted.server
+    SITE_LOGIN_EMAIL=... SITE_LOGIN_PASSWORD_HASH=... SITE_SECRET_KEY=... python -m hosted.server
 
 The order matters: the login is read first, so a missing secret stops the
 process before the dashboard is even imported (and the deploy's health check
 fails instead of serving the workspace open); then the data volume is
 prepared, since the dashboard reads config/ and state/ while it bootstraps.
+The whitelist database is opened after that, because it lives under state/.
 """
 
 from __future__ import annotations
@@ -20,17 +21,21 @@ logger = logging.getLogger("hosted.server")
 ROBOTS = "User-agent: *\nDisallow: /\n"
 
 
-def create_hosted_app(login=None):
-    from hosted import persist
-    from hosted.login import OwnerLogin
+def create_hosted_app(login=None, mailer=None):
+    from hosted import admin_users, persist
+    from hosted.login import SiteLogin
+    from hosted.users import UserStore
 
-    login = login or OwnerLogin.from_env()
+    login = login or SiteLogin.from_env()
     persist.prepare(os.environ.get("SFA_DATA_DIR"), os.environ.get("SFA_DIST_CONFIG", "config.dist"))
+    if login.store is None:
+        login.store = UserStore.from_env()
 
     import lib.dash.integrated_dashboard as dashboard
 
     app = dashboard.create_app()
     login.install(app.server)
+    admin_users.install(app.server, login.store, mailer=mailer)
 
     @app.server.route("/healthz")
     def healthz():
@@ -57,7 +62,7 @@ def main() -> None:
 
     from waitress import serve
 
-    logger.info("SearchForAlpha workspace on %s:%s, behind the owner login", host, port)
+    logger.info("SearchForAlpha workspace on %s:%s, behind the site login", host, port)
     serve(app.server, host=host, port=port, threads=threads, channel_timeout=300, connection_limit=100, ident="sfa")
 
 

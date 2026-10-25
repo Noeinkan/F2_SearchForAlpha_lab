@@ -54,9 +54,10 @@ def get_plotly_overlay_specs(df, theme: dict, overlay_visibility: Dict[str, bool
 
     if overlay_visibility.get('bollinger'):
         bollinger_specs = [
+            # Top to bottom, the order the chart legend reads them in.
             ('BB_upper', 'BB UPPER', _BB, 1, None),
-            ('BB_lower', 'BB LOWER', _BB, 1, None),
             ('BB_middle', 'BB MIDDLE', _BB, 1, 'dot'),
+            ('BB_lower', 'BB LOWER', _BB, 1, None),
         ]
         for column, label, color, width, dash in bollinger_specs:
             if column in df.columns:

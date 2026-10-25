@@ -186,6 +186,7 @@ sorted filename order**, so the numeric prefixes *are* the cascade:
 | `80-command-palette.css` | command palette modal |
 | `85-feedback.css` | feedback modal + its header button |
 | `90-symbol-search.css` | symbol search universe browser |
+| `95-explain.css` | Explain button + popover (`95-explain.js`, admin-only) and the header account slot |
 
 Two rules when editing:
 

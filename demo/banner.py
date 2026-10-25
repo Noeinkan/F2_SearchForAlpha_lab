@@ -2,7 +2,7 @@
 
 Three pieces, all added to the app from outside the layout modules:
 
-1. **Header badge** -- the header's ``CONNECTED`` label becomes
+1. **Header badge** -- the header's empty status label becomes
    ``DEMO · DATA 11 SEP 2026`` with an amber dot. It is always on screen, so no
    frame of the demo can be mistaken for a live terminal.
 2. **Banner** -- one dismissible line (per browser session) saying what is
@@ -142,6 +142,8 @@ def decorate_layout(layout: Any, settings: DemoSettings) -> Any:
             node.children = badge_text()
             if previous is not None and getattr(previous, "className", "") == "dot dot-up":
                 previous.className = "dot dot-warn"
+                # The app hides this dot now that it has no status to show.
+                previous.style = {}
             badge_done = True
         previous = node
     if not badge_done:

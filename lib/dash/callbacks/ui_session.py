@@ -122,11 +122,19 @@ def build_session_payload(
 
 
 def session_to_apply(session: dict | None) -> dict | None:
-    """What a restore writes to ``preset-apply-store``: the session minus its symbol."""
+    """What a restore writes to ``preset-apply-store``: the session minus its symbol
+    and its test window.
+
+    The window is dropped so every page load opens on the default shortcut
+    (``DEFAULT_TEST_WINDOW_PRESET``, YTD) resolved against today's data, rather
+    than on last session's frozen dates. Named presets still carry theirs.
+    """
     if not session:
         return None
     applied = copy.deepcopy(session)
-    applied.setdefault('market_data', {})['ticker'] = None
+    market = applied.setdefault('market_data', {})
+    market['ticker'] = None
+    market.pop('test_window', None)
     return applied
 
 

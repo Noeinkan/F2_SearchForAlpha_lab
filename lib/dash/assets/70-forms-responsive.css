@@ -244,9 +244,12 @@ aside.sfa-right-panel .sfa-panel-toggle-wrap {
    Phone shell (≤900px) — drawers, compact chrome, terminal + overlays
    ========================================================================== */
 
-/* Hamburger — desktop hidden; phone shows it in the header. */
-.sfa-mobile-menu-btn,
-.sfa-mobile-backtest-btn {
+/* Hamburger — desktop hidden; phone shows it in the header.
+   The `button.` prefix is load-bearing: `button.bbg-icon-button` in
+   20-controls.css sets display:inline-flex and outranks a bare class, so
+   without it both phone buttons (☰, BT) showed on desktop. */
+button.sfa-mobile-menu-btn,
+button.sfa-mobile-backtest-btn {
     display: none;
     flex: 0 0 auto;
     margin-right: 4px;
@@ -278,8 +281,8 @@ aside.sfa-right-panel .sfa-panel-toggle-wrap {
 }
 
 @media (max-width: 900px) {
-    .sfa-mobile-menu-btn,
-    .sfa-mobile-backtest-btn {
+    button.sfa-mobile-menu-btn,
+    button.sfa-mobile-backtest-btn {
         display: inline-flex;
         align-items: center;
         justify-content: center;

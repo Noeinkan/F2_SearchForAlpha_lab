@@ -147,6 +147,12 @@ def test_restore_never_sets_the_symbol():
     assert session_to_apply(None) is None
 
 
+def test_restore_leaves_the_test_window_to_the_default_preset():
+    session = _payload()
+    session['market_data']['test_window'] = {'start': '2024-01-01', 'end': '2024-06-30'}
+    assert 'test_window' not in session_to_apply(session)['market_data']
+
+
 def test_restore_replays_the_file_and_marks_the_page(app, session_path, monkeypatch):
     monkeypatch.setattr(ui_session_callbacks, 'UI_SESSION_FILE_PATH', session_path)
     key = callback_key(app, 'ui-session-restored.data')

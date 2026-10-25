@@ -266,6 +266,11 @@ def create_app() -> dash.Dash:
     # Kept out of the layout module so the layout builder remains pure.
     wire_command_palette_is_open(app)
 
+    # Explain popover + account info (admin-only; off in the demo).
+    from lib.dash.explain_route import install_explain_routes
+
+    install_explain_routes(app.server)
+
     @app.server.route("/flow_report.html")
     def serve_flow_report():
         # ?ticker=AAPL serves that ticker's stored report (state/flow/); the

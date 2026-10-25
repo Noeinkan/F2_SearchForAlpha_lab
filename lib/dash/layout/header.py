@@ -40,7 +40,8 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
             html.Div(
                 [
                     html.Button(
-                        'SFA',
+                        # Named for what it opens; "SFA" read as a brand, not a tab.
+                        'CHART',
                         id='nav-workspace-sfa',
                         n_clicks=0,
                         className='sfa-workspace-nav-btn is-active',
@@ -68,7 +69,8 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
                 role='navigation',
                 **{'aria-label': 'Workspace'},
             ),
-            html.Span("Terminal", style=styles['logo_text'], className='bbg-wordmark-sub'),
+            # No "Terminal" wordmark beside the tabs: in grey caps it read as
+            # a fourth, disabled tab.
         ], style=styles['logo']),
 
         html.Div([
@@ -90,9 +92,12 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
         ], style=styles['header_tape'], className='bbg-tape'),
 
         html.Div([
-            html.Span(className='dot dot-up'),
-            html.Span('CONNECTED', className='bbg-header-status-label'),
-            html.Span('│', className='bbg-header-divider'),
+            # No green "CONNECTED" here: it was static text, true even with
+            # Yahoo down. Real state is the status bar's READY / RATE LIMITED.
+            # The empty dot + label stay as the slot demo/banner.py fills with
+            # its DEMO badge (it shows the dot when it does).
+            html.Span(className='dot dot-up', style={'display': 'none'}),
+            html.Span('', className='bbg-header-status-label'),
             html.Div(id='header-status', className='num bbg-header-clock'),
             # Manual re-fetch. Symbol and bar-interval changes load on their own
             # and the test window needs no fetch at all, so this is only for
@@ -109,6 +114,11 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
                 title='Re-fetch the current symbol (Ctrl+Enter)',
                 **{'aria-label': 'Refresh market data'},
             ),
+            # Account links (signed-in email, Users for an admin, Sign out).
+            # The header is built once at server start and cannot know who is
+            # viewing, so assets/95-explain.js fills this from /api/session —
+            # and only on the hosted site; locally and in the demo it stays empty.
+            html.Span(id='sfa-account-slot', className='sfa-account-slot'),
             # Feedback — the whole point of publishing the repo is to hear
             # back, so this sits in the header rather than a footer. The glyph
             # and the word are both rendered; CSS drops the word on narrow

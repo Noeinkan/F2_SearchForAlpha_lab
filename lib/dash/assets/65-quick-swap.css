@@ -40,7 +40,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-tertiary);
 }
 
@@ -87,7 +87,7 @@
 .sfa-qswap button.sfa-qswap-clear {
     padding: 3px 7px;
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     letter-spacing: 0.6px;
 }
 

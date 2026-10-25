@@ -25,6 +25,10 @@ RUN pip install --no-cache-dir -r /app/hosted/requirements.txt
 COPY repo/lib/ /app/lib/
 COPY repo/scripts/ /app/scripts/
 COPY repo/hosted/ /app/hosted/
+# The whitelist invitations reuse the demo's SMTP mailer (hosted/admin_users.py);
+# only demo/access is needed, not the demo's snapshot fixtures.
+COPY repo/demo/__init__.py repo/demo/envfile.py /app/demo/
+COPY repo/demo/access/ /app/demo/access/
 COPY repo/main.py /app/main.py
 COPY repo/config/ /app/config.dist/
 

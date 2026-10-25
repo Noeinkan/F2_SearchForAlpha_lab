@@ -71,13 +71,13 @@
     align-items: stretch;
     gap: 2px;
     width: max-content;
-    max-width: min(168px, 38%);
+    max-width: min(190px, 38%);
     padding: 4px 6px;
     background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
     border: 1px solid var(--border-primary);
     border-radius: 2px;
     box-shadow: 0 2px 10px color-mix(in srgb, #000 28%, transparent);
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.25;
     pointer-events: none;
     user-select: none;
@@ -94,14 +94,14 @@
 
 .sfa-chart-legend-symbol {
     font-weight: 600;
-    font-size: 10px;
+    font-size: 11px;
     letter-spacing: 0.6px;
     text-transform: uppercase;
     color: var(--text-primary);
 }
 
 .sfa-chart-legend-interval {
-    font-size: 9px;
+    font-size: 10px;
     letter-spacing: 0.5px;
     padding: 0 3px;
     border: 1px solid var(--border-primary);
@@ -119,11 +119,11 @@
 
 .sfa-chart-legend-cell i {
     font-style: normal;
-    font-size: 9px;
+    font-size: 10px;
     color: var(--text-tertiary);
 }
 
-.sfa-chart-legend-cell b { font-weight: 600; font-size: 10px; }
+.sfa-chart-legend-cell b { font-weight: 600; font-size: 11px; }
 
 .sfa-chart-legend-inds {
     display: flex;
@@ -144,7 +144,7 @@
 
 .sfa-chart-legend-ind i {
     font-style: normal;
-    font-size: 9px;
+    font-size: 10px;
     letter-spacing: 0.2px;
     opacity: 0.9;
     min-width: 0;
@@ -155,7 +155,7 @@
 
 .sfa-chart-legend-ind b {
     font-weight: 600;
-    font-size: 10px;
+    font-size: 11px;
     flex-shrink: 0;
 }
 

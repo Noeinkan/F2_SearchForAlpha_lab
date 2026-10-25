@@ -568,7 +568,8 @@ class TestPlotIndicatorOptions:
         legacy_keys = {value for _, value in PLOT_OPTIONS}
         plot_keys = {value for _, value in PLOT_INDICATOR_OPTIONS}
         assert plot_keys.issubset(legacy_keys)
-        assert legacy_keys - plot_keys == OVERLAY_ONLY_INDICATOR_KEYS
+        # 'candlestick' is not a toggle: the price pane is always drawn.
+        assert legacy_keys - plot_keys == OVERLAY_ONLY_INDICATOR_KEYS | {'candlestick'}
 
     def test_chart_help_covers_plot_and_overlay_toggles(self):
         """Every Chart Settings toggle has hover explanation copy."""

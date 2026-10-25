@@ -249,26 +249,76 @@
     color: var(--text-primary) !important;
 }
 
+/* Indicator rows nest one Checklist per row, so the direct-child rules above
+   miss them and Dash's list chrome painted a grey box sized to each label. */
+/* Specificity has to beat 30-vendor-widgets.css, which loads later and paints
+   `.dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option`
+   (plus :hover / checked) with !important. */
+.dash-options-list.sfa-chart-toggle-grid:not(.bbg-radio-seg),
+.dash-options-list.sfa-chart-toggle-grid:not(.bbg-radio-seg) > .dash-options-list-option,
+.dash-options-list.sfa-chart-toggle-grid:not(.bbg-radio-seg) > .dash-options-list-option:hover,
+.dash-options-list.sfa-chart-toggle-grid:not(.bbg-radio-seg) > .dash-options-list-option[aria-selected="true"],
+.dash-options-list.sfa-chart-toggle-grid:not(.bbg-radio-seg) > .dash-options-list-option[data-state="checked"],
+.sfa-chart-toggle-grid .dash-options-list:not(.bbg-radio-seg),
+.sfa-chart-toggle-grid .dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option,
+.sfa-chart-toggle-grid .dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option:hover,
+.sfa-chart-toggle-grid .dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option[aria-selected="true"],
+.sfa-chart-toggle-grid .dash-options-list:not(.bbg-radio-seg) > .dash-options-list-option[data-state="checked"] {
+    background: transparent !important;
+    border: none !important;
+    margin-top: 0 !important;
+}
+
 .sfa-overlay-gear-strip {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px 10px;
+    gap: 4px 6px;
     margin-top: 6px;
-}
-
-.sfa-overlay-gear-strip-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
 }
 
 .sfa-overlay-gear-strip-label {
     font-size: 11px;
-    color: var(--text-secondary);
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-right: 2px;
 }
+
+.sfa-overlay-gear-btn {
+    background: transparent;
+    border: 1px solid var(--border-secondary);
+    border-radius: 2px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 6px;
+    cursor: pointer;
+}
+.sfa-overlay-gear-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+/* ---- Saved Configurations: secondary actions as small text buttons ---- */
+.sfa-preset-actions {
+    display: flex;
+    gap: 2px;
+    margin: 0 -6px 2px;
+}
+
+.sfa-preset-action {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 3px 6px;
+    cursor: pointer;
+    border-radius: 2px;
+}
+.sfa-preset-action:hover { color: var(--text-primary); background: var(--bg-secondary); }
+/* Red only on hover: a destructive action should not be the loudest thing
+   in the panel while nobody is aiming at it. */
+.sfa-preset-action--danger { margin-left: auto; }
+.sfa-preset-action--danger:hover { color: var(--down); }
 
 /* =============================================================================
    Section primitives (sidebar / right panel)
@@ -338,7 +388,7 @@ details.bbg-section[open] > .bbg-section-header::after {
     border-radius: 2px;
 }
 .bbg-kpi-label {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.8px;
@@ -433,14 +483,14 @@ button.bbg-button-ghost:hover {
 /* Compact ghost button sized to fit the 24px-tall status bar. */
 button.bbg-status-btn {
     padding: 1px 8px;
-    font-size: 10px;
+    font-size: 11px;
     line-height: 16px;
     display: inline-flex;
     align-items: center;
 }
 button.bbg-status-btn .sfa-status-kbd {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 10px;
     padding: 1px 4px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-primary);
@@ -651,7 +701,7 @@ input.bbg-input[type=number] {
 }
 .bbg-wordmark-sub {
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-tertiary);
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -899,7 +949,7 @@ body.theme-light .sfa-error-boundary .btn-close { filter: none; }
 .sfa-error-boundary__detail {
     margin-top: 4px;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-secondary);
     word-break: break-word;
 }

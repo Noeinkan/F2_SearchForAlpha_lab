@@ -65,7 +65,12 @@ def _build_chart_config(
         if chart_elements is not None
         else ['candlesticks', 'signals', 'bollinger']
     )
-    selected_plots = _collect_selected_plots(plot_values) or defaults['selected_plots']
+    # Defaults only when the toggles have not rendered yet: an empty list is
+    # the user unticking every indicator, and must give a price-only chart.
+    selected_plots = (
+        defaults['selected_plots'] if plot_values is None
+        else _collect_selected_plots(plot_values)
+    )
     return {
         'selected_plots': selected_plots,
         'show_candlesticks': 'candlesticks' in chart_elements,

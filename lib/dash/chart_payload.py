@@ -260,8 +260,8 @@ def _cci_series(df, times, config, theme) -> List[dict]:
     return [_line_spec(
         'cci', f'CCI ({period})', times, values, theme['accent_orange'], digits=2,
         price_lines=[
-            _threshold(ceiling, theme['accent_red'], '+'),
-            _threshold(floor, theme['accent_green'], '-'),
+            _threshold(ceiling, theme['accent_red'], 'OB'),
+            _threshold(floor, theme['accent_green'], 'OS'),
             _threshold(0, theme['text_tertiary'], '', style='dotted'),
         ],
     )]

@@ -10,7 +10,8 @@ from dash import dcc, html
 
 from lib.dash.dash_config import (
     FONT_SIZES, FONT_FAMILY, DEFAULT_SIGNAL_WINDOW,
-    DEFAULT_OFF_SIGNAL_CATEGORIES, INITIAL_CAPITAL, TEST_WINDOW_PRESETS,
+    DEFAULT_OFF_SIGNAL_CATEGORIES, DEFAULT_TEST_WINDOW_PRESET, INITIAL_CAPITAL,
+    TEST_WINDOW_PRESETS,
 )
 from lib.dash.components import dense_input
 from lib.dash.bootstrap import BootstrapSnapshot
@@ -54,13 +55,17 @@ def _strategy_mode_options(theme: dict, help_icon_style: dict) -> list[dict]:
                               title=f"How {spec['name']} works"),
                 ], style={'display': 'flex', 'alignItems': 'center',
                           'justifyContent': 'space-between'}),
-                html.Div(spec['caption'], style={
-                    'fontSize': '10px',
-                    'color': theme['text_tertiary'],
-                    'marginTop': '2px',
-                }),
-                html.Div(render_mode_preview(theme, mode), id=f'preview-mode-{mode}'),
-                render_fingerprint(theme, mode),
+                # Detail shows on the selected card only (60-execution.css):
+                # three full cards pushed Trade Setup below the fold.
+                html.Div([
+                    html.Div(spec['caption'], style={
+                        'fontSize': '11px',
+                        'color': theme['text_tertiary'],
+                        'marginTop': '2px',
+                    }),
+                    html.Div(render_mode_preview(theme, mode), id=f'preview-mode-{mode}'),
+                    render_fingerprint(theme, mode),
+                ], className='strategy-mode-detail'),
             ], className='strategy-mode-card'),
             'value': mode,
         })
@@ -179,11 +184,10 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                     [
                         html.Div([
                             html.Div([
-                                html.Span("Test Window", style={
-                                    'fontSize': FONT_SIZES['xs'],
-                                    'color': theme['text_secondary'],
-                                    'fontWeight': '600',
-                                }),
+                                # Not the section name again: the header
+                                # already says it, so this line says what for.
+                                html.Span("Period the backtest runs on",
+                                          className='sfa-section-lede'),
                                 html.Span("?", id='help-test-window', style=help_icon_style),
                             ], style={
                                 'display': 'flex',
@@ -194,7 +198,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                             dcc.RadioItems(
                                 id='test-window-preset',
                                 options=TEST_WINDOW_PRESETS,
-                                value='max',
+                                value=DEFAULT_TEST_WINDOW_PRESET,
                                 inline=True,
                                 className='bbg-radio-seg sfa-test-window-seg',
                             ),
@@ -271,11 +275,8 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                     [
                         html.Div([
                             html.Div([
-                                html.Span("Execution Type", style={
-                                    'fontSize': FONT_SIZES['xs'],
-                                    'color': theme['text_secondary'],
-                                    'fontWeight': '600',
-                                }),
+                                html.Span("How a signal becomes an order",
+                                          className='sfa-section-lede'),
                                 html.Span("?", id='help-strategy-mode', n_clicks=0,
                                           style=mode_help_style,
                                           title='How the execution modes work'),
@@ -332,9 +333,12 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                     [
                         html.Div([
                             html.Div([
-                                html.Span("TRADE SETUP", style=styles['card_header']),
+                                html.Span("Holding, stops and sizing",
+                                          className='sfa-section-lede'),
                                 html.Span("?", id='help-trade-setup', style=help_icon_style),
-                            ], style={'display': 'flex', 'alignItems': 'center'}),
+                            ], style={'display': 'flex', 'alignItems': 'center',
+                                      'justifyContent': 'space-between',
+                                      'padding': '6px 10px 0'}),
                             html.Div([
                                 html.Div(id='preset-options', children=[
                                     _trade_setup_field_label(
@@ -409,9 +413,10 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                                 inputStyle={'marginRight': '4px'},
                                                 labelStyle={
                                                     'fontSize': FONT_SIZES['xs'],
-                                                    'padding': '2px 6px',
+                                                    'padding': '2px 4px',
                                                     'cursor': 'pointer',
-                                                    'marginRight': '2px',
+                                                    'marginRight': 0,
+                                                    'whiteSpace': 'nowrap',
                                                 },
                                                 className='signal-logic-toggle'
                                             ),
@@ -858,9 +863,12 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                         html.Div([
                             html.Div([
                                 html.Div([
-                                    html.Span("SIGNALS", style=styles['card_header']),
+                                    html.Span("Which indicator signals trade",
+                                              className='sfa-section-lede'),
                                     html.Span("?", id='help-signal-section', style=help_icon_style),
-                                ], style={'display': 'flex', 'alignItems': 'center'}),
+                                ], style={'display': 'flex', 'alignItems': 'center',
+                                          'justifyContent': 'space-between',
+                                          'padding': '6px 10px 0'}),
                                 # AND/OR Toggle
                                 html.Div([
                                     dcc.RadioItems(
@@ -912,7 +920,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                     }
                                 ),
                                 html.Div("Signals must occur within this window for AND logic.", style={
-                                    'fontSize': '10px',
+                                    'fontSize': '11px',
                                     'color': theme['text_tertiary'],
                                     'marginTop': '4px'
                                 })
@@ -1058,7 +1066,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                 ),
                             ], style={'marginBottom': '4px'}),
                             html.Div("Trading 212 UK: 0% commission, 0.15% FX fee.", style={
-                                'fontSize': '10px',
+                                'fontSize': '11px',
                                 'color': theme['text_tertiary'],
                                 'marginTop': '2px'
                             }),
@@ -1093,11 +1101,16 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
 
         create_quick_swap_block(styles, theme),
 
-        html.Button(
-            "RUN BACKTEST",
-            id='run-backtest-btn',
-            style={**styles['button_primary'], 'width': '100%', 'padding': '10px 14px'},
-            n_clicks=0
+        # Pinned to the bottom of the panel (60-execution.css .sfa-run-bar):
+        # with the sections open it sat a long scroll below the first input.
+        html.Div(
+            html.Button(
+                "RUN BACKTEST",
+                id='run-backtest-btn',
+                style={**styles['button_primary'], 'width': '100%', 'padding': '10px 14px'},
+                n_clicks=0
+            ),
+            className='sfa-run-bar',
         ),
         dbc.Tooltip("Simulate trading with selected buy/sell signals", target='run-backtest-btn', placement='top'),
 

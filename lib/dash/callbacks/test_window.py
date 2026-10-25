@@ -99,7 +99,7 @@ def register_test_window_callbacks(app) -> None:
     ):
         """Keep the window valid against whatever data is currently loaded.
 
-        Resets to the full loaded range only when the *series* changes (new
+        Resets to the selected preset's range only when the *series* changes (new
         symbol or new bar size) — the same rule the chart glue uses to decide
         whether the old viewport still means anything. A plain refresh of the
         same series must not throw away a window the user narrowed by hand.
@@ -131,7 +131,9 @@ def register_test_window_callbacks(app) -> None:
         elif pending:
             start, end = _clamp_to_loaded(pending.get('start'), pending.get('end'), first, last)
         else:
-            start, end = first, last
+            # A new series takes the selected shortcut (YTD by default),
+            # not the whole loaded range.
+            start, end = resolve_preset(preset, first, last)
         return start, end, current_key, None
 
     @app.callback(

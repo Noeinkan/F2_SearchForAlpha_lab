@@ -42,6 +42,37 @@
     background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
 }
 
+/* Unselected cards shrink to their name line; caption, dollar preview and
+   sparkline show on the selected one. Three full cards pushed Trade Setup
+   below the fold. */
+.strategy-mode-detail { display: none; }
+.strategy-mode-radio input[type="radio"]:checked + label .strategy-mode-detail,
+.strategy-mode-radio label:has(input:checked) .strategy-mode-detail {
+    display: block;
+}
+.strategy-mode-radio label:not(:has(input:checked)) .strategy-mode-card {
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+/* One-line purpose under a section header, replacing a repeat of its name. */
+.sfa-section-lede {
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+
+/* RUN BACKTEST stays reachable however far the panel scrolls. The bar's
+   background masks the content scrolling underneath it. */
+.sfa-run-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    padding: 8px 0;
+    margin-top: 4px;
+    background: var(--bg-primary);
+    box-shadow: 0 -6px 10px -6px color-mix(in srgb, #000 60%, transparent);
+}
+
 /* =============================================================================
    Execution Type explainer — mode fingerprints, matrix, sandbox
 
@@ -83,7 +114,7 @@
     border-radius: 2px;
     color: var(--text-tertiary);
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.08em;
     cursor: pointer;
@@ -104,7 +135,7 @@
     border-radius: 3px;
     background: color-mix(in srgb, currentColor 8%, transparent);
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.4;
 }
 
@@ -179,7 +210,7 @@ body.theme-light .sfa-opt-learn-modal .btn-close {
 .sfa-opt-learn-tr-head {
     background: var(--bg-tertiary);
     color: var(--text-tertiary);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -216,7 +247,7 @@ body.theme-light .sfa-opt-learn-modal .btn-close {
 
 .sfa-exec-kicker {
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.14em;
 }
@@ -251,7 +282,7 @@ body.theme-light .sfa-opt-learn-modal .btn-close {
 
 .sfa-exec-tab:hover { opacity: 0.92; }
 .sfa-exec-tab.is-active { opacity: 1; background: var(--bg-hover); }
-.sfa-exec-tab-tick { margin-left: 5px; font-size: 10px; }
+.sfa-exec-tab-tick { margin-left: 5px; font-size: 11px; }
 
 /* --- Sandbox --- */
 .sfa-exec-mode-intro {
@@ -347,7 +378,7 @@ body.theme-light .sfa-opt-learn-modal .btn-close {
 
 .sfa-exec-tape-note {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 11px;
     margin: 10px 0 6px;
 }
 
@@ -363,7 +394,7 @@ body.theme-light .sfa-opt-learn-modal .btn-close {
 
 .sfa-exec-control-label {
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     margin-bottom: 2px;
 }
 
@@ -386,7 +417,7 @@ body.theme-light .sfa-opt-learn-modal .btn-close {
 
 .sfa-exec-stat-label {
     font-family: var(--font-sans);
-    font-size: 9px;
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
 }
@@ -416,7 +447,7 @@ body.theme-light .sfa-opt-learn-modal .btn-close {
     border: 1px solid transparent;
     border-radius: 2px;
     font-family: var(--font-sans);
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 700;
     text-align: center;
     letter-spacing: 0.06em;
@@ -427,7 +458,7 @@ body.theme-light .sfa-opt-learn-modal .btn-close {
 .sfa-exec-inert {
     margin-top: 8px;
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.45;
 }
 
@@ -471,7 +502,7 @@ label,
 
 .signals-filter-label {
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.8px;
@@ -509,7 +540,7 @@ label,
     padding: 6px 8px;
     border-bottom: 1px solid var(--border-primary);
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 1px;

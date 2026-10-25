@@ -133,12 +133,28 @@ def test_glue_only_sets_bar_spacing_on_first_creation(glue_src):
 
 
 def test_glue_crosshair_legend_reads_visible_series(glue_src):
-    """Info panel must surface overlay/pane values from param.seriesData."""
+    """Info panel must surface overlay/pane values from param.seriesData,
+    and follow the crosshair (the owner prefers it to pinned pane labels)."""
     assert "collectIndicatorRows" in glue_src
     assert "positionLegend" in glue_src
     assert "param.point" in glue_src
     assert "sfa-chart-legend--follow" in glue_src
     assert "subscribeCrosshairMove" in glue_src
+
+
+def test_glue_has_no_chart_wide_price_formatter(glue_src):
+    """One formatter for every pane printed volume as 7500000000.0000.
+
+    `localization.priceFormatter` overrides every price scale, so each series
+    carries its pane's format (paneFormat) instead.
+    """
+    assert "localization" not in glue_src
+    assert "paneFormat" in glue_src
+
+
+def test_glue_keeps_series_titles_off_the_price_axis(glue_src):
+    """Titles handed to the library become axis tags that pile up (BB x3)."""
+    assert "title: ''," in glue_src
 
 
 def test_vendor_notice_file_exists():

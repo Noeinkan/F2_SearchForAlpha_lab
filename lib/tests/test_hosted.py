@@ -1,4 +1,7 @@
-"""The hosted workspace's owner login and data-volume layout (hosted/)."""
+"""The hosted workspace's site login (owner path) and data-volume layout (hosted/).
+
+The whitelist side of the login is in test_hosted_users.py.
+"""
 
 from __future__ import annotations
 
@@ -7,10 +10,11 @@ from flask import Flask
 from werkzeug.security import generate_password_hash
 
 from hosted import persist
-from hosted.login import COOKIE_NAME, MAX_FAILURES, LoginConfigError, OwnerLogin
+from hosted.login import COOKIE_NAME, MAX_FAILURES, LoginConfigError, SiteLogin
 
 EMAIL = "owner@example.com"
 PASSWORD = "correct horse battery staple"
+SECRET = "s" * 40
 
 
 @pytest.fixture()
@@ -29,7 +33,7 @@ def client():
     def healthz():
         return "ok"
 
-    OwnerLogin(EMAIL, generate_password_hash(PASSWORD)).install(server)
+    SiteLogin(EMAIL, generate_password_hash(PASSWORD), SECRET).install(server)
     return server.test_client()
 
 
@@ -76,12 +80,33 @@ def test_logout_and_forged_cookie(client):
 def test_missing_secrets_refuse_to_start(monkeypatch):
     monkeypatch.delenv("SITE_LOGIN_EMAIL", raising=False)
     monkeypatch.setenv("SITE_LOGIN_PASSWORD_HASH", generate_password_hash(PASSWORD))
+    monkeypatch.setenv("SITE_SECRET_KEY", SECRET)
     with pytest.raises(LoginConfigError):
-        OwnerLogin.from_env()
+        SiteLogin.from_env()
     monkeypatch.setenv("SITE_LOGIN_EMAIL", EMAIL)
     monkeypatch.setenv("SITE_LOGIN_PASSWORD_HASH", PASSWORD)  # plain text, not a hash
     with pytest.raises(LoginConfigError):
-        OwnerLogin.from_env()
+        SiteLogin.from_env()
+    monkeypatch.setenv("SITE_LOGIN_PASSWORD_HASH", generate_password_hash(PASSWORD))
+    monkeypatch.delenv("SITE_SECRET_KEY")
+    with pytest.raises(LoginConfigError):
+        SiteLogin.from_env()
+    monkeypatch.setenv("SITE_SECRET_KEY", "short")
+    with pytest.raises(LoginConfigError):
+        SiteLogin.from_env()
+    monkeypatch.setenv("SITE_SECRET_KEY", SECRET)
+    assert SiteLogin.from_env().email == EMAIL
+
+
+def test_changing_the_owner_password_signs_the_old_cookie_out(client):
+    _login(client)
+    cookie = client.get_cookie(COOKIE_NAME).value
+    other = Flask("t2")
+    other.route("/")(lambda: "workspace")
+    SiteLogin(EMAIL, generate_password_hash("a new password"), SECRET).install(other)
+    second = other.test_client()
+    second.set_cookie(COOKIE_NAME, cookie)
+    assert second.get("/").status_code == 302
 
 
 def test_persist_refreshes_config_but_keeps_user_files(tmp_path):

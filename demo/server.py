@@ -128,6 +128,8 @@ def create_demo_app(settings: DemoSettings | None = None, access_settings=None, 
 
     with store.pinned(store.template):
         app = dashboard.create_app()
+    # Nobody is admin in the demo, so admin-only features (Explain) stay off.
+    app.server.config["SFA_AUTH_MODE"] = "demo"
     if store.template.df is None:
         raise RuntimeError("the default session did not bootstrap from the snapshot; refusing to serve an empty demo")
 

@@ -16,6 +16,7 @@ from dash import dcc, html
 from lib.metrics import DEFAULT_SORT_KEY, sort_options
 from lib.dash.dash_config import (
     BORDER_RADIUS,
+    DEFAULT_TEST_WINDOW_PRESET,
     FONT_FAMILY,
     FONT_SIZES,
     INITIAL_CAPITAL,
@@ -153,7 +154,7 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                             dcc.RadioItems(
                                 id='opt-test-window-preset',
                                 options=TEST_WINDOW_PRESETS,
-                                value='max',
+                                value=DEFAULT_TEST_WINDOW_PRESET,
                                 inline=True,
                                 className='bbg-radio-seg sfa-test-window-seg',
                             ),

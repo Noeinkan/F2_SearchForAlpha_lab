@@ -103,61 +103,42 @@ def _create_sidebar(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | No
                 style={'fontSize': FONT_SIZES['sm']},
                 className='dark-dropdown'
             ),
-        ], style={'marginBottom': '10px'}),
+        ], style={'marginBottom': '8px'}),
+        # Name + Save on one row; the rarer actions as small text buttons
+        # underneath. Four full-width buttons, Delete always in red, took more
+        # room than the symbol picker for something used now and then.
         html.Div([
-            html.Label("Name", style={
-                'fontSize': FONT_SIZES['xs'],
-                'color': theme['text_secondary'],
-                'marginBottom': '4px',
-                'display': 'block'
-            }),
             dcc.Input(
                 id='preset-name-input',
                 type='text',
                 value='',
                 placeholder='Preset name',
-                style={**styles['input'], 'width': '100%'}
+                style={**styles['input'], 'flex': '1', 'minWidth': 0},
             ),
-        ], style={'marginBottom': '10px'}),
-        html.Div([
             html.Button(
                 "Save",
                 id='preset-save-btn',
-                style={**styles['button_primary'], 'flex': '1', 'padding': '6px 10px'},
+                style={**styles['button_primary'], 'padding': '4px 12px'},
+                title='Save the current setup under this name',
                 n_clicks=0
             ),
-            html.Button(
-                "Save As",
-                id='preset-save-as-btn',
-                style={**styles['button_outline'], 'flex': '1', 'padding': '6px 10px'},
-                n_clicks=0
-            ),
-        ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '8px'}),
+        ], style={'display': 'flex', 'gap': '6px', 'marginBottom': '4px'}),
         html.Div([
-            html.Button(
-                "Rename",
-                id='preset-rename-btn',
-                style={**styles['button_outline'], 'flex': '1', 'padding': '6px 10px'},
-                n_clicks=0
-            ),
-            html.Button(
-                "Delete",
-                id='preset-delete-btn',
-                style={
-                    **styles['button_outline'],
-                    'flex': '1',
-                    'padding': '6px 10px',
-                    'color': theme['accent_red'],
-                    'borderColor': theme['accent_red']
-                },
-                n_clicks=0
-            ),
-        ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '6px'}),
+            html.Button("Save as new", id='preset-save-as-btn', n_clicks=0,
+                        className='sfa-preset-action',
+                        title='Save a copy under the name typed above'),
+            html.Button("Rename", id='preset-rename-btn', n_clicks=0,
+                        className='sfa-preset-action',
+                        title='Rename the selected preset to the name typed above'),
+            html.Button("Delete", id='preset-delete-btn', n_clicks=0,
+                        className='sfa-preset-action sfa-preset-action--danger',
+                        title='Delete the selected preset'),
+        ], className='sfa-preset-actions'),
         html.Div(id='preset-status', style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary']}),
     ])
 
     # Shorter overlay labels for the 2-col grid (values unchanged).
-    _overlay_label = {'signals': 'Signals'}
+    _overlay_label = {'signals': 'Signals', 'bollinger': 'Bollinger'}
     _overlay_gear_items = (
         ('BB', 'bollinger', 'Bollinger Bands settings'),
         ('SMA', 'sma', 'SMA settings'),
@@ -245,24 +226,19 @@ def _create_sidebar(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | No
                     'color': theme['text_primary'],
                 },
             ),
+            # The overlays are one checklist, so their gears cannot sit beside
+            # each box; they get one labelled row of "\u2699 BB" buttons instead.
             html.Div(
-                [
-                    html.Div([
-                        html.Span(
-                            short,
-                            className='sfa-overlay-gear-strip-label',
-                            title=CHART_OVERLAY_HELP.get(key, title),
-                        ),
-                        html.Button(
-                            "\u2699",
-                            id={'type': 'indicator-gear', 'indicator': key},
-                            n_clicks=0,
-                            n_clicks_timestamp=0,
-                            type='button',
-                            style=styles['overlay_gear_button'],
-                            title=title,
-                        ),
-                    ], className='sfa-overlay-gear-strip-item')
+                [html.Span('Settings', className='sfa-overlay-gear-strip-label')] + [
+                    html.Button(
+                        f"\u2699 {short}",
+                        id={'type': 'indicator-gear', 'indicator': key},
+                        n_clicks=0,
+                        n_clicks_timestamp=0,
+                        type='button',
+                        className='sfa-overlay-gear-btn',
+                        title=title,
+                    )
                     for short, key, title in _overlay_gear_items
                 ],
                 className='sfa-overlay-gear-strip',
@@ -296,7 +272,7 @@ def _create_sidebar(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | No
                     'value': value,
                 } for label, value in SIGNAL_OPTIONS],
                 value=['buy', 'sell'],
-                style={'display': 'flex', 'gap': '12px'},
+                className='sfa-chart-toggle-grid',
                 inputStyle={'cursor': 'pointer'},
                 labelStyle={
                     'display': 'flex',
