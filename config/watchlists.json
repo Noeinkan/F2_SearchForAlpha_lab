@@ -1,6 +1,6 @@
 {
-  "active": "Default",
-  "updated_at": "2026-08-04T13:30:40+00:00",
+  "active": "Favourites",
+  "updated_at": "2026-10-25T00:00:00+00:00",
   "version": 1,
   "watchlists": {
     "Default": [
@@ -12,6 +12,18 @@
       "MSFT",
       "AMZN",
       "GOOGL"
+    ],
+    "Favourites": [
+      "NVDA",
+      "MSFT",
+      "AAPL",
+      "GOOGL",
+      "AMZN",
+      "META",
+      "AVGO",
+      "TSLA",
+      "BRK-B",
+      "JPM"
     ]
   }
 }

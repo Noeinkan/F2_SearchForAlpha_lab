@@ -373,4 +373,12 @@ def _money(value: float) -> str:
 
 
 def _money_mil(value: float) -> str:
-    return f"${value:,.0f}m" if _is_number(value) else "n/a"
+    """Amount held in millions, written at a readable scale: $1.58T, $102.4B, $850m."""
+    if not _is_number(value):
+        return "n/a"
+    a = abs(value)
+    if a >= 1_000_000:
+        return f"${value / 1_000_000:,.2f}T"
+    if a >= 1_000:
+        return f"${value / 1_000:,.1f}B"
+    return f"${value:,.0f}m"

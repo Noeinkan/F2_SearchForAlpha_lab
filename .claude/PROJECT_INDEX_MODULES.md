@@ -203,7 +203,9 @@ The Execution Type explainer modal (`execution-learn-modal`) is emitted by `back
 | `routing.py` | URL-based page routing |
 | `fundamentals.py` | Fundamentals overlay — register + re-exports |
 | `fundamentals_formulas.py` | Valuation formulas + explainability helpers |
-| `fundamentals_render.py` | Fundamentals tables / charts / `_render_payload` |
+| `fundamentals_render.py` | Fundamentals tables / `_render_payload` (re-exports the two below) |
+| `fundamentals_summary.py` | Top strip: live price + estimated value per share vs price (Rule #1, DCF, analysts) |
+| `fundamentals_charts.py` | Growth band line charts (labels first/last/max/min only) |
 | `flow.py` | Flow Scanner overlay — per-ticker report load and RESCAN via `flow_store`, minute poll for a refreshed report, native `#flow-content` render |
 | `misc_ui.py` | Keyboard shortcuts, palette dispatch bridge, misc UI hooks |
 | `layout.py` | Panel collapse, splitter, theme |

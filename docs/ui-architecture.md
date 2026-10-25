@@ -179,6 +179,7 @@ sorted filename order**, so the numeric prefixes *are* the cascade:
 | `30-vendor-widgets.css` | overrides for third-party internals — react-select dropdowns, date pickers, scrollbars, checkboxes, tooltips, alerts |
 | `40-chart.css` | terminal chart frame + OHLC readout + chart empty-state overlay |
 | `50-fundamentals.css` | Fundamentals workspace |
+| `52-fundamentals-summary.css` | Fundamentals value-vs-price strip + folded data-quality notes |
 | `55-theme-light.css` | `.theme-light` palette flip + Bootstrap accordion overrides |
 | `60-execution.css` | strategy mode cards, Execution Type explainer, signal panel |
 | `65-quick-swap.css` | Backtest panel quick-swap chips and comparison table (keys in `65-quick-swap.js`) |

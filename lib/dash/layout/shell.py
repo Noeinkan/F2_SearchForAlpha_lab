@@ -28,6 +28,7 @@ from .right_panel import _create_right_panel
 from .command_palette import _create_command_palette
 from .symbol_search import _create_symbol_search_modal
 from .feedback import _create_feedback_modal
+from .header_watchlist import create_watchlist_editor
 from lib.dash.bootstrap import BootstrapSnapshot
 from lib.dash.error_boundary import build_error_boundary
 
@@ -229,6 +230,7 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
         _create_command_palette(styles, theme),
         _create_symbol_search_modal(styles, theme),
         _create_feedback_modal(styles, theme),
+        create_watchlist_editor(),
 
         # Hidden elements
         html.Div(id='hidden-output', style={'display': 'none'}),

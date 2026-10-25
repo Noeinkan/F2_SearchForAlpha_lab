@@ -13,6 +13,12 @@ owner's cookie. Calls to Gemini are capped per user per minute; an answer
 already in the cache (``lib/explain/cache.py``) is free and not counted.
 ``"fresh": true`` in the body skips the cache and replaces the entry -- the
 popover's Refresh button.
+
+``"part"`` picks which of the two calls in ``lib/explain/gemini.py`` to make:
+``"answer"`` (default, the text) or ``"sources"`` (the Google Search links).
+The browser asks for both at once and shows the text as soon as it lands.
+Each part has its own cache entry and its own per-minute limit, so one click
+counts once against each.
 """
 
 from __future__ import annotations
@@ -66,12 +72,15 @@ def _payload(answer: gemini.Explanation, cached_at: float | None = None) -> dict
     }
 
 
-def install_explain_routes(server: Flask, *, explain=None, cache=None) -> None:
-    """``explain`` replaces ``gemini.explain`` and ``cache`` the on-disk
-    ``AnswerCache`` (tests). The real cache is opened on the first question,
-    so the demo, where Explain is off, never creates the file."""
-    ask = explain or gemini.explain
-    limiter = _Limiter(REQUESTS_PER_MINUTE)
+def install_explain_routes(server: Flask, *, explain=None, sources=None, cache=None) -> None:
+    """``explain`` / ``sources`` replace ``gemini.explain`` / ``gemini.find_sources``
+    and ``cache`` the on-disk ``AnswerCache`` (tests). The real cache is opened
+    on the first question, so the demo, where Explain is off, never creates the file."""
+    calls = {
+        "answer": explain or gemini.explain,
+        "sources": sources or (lambda selection, context, ticker, page: gemini.find_sources(selection, context)),
+    }
+    limiters = {part: _Limiter(REQUESTS_PER_MINUTE) for part in gemini.PARTS}
     store = {"cache": cache}
 
     def answers():
@@ -92,6 +101,7 @@ def install_explain_routes(server: Flask, *, explain=None, cache=None) -> None:
             email=auth_context.current_email(),
             admin=auth_context.is_admin(),
             explain=explain_enabled(),
+            sources=explain_enabled() and gemini.search_enabled(),
         )
         response.headers["Cache-Control"] = "no-store"
         return response
@@ -110,6 +120,9 @@ def install_explain_routes(server: Flask, *, explain=None, cache=None) -> None:
             return jsonify(ok=False, text="Select a number or a word first."), 400
         if len(selection) > gemini.MAX_SELECTION_CHARS:
             return jsonify(ok=False, text=f"Select at most {gemini.MAX_SELECTION_CHARS} characters."), 400
+        part = str(data.get("part") or "answer")
+        if part not in gemini.PARTS:
+            return jsonify(ok=False, text="Unknown part."), 400
         question = (
             selection,
             str(data.get("context") or "")[: gemini.MAX_CONTEXT_CHARS],
@@ -117,16 +130,16 @@ def install_explain_routes(server: Flask, *, explain=None, cache=None) -> None:
             str(data.get("page") or "")[:60],
         )
         cache = answers()
-        key = gemini.cache_key(*question) if cache else ""
+        key = gemini.cache_key(*question, part=part) if cache else ""
         hit = cache.get(key) if cache and not data.get("fresh") else None
         if hit:
             body = _payload(*hit)
         else:
             # Only a real call to Gemini counts against the limit.
             who = auth_context.current_email() or request.remote_addr or "local"
-            if not limiter.allow(who):
+            if not limiters[part].allow(who):
                 return jsonify(ok=False, text=f"Slow down: at most {REQUESTS_PER_MINUTE} explanations a minute."), 429
-            result = ask(*question)
+            result = calls[part](*question)
             if cache and result.ok:
                 cache.put(key, selection, result)
             body = _payload(result)

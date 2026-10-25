@@ -78,10 +78,16 @@ metrics from `lib/metrics/names.py`, the indicator defaults from
 lines that match the clicked thing (`glossary_for`; ~850 prompt tokens instead
 of ~3,500), or the bare vocabulary when nothing matches.
 
-**Sources.** Gemini runs one Google Search per question (grounding) and the
-popover lists the sites it used, plus Google's search-suggestion chips, which
-Google's grounding terms require next to the answer (shown in a sandboxed
-iframe). A grounded answer takes ~20–25 s. `GEMINI_SEARCH=0` turns search off.
+**Sources.** Each question is two Gemini calls made at the same time: the
+answer, without search, and a short separate prompt with Google Search
+(grounding) whose only job is the reference links. The text shows as soon as
+it lands (measured 8–15 s; one combined grounded call took 18–26 s) and the
+links slot in under it — usually they arrive first (~5–7 s). The popover lists
+the sites plus Google's search-suggestion chips, which Google's grounding terms
+require next to the links (shown in a sandboxed iframe, light or dark
+following the browser's own mode). The search prompt carries only the clicked
+text and the panel name, so one search serves a toggle, its label and every
+ticker. `GEMINI_SEARCH=0` turns search off (no links, one call per question).
 
 **Cache.** Good answers are stored in `state/explain-cache/answers.sqlite3`
 (`SFA_EXPLAIN_CACHE`), keyed by model + full prompt, for 30 days. The symbol is
@@ -93,8 +99,21 @@ comes back in a light format — `**bold**`, `` `code` ``, `- ` bullets and a
 `$$ … $$` line for a formula in plain Unicode — which `95-explain.js` turns into
 DOM nodes (never HTML), converting stray LaTeX to symbols. Admins only; locally (`python main.py`) you are
 admin, and `main.py` reads `GEMINI_API_KEY` from the repo's `.env`.
-`GEMINI_MODEL` overrides the default `gemini-flash-latest`. 20 Gemini calls
-a minute per user.
+`GEMINI_MODEL` overrides the default `gemini-flash-latest`. 20 answers and 20
+searches a minute per user.
+
+**Warming the cache.** `scripts/warm_explain_cache.py` asks every ✦ question
+ahead of time, so clicks on controls answer at once. With the dashboard
+running (`python main.py`), it opens it headless, opens every panel, asks
+`95-explain.js` for each question a click could send — described exactly as a
+click would, so the cache keys match — and fetches what is not cached yet.
+Numbers are skipped (they change with every backtest). On the main page that is
+~440 questions: ~440 answers and ~265 searches the first time, then only what
+expired after 30 days or changed. `--dry-run` lists them, `--limit N` asks a
+few, `--workers` sets how many at once (default 3). It writes the cache of the
+machine it runs on: for the hosted site, run it there or copy the file to
+`state/explain-cache/` on the volume. Grounded searches beyond Google's free
+quota are billed: check *Google AI Studio → Billing* before a full run.
 
 ## What survives a redeploy
 

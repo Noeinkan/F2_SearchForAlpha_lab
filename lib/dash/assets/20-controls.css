@@ -732,6 +732,65 @@ input.bbg-input[type=number] {
     font-size: 12px;
 }
 
+/* Header watchlist strip (layout/header_watchlist.py). Shrinks before the
+   tape does and scrolls sideways when the list is longer than the room. */
+.sfa-hwl {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.sfa-hwl-chips {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.sfa-hwl-chips::-webkit-scrollbar { display: none; }
+.bbg-header button.sfa-hwl-edit {
+    flex: none;
+    padding: 2px 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+.bbg-header button.sfa-hwl-edit:hover { color: var(--accent); }
+.sfa-hwl-chips {
+    display: flex;
+    gap: 3px;
+    white-space: nowrap;
+}
+.bbg-header button.sfa-hwl-chip {
+    padding: 4px 7px;
+    border: 1px solid var(--border-primary);
+    border-radius: 2px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+}
+.bbg-header button.sfa-hwl-chip:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.bbg-header button.sfa-hwl-chip.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+}
+.sfa-hwl-empty {
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+@media (max-width: 700px) {
+    .sfa-hwl { display: none; }
+}
+
 /* =============================================================================
    Status bar (bottom)
    ========================================================================== */

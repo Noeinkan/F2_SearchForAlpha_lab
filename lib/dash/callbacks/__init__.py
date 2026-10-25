@@ -13,6 +13,7 @@ from .signals import register_signal_callbacks
 from .chart import register_chart_callbacks
 from .backtest import register_backtest_callbacks
 from .quick_swap import register_quick_swap_callbacks
+from .header_watchlist import register_header_watchlist_callbacks
 from .optimization import register_optimization_callbacks
 from .optimize_workspace import register_optimize_workspace_callbacks
 from .optimizer_sync import register_optimizer_sync_callbacks
@@ -45,6 +46,7 @@ def register_callbacks(app) -> None:
     register_chart_callbacks(app)
     register_backtest_callbacks(app)
     register_quick_swap_callbacks(app)
+    register_header_watchlist_callbacks(app)
     register_optimization_callbacks(app)
     register_optimize_workspace_callbacks(app)
     register_optimizer_sync_callbacks(app)

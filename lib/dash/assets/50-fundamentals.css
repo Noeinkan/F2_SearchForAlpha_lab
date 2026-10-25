@@ -729,7 +729,8 @@
 
 .sfa-fundamentals-summary {
     display: grid;
-    grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr));
+    /* Price on the left, value-vs-price summary (52-fundamentals-summary.css) on the right. */
+    grid-template-columns: minmax(220px, 0.8fr) minmax(0, 3.2fr);
     gap: 6px;
     /* Not sticky: sticking overlaid the Financials table on scroll. */
     padding: 4px 0 6px;
@@ -783,18 +784,31 @@
 
 .sfa-fundamentals-legend {
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 500;
-    letter-spacing: 0.4px;
-    color: var(--text-tertiary);
-    margin: 0 0 4px;
-    line-height: 1.3;
+    color: var(--text-secondary);
+    margin: 0 0 6px;
+    line-height: 1.4;
 }
+
+.sfa-fundamentals-legend .sfa-legend-good,
+.sfa-fundamentals-legend .sfa-legend-warn,
+.sfa-fundamentals-legend .sfa-legend-bad {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 0 6px;
+    font-weight: 700;
+    border-radius: 2px;
+}
+.sfa-fundamentals-legend .sfa-legend-good { color: var(--up);   background: color-mix(in srgb, var(--up) 14%, transparent); }
+.sfa-fundamentals-legend .sfa-legend-warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.sfa-fundamentals-legend .sfa-legend-bad  { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); }
 
 .sfa-fundamentals-hero {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    justify-content: center;
+    gap: 4px;
     padding: 7px 9px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-primary);
@@ -802,7 +816,7 @@
 }
 
 .sfa-fundamentals-hero-label {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-secondary);
     letter-spacing: 1.2px;
     text-transform: uppercase;
@@ -812,7 +826,7 @@
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
-    font-size: 22px;
+    font-size: 26px;
     font-weight: 600;
     color: var(--text-primary);
     line-height: 1.1;
@@ -822,7 +836,7 @@
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: 0;
 }
@@ -831,8 +845,15 @@
 .sfa-fundamentals-hero-change.down { color: var(--down); }
 .sfa-fundamentals-hero-change.flat { color: var(--text-secondary); }
 
+.sfa-fundamentals-hero-line {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+}
+
 .sfa-fundamentals-hero-state {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-tertiary);
     letter-spacing: 0.6px;
     text-transform: uppercase;
@@ -858,7 +879,8 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
     gap: 6px;
-    align-items: start;
+    /* Equal-height panels: ragged bottoms left big dark holes. */
+    align-items: stretch;
 }
 
 .sfa-fundamentals-panel,
@@ -902,10 +924,36 @@
     padding: 8px 10px !important;
 }
 
+/* Six charts: 3x2, or one row of six on wide screens. auto-fit gave 5 + 1
+   at 1920px, leaving Debt alone under an empty row. */
 .sfa-fundamentals-charts {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
+}
+
+.sfa-fundamentals-chart-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 30px 2px 2px; /* right gap clears the fullscreen button */
+}
+
+.sfa-fundamentals-chart-title {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.sfa-fundamentals-chart-last {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
 }
 
 .sfa-fundamentals-charts > .sfa-flow-diagram-frame {
@@ -1269,9 +1317,9 @@
     width: 100% !important;
 }
 
-@media (min-width: 1800px) {
+@media (min-width: 1700px) {
     .sfa-fundamentals-charts {
-        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
     }
 }
 
@@ -1281,6 +1329,10 @@
     }
 
     .sfa-fundamentals-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .sfa-fundamentals-charts {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }

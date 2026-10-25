@@ -1,8 +1,16 @@
-"""One call to Gemini: "explain this thing I selected".
+"""Gemini calls behind "explain this thing I selected".
 
-``build_prompt`` is pure; ``explain`` is the only function that touches the
-network, and it never raises -- the dashboard shows whatever message comes
-back, so a dead key or a timeout reads as a sentence, not a stack trace.
+Two calls per question, which the browser makes in parallel:
+- ``explain``      -- the answer itself, without Google Search: ~5 s.
+- ``find_sources`` -- a short, separate prompt with Google Search on, used only
+  for its reference links and Search Suggestions: ~15-25 s, so the links show
+  up under an answer that is already on screen.
+Searching made the single combined call take 18-26 s (the model thinks ~3x
+longer when it searches); splitting it costs a second, small call per question.
+
+``build_prompt`` / ``build_sources_prompt`` are pure; only ``_call`` touches
+the network, and nothing here raises -- the dashboard shows whatever message
+comes back, so a dead key or a timeout reads as a sentence, not a stack trace.
 
 Configuration (environment, or ``.env`` for a local run):
 - ``GEMINI_API_KEY`` -- required; without it Explain is switched off.
@@ -11,10 +19,11 @@ Configuration (environment, or ``.env`` for a local run):
 - ``GEMINI_SEARCH``  -- ``0`` turns off Google Search grounding (the reference
   links under each answer). On by default.
 
-With search on, Gemini runs a Google Search and returns its sources
+With search on, the sources call runs a Google Search and returns its sources
 (``groundingMetadata``). Google's terms for grounding require showing the
 "Search Suggestions" it returns (``searchEntryPoint.renderedContent``, a small
-HTML snippet of chips); the browser shows it in a sandboxed iframe.
+HTML snippet of chips) wherever the links are shown; the browser shows it in a
+sandboxed iframe.
 """
 
 from __future__ import annotations
@@ -51,8 +60,10 @@ If it is an indicator or overlay: say what it measures, the parameters this app 
 Use the app's own definitions below over textbook ones. If the context is not enough to be sure, say what it most likely is and what would confirm it.
 This is research software, not financial advice; do not tell the user to buy or sell anything."""
 
-SEARCH_INSTRUCTIONS = """\
-Always run one Google Search for the general concept (not for this app) to find 2-3 reputable reference pages, such as Investopedia, StockCharts ChartSchool, CFA Institute or Wikipedia. Do not write links or a reference list in the answer; the sources are attached separately."""
+SOURCES_INSTRUCTIONS = """\
+A user of a trading-research dashboard (backtests, technical indicators, Buy/Sell signals, performance metrics) clicked the item below.
+Run one Google Search for the general concept behind it (not for this app) to find 2-3 reputable reference pages, such as Investopedia, StockCharts ChartSchool, CFA Institute or Wikipedia.
+Then reply with only the name of that concept, at most 8 words."""
 
 
 def api_key() -> str:
@@ -92,7 +103,6 @@ def build_prompt(selection: str, context: str = "", ticker: str = "", page: str 
     screen.append(f"- Nearby label / surrounding text: {context or 'none'}")
     parts = [
         INSTRUCTIONS,
-        *([SEARCH_INSTRUCTIONS] if search_enabled() else []),
         "",
         glossary_for(selection, context),
         "",
@@ -104,9 +114,32 @@ def build_prompt(selection: str, context: str = "", ticker: str = "", page: str 
     return "\n".join(parts)
 
 
-def cache_key(selection: str, context: str = "", ticker: str = "", page: str = "") -> str:
+def _where(context: str) -> str:
+    """The panel name alone ('panel "Chart Settings"'), or the start of the
+    context: enough to tell which concept it is, and stable across on/off
+    states and nearby values, so a search is shared by every click on it."""
+    match = re.search(r'panel "([^"]+)"', context or "")
+    return f'panel "{match.group(1)}"' if match else _clip(context, 120)
+
+
+def build_sources_prompt(selection: str, context: str = "") -> str:
+    """No symbol, page or glossary: the links are about the general concept, so
+    the same control shares one search across every ticker and page."""
+    return "\n".join([
+        SOURCES_INSTRUCTIONS,
+        "",
+        f"Clicked item: {_clip(selection, MAX_SELECTION_CHARS)}",
+        f"Where it is: {_where(context) or 'unknown'}",
+    ])
+
+
+PARTS = ("answer", "sources")
+
+
+def cache_key(selection: str, context: str = "", ticker: str = "", page: str = "", part: str = "answer") -> str:
     """Same model, same prompt -> same answer; a config change alters the prompt."""
-    raw = "\n".join([model_name(), str(search_enabled()), build_prompt(selection, context, ticker, page)])
+    prompt = build_sources_prompt(selection, context) if part == "sources" else build_prompt(selection, context, ticker, page)
+    raw = "\n".join([model_name(), part, prompt])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -153,14 +186,33 @@ def _extract_text(payload: dict) -> str:
 
 
 def explain(selection: str, context: str = "", ticker: str = "", page: str = "", *, session=None) -> Explanation:
-    """Ask Gemini. ``session`` is anything with ``.post`` (tests pass a fake)."""
+    """The answer, without search. ``session`` is anything with ``.post`` (tests pass a fake)."""
+    if not (selection or "").strip():
+        return Explanation(False, "Select a number or a word first.")
+    return _call(build_prompt(selection, context, ticker, page), search=False, session=session)
+
+
+def find_sources(selection: str, context: str = "", *, session=None) -> Explanation:
+    """Reference links for the concept: a grounded call whose text (the concept's
+    name) is kept only so the cache has something to store. With GEMINI_SEARCH
+    off it answers at once with no sources and calls nothing."""
+    if not search_enabled():
+        return Explanation(True, "", ())
+    if not (selection or "").strip():
+        return Explanation(False, "Select a number or a word first.")
+    result = _call(build_sources_prompt(selection, context), search=True, session=session)
+    if result.ok and not result.sources:
+        # Gemini skipped the search this time: not worth caching for 30 days.
+        return Explanation(False, "No sources found this time.")
+    return result
+
+
+def _call(prompt: str, *, search: bool, session=None) -> Explanation:
     key = api_key()
     if not key:
         return Explanation(False, "Explain is not configured: GEMINI_API_KEY is not set.")
-    if not (selection or "").strip():
-        return Explanation(False, "Select a number or a word first.")
-    body = {"contents": [{"role": "user", "parts": [{"text": build_prompt(selection, context, ticker, page)}]}]}
-    if search_enabled():
+    body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
+    if search:
         body["tools"] = [{"google_search": {}}]
     try:
         if session is None:
@@ -190,9 +242,9 @@ def explain(selection: str, context: str = "", ticker: str = "", page: str = "",
     try:
         payload = response.json()
         text = _extract_text(payload)
-        sources, suggestions = _extract_sources(payload)
+        sources, suggestions = _extract_sources(payload) if search else ((), "")
     except (ValueError, AttributeError):
-        text = ""
-    if not text:
+        text, sources, suggestions = "", (), ""
+    if not text and not sources:
         return Explanation(False, "Gemini returned no text (the answer may have been blocked).")
     return Explanation(True, text, sources, suggestions)

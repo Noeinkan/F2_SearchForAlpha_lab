@@ -176,15 +176,19 @@ def test_render_payload_quarterly_keeps_annual_valuation_and_big_five():
     assert any(getattr(node, 'id', None) == 'fundamentals-period-toggle' for node in header.children)
 
 
-def test_chart_labels_each_point_on_the_annual_view_but_not_on_40_quarters():
+def test_chart_labels_only_key_points_on_the_annual_view_and_none_on_40_quarters():
     from lib.dash.callbacks.fundamentals_render import CHART_LABEL_MAX_POINTS, _metric_figure
     from lib.dash.dash_config import DEFAULT_THEME, get_theme
 
     theme = get_theme(DEFAULT_THEME)
     years = list(range(2015, 2026))
-    annual = _metric_figure('Sales', [float(v) for v in range(11)], years, theme).data[0]
+    values = [5.0, 3.0, 4.0, 9.0, 4.5, 4.6, 4.7, 4.8, 4.9, 5.1, 6.0]
+    annual = _metric_figure('Sales', values, years, theme).data[0]
     assert annual.mode == 'lines+markers+text'
-    assert annual.text[-1] == '10.00'
+    # First, lowest, highest, last: neighbours no longer print on top of each other.
+    labelled = [i for i, text in enumerate(annual.text) if text]
+    assert labelled == [0, 1, 3, 10]
+    assert annual.text[-1] == '6.00'
 
     quarters = [f'{2016 + i // 4}-Q{i % 4 + 1}' for i in range(40)]
     assert len(quarters) > CHART_LABEL_MAX_POINTS
@@ -192,3 +196,54 @@ def test_chart_labels_each_point_on_the_annual_view_but_not_on_40_quarters():
     assert quarterly.mode == 'lines+markers'
     assert not quarterly.text
     assert '%{y' in quarterly.hovertemplate  # values stay readable on hover
+
+
+def test_value_estimates_pull_each_models_per_share_value():
+    from lib.dash.callbacks.fundamentals_summary import value_estimates
+
+    annual = {
+        'valuation': [{'metric': 'Sticker Price', 'value': '$173.87'},
+                      {'metric': 'Entry Price', 'value': '$86.94'}],
+        'dcf': [{'metric': 'DCF Fair Value', 'value': '$109.49'}],
+        'analyst_targets': [{'metric': 'Target Mean', 'value': '$329.25'},
+                            {'metric': 'Target Low', 'value': '$240.00'},
+                            {'metric': 'Target High', 'value': '$405.00'}],
+    }
+    got = {e['key']: e for e in value_estimates(annual)}
+    assert [k for k in got] == ['sticker', 'entry', 'dcf', 'analyst']
+    assert got['dcf']['value'] == 109.49
+    assert got['analyst']['band'] == (240.0, 405.0)
+
+
+def test_value_estimates_skip_missing_models():
+    from lib.dash.callbacks.fundamentals_summary import value_estimates
+
+    annual = {'valuation': [{'metric': 'Sticker Price', 'value': '--'}], 'dcf': []}
+    assert value_estimates(annual) == []
+
+
+def test_financial_table_drops_last_column_and_fixes_debt_ratio_unit():
+    from lib.dash.callbacks.fundamentals_render import _financial_table
+    from lib.dash.dash_config import DEFAULT_THEME, get_theme
+
+    rows = [{'metric': 'Debt Ratio', 'unit': 'y', '2025': '0.79'}]
+    table = _financial_table(rows, ['2025'], get_theme(DEFAULT_THEME), last_price=100.0)
+    assert [c['id'] for c in table.columns] == ['metric', 'unit', '2025']
+    assert table.data[0]['unit'] == 'x'
+
+
+def test_dcf_amounts_use_a_readable_scale():
+    from lib.dcf import _money_mil
+
+    assert _money_mil(1_579_378) == '$1.58T'
+    assert _money_mil(102_386) == '$102.4B'
+    assert _money_mil(850) == '$850m'
+
+
+def test_quality_notes_fold_into_one_line_per_note():
+    from dash import html
+    from lib.dash.callbacks.fundamentals_render import _quality_notes
+
+    box = _quality_notes(['Data source: SEC EDGAR', 'Yahoo price history'], {})
+    assert isinstance(box, html.Details)
+    assert len(box.children[1].children) == 2

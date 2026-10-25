@@ -883,7 +883,7 @@ def _build_financial_map(
         "eps_gr": _growth_metric("EPS-GR", eps),
         "sales_gr": _growth_metric("Sales-GR", revenue),
         "fcf_gr": _growth_metric("FCF-GR", free_cash_flow),
-        "debt_ratio": _metric("Debt Ratio", "y", debt_ratio),
+        "debt_ratio": _metric("Debt Ratio", "x", debt_ratio),
         "pe_ratio": _metric("PE Ratio", "x", pe_ratio),
     }
 
@@ -1141,7 +1141,7 @@ def _chart_series(financial_map: dict[str, dict[str, Any]], periods: list[Period
     chart_keys = {
         "ROIC": "roic",
         "Equity": "equity",
-        "Earning per share": "eps",
+        "EPS": "eps",
         "Sales": "sales",
         "Free Cash Flow": "fcf",
         "Debt": "long_debt",

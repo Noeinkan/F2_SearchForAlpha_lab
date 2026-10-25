@@ -32,6 +32,10 @@ _SEED_SYMBOLS = ["SPY", "QQQ", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "GOOGL"]
 
 MAX_LIST_NAME_LENGTH = 40
 
+# A list is shown whole in the header strip, so it stays short. Adding past the
+# cap is refused; a longer list already on disk is kept as it is, never trimmed.
+MAX_WATCHLIST_SYMBOLS = 10
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -142,8 +146,21 @@ def toggle_symbol(data: Dict[str, Any], list_name: str, symbol: str) -> Dict[str
     symbols = payload["watchlists"].setdefault(name, [])
     if value in symbols:
         symbols.remove(value)
-    else:
+    elif len(symbols) < MAX_WATCHLIST_SYMBOLS:
         symbols.append(value)
+    return payload
+
+
+def set_symbols(data: Dict[str, Any], list_name: str, symbols: List[str]) -> Dict[str, Any]:
+    """Replace a list's symbols in the given order: cleaned, deduped, capped."""
+    payload = normalize(data)
+    name = _clean_name(list_name) or payload["active"]
+    clean: List[str] = []
+    for symbol in symbols or []:
+        value = _clean_symbol(symbol)
+        if value and value not in clean:
+            clean.append(value)
+    payload["watchlists"][name] = clean[:MAX_WATCHLIST_SYMBOLS]
     return payload
 
 

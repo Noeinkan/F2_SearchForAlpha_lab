@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 from dash import dash_table, dcc, html
-import plotly.graph_objects as go
 
 from lib.dash.dash_config import (
     DEFAULT_FUNDAMENTALS_PERIOD,
@@ -13,8 +12,21 @@ from lib.dash.dash_config import (
     FONT_SIZES,
     FUNDAMENTALS_PERIOD_OPTIONS,
 )
-from lib.dash.flow_view import wrap_flow_diagram
 
+# Charts and the top strip live in their own modules; re-exported so existing
+# imports from this module keep working.
+from .fundamentals_charts import (  # noqa: F401
+    CHART_LABEL_MAX_POINTS,
+    _chart_card,
+    _chart_text,
+    _metric_figure,
+)
+from .fundamentals_summary import (  # noqa: F401
+    _format_change,
+    _market_state_label,
+    _price_hero_cell,
+    _summary_strip,
+)
 from .fundamentals_formulas import (
     _FINANCIAL_EXPLAIN_MAP,
     _VALUATION_EXPLAIN_MAP,
@@ -68,7 +80,6 @@ def _render_payload(payload: dict[str, Any], period: str, theme: dict) -> html.D
         html.Div([
             _panel_title('Big Five', theme),
             _big_five_legend(),
-            _big_five_note(annual.get('big_five_note', ''), theme),
             _big_five_table(
                 annual.get('big_five', []),
                 _period_column_labels(annual.get('years', [])),
@@ -187,95 +198,6 @@ def _period_toggle(period: str, *, hidden: bool = False) -> dcc.RadioItems:
     return dcc.RadioItems(**kwargs)
 
 
-def _summary_strip(
-    payload: dict[str, Any],
-    active: dict[str, Any],
-    period: str,
-    theme: dict,
-) -> html.Div:
-    periods = active.get('years') or []
-    last_period = periods[-1] if periods else '--'
-    last_label = 'Last FY' if period == 'annual' else 'Last period'
-    return html.Div([
-        _price_hero_cell(payload, theme),
-        _summary_cell('Ticker', payload.get('ticker', '--'), theme),
-        _summary_cell('Currency', payload.get('currency', '--'), theme),
-        _summary_cell(last_label, last_period, theme),
-        _summary_cell('Updated', payload.get('as_of', '--'), theme),
-    ], style={
-        'display': 'grid',
-    }, className='sfa-fundamentals-summary')
-
-
-def _summary_cell(label: str, value: Any, theme: dict) -> html.Div:
-    return html.Div([
-        html.Div(label, style={'fontSize': FONT_SIZES['xs'], 'color': theme['text_secondary'], 'fontFamily': FONT_FAMILY}),
-        html.Div(str(value), className='num', style={'fontSize': FONT_SIZES['sm'], 'color': theme['text_primary']}),
-    ], style={
-        'backgroundColor': theme['bg_tertiary'],
-        'border': f'1px solid {theme["border_primary"]}',
-        'padding': '5px 7px',
-        'minWidth': 0,
-    })
-
-
-def _price_hero_cell(payload: dict[str, Any], theme: dict) -> html.Div:
-    """Hero cell showing the live last price and daily change.
-
-    Falls back to '--' rather than fabricating a value when yfinance does
-    not expose the live quote, so the user can immediately tell that the
-    data provider did not return it (rather than masking the gap with 0).
-    """
-    last_price = payload.get('last_price')
-    change = payload.get('last_change')
-    change_pct = payload.get('last_change_pct')
-    market_state = str(payload.get('market_state') or '').strip().upper()
-    currency = payload.get('price_currency') or payload.get('currency') or 'USD'
-
-    price_text = _fmt_money(last_price)
-    change_text, change_class = _format_change(change, change_pct)
-    state_text = _market_state_label(market_state)
-
-    return html.Div([
-        html.Div('LAST PRICE', className='sfa-fundamentals-hero-label'),
-        html.Div(price_text, className='num sfa-fundamentals-hero-value'),
-        html.Div([
-            html.Span(change_text, className=f'sfa-fundamentals-hero-change {change_class}'),
-            html.Span(f' {currency}', className='sfa-fundamentals-hero-state'),
-        ]),
-        html.Div(state_text, className='sfa-fundamentals-hero-state'),
-    ], className='sfa-fundamentals-hero')
-
-
-def _format_change(change: float | None, change_pct: float | None) -> tuple[str, str]:
-    if change is None and change_pct is None:
-        return '--', 'flat'
-    sign = ''
-    cls = 'flat'
-    if isinstance(change, (int, float)) and change > 0:
-        sign = '+'
-        cls = 'up'
-    elif isinstance(change, (int, float)) and change < 0:
-        cls = 'down'
-    change_part = f'{sign}{change:,.2f}' if isinstance(change, (int, float)) else '--'
-    pct_part = (
-        f' ({sign}{(change_pct * 100):.2f}%)'
-        if isinstance(change_pct, (int, float))
-        else ''
-    )
-    return f'{change_part}{pct_part}', cls
-
-
-def _market_state_label(state: str) -> str:
-    return {
-        'REGULAR': 'Market · Regular session',
-        'PRE': 'Pre-market',
-        'POST': 'After-hours',
-        'CLOSED': 'Market closed',
-        'PREPRE': 'Pre-pre-market',
-    }.get(state, '' if not state else f'Market · {state.title()}')
-
-
 def _panel_title(title: str, theme: dict, *, size: str = 'xs') -> html.Div:
     return html.Div(title, style={
         'fontFamily': FONT_FAMILY,
@@ -304,9 +226,11 @@ def _financial_table(
     *,
     last_price: float | None = None,
 ) -> dash_table.DataTable:
+    # No 'Last' column: it was '--' on every row but Stock Price, and the live
+    # price now leads the page. `last_price` stays in the signature for callers.
+    del last_price
     columns = [{'name': 'Metric', 'id': 'metric'}, {'name': 'Unit', 'id': 'unit'}] + [{'name': year, 'id': year} for year in years]
-    enriched_rows = _decorate_financial_rows_with_last(rows, last_price)
-    columns.append({'name': 'Last', 'id': 'Last'})
+    enriched_rows = _with_display_units(rows)
     props: dict[str, Any] = {
         'id': 'fundamentals-financial-table',
         'columns': columns,
@@ -314,11 +238,7 @@ def _financial_table(
         'fill_width': True,
         'style_table': {'overflowX': 'auto', 'width': '100%', 'minWidth': '100%'},
         'style_cell': _table_cell_style(theme),
-        'style_cell_conditional': [
-            {'if': {'column_id': 'metric'}, 'textAlign': 'left', 'fontWeight': 700, 'minWidth': '165px', 'width': '18%'},
-            {'if': {'column_id': 'unit'}, 'textAlign': 'center', 'width': '52px', 'maxWidth': '58px'},
-            {'if': {'column_id': 'Last'}, 'textAlign': 'right', 'width': '78px', 'maxWidth': '90px', 'fontFamily': 'IBM Plex Mono, monospace', 'fontVariantNumeric': 'tabular-nums'},
-        ],
+        'style_cell_conditional': _label_column_widths(),
         'style_header': _table_header_style(theme),
         'style_data_conditional': _financial_conditionals(theme),
         'fixed_columns': {'headers': True, 'data': 1},
@@ -329,26 +249,32 @@ def _financial_table(
     return dash_table.DataTable(**props)
 
 
-def _decorate_financial_rows_with_last(
-    rows: list[dict[str, Any]],
-    last_price: float | None,
-) -> list[dict[str, Any]]:
-    """Inject a 'Last' column. Only the Stock Price (FYE) row shows the live
-    value; the rest stay at '--' so the column semantics are unambiguous."""
-    enriched: list[dict[str, Any]] = []
+# Debt Ratio was written with unit 'y' (a typo for 'x'); payloads frozen before
+# the fix (demo fixtures) still carry it.
+_UNIT_FIXES = {'y': 'x'}
+
+
+def _with_display_units(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    fixed = []
     for row in rows:
-        new_row = dict(row)
-        metric = str(new_row.get('metric', '')).strip()
-        if metric == 'Stock Price (FYE)' and last_price is not None:
-            new_row['Last'] = f'${float(last_price):,.2f}'
-        else:
-            new_row['Last'] = '--'
-        enriched.append(new_row)
-    return enriched
+        unit = row.get('unit')
+        fixed.append({**row, 'unit': _UNIT_FIXES.get(unit, unit)} if unit in _UNIT_FIXES else row)
+    return fixed
+
+
+def _label_column_widths() -> list[dict[str, Any]]:
+    """Fixed-width label columns, so the year columns get the spare width
+    (METRIC used to take 16-18% of a 1920px screen for 20-character names)."""
+    return [
+        {'if': {'column_id': 'metric'}, 'textAlign': 'left', 'fontWeight': 700,
+         'width': '170px', 'minWidth': '150px', 'maxWidth': '190px'},
+        {'if': {'column_id': 'unit'}, 'textAlign': 'center', 'color': 'var(--text-tertiary)',
+         'width': '48px', 'minWidth': '44px', 'maxWidth': '52px'},
+    ]
 
 
 def _big_five_table(rows: list[dict[str, Any]], years: list[str], theme: dict) -> dash_table.DataTable:
-    rows = _decorate_big_five_rows(rows)
+    rows = _decorate_big_five_rows(_with_display_units(rows))
     columns = [{'name': 'Metric', 'id': 'metric'}, {'name': 'Unit', 'id': 'unit'}]
     columns += [{'name': year, 'id': year} for year in years]
     columns += [{'name': label, 'id': label} for label in ('10Y', '5Y', '1Y')]
@@ -359,9 +285,7 @@ def _big_five_table(rows: list[dict[str, Any]], years: list[str], theme: dict) -
         'fill_width': True,
         'style_table': {'overflowX': 'auto', 'width': '100%', 'minWidth': '100%'},
         'style_cell': _table_cell_style(theme),
-        'style_cell_conditional': [
-            {'if': {'column_id': 'metric'}, 'textAlign': 'left', 'fontWeight': 700, 'minWidth': '150px', 'width': '16%'},
-            {'if': {'column_id': 'unit'}, 'textAlign': 'center', 'width': '52px', 'maxWidth': '58px'},
+        'style_cell_conditional': _label_column_widths() + [
             {'if': {'column_id': '10Y'}, 'borderLeft': f'2px solid {theme["accent_blue"]}'},
         ],
         'style_header': _table_header_style(theme),
@@ -393,23 +317,17 @@ def _decorate_big_five_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _big_five_legend() -> html.Div:
-    return html.Div(
-        '↑ ≥10% · → 0–10% · ↓ ≤0',
-        className='sfa-fundamentals-legend',
-    )
+    """One line saying what the 10Y/5Y/1Y columns are and what the colours mean.
 
-
-def _big_five_note(note: str, theme: dict) -> html.Div:
-    if not note:
-        return html.Div()
-    return html.Div(note, style={
-        'fontFamily': FONT_FAMILY,
-        'fontSize': FONT_SIZES['xs'],
-        'fontWeight': 600,
-        'color': theme['text_secondary'],
-        'marginBottom': '4px',
-        'lineHeight': '1.25',
-    })
+    Replaces the bare '↑ ≥10% · → 0–10% · ↓ ≤0' plus the payload's separate
+    NOTE line, which said the same target in other words.
+    """
+    return html.Div([
+        html.Span('10Y · 5Y · 1Y = average growth per year. Target: 10% or more every year. '),
+        html.Span('↑ 10%+', className='sfa-legend-good'),
+        html.Span('→ 0–10%', className='sfa-legend-warn'),
+        html.Span('↓ shrinking', className='sfa-legend-bad'),
+    ], className='sfa-fundamentals-legend')
 
 
 def _valuation_tables(rows: list[dict[str, Any]], theme: dict) -> html.Div:
@@ -512,15 +430,17 @@ def _table_header_style(theme: dict) -> dict[str, Any]:
 
 
 def _valuation_metric_style(metric: str, theme: dict) -> dict[str, Any]:
+    # Key results (the per-share values the top strip repeats) share one blue
+    # highlight; Year-end Close is an input, so it is no longer painted red.
     normalized = _canonical_metric(metric)
-    if normalized == 'Year-end Close':
-        return {'backgroundColor': f'{theme["accent_red"]}25', 'color': theme['accent_red']}
     if normalized == 'Entry Price':
-        return {'backgroundColor': f'{theme["accent_green"]}22', 'color': theme['accent_green']}
-    if normalized == 'Fut. Market Price (10 Y)':
-        return {'backgroundColor': f'{theme["accent_blue"]}18'}
+        return {'backgroundColor': f'{theme["accent_green"]}22', 'color': theme['accent_green'], 'fontWeight': 700}
     if normalized == 'Sticker Price':
-        return {'backgroundColor': f'{theme["accent_blue"]}12'}
+        return {
+            'backgroundColor': f'{theme["accent_blue"]}1F',
+            'color': theme['accent_blue'],
+            'fontWeight': 700,
+        }
     if normalized == 'DCF Fair Value':
         return {
             'backgroundColor': f'{theme["accent_blue"]}1F',
@@ -529,7 +449,7 @@ def _valuation_metric_style(metric: str, theme: dict) -> dict[str, Any]:
         }
     if normalized == 'Target Mean':
         return {
-            'backgroundColor': f'{theme["accent_blue"]}18',
+            'backgroundColor': f'{theme["accent_blue"]}1F',
             'color': theme['accent_blue'],
             'fontWeight': 700,
         }
@@ -912,22 +832,24 @@ def _big_five_value_columns(columns: list[dict[str, Any]] | None) -> list[str]:
 
 
 def _financial_conditionals(theme: dict) -> list[dict[str, Any]]:
-    # Soft category grouping only (not good/bad). Green/red importance fills removed.
+    # Plain zebra rows. The old cyan/orange group fills had no key on screen,
+    # so they read as warnings. The debt block keeps a divider above it.
     return [
-        {'if': {'filter_query': '{metric} contains "Debt"'}, 'backgroundColor': f'{theme["accent_cyan"]}1F'},
-        {'if': {'filter_query': '{metric} = "Debt Ratio"'}, 'backgroundColor': f'{theme["accent_cyan"]}1F'},
-        {'if': {'filter_query': '{metric} = "PE Ratio"'}, 'backgroundColor': f'{theme["accent_orange"]}1F'},
-        {'if': {'filter_query': '{metric} = "Avg. Invested Capital"'}, 'backgroundColor': f'{theme["accent_orange"]}1F'},
-        {'if': {'filter_query': '{metric} = "Stock Price (FYE)"'}, 'backgroundColor': f'{theme["accent_orange"]}1F', 'fontWeight': 700},
-        {'if': {'column_id': 'Last', 'filter_query': '{Last} != "--"'}, 'backgroundColor': f'{theme["accent_orange"]}30', 'color': theme['accent_orange'], 'fontWeight': 700},
-        {'if': {'column_id': 'Last', 'filter_query': '{Last} = "--"'}, 'color': theme['text_tertiary']},
+        {'if': {'row_index': 'odd'}, 'backgroundColor': theme['table_row_alt']},
+        {'if': {'filter_query': '{metric} = "Stock Price (FYE)"'}, 'fontWeight': 700},
+        {'if': {'filter_query': '{metric} = "Current Debt (Liab)"'}, 'borderTop': f'2px solid {theme["border_primary"]}'},
+        {'if': {'filter_query': '{metric} = "Debt Ratio"'}, 'borderTop': f'2px solid {theme["border_primary"]}'},
         {'if': {'state': 'active'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
         {'if': {'state': 'selected'}, 'backgroundColor': theme['table_row_hover'], 'border': f'1px solid {theme["accent_blue"]}', 'color': theme['text_primary']},
     ]
 
 
 def _big_five_conditionals(theme: dict, value_columns: list[str]) -> list[dict[str, Any]]:
-    conditionals = [{'if': {'filter_query': '{metric} = "ROIC"'}, 'backgroundColor': f'{theme["accent_green"]}1F'}]
+    conditionals = [
+        {'if': {'row_index': 'odd'}, 'backgroundColor': theme['table_row_alt']},
+        # Debt Ratio and PE are context, not growth rates: set them apart.
+        {'if': {'filter_query': '{metric} = "Debt Ratio"'}, 'borderTop': f'2px solid {theme["border_primary"]}'},
+    ]
     for column in value_columns:
         conditionals.append(
             {'if': {'column_id': column, 'filter_query': f'{{{column}}} contains "--"'}, 'color': theme['text_tertiary']},
@@ -946,99 +868,21 @@ def _big_five_conditionals(theme: dict, value_columns: list[str]) -> list[dict[s
     return conditionals
 
 
-def _chart_card(label: str, values: list[float | None], years: list[Any], theme: dict) -> html.Div:
-    card = html.Div(
-        [
-            _panel_title(label, theme),
-            dcc.Graph(
-                figure=_metric_figure(label, values, years, theme),
-                config={'displayModeBar': False, 'responsive': True},
-                style={'height': 'clamp(145px, 19vh, 190px)'},
-            ),
-        ],
-        style=_panel_style(theme),
-        className='sfa-fundamentals-panel sfa-fundamentals-chart',
-    )
-    return wrap_flow_diagram(card, index=f'fundamentals-{label}', theme=theme)
+def _quality_notes(notes: list[str], theme: dict) -> html.Details:
+    """Sources and caveats, one per line, folded by default.
 
-
-# Above this many points the value labels overlap into a smear (40 SEC quarters
-# since ROADMAP 7.6), so they give way to the hover readout.
-CHART_LABEL_MAX_POINTS = 12
-
-
-def _metric_figure(label: str, values: list[float | None], years: list[Any], theme: dict) -> go.Figure:
-    fig = go.Figure()
-    y_values = [value * 100 if label == 'ROIC' and value is not None else value for value in values]
-    labelled = len(y_values) <= CHART_LABEL_MAX_POINTS
-    fig.add_trace(go.Scatter(
-        x=years,
-        y=y_values,
-        mode='lines+markers+text' if labelled else 'lines+markers',
-        line={'color': theme['accent_blue'], 'width': 2},
-        marker={'size': 6 if labelled else 4, 'color': theme['accent_blue']},
-        text=[_chart_text(value, label) for value in y_values] if labelled else None,
-        textposition='top center',
-        textfont={'size': 9, 'color': theme['text_secondary']},
-        hovertemplate='%{x}: %{y:,.2f}<extra></extra>',
-    ))
-    _add_trendline(fig, years, y_values, theme)
-    fig.update_layout(
-        paper_bgcolor=theme['bg_panel'],
-        plot_bgcolor=theme['bg_primary'],
-        margin={'l': 38, 'r': 8, 't': 4, 'b': 24},
-        font={'family': FONT_FAMILY, 'size': 11, 'color': theme['text_secondary']},
-        xaxis={'gridcolor': theme['chart_grid'], 'showline': True, 'linecolor': theme['border_primary']},
-        yaxis={'gridcolor': theme['chart_grid'], 'showline': True, 'linecolor': theme['border_primary']},
-        showlegend=False,
-    )
-    return fig
-
-
-def _add_trendline(fig: go.Figure, years: list[Any], values: list[float | None], theme: dict) -> None:
-    pairs = [(index, value) for index, value in enumerate(values) if value is not None]
-    if len(pairs) < 2:
-        return
-    x_values = [pair[0] for pair in pairs]
-    y_values = [pair[1] for pair in pairs]
-    slope, intercept = _linear_fit(x_values, y_values)
-    fig.add_trace(go.Scatter(
-        x=[years[index] for index in x_values],
-        y=[slope * index + intercept for index in x_values],
-        mode='lines',
-        line={'color': theme['text_secondary'], 'width': 1.5, 'dash': 'dot'},
-        hoverinfo='skip',
-    ))
-
-
-def _linear_fit(x_values: Sequence[float], y_values: Sequence[float]) -> tuple[float, float]:
-    x_mean = sum(x_values) / len(x_values)
-    y_mean = sum(y_values) / len(y_values)
-    denominator = sum((x - x_mean) ** 2 for x in x_values)
-    if denominator == 0:
-        return 0.0, y_mean
-    slope = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_values, y_values)) / denominator
-    return slope, y_mean - slope * x_mean
-
-
-def _chart_text(value: float | None, label: str) -> str:
-    if value is None:
-        return ''
-    if label == 'ROIC':
-        return f'{value:.1f}%'
-    return f'{value:,.0f}' if abs(value) >= 100 else f'{value:,.2f}'
-
-
-def _quality_notes(notes: list[str], theme: dict) -> html.Div:
-    return html.Div([
-        html.Span('DATA QUALITY: ', style={'fontWeight': 700}),
-        html.Span(' | '.join(notes or ['No notes'])),
-    ], style={
-        'marginTop': '0',
-        'fontFamily': FONT_FAMILY,
-        'fontSize': FONT_SIZES['xs'],
-        'color': theme['text_secondary'],
-    })
+    Was a single ' | '-joined line that ran off the right edge.
+    """
+    del theme  # styled by 50-fundamentals.css
+    notes = [str(n) for n in notes or [] if str(n).strip()]
+    return html.Details([
+        html.Summary([
+            html.Span('Data quality & sources'),
+            html.Span(f'{len(notes)} note{"s" if len(notes) != 1 else ""}',
+                      className='sfa-fundamentals-notes-count'),
+        ]),
+        html.Ul([html.Li(note) for note in notes] or [html.Li('No notes')]),
+    ], className='sfa-fundamentals-notes')
 
 
 def _empty_state(theme: dict, message: str) -> html.Div:

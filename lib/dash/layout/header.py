@@ -15,6 +15,7 @@ from dash import html
 
 from lib.dash.dash_config import DEFAULT_TICKER, KOFI_URL
 from lib.dash.bootstrap import BootstrapSnapshot
+from .header_watchlist import create_header_watchlist
 
 
 def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | None = None) -> html.Header:
@@ -90,6 +91,9 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
                 className='bbg-tape-delta muted' if not bootstrap else 'bbg-tape-delta',
             ),
         ], style=styles['header_tape'], className='bbg-tape'),
+
+        # Active watchlist as chips, on every workspace (header_watchlist.py).
+        create_header_watchlist(),
 
         html.Div([
             # No green "CONNECTED" here: it was static text, true even with

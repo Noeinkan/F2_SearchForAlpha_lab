@@ -111,6 +111,7 @@
     border-top: 1px solid var(--border-primary);
     font-size: 11px;
 }
+.sfa-explain-sources.is-loading { color: var(--text-tertiary); font-style: italic; }
 .sfa-explain-sources-label { color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
 a.sfa-explain-source {
     max-width: 150px;
@@ -121,12 +122,16 @@ a.sfa-explain-source {
     text-overflow: ellipsis;
 }
 a.sfa-explain-source:hover { text-decoration: underline; }
+/* Google's Search Suggestions (required by the grounding terms). The content is
+   Google's and stays untouched: its light/dark look follows the browser's own
+   mode, which a page cannot override (checked in Chrome 155). The height fits
+   its one-row chip strip exactly, so no scrollbar. */
 .sfa-explain-suggestions {
     display: block;
-    width: 100%;
-    height: 56px;
+    width: calc(100% - 24px);
+    height: 52px;
+    margin: 2px 12px 6px;
     border: 0;
-    border-top: 1px solid var(--border-primary);
     background: transparent;
 }
 

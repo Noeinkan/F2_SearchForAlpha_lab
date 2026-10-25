@@ -108,7 +108,21 @@ def test_explain_success_skips_thought_parts_and_sends_the_key(monkeypatch):
     assert "test-key" not in url
 
 
-def test_explain_searches_google_and_returns_its_sources(monkeypatch):
+def test_answer_never_searches_and_sources_do(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    monkeypatch.delenv("GEMINI_SEARCH", raising=False)
+    answer = FakeSession(FakeResponse(200, _answer("RSI is momentum.")))
+    gemini.explain("RSI", "Chart Settings", "TSLA", "/ticker/TSLA", session=answer)
+    assert "tools" not in answer.calls[0][1]["json"]
+    assert "Google Search" not in gemini.build_prompt("RSI")
+    prompt = gemini.build_sources_prompt("RSI", "Chart Settings")
+    assert "Google Search" in prompt and "Chart Settings" in prompt
+    assert gemini.cache_key("RSI", part="sources") != gemini.cache_key("RSI", part="answer")
+    # The links are about the concept: one search serves every symbol.
+    assert gemini.cache_key("RSI", "x", "TSLA", "/a", part="sources") == gemini.cache_key("RSI", "x", "AAPL", "/b", part="sources")
+
+
+def test_find_sources_returns_googles_links(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "k")
     monkeypatch.delenv("GEMINI_SEARCH", raising=False)
     web = lambda title, uri: {"web": {"title": title, "uri": uri}}
@@ -121,17 +135,19 @@ def test_explain_searches_google_and_returns_its_sources(monkeypatch):
         ],
         "searchEntryPoint": {"renderedContent": "<div class=chip>rsi</div>"},
     }
-    session = FakeSession(FakeResponse(200, _answer("RSI is momentum.", grounding)))
-    result = gemini.explain("RSI", session=session)
+    session = FakeSession(FakeResponse(200, _answer("Relative Strength Index", grounding)))
+    result = gemini.find_sources("RSI", session=session)
     assert session.calls[0][1]["json"]["tools"] == [{"google_search": {}}]
     assert [s.title for s in result.sources] == ["investopedia.com", "wikipedia.org"]
-    assert result.suggestions == "<div class=chip>rsi</div>"
+    assert result.ok and result.suggestions == "<div class=chip>rsi</div>"
+
+    # Gemini answered without searching: not ok, so it is not cached for 30 days.
+    assert not gemini.find_sources("RSI", session=FakeSession(FakeResponse(200, _answer("RSI")))).ok
 
     monkeypatch.setenv("GEMINI_SEARCH", "0")
-    off = FakeSession(FakeResponse(200, _answer("RSI is momentum.")))
-    gemini.explain("RSI", session=off)
-    assert "tools" not in off.calls[0][1]["json"]
-    assert "Google Search" not in gemini.build_prompt("RSI")
+    off = FakeSession(FakeResponse(200, _answer("x")))
+    result = gemini.find_sources("RSI", session=off)
+    assert result.ok and not result.sources and not off.calls  # search off: no call at all
 
 
 @pytest.mark.parametrize("status, needle", [(429, "quota"), (403, "API key"), (404, "model"), (500, "HTTP 500")])
@@ -176,7 +192,11 @@ def _app(mode=None, admin=False, cache=False):
         sources = (gemini.Source("investopedia.com", "https://example.test/rsi"),)
         return gemini.Explanation(True, f"explained {selection}", sources, "<b>chips</b>")
 
-    install_explain_routes(app, explain=fake_explain, cache=cache)
+    def fake_sources(selection, context, ticker, page):
+        calls.append(("sources", selection))
+        return gemini.Explanation(True, "concept", (gemini.Source("wikipedia.org", "https://example.test/w"),), "<i>s</i>")
+
+    install_explain_routes(app, explain=fake_explain, sources=fake_sources, cache=cache)
     return app.test_client(), calls
 
 
@@ -188,7 +208,7 @@ def test_local_run_is_admin_and_explains(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "k")
     client, calls = _app()
     info = client.get("/api/session").get_json()
-    assert info == {"mode": "local", "email": None, "admin": True, "explain": True}
+    assert info == {"mode": "local", "email": None, "admin": True, "explain": True, "sources": True}
     response = _post(client, {"selection": "1.42", "context": "Sharpe", "ticker": "TSLA", "page": "/"})
     body = response.get_json()
     assert body["ok"] and body["text"] == "explained 1.42" and not body["cached"]
@@ -209,6 +229,18 @@ def test_second_ask_comes_from_the_cache_and_refresh_asks_again(monkeypatch, tmp
 
     fresh = _post(client, {**question, "fresh": True}).get_json()
     assert len(calls) == 2 and not fresh["cached"]
+
+
+def test_sources_part_has_its_own_call_and_cache_entry(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    client, calls = _app(cache=AnswerCache(tmp_path / "answers.sqlite3"))
+    question = {"selection": "RSI", "context": "Chart Settings"}
+    answer = _post(client, question).get_json()
+    links = _post(client, {**question, "part": "sources"}).get_json()
+    assert answer["text"] == "explained RSI" and links["sources"][0]["title"] == "wikipedia.org"
+    assert _post(client, {**question, "part": "sources"}).get_json()["cached"]
+    assert len(calls) == 2
+    assert _post(client, {**question, "part": "nope"}).status_code == 400
 
 
 def test_cached_answers_do_not_count_against_the_limit(monkeypatch, tmp_path):
