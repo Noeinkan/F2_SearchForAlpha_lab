@@ -57,6 +57,29 @@
 }
 .sfa-explain-close:hover { color: var(--text-primary); }
 .sfa-explain-body { padding: 10px 12px; white-space: pre-wrap; }
+.sfa-explain-body.is-formatted { white-space: normal; }
+.sfa-explain-body.is-formatted p { margin: 0 0 6px; }
+.sfa-explain-body.is-formatted strong { color: var(--accent); font-weight: 600; }
+.sfa-explain-list { margin: 0 0 6px; padding-left: 18px; }
+.sfa-explain-list li { margin: 2px 0; }
+.sfa-explain-code {
+    padding: 0 3px;
+    border-radius: 2px;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    font: 12px/1.4 var(--font-mono);
+}
+.sfa-explain-formula {
+    margin: 6px 0 8px;
+    padding: 6px 10px;
+    overflow-x: auto;
+    border-left: 2px solid var(--accent);
+    background: var(--bg-panel-header);
+    color: var(--text-primary);
+    font: 13px/1.5 var(--font-mono);
+    white-space: pre;
+    text-align: center;
+}
 .sfa-explain-pop.is-loading .sfa-explain-body { color: var(--text-secondary); font-style: italic; }
 .sfa-explain-pop.is-error .sfa-explain-body { color: var(--down); }
 .sfa-explain-foot {

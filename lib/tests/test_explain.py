@@ -58,6 +58,7 @@ def test_prompt_carries_context_and_clips_long_input():
     prompt = gemini.build_prompt("1.42", "column \"Sharpe\"", "TSLA", "/ticker/TSLA")
     assert "Selected text: 1.42" in prompt and "Sharpe" in prompt and "TSLA" in prompt
     assert "English" in prompt
+    assert "$$" in prompt and "- " in prompt  # the light format 95-explain.js renders
     long = gemini.build_prompt("x" * 1000, "y" * 5000)
     assert "x" * gemini.MAX_SELECTION_CHARS not in long
     assert "y" * gemini.MAX_CONTEXT_CHARS not in long

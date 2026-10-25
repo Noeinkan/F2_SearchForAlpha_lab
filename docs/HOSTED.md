@@ -74,7 +74,10 @@ in English:
 
 Gemini receives the app's own definitions (`lib/explain/glossary.py`): the
 metrics from `lib/metrics/names.py`, the indicator defaults from
-`config/strategy_config.yaml`, and what each Buy/Sell signal means. Admins only; locally (`python main.py`) you are
+`config/strategy_config.yaml`, and what each Buy/Sell signal means. The answer
+comes back in a light format — `**bold**`, `` `code` ``, `- ` bullets and a
+`$$ … $$` line for a formula in plain Unicode — which `95-explain.js` turns into
+DOM nodes (never HTML), converting stray LaTeX to symbols. Admins only; locally (`python main.py`) you are
 admin, and `main.py` reads `GEMINI_API_KEY` from the repo's `.env`.
 `GEMINI_MODEL` overrides the default `gemini-flash-latest`. 20 requests a
 minute per user.
