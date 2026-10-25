@@ -152,6 +152,20 @@ def test_alias_search_still_works():
     assert "TSLA" in _symbols(search_symbols("tesla"))
 
 
+def test_alias_outranks_etfs_that_spell_it_out(monkeypatch):
+    # SPCX is listed as "Space Exploration Technologies", which never says
+    # "SpaceX"; the ETFs tracking it do. The alias must still win.
+    rows = FIXTURE_ROWS + [
+        ("SPCX", "Space Exploration Technologies Corp.", "Stock", "NASDAQ", "Technology", "Software", "", "United States", "1500000000000"),
+        ("LOFF", "Direxion Daily SpaceX Bull 2X ETF", "ETF", "", "", "", "", "United States", ""),
+    ]
+    frame = pd.DataFrame(rows, columns=tu.UNIVERSE_COLUMNS)
+    monkeypatch.setattr(tu, "_CACHE", tu._normalise(frame))
+    ticker_search.clear_index_cache()
+    assert _symbols(search_symbols("spacex"))[0] == "SPCX"
+    assert _symbols(search_symbols("space x"))[0] == "SPCX"
+
+
 def test_asset_class_filter():
     results = search_symbols("", asset_class="ETF")
     assert {row["AssetClass"] for row in results} == {"ETF"}

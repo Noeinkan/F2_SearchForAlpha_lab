@@ -41,6 +41,7 @@ SYMBOL_SEARCH_ALIASES: Dict[str, str] = {
     "BRK-B": "berkshire berkshire hathaway",
     "TSLA": "tesla",
     "RKLB": "rocket lab",
+    "SPCX": "spacex space x",
     "MSTR": "microstrategy strategy",
     "RIVN": "rivian",
     "SOFI": "sofi",
@@ -107,7 +108,11 @@ def _build_index() -> pd.DataFrame:
     """Universe plus the precomputed lowercase columns the ranker needs."""
     frame = load_universe().copy()
     frame["_symbol_lc"] = frame["Symbol"].str.lower()
-    frame["_name_lc"] = frame["Security"].str.lower()
+    # Aliases rank as part of the name: "spacex" must find SPCX (listed as
+    # "Space Exploration Technologies") ahead of the SpaceX ETFs whose names
+    # spell the word out.
+    aliases = frame["Symbol"].map(SYMBOL_SEARCH_ALIASES).fillna("")
+    frame["_name_lc"] = (frame["Security"] + " " + aliases).str.strip().str.lower()
     frame["_search"] = [
         _search_text(row.Symbol, row.Security, row.Sector, row.Industry)
         for row in frame.itertuples(index=False)
