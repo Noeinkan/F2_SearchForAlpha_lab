@@ -93,44 +93,8 @@ THEMES = {
         'table_row_alt': 'rgba(22, 27, 34, 0.5)',
         'table_row_hover': '#21262d',
     },
-    'light': {
-        # Core colors
-        'bg_primary': '#ffffff',
-        'bg_secondary': '#f6f8fa',
-        'bg_tertiary': '#eaeef2',
-        'bg_hover': '#d0d7de',
-        'bg_panel': '#f1f4f7',
-        'bg_panel_header': '#e6ebf0',
-
-        # Text colors
-        'text_primary': '#1f2328',
-        'text_secondary': '#656d76',
-        'text_tertiary': '#8c959f',
-
-        # Accent colors
-        'accent_blue': '#0969da',
-        'accent_green': '#1a7f37',
-        'accent_red': '#cf222e',
-        'accent_orange': '#9a6700',
-        'accent_purple': '#8250df',
-        'accent_cyan': '#0598bc',
-
-        # Border colors
-        'border_primary': '#d0d7de',
-        'border_secondary': '#eaeef2',
-        'border_focus': '#0969da',
-
-        # Chart specific
-        'chart_bg': '#ffffff',
-        'chart_grid': 'rgba(208, 215, 222, 0.6)',
-        'chart_candle_up': '#1a7f37',
-        'chart_candle_down': '#cf222e',
-
-        # Data table
-        'table_header_bg': '#f6f8fa',
-        'table_row_alt': 'rgba(246, 248, 250, 0.5)',
-        'table_row_hover': '#eaeef2',
-    },
+    # The light theme was removed on 2026-11-15: the UI is dark-only. A stale
+    # 'light' value in a browser's theme-store falls back to DEFAULT_THEME.
     # CVD — color-vision-deficiency safe palette. ~8% of male users have
     # red/green deficiency; trading P&L is the single place this hurts
     # most. Mirrors 'bloomberg' (dark canvas + amber primary) but swaps
@@ -186,17 +150,17 @@ DEFAULT_THEME = 'bloomberg'
 # Phase 4: theme cycle order. The header button walks this list on every
 # click. 'bloomberg' is the default and is labelled DARK on the button
 # to keep the existing UX (no new strings for the existing default).
-THEME_CYCLE = ('bloomberg', 'cvd', 'light')
+THEME_CYCLE = ('bloomberg', 'cvd')
 THEME_BUTTON_LABELS = {
     'bloomberg': '[ DARK ]',
     'dark': '[ DARK ]',
     'cvd': '[ CVD ]',
-    'light': '[ LIGHT ]',
 }
 
-# Active theme colors (for backwards compatibility)
+# Active theme colors (for backwards compatibility). Unknown names — including a
+# 'light' still saved in an old browser — get the default dark look.
 def get_theme(theme_name: str = DEFAULT_THEME) -> dict:
-    return THEMES.get(theme_name, THEMES['dark'])
+    return THEMES.get(theme_name, THEMES[DEFAULT_THEME])
 
 # Legacy color mappings (backwards compatibility)
 _theme = get_theme()

@@ -328,3 +328,23 @@ def test_prompt_asks_for_plain_words_and_covers_chart_points():
     prompt = gemini.build_prompt("Candle of 2026-03-14: close 250.10 (+2.10%)", 'panel "Price chart"')
     assert "plain everyday words" in prompt
     assert "one point of a chart" in prompt
+
+
+def test_flow_panels_opt_into_smart_help():
+    from lib.dash.dash_config import THEMES, DEFAULT_THEME
+    from lib.dash.flow_paper_view import panel as paper_panel
+    from lib.dash.flow_view import (
+        render_flow_guide, render_glossary_panel, render_iv_surface_panel,
+        render_theta_decay_panel, render_ticker_card,
+    )
+
+    theme = THEMES[DEFAULT_THEME]
+    panels = [
+        render_ticker_card({"ticker": "TSLA", "error": "boom"}, theme),
+        render_flow_guide(theme), render_glossary_panel(theme),
+        render_theta_decay_panel(theme), render_iv_surface_panel(theme),
+        paper_panel(theme),
+    ]
+    for panel in panels:
+        assert getattr(panel, 'data-explain-panel'), panel
+        assert hasattr(panel.children[0], 'data-explain-head'), panel

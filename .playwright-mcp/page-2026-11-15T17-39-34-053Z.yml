@@ -1,0 +1,14 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - button "Plotly Cloud" [ref=e7] [cursor=pointer]
+        - button "Errors" [ref=e10] [cursor=pointer]
+        - button "Callbacks" [ref=e13] [cursor=pointer]
+        - generic [ref=e17]:
+          - generic [ref=e18]: v4.4.1
+          - button "Dash update available - v4.5.0" [ref=e19] [cursor=pointer]
+        - generic [ref=e21]: Server
+      - button [ref=e25] [cursor=pointer]
+    - generic [ref=e28]: Loading...
+  - contentinfo

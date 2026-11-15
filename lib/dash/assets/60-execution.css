@@ -176,12 +176,6 @@
 .sfa-flow-learn-modal .btn-close:hover,
 .sfa-opt-learn-modal .btn-close:hover { opacity: 1; }
 
-body.theme-light .sfa-exec-learn-modal .btn-close,
-body.theme-light .sfa-flow-learn-modal .btn-close,
-body.theme-light .sfa-opt-learn-modal .btn-close {
-    filter: none;
-}
-
 .sfa-opt-learn-modal .modal-content { max-height: min(88vh, 780px); }
 .sfa-opt-learn-modal-body { padding-top: 6px; }
 

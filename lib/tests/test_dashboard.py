@@ -84,12 +84,6 @@ def dark_theme():
 
 
 @pytest.fixture
-def light_theme():
-    """Get light theme configuration."""
-    return get_theme('light')
-
-
-@pytest.fixture
 def cvd_theme():
     """Get CVD (color-vision-deficiency safe) theme."""
     return get_theme('cvd')
@@ -122,9 +116,9 @@ class TestDashboardState:
         state = DashboardState()
         assert state.theme_name == DEFAULT_THEME
 
-        state.set_theme('light')
-        assert state.theme_name == 'light'
-        assert state.theme['bg_primary'] == '#ffffff'
+        state.set_theme('cvd')
+        assert state.theme_name == 'cvd'
+        assert state.theme['chart_candle_up'] == THEMES['cvd']['chart_candle_up']
 
         state.set_theme(DEFAULT_THEME)
         assert state.theme_name == DEFAULT_THEME
@@ -191,7 +185,7 @@ class TestDashboardState:
         state = DashboardState()
         state.df = sample_df
         state.set_cached_data('key1', sample_df)
-        state.set_theme('light')
+        state.set_theme('cvd')
 
         state.reset()
         assert state.df is None
@@ -263,12 +257,13 @@ class TestChartPayload:
         assert payload['series'] == []
         assert len(payload['candles']) == len(sample_df)
 
-    def test_theme_colors_reach_the_payload(self, sample_df, dark_theme, light_theme):
+    def test_theme_colors_reach_the_payload(self, sample_df, dark_theme, cvd_theme):
         config = self._config(['candlestick'])
         dark = build_chart_payload(sample_df, config, dark_theme)
-        light = build_chart_payload(sample_df, config, light_theme)
-        assert dark['theme']['bg'] != light['theme']['bg']
+        cvd = build_chart_payload(sample_df, config, cvd_theme)
+        assert dark['theme']['up'] != cvd['theme']['up']
         assert dark['theme']['up'] == dark_theme['chart_candle_up']
+        assert cvd['theme']['up'] == cvd_theme['chart_candle_up']
 
     def test_payload_is_json_serialisable(self, sample_df, dark_theme):
         """numpy scalars and NaN both break json.dumps; the builder must not emit them."""
@@ -395,7 +390,7 @@ class TestCvdTheme:
 
 
 class TestThemeCycle:
-    """Phase 4 — the theme toggle now cycles DARK → CVD → LIGHT → DARK."""
+    """The theme toggle cycles DARK → CVD → DARK (light was removed)."""
 
     def test_cycle_includes_cvd(self):
         assert 'cvd' in THEME_CYCLE
@@ -403,8 +398,10 @@ class TestThemeCycle:
     def test_cycle_starts_at_default(self):
         assert THEME_CYCLE[0] == DEFAULT_THEME
 
-    def test_cycle_includes_light(self):
-        assert 'light' in THEME_CYCLE
+    def test_light_theme_is_gone(self):
+        assert 'light' not in THEME_CYCLE
+        assert 'light' not in THEMES
+        assert 'light' not in THEME_BUTTON_LABELS
 
     def test_button_label_for_every_cycle_member(self):
         for theme_name in THEME_CYCLE:
@@ -416,14 +413,11 @@ class TestThemeCycle:
             assert label == label.upper()
 
     def test_cycle_advances_through_cvd(self):
-        """Walking the cycle from default must hit CVD and then LIGHT."""
+        """Walking the cycle from default must hit CVD, then wrap back."""
         idx = THEME_CYCLE.index(DEFAULT_THEME)
         next_theme = THEME_CYCLE[(idx + 1) % len(THEME_CYCLE)]
         assert next_theme == 'cvd'
-        next_next = THEME_CYCLE[(idx + 2) % len(THEME_CYCLE)]
-        assert next_next == 'light'
-        # And wrapping back to default.
-        wrapped = THEME_CYCLE[(idx + 3) % len(THEME_CYCLE)]
+        wrapped = THEME_CYCLE[(idx + 2) % len(THEME_CYCLE)]
         assert wrapped == DEFAULT_THEME
 
 
@@ -514,16 +508,14 @@ class TestThemes:
         assert 'bg_primary' in theme
         assert 'text_primary' in theme
 
-    def test_light_theme_exists(self):
-        """Test light theme is available."""
-        theme = get_theme('light')
-        assert theme is not None
-        assert 'bg_primary' in theme
+    def test_stale_light_theme_falls_back_to_default(self):
+        """A browser that saved the retired 'light' theme gets the default look."""
+        assert get_theme('light') == THEMES[DEFAULT_THEME]
 
     def test_invalid_theme_fallback(self):
-        """Test fallback to dark theme for invalid theme name."""
+        """Test fallback to the default theme for an invalid theme name."""
         theme = get_theme('invalid_theme')
-        assert theme == THEMES['dark']
+        assert theme == THEMES[DEFAULT_THEME]
 
     def test_theme_required_keys(self):
         """Test that themes have all required keys."""
@@ -534,7 +526,7 @@ class TestThemes:
             'border_primary', 'chart_bg', 'chart_candle_up', 'chart_candle_down'
         ]
 
-        for theme_name in ['dark', 'light']:
+        for theme_name in THEMES:
             theme = get_theme(theme_name)
             for key in required_keys:
                 assert key in theme, f"Theme '{theme_name}' missing key '{key}'"

@@ -605,6 +605,7 @@ def render_theta_decay_panel(theme: dict, *, open: bool = False) -> html.Details
                     ),
                 ],
                 style=_panel_summary_style(theme),
+                **EXPLAIN_HEAD,
             ),
             html.Div(
                 [
@@ -651,6 +652,7 @@ def render_theta_decay_panel(theme: dict, *, open: bool = False) -> html.Details
         open=open,
         className="sfa-flow-panel sfa-flow-theta-panel",
         style=_panel_style(theme),
+        **_explain_panel(THETA_PANEL["title"]),
     )
 
 
@@ -799,6 +801,7 @@ def render_iv_surface_panel(theme: dict, *, open: bool = False) -> html.Details:
                     ),
                 ],
                 style=_panel_summary_style(theme),
+                **EXPLAIN_HEAD,
             ),
             html.Div(
                 [
@@ -873,6 +876,7 @@ def render_iv_surface_panel(theme: dict, *, open: bool = False) -> html.Details:
         open=open,
         className="sfa-flow-panel sfa-flow-iv-surface-panel",
         style=_panel_style(theme),
+        **_explain_panel(IV_SURFACE_PANEL["title"]),
     )
 
 
@@ -880,7 +884,7 @@ def render_flow_guide(theme: dict, *, open: bool = False) -> html.Details:
     """How-to-read strip for beginners (collapsed by default under ticker cards)."""
     return html.Details(
         [
-            html.Summary("How to read this page", style=_panel_summary_style(theme)),
+            html.Summary("How to read this page", style=_panel_summary_style(theme), **EXPLAIN_HEAD),
             html.Div(
                 [
                     _otm_itm_diagram(theme),
@@ -922,6 +926,7 @@ def render_flow_guide(theme: dict, *, open: bool = False) -> html.Details:
         ],
         open=open,
         className="sfa-flow-guide sfa-flow-panel",
+        **_explain_panel("How to read this page"),
         style=_panel_style(theme),
     )
 
@@ -1168,7 +1173,7 @@ def render_glossary_panel(theme: dict, *, open: bool = True) -> html.Details:
         ])
 
     return html.Details([
-        html.Summary("What do these terms mean?", style=_panel_summary_style(theme)),
+        html.Summary("What do these terms mean?", style=_panel_summary_style(theme), **EXPLAIN_HEAD),
         html.Dl(term_items, style={"margin": "8px 0 0"}),
         html.H3(
             "Activity flags",
@@ -1180,7 +1185,8 @@ def render_glossary_panel(theme: dict, *, open: bool = True) -> html.Details:
             },
         ),
         html.Dl(flag_items, style={"margin": "0"}),
-    ], open=open, className="sfa-flow-panel sfa-flow-glossary", style=_panel_style(theme))
+    ], open=open, className="sfa-flow-panel sfa-flow-glossary", style=_panel_style(theme),
+        **_explain_panel("Flow glossary"))
 
 
 def render_summary_cards(reports: Sequence[Mapping[str, Any]], theme: dict) -> html.Div:
@@ -1230,6 +1236,14 @@ def render_summary_cards(reports: Sequence[Mapping[str, Any]], theme: dict) -> h
     )
 
 
+def _explain_panel(title: str) -> dict[str, str]:
+    """A ✦ smart-help panel for 95-explain.js; its <summary> carries EXPLAIN_HEAD."""
+    return {"data-explain-panel": title}
+
+
+EXPLAIN_HEAD = {"data-explain-head": ""}
+
+
 def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0) -> html.Details:
     ticker = str(report.get("ticker", ""))
     if report.get("error"):
@@ -1251,12 +1265,13 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
                 html.Summary(ticker, style={
                     **_panel_summary_style(theme),
                     "fontSize": FONT_SIZES["lg"],
-                }),
+                }, **EXPLAIN_HEAD),
                 *body,
             ],
             open=True,
             className="sfa-flow-panel sfa-flow-ticker-card",
             style=_panel_style(theme),
+            **_explain_panel(f"Options flow · {ticker}"),
         )
 
     repeat = any(f.get("kind") == "repeat_call" for f in (report.get("flags") or []))
@@ -1392,13 +1407,14 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
             html.Summary(header_children, style={
                 **_panel_summary_style(theme),
                 "fontSize": FONT_SIZES["lg"],
-            }),
+            }, **EXPLAIN_HEAD),
             html.Div(card_children),
         ],
         # Top-scoring ticker starts expanded; the rest collapse so long scans stay scannable.
         open=(index == 0),
         className="sfa-flow-panel sfa-flow-ticker-card",
         style=_panel_style(theme),
+        **_explain_panel(f"Options flow · {ticker}"),
     )
 
 

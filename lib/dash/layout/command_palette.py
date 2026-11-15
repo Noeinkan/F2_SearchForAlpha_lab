@@ -53,7 +53,7 @@ COMMANDS = [
 
     # Theme + UI
     {"id": "toggle-theme",     "label": "Cycle theme",              "shortcut": "Ctrl+J",
-     "group": "UI",     "hint": "Dark → CVD-safe → Light"},
+     "group": "UI",     "hint": "Dark ↔ CVD-safe"},
     {"id": "toggle-right",     "label": "Toggle right panel",       "shortcut": "Ctrl+.",
      "group": "UI",     "hint": "Show or hide the backtest panel"},
     {"id": "toggle-sidebar",   "label": "Toggle sidebar",           "shortcut": "Ctrl+,",

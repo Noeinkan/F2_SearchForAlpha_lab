@@ -179,8 +179,11 @@ sorted filename order**, so the numeric prefixes *are* the cascade:
 | `30-vendor-widgets.css` | overrides for third-party internals — react-select dropdowns, date pickers, scrollbars, checkboxes, tooltips, alerts |
 | `40-chart.css` | terminal chart frame + OHLC readout + chart empty-state overlay |
 | `50-fundamentals.css` | Fundamentals workspace |
+| `51-flow-ux.css` | Flow Scanner toolbar menu, data-age badge, chain key, quote popup, card summary |
+| `52-flow-paper.css` | Flow paper options & replay panel |
 | `52-fundamentals-summary.css` | Fundamentals value-vs-price strip + folded data-quality notes |
-| `55-theme-light.css` | `.theme-light` palette flip + Bootstrap accordion overrides |
+| `53-flow-glass.css` | Flow glass surfaces (aurora backdrop, translucent panels, blur only on floating/sticky parts), sticky ticker header, chain row hover |
+| `55-accordion.css` | Bootstrap accordion dark overrides (`.compact-accordion`) |
 | `60-execution.css` | strategy mode cards, Execution Type explainer, signal panel |
 | `65-quick-swap.css` | Backtest panel quick-swap chips and comparison table (keys in `65-quick-swap.js`) |
 | `70-forms-responsive.css` | trade-setup stepper, responsive layout, splitter, phone shell |
@@ -195,12 +198,11 @@ Two rules when editing:
    `!important` rules). Digits sort before letters, so dropping the `00-` prefix
    on Bootstrap would move it to the end and break the theme wholesale.
    `test_vendored_bootstrap_loads_before_project_css` guards this.
-2. **`55-theme-light.css` sits where it does on purpose.** Its rules must land
+2. **`55-accordion.css` sits where it does on purpose.** Its rules must land
    after Fundamentals but before the execution explainer, phone shell, command
    palette and symbol search — that is the order they had when everything lived
-   in one file. Moving it changes which rules win. Folding those rules into the
-   per-component sheets is a worthwhile cleanup, but it is a behaviour change
-   and needs its own visual pass across all three themes.
+   in one file. Moving it changes which rules win. (It was `55-theme-light.css`
+   until the light theme was removed on 2026-11-15; only the palette block went.)
 
 These files were split out of a single 4,183-line `dashboard.css` in a
 concatenation-preserving refactor: the slices in load order still reproduce that
@@ -217,15 +219,17 @@ Themes are palette dicts in `THEMES` in
    `bloomberg` is the reference — and change values). Required keys include
    `bg_primary/secondary/tertiary`, `text_primary/secondary/tertiary`,
    `border_primary`, `accent_*`, and the `chart_*` colours.
-2. Add the key to `THEME_CYCLE` (currently `('bloomberg', 'cvd', 'light')`) in
+2. Add the key to `THEME_CYCLE` (currently `('bloomberg', 'cvd')`) in
    the order the header button should cycle through.
 3. `DEFAULT_THEME` selects the initial theme.
-4. If the theme needs CSS overrides beyond inline styles (e.g. the CVD focus
-   ring), add a `:root[data-theme="<name>"]` block in
-   [`lib/dash/assets/10-tokens.css`](../lib/dash/assets/10-tokens.css). The theme
-   toggle stamps `data-theme` on the root element. (The `light` theme is the
-   exception — its overrides live in `55-theme-light.css`; see the stylesheet
-   layout below for why that position matters.)
+4. If the theme needs CSS overrides beyond inline styles (e.g. the CVD up/down
+   pair), add a `body.theme-<name>` block in
+   [`lib/dash/assets/10-tokens.css`](../lib/dash/assets/10-tokens.css). The
+   clientside theme sync in `callbacks/misc_ui.py` puts that class on `<body>`,
+   and today it only does so for `cvd` — extend it for the new key.
+
+The UI is dark-only: the `light` theme was removed on 2026-11-15. A `light`
+value still saved in a browser's `theme-store` falls back to `DEFAULT_THEME`.
 
 When you change the shape of any persisted `dcc.Store`, bump
 `UI_STORAGE_VERSION` in `dash_config.py` so stale browser storage is discarded.

@@ -151,14 +151,14 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
                 title='Support this project on Ko-fi',
                 **{'aria-label': 'Support this project on Ko-fi'},
             ),
-            # Theme toggle — Phase 4: cycle DARK → CVD → LIGHT.
+            # Theme toggle: DARK ↔ CVD (the light theme was removed).
             html.Button(
                 id='theme-toggle',
                 children=[html.Span('DARK', id='theme-label')],
                 className='bbg-icon-button',
                 n_clicks=0,
-                title='Cycle theme: Dark → CVD-safe → Light',
-                **{'aria-label': 'Cycle theme (Dark, CVD-safe, Light)'},
+                title='Switch theme: Dark ↔ CVD-safe',
+                **{'aria-label': 'Switch theme (Dark, CVD-safe)'},
             ),
             # Phase 5 — keyboard-shortcut catalog button.
             html.Button(

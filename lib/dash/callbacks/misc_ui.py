@@ -76,9 +76,9 @@ def register_misc_callbacks(app) -> None:
         [State('theme-store', 'data')]
     )
     def toggle_theme(n_clicks, current_theme):
-        """Cycle through DARK -> CVD -> LIGHT -> DARK.
+        """Cycle through DARK -> CVD -> DARK (the light theme was removed).
 
-        Phase 4 adds the CVD (color-vision-deficiency) theme as a third
+        Phase 4 added the CVD (color-vision-deficiency) theme as a second
         stop on the toggle. CVD swaps the green/red up/down pair for
         a blue/orange pair so ~8% of male users with red/green CVD
         can still read the P&L state without relying on color.
@@ -130,14 +130,13 @@ def register_misc_callbacks(app) -> None:
     app.clientside_callback(
         """
         function(themeName) {
-            // Phase 4: the body class now reflects the active theme. Each
-            // theme has a matching `.theme-<name>` class on <body> so CSS
-            // overrides in dashboard.css can re-skin the entire UI. Only
-            // 'light' needs a full override today; bloomberg/cvd are the
-            // default look and just need the class removed.
+            // The body class reflects the active theme. Only 'cvd' has one
+            // (it swaps the up/down pair in 10-tokens.css); bloomberg is the
+            // default look. 'theme-light' is still removed so a browser that
+            // had the retired light theme drops it.
             document.body.classList.remove('theme-light', 'theme-cvd', 'theme-bloomberg');
-            if (themeName && themeName !== 'bloomberg' && themeName !== 'dark') {
-                document.body.classList.add('theme-' + themeName);
+            if (themeName === 'cvd') {
+                document.body.classList.add('theme-cvd');
             }
             return themeName;
         }

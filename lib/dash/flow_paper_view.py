@@ -15,7 +15,8 @@ def contract_label(contract: dict) -> str:
 def panel(theme: dict) -> html.Details:
     _ = theme
     return html.Details([
-        html.Summary("Paper options & replay", className="sfa-flow-paper-summary"),
+        html.Summary("Paper options & replay", className="sfa-flow-paper-summary",
+                     **{"data-explain-head": ""}),  # ✦ smart help, 95-explain.js
         html.Div([
             html.Div([
                 html.Strong("Practise one option at a time"),
@@ -38,7 +39,9 @@ def panel(theme: dict) -> html.Details:
                     html.Div(id="flow-paper-quote-preview", className="sfa-flow-paper-preview"),
                     html.Div([
                         html.Label("Fee per transaction ($)", htmlFor="flow-paper-fee"),
-                        dcc.Input(id="flow-paper-fee", type="number", min=0, value=0, step=0.01),
+                        dcc.Input(id="flow-paper-fee", type="number", min=0, value=0.54, step=0.01),
+                        html.Small("Robinhood UK stock options: $0.50 contract fee + $0.04 regulatory/OCC fee per side. "
+                                   "Other sell-side or FX charges may apply."),
                     ], className="sfa-flow-paper-field"),
                     html.Button("Buy 1 contract at ask", id="flow-paper-buy", n_clicks=0, className="sfa-flow-paper-button primary"),
                 ], className="sfa-flow-paper-card"),
@@ -76,4 +79,4 @@ def panel(theme: dict) -> html.Details:
                 ], className="sfa-flow-paper-tools-row"),
             ], className="sfa-flow-paper-advanced", open=False),
         ], className="sfa-flow-paper-body"),
-    ], className="sfa-flow-paper", open=True)
+    ], className="sfa-flow-paper", open=True, **{"data-explain-panel": "Paper options & replay"})

@@ -241,6 +241,7 @@ def test_render_chain_panel_and_empty_state():
     assert "Flagged only" in blob
     assert "Near spot" in blob
     assert "sfa-flow-chain-key" in blob
+    assert "Build a strategy" in blob
 
     body = table_from_report(report, expiry="2026-06-20", theme=theme, flagged_only=True)
     assert "sfa-flow-chain-table" in str(body)

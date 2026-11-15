@@ -552,7 +552,17 @@ def render_chain_panel(report: Mapping[str, Any], theme: dict, *, today: date | 
                 id={"type": "flow-chain-body", "index": ticker},
                 className="sfa-flow-chain-table-wrap",
             ),
+            html.Details([
+                html.Summary("Build a strategy · up to 4 options", className="sfa-flow-strategy-summary"),
+                html.Div([
+                    html.P("Add quotes from the chain, then choose Buy or Sell and how many contracts. All options must share one expiry.",
+                           className="sfa-flow-strategy-help"),
+                    html.Div("No options added yet.", className="sfa-flow-strategy-legs"),
+                    html.Div(className="sfa-flow-strategy-message", role="status"),
+                    html.Div(className="sfa-flow-strategy-results"),
+                ], className="sfa-flow-strategy-body"),
+            ], className="sfa-flow-strategy"),
         ],
         className="sfa-flow-chain",
-        **{"data-ticker": ticker},
+        **{"data-ticker": ticker, "data-spot": str(report.get("spot") or "")},
     )

@@ -397,15 +397,3 @@
     .sfa-symsearch-results { max-height: 60vh; }
 }
 
-/* --- Light theme --------------------------------------------------------- */
-
-body.theme-light .sfa-symsearch-content {
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
-}
-body.theme-light .sfa-symsearch-backdrop {
-    background: rgba(15, 23, 42, 0.35);
-}
-body.theme-light .sfa-symsearch-badge {
-    opacity: 1;
-}
-

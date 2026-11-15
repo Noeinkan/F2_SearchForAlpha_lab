@@ -597,12 +597,6 @@ a.bbg-donate-button:active {
     color: var(--bg-primary);
 }
 
-/* Light theme: filled amber needs light label text for contrast. */
-body.theme-light a.bbg-donate-button:hover,
-body.theme-light a.bbg-donate-button:active {
-    color: #ffffff;
-}
-
 /* =============================================================================
    Inputs (dense)
    ========================================================================== */
@@ -1004,7 +998,6 @@ input.bbg-input[type=number] {
     padding: 10px;
 }
 .sfa-error-boundary .btn-close:hover { opacity: 1; }
-body.theme-light .sfa-error-boundary .btn-close { filter: none; }
 .sfa-error-boundary__detail {
     margin-top: 4px;
     font-family: var(--font-mono);

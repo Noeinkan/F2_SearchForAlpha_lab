@@ -1,0 +1,305 @@
+/* Flow Scanner — glass surfaces, gutters, sticky ticker header.
+   Pure presentation: no ids, callbacks or layout order change here.
+
+   Loads after 50/51/52 (sorted filename order is the cascade), so it wins over
+   them, but the Python layout still writes inline background/border colours on
+   the panels and the toolbar — those are overridden with !important.
+
+   Performance rule: real backdrop blur only on the few surfaces that float over
+   moving content (toolbar, stuck ticker header, chain header, ⋯ menu, quote
+   popup). The large report panels are translucent without blur: blurring
+   several screen-tall panels made scrolling drop frames, and a panel with
+   backdrop-filter becomes a stacking context that traps dropdown menus. */
+
+:root {
+    --flow-glass-bg:        color-mix(in srgb, var(--bg-tertiary, #161616) 58%, transparent);
+    --flow-glass-bg-strong: color-mix(in srgb, var(--bg-secondary, #111) 74%, transparent);
+    --flow-glass-inset:     color-mix(in srgb, var(--bg-primary, #0a0a0a) 38%, transparent);
+    --flow-glass-border:    rgba(255, 255, 255, 0.075);
+    --flow-glass-border-hi: rgba(255, 255, 255, 0.16);
+    --flow-glass-highlight: rgba(255, 255, 255, 0.055);
+    --flow-glass-shadow:    0 10px 32px rgba(0, 0, 0, 0.38);
+    --flow-glass-blur:      blur(18px) saturate(160%);
+    --flow-aurora-1:        color-mix(in srgb, var(--accent, #ffa726) 15%, transparent);
+    --flow-aurora-2:        color-mix(in srgb, var(--info, #4fc3f7) 13%, transparent);
+    --flow-aurora-3:        color-mix(in srgb, var(--up, #26c281) 9%, transparent);
+}
+
+/* ---- Backdrop: a soft aurora that stays put while the report scrolls over it */
+.sfa-flow-overlay {
+    background:
+        radial-gradient(1100px 620px at 6% -12%, var(--flow-aurora-1), transparent 62%),
+        radial-gradient(900px 560px at 104% 4%, var(--flow-aurora-2), transparent 58%),
+        radial-gradient(1000px 700px at 55% 118%, var(--flow-aurora-3), transparent 62%),
+        var(--bg-primary, #0a0a0a) !important;
+}
+.sfa-flow-overlay #flow-content { background: transparent !important; }
+
+/* One gutter for everything in the report, matching the paper panel's 14px. */
+.sfa-flow-overlay #flow-content > .sfa-flow-reports { padding: 0 14px 18px; }
+.sfa-flow-overlay #flow-scroll-region {
+    scrollbar-width: thin;
+    scrollbar-color: var(--flow-glass-border-hi) transparent;
+}
+.sfa-flow-overlay #flow-scroll-region::-webkit-scrollbar { width: 10px; }
+.sfa-flow-overlay #flow-scroll-region::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: var(--flow-glass-border-hi) padding-box;
+}
+
+/* ---- Toolbar: frosted bar ------------------------------------------------ */
+.sfa-flow-overlay > .sfa-overlay-toolbar {
+    position: relative;
+    z-index: 8;
+    padding: 6px 14px !important;
+    background: var(--flow-glass-bg-strong) !important;
+    border-bottom: 1px solid var(--flow-glass-border) !important;
+    box-shadow: inset 0 -1px 0 var(--flow-glass-highlight), 0 6px 24px rgba(0, 0, 0, 0.18);
+    -webkit-backdrop-filter: var(--flow-glass-blur);
+    backdrop-filter: var(--flow-glass-blur);
+}
+.sfa-flow-overlay .sfa-flow-age {
+    background: var(--flow-glass-inset);
+    border-color: var(--flow-glass-border);
+}
+#flow-rescan-button {
+    border-radius: 7px !important;
+    transition: box-shadow .18s ease, transform .18s ease, filter .18s ease;
+}
+#flow-rescan-button:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 6px 22px color-mix(in srgb, var(--accent, #ffa726) 38%, transparent);
+    transform: translateY(-1px);
+}
+.sfa-flow-menu-trigger,
+.sfa-flow-close {
+    border-radius: 7px;
+    border-color: var(--flow-glass-border);
+    background: var(--flow-glass-inset);
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.sfa-flow-menu-list {
+    padding: 6px;
+    border: 1px solid var(--flow-glass-border-hi);
+    border-radius: 12px;
+    background: var(--flow-glass-bg-strong);
+    box-shadow: inset 0 1px 0 var(--flow-glass-highlight), var(--flow-glass-shadow);
+    -webkit-backdrop-filter: var(--flow-glass-blur);
+    backdrop-filter: var(--flow-glass-blur);
+}
+.sfa-flow-menu-item { border-radius: 7px; }
+.sfa-flow-menu-item:hover { background: color-mix(in srgb, var(--accent, #ffa726) 14%, transparent); }
+
+/* ---- Panels: translucent cards ------------------------------------------- */
+.sfa-flow-overlay .sfa-flow-panel,
+.sfa-flow-overlay .sfa-flow-paper {
+    background:
+        linear-gradient(180deg, var(--flow-glass-highlight), transparent 120px),
+        var(--flow-glass-bg) !important;
+    border: 1px solid var(--flow-glass-border) !important;
+    border-radius: 14px !important;
+    box-shadow: inset 0 1px 0 var(--flow-glass-highlight), var(--flow-glass-shadow);
+    transition: border-color .2s ease, box-shadow .2s ease;
+}
+.sfa-flow-overlay .sfa-flow-panel { padding: 12px 16px !important; margin-bottom: 14px !important; }
+.sfa-flow-overlay .sfa-flow-panel:hover,
+.sfa-flow-overlay .sfa-flow-paper:hover { border-color: var(--flow-glass-border-hi) !important; }
+.sfa-flow-overlay .sfa-flow-panel[open] { border-color: var(--flow-glass-border-hi) !important; }
+/* A panel nested inside a ticker card (rare) reads as an inset, not a second slab. */
+.sfa-flow-overlay .sfa-flow-panel .sfa-flow-panel {
+    background: var(--flow-glass-inset) !important;
+    box-shadow: none;
+}
+
+/* Bigger, friendlier hit area on every collapsible header. */
+.sfa-flow-overlay .sfa-flow-panel > summary {
+    min-height: 32px;
+    border-radius: 9px;
+}
+.sfa-flow-overlay .sfa-flow-panel > summary::before {
+    transition: transform .18s ease;
+}
+
+/* The open ticker card keeps its header (symbol, price, sentiment, score)
+   pinned while you scroll its chain and charts. */
+.sfa-flow-overlay .sfa-flow-ticker-card[open] > summary {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    margin: -12px -16px 6px;
+    padding: 10px 16px;
+    border-radius: 14px 14px 0 0;
+    background: var(--flow-glass-bg-strong);
+    border-bottom: 1px solid var(--flow-glass-border);
+    -webkit-backdrop-filter: var(--flow-glass-blur);
+    backdrop-filter: var(--flow-glass-blur);
+}
+.sfa-flow-overlay .sfa-flow-ticker-card:not([open]) > summary { margin: -2px 0; }
+.sfa-flow-overlay .sfa-flow-sentiment-badge,
+.sfa-flow-overlay .sfa-flow-ticker-card > summary > span {
+    border-radius: 999px !important;
+}
+
+/* ---- Summary strip: glass pills ------------------------------------------ */
+.sfa-flow-overlay .sfa-flow-summary-chip {
+    padding: 5px 12px !important;
+    border-radius: 999px !important;
+    border: 1px solid var(--flow-glass-border) !important;
+    background: var(--flow-glass-bg) !important;
+    box-shadow: inset 0 1px 0 var(--flow-glass-highlight);
+}
+.sfa-flow-overlay .sfa-flow-summary-strip { margin: 2px 0 14px !important; }
+.sfa-flow-score-chip,
+.sfa-flow-mix-ratio { border-radius: 999px; }
+.sfa-flow-mix-bar { border-radius: 999px; }
+.sfa-flow-range-track { border-radius: 999px; background: var(--flow-glass-inset); }
+
+/* ---- Inner sections: inset glass wells ----------------------------------- */
+.sfa-flow-overlay .sfa-flow-gex,
+.sfa-flow-overlay .sfa-flow-inventory,
+.sfa-flow-overlay .sfa-flow-vanna,
+.sfa-flow-overlay .sfa-flow-chain {
+    padding: 12px 14px;
+    border: 1px solid var(--flow-glass-border);
+    border-radius: 12px;
+    background: var(--flow-glass-inset);
+}
+.sfa-flow-overlay .sfa-flow-deep-col > .sfa-flow-gex,
+.sfa-flow-overlay .sfa-flow-deep-col > .sfa-flow-inventory {
+    height: 100%;
+    box-sizing: border-box;
+    margin-bottom: 0 !important;
+}
+/* Plotly paints an opaque paper behind each chart; let the well show through.
+   The plot area keeps its own fill, so gridlines still sit on a solid ground. */
+.sfa-flow-overlay .js-plotly-plot .main-svg:first-child { background: transparent !important; }
+
+/* ---- Option chain: rounded frame, frosted sticky header, row hover -------- */
+.sfa-flow-chain-scroll {
+    border-color: var(--flow-glass-border);
+    border-radius: 10px;
+}
+.sfa-flow-chain-table thead th {
+    background: var(--flow-glass-bg-strong);
+    -webkit-backdrop-filter: var(--flow-glass-blur);
+    backdrop-filter: var(--flow-glass-blur);
+}
+/* Tint the whole row under the pointer so a strike reads across calls and puts.
+   An inset shadow layers over the ITM/ATM backgrounds instead of replacing them. */
+.sfa-flow-chain-row:hover td {
+    box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--accent, #ffa726) 8%, transparent);
+}
+.sfa-flow-chain-row-flagged:hover td.sfa-flow-chain-strike {
+    box-shadow: inset 0 0 0 1px var(--accent-purple, #c084fc),
+                inset 0 0 0 999px color-mix(in srgb, var(--accent, #ffa726) 8%, transparent);
+}
+.sfa-flow-chain-preview {
+    border-radius: 14px;
+    box-shadow: inset 0 1px 0 var(--flow-glass-highlight);
+}
+.sfa-flow-chain-preview-metric,
+.sfa-flow-chain-preview-chart { border-color: var(--flow-glass-border); border-radius: 10px; }
+
+/* ---- Quote popup: true frosted glass over the chain ---------------------- */
+.sfa-flow-quote-popup {
+    padding: 14px;
+    border: 1px solid var(--flow-glass-border-hi);
+    border-radius: 14px;
+    background: var(--flow-glass-bg-strong);
+    box-shadow: inset 0 1px 0 var(--flow-glass-highlight), 0 18px 48px rgba(0, 0, 0, 0.45);
+    -webkit-backdrop-filter: var(--flow-glass-blur);
+    backdrop-filter: var(--flow-glass-blur);
+    animation: sfa-flow-glass-in .16s ease-out;
+}
+.sfa-flow-quote-payoff { border-radius: 12px; }
+.sfa-flow-quote-quality,
+.sfa-flow-quote-flag { border-radius: 9px; }
+
+/* ---- Paper options & replay --------------------------------------------- */
+.sfa-flow-overlay .sfa-flow-paper { margin: 14px; }
+.sfa-flow-paper-summary { border-radius: 14px; }
+.sfa-flow-paper-summary:hover { background: color-mix(in srgb, var(--accent, #ffa726) 6%, transparent); }
+.sfa-flow-paper-timeline,
+.sfa-flow-paper-card,
+.sfa-flow-paper-position-card {
+    border: 1px solid var(--flow-glass-border);
+    border-radius: 12px;
+    background: var(--flow-glass-inset);
+}
+.sfa-flow-paper-card { padding: 14px; }
+.sfa-flow-paper-message:not(:empty) {
+    border-radius: 0 9px 9px 0;
+    background: var(--flow-glass-inset);
+}
+/* Paper / Historical replay as a segmented control. */
+.sfa-flow-paper-mode {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--flow-glass-border);
+    border-radius: 999px;
+    background: var(--flow-glass-inset);
+}
+.sfa-flow-paper-mode label {
+    padding: 5px 14px;
+    border-radius: 999px;
+    transition: background .15s ease, color .15s ease;
+}
+.sfa-flow-paper-mode label:has(input:checked) {
+    background: color-mix(in srgb, var(--accent, #ffa726) 18%, transparent);
+    color: var(--text-primary, #e8e8e8);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent, #ffa726) 45%, transparent);
+}
+.sfa-flow-paper-button {
+    border-radius: 8px;
+    transition: box-shadow .18s ease, transform .18s ease, background .15s ease;
+}
+.sfa-flow-paper-button.secondary { background: var(--flow-glass-bg); border-color: var(--flow-glass-border-hi); }
+.sfa-flow-paper-button:not(:disabled):hover { transform: translateY(-1px); }
+.sfa-flow-paper-button.primary:not(:disabled):hover {
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--accent, #ffa726) 35%, transparent);
+}
+.sfa-flow-paper-field input,
+.sfa-flow-paper-tools-row > input { border-radius: 8px; border-color: var(--flow-glass-border-hi); }
+
+/* ---- Learn modal ---------------------------------------------------------- */
+.sfa-flow-learn-modal .modal-content {
+    border: 1px solid var(--flow-glass-border-hi);
+    border-radius: 16px;
+    background: var(--flow-glass-bg-strong);
+    box-shadow: inset 0 1px 0 var(--flow-glass-highlight), 0 24px 64px rgba(0, 0, 0, 0.5);
+    -webkit-backdrop-filter: var(--flow-glass-blur);
+    backdrop-filter: var(--flow-glass-blur);
+}
+
+@keyframes sfa-flow-glass-in {
+    from { opacity: 0; transform: translateY(4px) scale(.985); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* ---- Fallbacks ------------------------------------------------------------ */
+/* No blur support: lean on opacity so text never sits on a busy backdrop. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root { --flow-glass-bg-strong: var(--bg-secondary, #111); }
+}
+/* The OS asked for less transparency: solid surfaces, same layout. */
+@media (prefers-reduced-transparency: reduce) {
+    :root {
+        --flow-glass-bg: var(--bg-tertiary, #161616);
+        --flow-glass-bg-strong: var(--bg-secondary, #111);
+        --flow-glass-inset: var(--bg-secondary, #111);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .sfa-flow-quote-popup { animation: none; }
+    #flow-rescan-button:hover,
+    .sfa-flow-paper-button:not(:disabled):hover { transform: none; }
+}
+@media (max-width: 768px) {
+    :root { --flow-glass-blur: blur(10px) saturate(140%); }
+    .sfa-flow-overlay #flow-content > .sfa-flow-reports { padding: 0 8px 14px; }
+    .sfa-flow-overlay .sfa-flow-paper { margin: 10px 8px; }
+    .sfa-flow-overlay .sfa-flow-panel { padding: 10px 12px !important; }
+    .sfa-flow-overlay .sfa-flow-ticker-card[open] > summary { margin: -10px -12px 6px; padding: 8px 12px; }
+}

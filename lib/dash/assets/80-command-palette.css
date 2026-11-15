@@ -223,21 +223,3 @@ button#help-shortcuts-btn:hover {
     .sfa-palette-modal .modal-dialog { margin-top: 4vh; }
 }
 
-/* Light theme overrides — keep the same rhythm but lighter. */
-body.theme-light .sfa-palette-content {
-    background: var(--bg-primary);
-    border-color: var(--border-primary);
-}
-body.theme-light .sfa-palette-input {
-    background: var(--bg-secondary);
-}
-body.theme-light .sfa-palette-row:hover,
-body.theme-light .sfa-palette-row.active {
-    background: var(--bg-hover);
-}
-body.theme-light .sfa-palette-kbd-key {
-    background: var(--bg-tertiary);
-    border-color: var(--border-primary);
-    color: var(--text-secondary);
-}
-

@@ -4,9 +4,7 @@
    Loads after 80-command-palette (shares its modal chrome conventions) and
    before 90-symbol-search, neither of which it touches. Everything here is
    scoped to `.sfa-feedback-*`, and every colour comes from a token, so the
-   light and CVD themes flip for free. Only two things are hardcoded enough to
-   need a `body.theme-light` override at the bottom: the drop shadow and
-   Bootstrap's close glyph, which is an image rather than a colour.
+   CVD theme flips for free.
 
    The form is longer than the rest of this UI is dense, on purpose: it is the
    one screen aimed at somebody who has never seen the app before.
@@ -144,7 +142,7 @@ button.sfa-feedback-open-btn {
 /* -----------------------------------------------------------------------------
    Type accordion
 
-   Rides on `.compact-accordion` (55-theme-light.css) for the dark Bootstrap
+   Rides on `.compact-accordion` (55-accordion.css) for the dark Bootstrap
    overrides; these rules only undo the uppercase/dense treatment, which suits
    a settings panel but reads as shouting in a form aimed at a newcomer.
    -------------------------------------------------------------------------- */
@@ -493,36 +491,3 @@ button.sfa-feedback-send:active {
     button.sfa-feedback-send,
     button.sfa-feedback-cancel { min-height: 40px; }
 }
-
-/* -----------------------------------------------------------------------------
-   Light theme
-   -------------------------------------------------------------------------- */
-
-body.theme-light .sfa-feedback-content {
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
-}
-
-body.theme-light .sfa-feedback-header .btn-close {
-    filter: none;
-}
-
-/* `.compact-accordion` inverts Bootstrap's chevron so it shows up on a dark
-   panel, which leaves it white-on-white once the light theme flips the
-   background. Undo the inversion here. NOTE: the same bug affects every other
-   `.compact-accordion` in the app (backtest panel, optimizer) — fixing it at
-   the source in 55-theme-light.css needs a visual pass over those panels, so
-   this stays scoped to the accordion it was found on. */
-body.theme-light .sfa-feedback-accordion .accordion-button::after,
-body.theme-light .sfa-feedback-accordion .accordion-button:not(.collapsed)::after {
-    filter: none !important;
-    opacity: 0.65;
-}
-
-body.theme-light .sfa-feedback-accordion .accordion-button:not(.collapsed)::after {
-    opacity: 1;
-}
-
-/* The send button needs no light-theme rule: its label is `var(--bg-primary)`
-   in every theme, which 55-theme-light.css already flips to white against the
-   darker light-theme amber. (The Support CTA in 20-controls.css does need one,
-   because its label is only `--bg-primary` on hover.) */
