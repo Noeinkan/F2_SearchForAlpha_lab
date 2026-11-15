@@ -235,7 +235,7 @@ def detect_flags(
                 UnusualFlag(
                     kind="repeat_call",
                     contract=None,
-                    message=f"{len(strikes)} unusual call strikes @ {expiry}",
+                    message=f"{len(strikes)} unusual call strikes @ {expiry:%d/%m/%Y}",
                 )
             )
 
@@ -697,7 +697,7 @@ def _html_strike_cell(report: TickerReport, contract: Contract, today: date) -> 
 
 
 def _html_expiry_cell(contract: Contract, today: date) -> str:
-    expiry = contract.expiry.isoformat()
+    expiry = contract.expiry.strftime("%d/%m/%Y")
     if contract.is_weekly(today):
         tip = escape(TERM_DEFINITIONS["weekly"])
         return f'{expiry} <span class="chip chip-weekly" title="{tip}">weekly</span>'
@@ -764,7 +764,7 @@ def _report_to_dict(report: TickerReport, today: date | None = None) -> dict:
 
 
 def write_html_report(reports: list[TickerReport], output_path: str) -> None:
-    ts = datetime.now().isoformat(timespec="seconds")
+    ts = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     today = date.today()
     total_unusual = sum(1 for r in reports for f in r.flags if f.kind == "unusual")
     total_premium = sum(

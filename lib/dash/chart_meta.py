@@ -50,7 +50,7 @@ def bar_count_summary(
     view_range: dict | None = None,
     interval: str | None = None,
 ) -> str:
-    """Toolbar string like ``1,247 bars · 1D · 2018-01-02 → 2024-12-31``.
+    """Toolbar string like ``1,247 bars · 1D · 02/01/2018 → 31/12/2024``.
 
     Reflects the visible window when a ``view_range`` is supplied, otherwise the
     full series. Python builds this only for the bootstrap first paint; once the
@@ -80,7 +80,7 @@ def bar_count_summary(
     try:
         start_ts = pd.to_datetime(visible.index[0])
         end_ts = pd.to_datetime(visible.index[-1])
-        fmt = '%Y-%m-%d %H:%M' if is_subdaily(df.index) else '%Y-%m-%d'
+        fmt = '%d/%m/%Y %H:%M' if is_subdaily(df.index) else '%d/%m/%Y'
         start_s, end_s = start_ts.strftime(fmt), end_ts.strftime(fmt)
     except (ValueError, TypeError, IndexError):
         return f"{bars_label} · {interval}"

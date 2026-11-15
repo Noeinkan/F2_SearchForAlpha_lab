@@ -53,9 +53,9 @@ def snapshot_date() -> str:
 
 
 def snapshot_label() -> str:
-    """``11 Sep 2026`` — the form the banner and header badge print."""
+    """``11/09/2026`` — the form the banner and header badge print."""
     day = datetime.strptime(snapshot_date(), "%Y-%m-%d")
-    return f"{day.day} {day.strftime('%b %Y')}"
+    return day.strftime("%d/%m/%Y")
 
 
 def snapshot_now() -> datetime:

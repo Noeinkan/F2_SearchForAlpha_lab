@@ -12,6 +12,7 @@ from typing import Any
 from dash import dash_table, html
 
 from lib.dash.dash_config import FONT_SIZES
+from lib.dash.flow_dates import display_date
 from lib.metrics import format_canonical
 from lib.metrics.names import spec_for
 
@@ -64,7 +65,7 @@ def render_regime_panel(payload: dict[str, Any], theme: dict) -> html.Div:
         table_rows.append({
             "Result": {True: "✓", False: "✗"}.get(r.get("passed"), "n/a"),
             "Regime": r.get("label", ""),
-            "Period": f"{r.get('from', '')} → {r.get('to', '')}",
+            "Period": f"{display_date(r.get('from', ''))} → {display_date(r.get('to', ''))}",
             metric_label: _cell(m, metric),
             "Return": _cell(m, "total_return"),
             "Buy & Hold": _cell(m, "benchmark_return"),

@@ -15,6 +15,7 @@ from lib.dash.callbacks.shared import (
     records_to_csv,
 )
 from lib.dash.dash_config import DATA_EXPORT_MAX_ROWS, get_theme
+from lib.dash.callbacks.data_table import sort_visible_rows
 
 
 def _sample_df(n: int = 120) -> pd.DataFrame:
@@ -199,3 +200,9 @@ def test_export_csv_respects_cap():
         assert len(csv_text.strip().splitlines()) == 4  # header + 3 capped rows
     finally:
         shared_mod.DATA_EXPORT_MAX_ROWS = original_cap
+
+
+def test_displayed_european_dates_sort_chronologically():
+    rows = [{'Date': '01/01/2026'}, {'Date': '31/12/2025'}, {'Date': '02/01/2026'}]
+    ascending = sort_visible_rows(rows, 'Date', descending=False, date_col='Date')
+    assert [row['Date'] for row in ascending] == ['31/12/2025', '01/01/2026', '02/01/2026']

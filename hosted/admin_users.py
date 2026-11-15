@@ -125,7 +125,7 @@ def install(server: Flask, store: UserStore, mailer=None) -> None:
 
 
 def _when(stamp: float | None) -> str:
-    return time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(stamp)) if stamp else "never"
+    return time.strftime("%d/%m/%Y %H:%M UTC", time.gmtime(stamp)) if stamp else "never"
 
 
 def _button(email: str, action: str, label: str, danger: bool = False) -> str:

@@ -210,7 +210,7 @@ def _main(argv: list[str]) -> int:
         if command == "list":
             for user in store.list_users():
                 state = "active" if user.is_active else "revoked"
-                last = time.strftime("%Y-%m-%d %H:%M", time.gmtime(user.last_login)) if user.last_login else "never"
+                last = time.strftime("%d/%m/%Y %H:%M", time.gmtime(user.last_login)) if user.last_login else "never"
                 print(f"{user.email:40} {state:8} last login {last}")
             return 0
         if len(rest) != 1:

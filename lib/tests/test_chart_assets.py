@@ -148,7 +148,7 @@ def test_glue_has_no_chart_wide_price_formatter(glue_src):
     `localization.priceFormatter` overrides every price scale, so each series
     carries its pane's format (paneFormat) instead.
     """
-    assert "localization" not in glue_src
+    assert "\n                priceFormatter:" not in glue_src
     assert "paneFormat" in glue_src
 
 

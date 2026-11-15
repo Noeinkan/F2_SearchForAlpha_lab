@@ -163,7 +163,7 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                                     html.Label("From", style=label_style),
                                     dcc.DatePickerSingle(
                                         id='opt-test-window-start',
-                                        display_format='YYYY-MM-DD',
+                                        display_format='DD/MM/YYYY',
                                         className='dark-datepicker',
                                         style={'width': '100%'},
                                     ),
@@ -172,7 +172,7 @@ def _create_optimize_config_rail(styles: dict, theme: dict) -> html.Div:
                                     html.Label("To", style=label_style),
                                     dcc.DatePickerSingle(
                                         id='opt-test-window-end',
-                                        display_format='YYYY-MM-DD',
+                                        display_format='DD/MM/YYYY',
                                         className='dark-datepicker date-picker-end',
                                         style={'width': '100%'},
                                     ),

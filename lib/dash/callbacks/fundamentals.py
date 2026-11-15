@@ -7,6 +7,7 @@ import logging
 from dash import callback_context, no_update
 from dash.dependencies import ALL, Input, Output, State
 from dash.exceptions import PreventUpdate
+from lib.dash.flow_dates import display_date
 
 from lib.dash.routes import extract_path_ticker, is_fundamentals_route, ticker_from_search
 from lib.dash.callbacks.startup import _ensure_ticker_options_loaded
@@ -70,7 +71,8 @@ __all__ = [
 
 def _load_status(payload: dict) -> str:
     """Status line: when it loaded, and whether any of it is a cached or stale copy."""
-    status = f"LOADED {payload['as_of']}"
+    raw_as_of = str(payload['as_of'])
+    status = f"LOADED {display_date(raw_as_of, time=True) if len(raw_as_of) >= 16 and raw_as_of[4:5] == '-' else raw_as_of}"
     cache_info = payload.get('cache') or {}
     if cache_info.get('stale'):
         return f"{status} · REFETCH FAILED, SHOWING CACHED COPY"

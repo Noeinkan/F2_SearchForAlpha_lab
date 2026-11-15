@@ -59,11 +59,11 @@ def fmt_date(ts: float | None) -> str:
     if not ts:
         return "—"
     day = time.gmtime(ts)
-    return f"{day.tm_mday} {time.strftime('%b %Y', day)}"
+    return time.strftime("%d/%m/%Y", day)
 
 
 def fmt_time(ts: float | None) -> str:
-    return time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(ts)) if ts else "—"
+    return time.strftime("%d/%m/%Y %H:%M UTC", time.gmtime(ts)) if ts else "—"
 
 
 def page(title: str, body: str, *, wide: bool = False) -> str:

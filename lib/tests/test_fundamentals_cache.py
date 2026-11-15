@@ -10,6 +10,7 @@ from dash import no_update
 from lib import fundamentals_cache as cache
 from lib import fundamentals_sec as sec
 from lib.dash.callbacks.fundamentals import _global_ticker_update, _load_status
+from lib.dash.flow_dates import display_date
 from lib.fundamentals import fetch_fundamentals
 
 HOUR = 3600.0
@@ -217,7 +218,7 @@ def test_second_load_reads_every_input_from_the_cache():
     assert second["financials"] == first["financials"]
     assert second["quarterly"]["financials"] == first["quarterly"]["financials"]
     assert any(note.startswith("From cache:") for note in second["quality_notes"])
-    assert _load_status(second) == f"LOADED {second['as_of']} · FROM CACHE"
+    assert _load_status(second) == f"LOADED {display_date(second['as_of'], time=True)} · FROM CACHE"
 
 
 def test_status_line_says_partly_when_some_inputs_were_refetched():
@@ -232,7 +233,7 @@ def test_refresh_refetches_every_input():
     for loader in sources.values():
         assert loader.call_count == 2
     assert refreshed["cache"]["cached"] == []
-    assert _load_status(refreshed) == f"LOADED {refreshed['as_of']}"
+    assert _load_status(refreshed) == f"LOADED {display_date(refreshed['as_of'], time=True)}"
 
 
 def test_a_throttled_refresh_shows_the_cached_copy_and_says_so():
@@ -261,4 +262,4 @@ def test_refresh_does_not_resend_the_ticker_the_terminal_already_has():
 
 def test_status_line_tolerates_payloads_without_cache_info():
     # Demo fixtures were frozen before the cache existed.
-    assert _load_status({"as_of": "2026-09-11 16:00:00"}) == "LOADED 2026-09-11 16:00:00"
+    assert _load_status({"as_of": "2026-09-11 16:00:00"}) == "LOADED 11/09/2026 16:00"

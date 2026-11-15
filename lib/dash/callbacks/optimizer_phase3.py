@@ -81,7 +81,7 @@ def _format_ts(iso: str | None) -> str:
         return '—'
     try:
         dt = datetime.fromisoformat(str(iso).replace('Z', '+00:00'))
-        return dt.strftime('%Y-%m-%d %H:%M')
+        return dt.strftime('%d/%m/%Y %H:%M')
     except (TypeError, ValueError):
         return str(iso)[:16]
 

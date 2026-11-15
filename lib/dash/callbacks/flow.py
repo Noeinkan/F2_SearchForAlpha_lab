@@ -457,7 +457,7 @@ def register_flow_callbacks(app) -> None:
             var sameDay = stamp.toDateString() === new Date().toDateString();
             var when = stamp.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
             if (!sameDay) {
-                when = stamp.toLocaleDateString([], {month: 'short', day: 'numeric'}) + ' ' + when;
+                when = stamp.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'}) + ' ' + when;
             }
             var level = mins < 20 ? 'fresh' : (mins < 120 ? 'aging' : 'stale');
             return ['Data ' + when + ' · ' + ago, 'sfa-flow-age sfa-flow-age-' + level];

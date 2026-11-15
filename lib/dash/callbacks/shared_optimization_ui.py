@@ -205,9 +205,9 @@ def _create_price_subtitle(df: pd.DataFrame, theme: dict) -> html.Span:
     last_ts = pd.Timestamp(df.index[-1])
     interval = infer_bar_interval(df.index)
     if interval.endswith('H') or (len(interval) > 1 and interval.endswith('m')):
-        as_of = last_ts.strftime('%Y-%m-%d %H:%M')
+        as_of = last_ts.strftime('%d/%m/%Y %H:%M')
     else:
-        as_of = last_ts.strftime('%Y-%m-%d')
+        as_of = last_ts.strftime('%d/%m/%Y')
 
     return html.Span([
         html.Span(f"${latest_close:.2f}", className='num', style={'color': theme['text_primary']}),

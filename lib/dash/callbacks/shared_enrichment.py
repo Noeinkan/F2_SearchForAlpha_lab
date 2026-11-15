@@ -55,10 +55,10 @@ def slice_df_to_window(
     if sliced.empty:
         # Fall back to the full df so the user sees an error instead of a
         # silent zero-row "no combinations" run.
-        return df, f"{df.index.min().date()} → {df.index.max().date()} (test window empty)"
+        return df, f"{df.index.min():%d/%m/%Y} → {df.index.max():%d/%m/%Y} (test window empty)"
 
-    start_label = sliced.index.min().date().isoformat()
-    end_label = sliced.index.max().date().isoformat()
+    start_label = sliced.index.min().strftime('%d/%m/%Y')
+    end_label = sliced.index.max().strftime('%d/%m/%Y')
     return sliced, f"{start_label} → {end_label}"
 
 

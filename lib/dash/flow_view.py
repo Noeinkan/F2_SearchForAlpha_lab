@@ -1458,4 +1458,7 @@ def render_flow_reports(payload: Mapping[str, Any], theme: dict, *, show_glossar
         },
     ))
 
-    return html.Div(children, className="sfa-flow-reports")
+    return html.Div(
+        children, className="sfa-flow-reports",
+        **{"data-scan-epoch": str(payload.get("generated_epoch") or "")},
+    )

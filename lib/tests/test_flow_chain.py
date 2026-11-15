@@ -174,6 +174,31 @@ def test_build_chain_table_includes_spot_divider():
     assert "sfa-flow-chain-flagged" in blob
 
 
+def test_chain_asks_offer_contract_preview_and_missing_asks_do_not():
+    rows = [{
+        "strike": 390.0,
+        "call": {**_side(volume=1), "ask": 10.15},
+        "put": {**_side(volume=1), "ask": 8.25, "multiplier": 50},
+    }, {
+        "strike": 395.0,
+        "call": {**_side(volume=1), "ask": None},
+        "put": None,
+    }]
+    table = build_chain_table(rows, spot=391.0, theme=get_theme(DEFAULT_THEME))
+    blob = str(table)
+    assert blob.count("sfa-flow-chain-price sfa-flow-chain-quote'") == 2
+    assert blob.count("className='sfa-flow-chain-price'") == 3
+    assert "data-field='bid'" in blob and "data-field='ask'" in blob
+    assert "data-premium='10.15'" in blob
+    assert "data-multiplier='100'" in blob
+    assert "data-multiplier='50'" in blob
+    assert "data-cp='C'" in blob and "data-cp='P'" in blob
+    report = {"ticker": "TSLA", "spot": 391.0, "option_chains": {"2026-11-20": rows}}
+    preview = str(table_from_report(report, expiry="2026-11-20", theme=get_theme(DEFAULT_THEME)))
+    assert "Select a call or put quote" in preview
+    assert "sfa-flow-chain-preview-chart" in preview
+
+
 def test_render_chain_panel_and_empty_state():
     theme = get_theme(DEFAULT_THEME)
     assert render_chain_panel({"ticker": "X", "spot": 10, "option_chains": {}}, theme) is None

@@ -25,7 +25,41 @@ def _should_seed_dates(trigger_id: str) -> bool:
     return trigger_id == 'data-display-store'
 
 
+def sort_visible_rows(rows: list[dict], column: str, *, descending: bool, date_col: str) -> list[dict]:
+    """Sort the presentation table, including European dates, by actual value."""
+    def key(row):
+        value = row.get(column)
+        if value is None:
+            return (1, '')
+        if column == date_col:
+            try:
+                return (0, datetime.strptime(str(value)[:10], '%d/%m/%Y'))
+            except ValueError:
+                return (1, str(value))
+        if isinstance(value, (int, float)):
+            return (0, float(value))
+        return (0, str(value).casefold())
+
+    return sorted(rows, key=key, reverse=descending)
+
+
 def register_data_table_callbacks(app) -> None:
+    @app.callback(
+        Output('data-table', 'data'),
+        Input('data-table', 'sort_by'),
+        State('data-table', 'data'),
+        State('data-display-store', 'data'),
+        prevent_initial_call=True,
+    )
+    def sort_visible_data(sort_by, rows, payload):
+        """Sort displayed DD/MM/YYYY dates chronologically."""
+        if not sort_by or not rows:
+            raise PreventUpdate
+        date_col = (payload or {}).get('date_column', 'Date')
+        spec = sort_by[0]
+        column = spec['column_id']
+        return sort_visible_rows(rows, column, descending=spec.get('direction') == 'desc', date_col=date_col)
+
     @app.callback(
         [
             Output('data-table-container', 'children'),
@@ -68,7 +102,13 @@ def register_data_table_callbacks(app) -> None:
             )
             return empty, _create_summary_strip(summary, theme), effective_start, effective_end
 
-        table = _create_data_table(records, columns, theme)
+        from lib.dash.flow_dates import display_date
+        date_col = payload.get('date_column', 'Date')
+        visible_records = [
+            {**row, date_col: display_date(str(row[date_col])[:10])} if row.get(date_col) else row
+            for row in records
+        ]
+        table = _create_data_table(visible_records, columns, theme)
         return (
             table,
             _create_summary_strip(summary, theme),
@@ -85,10 +125,11 @@ def register_data_table_callbacks(app) -> None:
             State('data-col-groups', 'value'),
             State('data-date-start', 'date'),
             State('data-date-end', 'date'),
+            State('data-table', 'derived_viewport_data'),
         ],
         prevent_initial_call=True,
     )
-    def focus_chart_from_row(active_cell, payload, row_count, col_groups, date_start, date_end):
+    def focus_chart_from_row(active_cell, payload, row_count, col_groups, date_start, date_end, visible_rows):
         """Map a clicked table row to a chart focus window."""
         if not active_cell or not payload:
             raise PreventUpdate
@@ -100,16 +141,20 @@ def register_data_table_callbacks(app) -> None:
             date_start,
             date_end,
         )
+        shown = visible_rows if visible_rows is not None else records
         row_idx = active_cell.get('row')
-        if row_idx is None or row_idx < 0 or row_idx >= len(records):
+        if row_idx is None or row_idx < 0 or row_idx >= len(shown):
             raise PreventUpdate
 
         date_col = payload.get('date_column', 'Date')
-        focus_date = records[row_idx].get(date_col)
+        focus_date = shown[row_idx].get(date_col)
         if not focus_date:
             raise PreventUpdate
 
-        focus_ts = pd.Timestamp(focus_date)
+        try:
+            focus_ts = pd.Timestamp(datetime.strptime(str(focus_date)[:10], '%d/%m/%Y'))
+        except ValueError:
+            focus_ts = pd.Timestamp(focus_date)
         all_dates = [
             pd.Timestamp(rec[date_col])
             for rec in payload.get('records', [])

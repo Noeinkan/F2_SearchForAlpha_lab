@@ -268,7 +268,7 @@ def describe_reads(reads: dict[str, CacheRead[Any]], *, now: float | None = None
             "source": label,
             "state": read.state,
             "tier": read.tier.name,
-            "fetched_at": datetime.fromtimestamp(read.fetched_at).strftime("%Y-%m-%d %H:%M"),
+            "fetched_at": datetime.fromtimestamp(read.fetched_at).strftime("%d/%m/%Y %H:%M"),
             "age": format_age(clock - read.fetched_at),
             "fresh_for": format_age(read.tier.ttl_seconds),
         })

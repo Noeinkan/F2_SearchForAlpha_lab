@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import numpy as np
 import pandas as pd
+from lib.dash.flow_dates import display_date
 from dash import dash_table, html
 
 from lib.dash.dash_config import DATA_EXPORT_MAX_ROWS, FONT_FAMILY, FONT_SIZES
@@ -87,7 +88,7 @@ def compute_data_summary(records: list[dict], date_col: str) -> dict[str, Any]:
         }
 
     dates = [str(rec.get(date_col, ''))[:10] for rec in records if rec.get(date_col)]
-    range_str = f"{dates[0]} → {dates[-1]}" if dates else '—'
+    range_str = f"{display_date(dates[0])} → {display_date(dates[-1])}" if dates else '—'
 
     close_vals: list[float] = []
     nan_count = 0
@@ -316,7 +317,7 @@ def _create_data_table(
         id=table_id,
         columns=columns,
         data=cast(Any, records),
-        sort_action='native',
+        sort_action='custom',
         filter_action='native',
         page_action='none',
         export_format='csv',

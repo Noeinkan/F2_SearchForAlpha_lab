@@ -125,7 +125,7 @@ def _create_data_overlay(styles: dict, theme: dict) -> html.Div:
                                             ),
                                             dcc.DatePickerSingle(
                                                 id='data-date-start',
-                                                display_format='YYYY-MM-DD',
+                                                display_format='DD/MM/YYYY',
                                                 className='dark-datepicker',
                                                 style={'width': '100%'},
                                             ),
@@ -145,7 +145,7 @@ def _create_data_overlay(styles: dict, theme: dict) -> html.Div:
                                             ),
                                             dcc.DatePickerSingle(
                                                 id='data-date-end',
-                                                display_format='YYYY-MM-DD',
+                                                display_format='DD/MM/YYYY',
                                                 className='dark-datepicker date-picker-end',
                                                 style={'width': '100%'},
                                             ),

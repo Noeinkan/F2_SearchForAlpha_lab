@@ -72,7 +72,7 @@ def test_backtest_slices_before_running():
     assert len(sliced) == 30
     assert sliced.index.min() == pd.Timestamp("2020-06-01")
     assert sliced.index.max() == pd.Timestamp("2020-06-30")
-    assert label == "2020-06-01 → 2020-06-30"
+    assert label == "01/06/2020 → 30/06/2020"
 
 
 # --- slice_df_to_window -------------------------------------------------------

@@ -227,7 +227,7 @@ def build_body(
 
     lines = [
         f"Type:  {entry['label']}",
-        f"Sent:  {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M %Z')}",
+        f"Sent:  {datetime.now().astimezone().strftime('%d/%m/%Y %H:%M %Z')}",
         f"Reply: {address or 'not given (anonymous)'}",
         '',
         '--- Message ---',

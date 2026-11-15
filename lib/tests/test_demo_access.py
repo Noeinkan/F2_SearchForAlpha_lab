@@ -137,7 +137,7 @@ def test_the_code_signs_in_starts_the_trial_and_usage_is_recorded(world):
     page = client.get("/ticker/TSLA")
     html = page.get_data(as_text=True)
     assert page.status_code == 200
-    assert "Signed in as <b>jane@example.com</b>" in html and "22 Jan 2027" in html
+    assert "Signed in as <b>jane@example.com</b>" in html and "22/01/2027" in html
     assert page.headers["Cache-Control"] == "private, no-store"
     assert client.post("/_dash-update-component", json={}).get_data(as_text=True) == '{"response": "ran"}'
 
@@ -225,7 +225,7 @@ def test_an_ended_trial_redirects_walls_callbacks_and_cannot_be_restarted(world)
     ended = client.get("/access/ended").get_data(as_text=True)
     assert "Your free trial has ended" in ended and "owner@example.com" in ended
     callback = client.post("/_dash-update-component", json={}).get_data(as_text=True)
-    assert "demo-wall-body" in callback and "ended on 22 Jan 2027" in callback
+    assert "demo-wall-body" in callback and "ended on 22\\u002f01\\u002f2027" in callback
 
     # A fresh browser asking again sees the same "check your inbox" page (no
     # reveal that this address had a trial) and the mailbox gets no code.

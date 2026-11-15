@@ -24,7 +24,7 @@ import urllib.request
 import webbrowser
 
 import dash
-from flask import Response, request, send_file
+from flask import Response, request
 
 from lib.dash.dash_config import (
     DEFAULT_THEME,
@@ -40,6 +40,7 @@ from lib.dash.callbacks import register_callbacks
 from lib.dash.bootstrap import startup_ticker, try_bootstrap_default_session
 from lib.dash.error_boundary import handle_callback_error
 from lib.dash import flow_store
+from lib.dash.flow_dates import localize_html_text
 from lib.dash.flow_refresh import start_flow_refresh
 from lib.dash.state import dashboard_state
 
@@ -280,7 +281,8 @@ def create_app() -> dash.Dash:
         candidates.append(DEFAULT_FLOW_REPORT)
         for path in candidates:
             if os.path.exists(path):
-                resp = send_file(path, mimetype="text/html")
+                with open(path, encoding="utf-8") as report_file:
+                    resp = Response(localize_html_text(report_file.read()), mimetype="text/html")
                 resp.headers["Cache-Control"] = "no-store"
                 return resp
         return Response(_FLOW_STUB_HTML, mimetype="text/html")

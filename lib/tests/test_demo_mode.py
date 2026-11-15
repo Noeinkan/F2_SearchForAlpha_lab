@@ -386,7 +386,7 @@ _PROBE = textwrap.dedent(r"""
     a, page = visitor('visitor-a@example.com')
     html = page.get_data(as_text=True)
     results['page_status'] = page.status_code
-    results['banner'] = 'PUBLIC DEMO' in html and '11 Sep 2026' in html
+    results['banner'] = 'PUBLIC DEMO' in html and '11/09/2026' in html
     results['signed_in_line'] = 'Signed in as <b>visitor-a@example.com</b>' in html
     results['cookie'] = sessions.COOKIE_NAME in (page.headers.get('Set-Cookie') or '')
     results['layout_bytes'] = len(a.get('/_dash-layout').get_data())

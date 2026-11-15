@@ -1,0 +1,2 @@
+[     758ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://127.0.0.1:8050/_dash-component-suites/dash/deps/react-dom@18.v4_4_1m1785880594.3.1.js:29905
+[   11995ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ http://127.0.0.1:8050/_dash-component-suites/plotly/package_data/plotly.min.js:2008

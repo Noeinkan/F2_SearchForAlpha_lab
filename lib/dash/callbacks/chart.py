@@ -316,9 +316,10 @@ def register_chart_callbacks(app) -> None:
 
         def stamp(value):
             if isinstance(value, str):
-                return value
+                from lib.dash.flow_dates import display_date
+                return display_date(value)
             ts = pd.Timestamp(value, unit='s', tz='UTC')
-            return ts.strftime('%Y-%m-%d %H:%M' if meta.get('subdaily') else '%Y-%m-%d')
+            return ts.strftime('%d/%m/%Y %H:%M' if meta.get('subdaily') else '%d/%m/%Y')
 
         label = (meta.get('interval') or '').upper()
         return (

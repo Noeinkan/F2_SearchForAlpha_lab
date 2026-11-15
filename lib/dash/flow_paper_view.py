@@ -57,7 +57,7 @@ def panel(theme: dict) -> html.Details:
                 html.P("Import recorded observations to replay them in order. Missing quotes stay missing; a historical entry premium can be recorded only when no ask exists."),
                 dcc.Upload(id="flow-paper-import", children=html.Button("Import snapshots JSON", className="sfa-flow-paper-button secondary"),
                            accept=".json,application/json", multiple=False),
-                html.P('JSON: {"ticker":"AAPL","observed_at":"2026-11-16T10:00:00Z","underlying":100,"contracts":[{"expiry":"2026-11-20","cp":"C","strike":100,"bid":null,"ask":null,"volume":0,"open_interest":0}]}. A {"snapshots":[...]} wrapper also works.'),
+                html.P('JSON needs ticker, observed_at, underlying, and contracts with expiry, cp (C/P), strike, bid, ask, volume, and open_interest. Use null for missing quotes. Dates in imported data use ISO 8601.'),
                 html.Div([
                     html.Label("Known entry premium ($)", htmlFor="flow-paper-entry-premium"),
                     dcc.Input(id="flow-paper-entry-premium", type="number", min=0, step=0.01),

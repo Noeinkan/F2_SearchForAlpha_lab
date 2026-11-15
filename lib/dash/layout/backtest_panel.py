@@ -212,7 +212,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                     }),
                                     dcc.DatePickerSingle(
                                         id='test-window-start',
-                                        display_format='YYYY-MM-DD',
+                                        display_format='DD/MM/YYYY',
                                         className='dark-datepicker',
                                         style={'width': '100%'},
                                     ),
@@ -226,7 +226,7 @@ def _create_backtest_panel(styles: dict, theme: dict, bootstrap: BootstrapSnapsh
                                     }),
                                     dcc.DatePickerSingle(
                                         id='test-window-end',
-                                        display_format='YYYY-MM-DD',
+                                        display_format='DD/MM/YYYY',
                                         className='dark-datepicker date-picker-end',
                                         style={'width': '100%'},
                                     ),

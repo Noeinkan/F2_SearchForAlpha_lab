@@ -180,7 +180,7 @@ def flag_reasons(report: Mapping[str, Any], expiry: str | None) -> dict[tuple[fl
     return out
 
 
-def _side_cells(side: Mapping[str, Any] | None, *, cp: str, reason: str | None = None) -> list[Any]:
+def _side_cells(side: Mapping[str, Any] | None, *, cp: str, strike: float, reason: str | None = None) -> list[Any]:
     if not side:
         return [html.Td("—", className="sfa-flow-chain-empty") for _ in range(5)]
 
@@ -203,7 +203,28 @@ def _side_cells(side: Mapping[str, Any] | None, *, cp: str, reason: str | None =
         classes = f"sfa-flow-chain-{cp.lower()} sfa-flow-chain-{key}"
         if flagged:
             classes += " sfa-flow-chain-flagged"
-        cells.append(html.Td(values[key], className=classes, title=title))
+        content: Any = values[key]
+        if key in ("bid", "ask") and values[key] != "—" and strike > 0:
+            try:
+                multiplier = int(side.get("multiplier", 100))
+            except (TypeError, ValueError):
+                multiplier = 0
+            if multiplier > 0:
+                content = html.Button(
+                    values[key], type="button",
+                    className="sfa-flow-chain-price" + (" sfa-flow-chain-quote" if key == "ask" else ""),
+                    title=f"Show quote details for this {'call' if cp == 'C' else 'put'}",
+                    **{"data-cp": cp, "data-strike": str(strike),
+                       "data-field": key, "data-premium": str(side.get("ask") or ""),
+                       "data-bid": str(side.get("bid") or ""), "data-ask": str(side.get("ask") or ""),
+                       "data-last": str(side.get("last") or ""),
+                       "data-volume": str(side.get("volume") or 0),
+                       "data-oi": str(side.get("open_interest") or 0),
+                       "data-iv": str(side.get("iv") or ""),
+                       "data-flagged": "true" if flagged else "false",
+                       "data-reason": reason or "", "data-multiplier": str(multiplier)},
+                )
+        cells.append(html.Td(content, className=classes, title=title))
     return cells
 
 
@@ -324,9 +345,9 @@ def build_chain_table(
         body_rows.append(
             html.Tr(
                 [
-                    *_side_cells(call, cp="C", reason=reasons.get((strike, "C"))),
+                    *_side_cells(call, cp="C", strike=strike, reason=reasons.get((strike, "C"))),
                     strike_cell,
-                    *_side_cells(put, cp="P", reason=reasons.get((strike, "P"))),
+                    *_side_cells(put, cp="P", strike=strike, reason=reasons.get((strike, "P"))),
                 ],
                 className=" ".join(row_classes),
             )
@@ -391,6 +412,39 @@ def table_from_report(
         html.Div(
             build_chain_table(rows, spot, theme, reasons=flag_reasons(report, exp)),
             className="sfa-flow-chain-scroll",
+            **{"data-expiry": exp or ""},
+        ),
+        html.Div(
+            [
+                html.Div([
+                    html.Span("EXPIRY PAYOFF", className="sfa-flow-chain-preview-eyebrow"),
+                    html.Span("Select a call or put quote to preview one long contract.",
+                              className="sfa-flow-chain-preview-prompt"),
+                ], className="sfa-flow-chain-preview-empty"),
+                html.Div([
+                    html.Div([
+                        html.Span("EXPIRY PAYOFF · 1 LONG CONTRACT", className="sfa-flow-chain-preview-eyebrow"),
+                        html.Strong(className="sfa-flow-chain-preview-contract"),
+                    ], className="sfa-flow-chain-preview-heading"),
+                    html.Div([
+                        html.Div([
+                            html.Span("CONTRACT COST", className="sfa-flow-chain-preview-metric-label"),
+                            html.Strong(className="sfa-flow-chain-preview-cost"),
+                            html.Span(className="sfa-flow-chain-preview-cost-note"),
+                        ], className="sfa-flow-chain-preview-metric"),
+                        html.Div([
+                            html.Span("EXPIRY BREAK-EVEN", className="sfa-flow-chain-preview-metric-label"),
+                            html.Strong(className="sfa-flow-chain-preview-breakeven"),
+                            html.Span("Underlying price · before fees", className="sfa-flow-chain-preview-metric-note"),
+                        ], className="sfa-flow-chain-preview-metric sfa-flow-chain-preview-metric-be"),
+                    ], className="sfa-flow-chain-preview-metrics"),
+                    html.Div(className="sfa-flow-chain-preview-chart", **{"aria-hidden": "true"}),
+                    html.Div([
+                        html.Span(className="sfa-flow-chain-preview-premium"),
+                        html.Span(className="sfa-flow-chain-preview-multiplier"),
+                    ], className="sfa-flow-chain-preview-foot"),
+                ], className="sfa-flow-chain-preview-values", hidden=True),
+            ], className="sfa-flow-chain-preview", role="status", **{"aria-live": "polite"},
         ),
     ]
     if view == "near" and hidden > 0:
@@ -500,4 +554,5 @@ def render_chain_panel(report: Mapping[str, Any], theme: dict, *, today: date | 
             ),
         ],
         className="sfa-flow-chain",
+        **{"data-ticker": ticker},
     )
