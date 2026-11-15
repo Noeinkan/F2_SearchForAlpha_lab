@@ -529,9 +529,10 @@ in the last days before an expiry.
      the page, up to 20.
    - **When:** every 15 minutes during US market hours (9:30–16:00 New York time,
      weekdays), plus one last scan after the close. There is no holiday calendar.
-3. **Open any of those tickers on the FLOW page.** The status line reads, for example,
-   *"Report from 14:05 · auto-refresh every 15 min"*. A page left open picks up the
-   newer report on its own within a minute.
+3. **Open any of those tickers on the FLOW page.** The badge next to RESCAN NOW reads,
+   for example, *"Data 14:05 · 3 min ago"* (green dot when fresh, amber after 20 min,
+   red after 2 h), followed by *"Auto-refresh every 15 min"*. A page left open picks up
+   the newer report on its own within a minute.
 4. **To change the interval,** set it in the same PowerShell window before starting,
    for example `$env:SFA_FLOW_REFRESH_MINUTES = "30"; python main.py`. `0` turns the
    background refresh off.

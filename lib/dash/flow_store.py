@@ -162,6 +162,12 @@ def _scan_locked(symbol: str, runner: Callable[..., tuple[int, str]]) -> ScanOut
         os.replace(tmp_json, final_json)
         if tmp_html.exists():
             os.replace(tmp_html, html_path(symbol))
+        if error_kind is None:
+            try:
+                from lib.dash.flow_paper import add_snapshot, snapshot_from_report
+                add_snapshot(snapshot_from_report(fresh))
+            except (OSError, ValueError, KeyError, TypeError):
+                logger.exception("Could not archive option snapshot for %s", symbol)
         return ScanOutcome(symbol, True, error_kind, error or "", fresh)
     finally:
         for leftover in (tmp_json, tmp_html):

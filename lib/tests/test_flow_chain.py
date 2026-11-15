@@ -9,8 +9,12 @@ from lib.dash.dash_config import DEFAULT_THEME, get_theme
 from lib.dash.flow_chain import (
     atm_strike_index,
     build_chain_table,
+    default_chain_expiry,
+    expiry_option_label,
     filter_chain_rows,
+    flag_reasons,
     render_chain_panel,
+    select_chain_rows,
     table_from_report,
 )
 from lib.dash.flow_view import render_flow_reports, render_ticker_card
@@ -100,6 +104,49 @@ def test_filter_chain_rows_flagged_only():
     assert flagged[0]["strike"] == 100.0
 
 
+def _side(volume=0, oi=0, flagged=False):
+    return {"last": 1.0, "bid": 0.9, "ask": 1.1, "volume": volume,
+            "open_interest": oi, "iv": 0.3, "flagged": flagged}
+
+
+def test_select_chain_rows_drops_dead_strikes_and_windows_around_spot():
+    rows = [{"strike": float(s), "call": _side(volume=1), "put": None} for s in range(50, 151, 5)]
+    rows.append({"strike": 200.0, "call": _side(), "put": _side()})  # a row of dashes
+    assert len(select_chain_rows(rows, view="all", spot=100.0)) == 21
+    near = select_chain_rows(rows, view="near", spot=101.0, near=2)
+    assert [r["strike"] for r in near] == [90.0, 95.0, 100.0, 105.0, 110.0]
+    flagged = select_chain_rows(
+        [*rows, {"strike": 300.0, "call": _side(flagged=True), "put": None}], view="flagged", spot=100.0
+    )
+    assert [r["strike"] for r in flagged] == [300.0]
+
+
+def test_default_expiry_skips_the_last_week_and_labels_say_days_and_flags():
+    chains = {"2026-11-16": [], "2026-11-20": [], "2026-11-27": [{"strike": 1.0, "call": _side(flagged=True)}]}
+    today = date(2026, 11, 15)
+    assert default_chain_expiry(chains, today=today) == "2026-11-27"
+    # Nothing a week out: the furthest listed, not tomorrow's.
+    assert default_chain_expiry({"2026-11-16": [], "2026-11-18": [], "2026-11-20": []}, today=today) == "2026-11-20"
+    assert expiry_option_label("2026-11-27", chains["2026-11-27"], today=today) == "2026-11-27 · 12d · 1 flagged"
+
+
+def test_flagged_cells_carry_the_reason_on_hover():
+    report = {
+        "contracts": [{
+            "strike": 105.0, "cp": "C", "expiry": "2026-06-20",
+            "flags": [{"kind": "unusual", "message": "vol 500 > OI 50"}],
+        }],
+    }
+    reasons = flag_reasons(report, "2026-06-20")
+    assert reasons == {(105.0, "C"): "Unusual: vol 500 > OI 50"}
+    assert flag_reasons(report, "2026-06-27") == {}
+    table = build_chain_table(
+        [{"strike": 105.0, "call": _side(volume=500, oi=50, flagged=True), "put": None}],
+        spot=100.0, theme=get_theme(DEFAULT_THEME), reasons=reasons,
+    )
+    assert "vol 500 > OI 50" in str(table)
+
+
 def test_build_chain_table_includes_spot_divider():
     theme = get_theme(DEFAULT_THEME)
     rows = [
@@ -167,6 +214,8 @@ def test_render_chain_panel_and_empty_state():
     assert "sfa-flow-chain" in blob
     assert "flow-chain-expiry" in blob
     assert "Flagged only" in blob
+    assert "Near spot" in blob
+    assert "sfa-flow-chain-key" in blob
 
     body = table_from_report(report, expiry="2026-06-20", theme=theme, flagged_only=True)
     assert "sfa-flow-chain-table" in str(body)

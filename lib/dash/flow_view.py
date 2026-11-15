@@ -27,11 +27,11 @@ from lib.dash.flow_glossary import (
     interpretive_insights,
     iv_surface_series,
     score_breakdown,
-    score_parts,
     theta_decay_series,
     ticker_sentiment,
 )
 from lib.dash.flow_chain import render_chain_panel
+from lib.dash.flow_summary import render_flow_mix, render_ranges, render_score_row, render_top_strikes
 from lib.dash.flow_inventory import render_inventory_panel
 from lib.dash.flow_gex import render_gex_panel
 from lib.dash.flow_vanna import render_vanna_panel
@@ -61,19 +61,6 @@ _HIDDEN_COLUMNS = [
     "is_weekly_raw",
     "signal_color",
 ]
-
-
-def _kpi_span(label: str, value: str, tip: str, theme: dict) -> html.Span:
-    return html.Span(
-        [label, " ", html.Strong(value)],
-        title=tip,
-        style={
-            "fontFamily": FONT_FAMILY,
-            "fontSize": FONT_SIZES["xs"],
-            "color": theme["text_secondary"],
-            "cursor": "help",
-        },
-    )
 
 
 def _panel_style(theme: dict) -> dict[str, Any]:
@@ -985,62 +972,6 @@ def render_learn_modal_content(theme: dict) -> html.Div:
     )
 
 
-def _score_chip_row(report: Mapping[str, Any], theme: dict) -> html.Div | None:
-    parts = score_parts(report)
-    if not parts:
-        return None
-    chips: list[Any] = [
-        html.Span(
-            "Score",
-            style={
-                "color": theme["text_tertiary"],
-                "fontSize": FONT_SIZES["xs"],
-                "fontFamily": FONT_FAMILY,
-                "marginRight": "4px",
-            },
-        )
-    ]
-    for i, (label, n, weight, color) in enumerate(parts):
-        if i:
-            chips.append(
-                html.Span("+", style={"color": theme["text_tertiary"], "fontSize": FONT_SIZES["xs"]})
-            )
-        chips.append(
-            _legend_chip(
-                f"{n} {label} × {weight}",
-                color,
-                theme,
-                tip=FLAG_DEFINITIONS[
-                    next(k for k, fd in FLAG_DEFINITIONS.items() if fd["label"] == label)
-                ]["long"],
-            )
-        )
-    total = report.get("unusual_score", sum(n * w for _, n, w, _ in parts))
-    chips.append(
-        html.Span(
-            f"= {total}",
-            style={
-                "fontWeight": "700",
-                "color": theme["text_primary"],
-                "fontSize": FONT_SIZES["xs"],
-                "fontFamily": "IBM Plex Mono, monospace",
-                "marginLeft": "4px",
-            },
-        )
-    )
-    return html.Div(
-        chips,
-        className="sfa-flow-score-chips",
-        style={
-            "display": "flex",
-            "flexWrap": "wrap",
-            "alignItems": "center",
-            "gap": "6px",
-            "marginBottom": "8px",
-        },
-    )
-
-
 def _strike_map(report: Mapping[str, Any], theme: dict) -> html.Div | None:
     """Horizontal track: spot marker + top call/put strike dots."""
     spot = float(report.get("spot") or 0)
@@ -1332,16 +1263,6 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
     insights = interpretive_insights(report)
     sentiment_label, sentiment_color, sentiment_reason = ticker_sentiment(report)
 
-    top_calls = ", ".join(
-        f"${s:.0f} ({v:,})" for s, v in (report.get("top_call_strikes") or [])[:5]
-    ) or "—"
-    top_puts = ", ".join(
-        f"${s:.0f} ({v:,})" for s, v in (report.get("top_put_strikes") or [])[:5]
-    ) or "—"
-
-    call_pct = float(report.get("call_pct") or 0)
-    put_pct = float(report.get("put_pct") or 0)
-
     header_children: list[Any] = [
         html.H3(
             f"{ticker} ${float(report.get('spot', 0)):,.2f}",
@@ -1384,7 +1305,7 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
         ))
 
     insight_block = _insight_list(insights, theme)
-    score_chips = _score_chip_row(report, theme)
+    score_chips = render_score_row(report)
     chain_panel = render_chain_panel(report, theme)
     gex_panel = render_gex_panel(report, theme)
     inventory_panel = render_inventory_panel(report, theme)
@@ -1441,54 +1362,14 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
     if score_chips is not None:
         card_children.append(score_chips)
 
-    card_children.append(html.Div([
-        _kpi_span("Prev", f"${float(report.get('prev_close', 0)):,.2f}", "Previous session close", theme),
-        _kpi_span(
-            "Day",
-            f"{float(report.get('day_low', 0)):,.2f}–{float(report.get('day_high', 0)):,.2f}",
-            "Today's trading range",
-            theme,
-        ),
-        _kpi_span(
-            "52-week",
-            f"{float(report.get('wk52_low', 0)):,.2f}–{float(report.get('wk52_high', 0)):,.2f}",
-            "52-week high and low",
-            theme,
-        ),
-        _kpi_span(
-            "Put/Call vol",
-            f"{float(report.get('pc_vol_ratio', 0)):.2f}",
-            TERM_DEFINITIONS["pc_vol"],
-            theme,
-        ),
-        _kpi_span("Score", str(report.get("unusual_score", 0)), score_tip, theme),
-    ], style={"display": "flex", "flexWrap": "wrap", "gap": "12px", "marginBottom": "8px"}))
-
-    card_children.extend([
-        html.Div([
-            html.Span(f"Calls {call_pct:.1f}%", style={"fontSize": FONT_SIZES["xs"], "color": theme["text_secondary"]}),
-            html.Div(
-                html.Div(style={
-                    "width": f"{call_pct:.1f}%",
-                    "height": "100%",
-                    "backgroundColor": theme["accent_green"],
-                }),
-                style={
-                    "flex": 1,
-                    "height": "10px",
-                    "backgroundColor": theme["bg_hover"],
-                    "borderRadius": "4px",
-                    "overflow": "hidden",
-                    "maxWidth": "300px",
-                },
-            ),
-            html.Span(f"Puts {put_pct:.1f}%", style={"fontSize": FONT_SIZES["xs"], "color": theme["text_secondary"]}),
-        ], style={"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "8px"}),
-        html.P(
-            f"Top calls: {top_calls} | Top puts: {top_puts}",
-            style={"fontSize": FONT_SIZES["xs"], "color": theme["text_secondary"], "margin": "0 0 8px"},
-        ),
-    ])
+    # Price ranges and call/put mix; the score and P/C ratio are not repeated here.
+    ranges = render_ranges(report)
+    if ranges is not None:
+        card_children.append(ranges)
+    card_children.append(render_flow_mix(report))
+    top_strikes = render_top_strikes(report)
+    if top_strikes is not None:
+        card_children.append(top_strikes)
 
     if chain_panel is not None:
         card_children.append(chain_panel)
@@ -1538,14 +1419,8 @@ def render_flow_reports(payload: Mapping[str, Any], theme: dict, *, show_glossar
 
     sorted_reports = sorted(reports, key=lambda r: r.get("unusual_score", 0), reverse=True)
 
+    # Report age is shown once, live, in the toolbar badge (#flow-data-age).
     children: list[Any] = []
-    generated = payload.get("generated_at") if isinstance(payload, Mapping) else None
-    if generated:
-        children.append(html.P(
-            f"Report generated {generated}",
-            className="sfa-flow-generated-at",
-            style={"fontSize": FONT_SIZES["xs"], "color": theme["text_tertiary"], "margin": "0 0 8px"},
-        ))
     if show_glossary:
         children.append(render_glossary_panel(theme))
     children.append(render_summary_cards(sorted_reports, theme))

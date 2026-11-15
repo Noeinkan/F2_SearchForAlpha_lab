@@ -166,7 +166,9 @@ def test_mobile_shell_classes_present(class_names):
 
 def test_overlay_toolbar_actions_present(class_names):
     assert "sfa-overlay-toolbar-actions" in class_names
-    assert "sfa-flow-secondary-action" in class_names
+    # Flow's secondary actions sit in a ⋯ menu, reachable on mobile too.
+    assert "sfa-flow-menu" in class_names
+    assert "sfa-flow-menu-item" in class_names
 
 
 def _find_by_id(component, target):

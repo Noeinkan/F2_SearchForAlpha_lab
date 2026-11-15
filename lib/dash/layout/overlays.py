@@ -15,6 +15,7 @@ from lib.dash.dash_config import (
     FUNDAMENTALS_PERIOD_OPTIONS, DEFAULT_FUNDAMENTALS_PERIOD,
 )
 from lib.dash.flow_view import render_learn_modal_content
+from lib.dash.flow_paper_view import panel as flow_paper_panel
 from lib.dash.layout.symbol_search import build_symbol_search_trigger
 
 
@@ -162,7 +163,10 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                 ),
             ], className='sfa-overlay-toolbar-title', style={'minWidth': 0, 'flex': '1 1 auto'}),
             html.Div([
-                html.Span(id='flow-status', children='Ready', className='num muted sfa-flow-status', style={
+                # Live "how old is this data" badge, filled client-side from
+                # flow-data-store (callbacks/flow.py); flow-status keeps events only.
+                html.Span(id='flow-data-age', className='sfa-flow-age'),
+                html.Span(id='flow-status', children='', className='num muted sfa-flow-status', style={
                     'fontFamily': FONT_FAMILY,
                     'fontSize': FONT_SIZES['xs'],
                     'color': theme['text_secondary'],
@@ -175,42 +179,27 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                     name_id='flow-symbol-trigger-name',
                     compact=True,
                 ),
-                html.Button("LEARN", id='flow-learn-button', n_clicks=0, style={
-                    **styles['button_outline'],
-                    'padding': '6px 12px',
-                }),
-                html.Button("GLOSSARY", id='flow-glossary-button', n_clicks=0, className='sfa-flow-secondary-action', style={
-                    **styles['button_outline'],
-                    'padding': '6px 12px',
-                }),
-                html.Button("COLLAPSE ALL", id='flow-collapse-all', n_clicks=0, className='sfa-flow-secondary-action', style={
-                    **styles['button_outline'],
-                    'padding': '6px 12px',
-                }),
                 html.Button("RESCAN NOW", id='flow-rescan-button', n_clicks=0, style={
                     **styles['button_primary'],
                     'padding': '6px 12px',
                 }),
-                html.A(
-                    "OPEN IN NEW TAB",
-                    id='flow-open-tab-link',
-                    href='/flow_report.html',
-                    target='_blank',
-                    className='sfa-flow-secondary-action',
-                    style={
-                        **styles['button_outline'],
-                        'padding': '6px 12px',
-                        'textDecoration': 'none',
-                        'display': 'inline-block',
-                        'marginLeft': '8px',
-                    },
-                ),
-                html.Button("CLOSE", id='close-flow-button', n_clicks=0, style={
-                    **styles['button_outline'],
-                    'color': theme['accent_red'],
-                    'borderColor': theme['accent_red'],
-                    'marginLeft': '8px',
-                }),
+                # Secondary actions live in a ⋯ menu (closed by assets/51-flow.js on
+                # outside click). Ids unchanged: their callbacks still fire as before.
+                html.Details([
+                    html.Summary("⋯", className='sfa-flow-menu-trigger', title='More actions'),
+                    html.Div([
+                        html.Button("Learn options basics", id='flow-learn-button', n_clicks=0,
+                                    className='sfa-flow-menu-item'),
+                        html.Button("Glossary", id='flow-glossary-button', n_clicks=0,
+                                    className='sfa-flow-menu-item'),
+                        html.Button("Collapse all", id='flow-collapse-all', n_clicks=0,
+                                    className='sfa-flow-menu-item'),
+                        html.A("Open in new tab ↗", id='flow-open-tab-link', href='/flow_report.html',
+                               target='_blank', className='sfa-flow-menu-item'),
+                    ], className='sfa-flow-menu-list'),
+                ], className='sfa-flow-menu'),
+                html.Button("✕", id='close-flow-button', n_clicks=0, className='sfa-flow-close',
+                            title='Close Flow Scanner', **{'aria-label': 'Close Flow Scanner'}),
             ], className='sfa-overlay-toolbar-actions', style={
                 'display': 'flex',
                 'alignItems': 'center',
@@ -265,11 +254,16 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
         # flash the spinner every minute even when nothing changed.
         dcc.Interval(id='flow-refresh-interval', interval=60_000, disabled=True),
         dcc.Store(id='flow-refresh-signal', data=None),
+        # Re-ages the #flow-data-age badge; the callback is clientside, so no server hit.
+        dcc.Interval(id='flow-age-tick', interval=30_000),
+        dcc.Store(id='flow-paper-state', data={'ticker': None, 'index': 0}),
+        dcc.Store(id='flow-paper-revision', data=0),
         # Single scroll container for the whole report — the glossary lives inside
         # it so an open glossary scrolls with the content instead of stealing height.
         html.Div(
             [
                 html.Div(id='flow-glossary', style={'display': 'none'}, children=[]),
+                flow_paper_panel(theme),
                 dcc.Loading(
                     id='flow-loading',
                     type='circle',

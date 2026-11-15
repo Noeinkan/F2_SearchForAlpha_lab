@@ -435,10 +435,7 @@ button.sfa-mobile-backtest-btn {
         margin-left: 0 !important;
     }
 
-    /* Flow: demote secondary actions so RESCAN / CLOSE / symbol stay primary */
-    .sfa-flow-overlay .sfa-flow-secondary-action {
-        display: none !important;
-    }
+    /* Flow: secondary actions already sit in the ⋯ menu; drop the status text */
     .sfa-flow-overlay .sfa-flow-status {
         display: none;
     }

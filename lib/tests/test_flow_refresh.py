@@ -216,7 +216,9 @@ def test_the_page_shows_the_report_of_the_ticker_in_the_url(flow_app):
     status, body = _open_flow(flow_app, "/flow/AAPL")
     assert status == 200
     response = body["response"]
-    assert response["flow-status"]["children"].startswith("Report from")
+    # The report's age is the client-side #flow-data-age badge, fed by this epoch.
+    assert "Report from" not in response["flow-status"]["children"]
+    assert response["flow-data-store"]["data"]["generated_epoch"] > 0
     assert response["flow-data-store"]["data"]["reports"][0]["ticker"] == "AAPL"
     assert "unrelated" not in json.dumps(response["flow-content"])
 

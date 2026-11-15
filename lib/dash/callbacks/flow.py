@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import base64
+import json
 from urllib.parse import quote
 
 from dash import ALL, MATCH, callback_context, no_update
@@ -10,6 +12,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from lib.dash import flow_store
+from lib.dash import flow_paper
 from lib.dash.dash_config import (
     DEFAULT_THEME,
     DEFAULT_TICKER,
@@ -17,7 +20,7 @@ from lib.dash.dash_config import (
     ROUTE_TERMINAL,
     get_theme,
 )
-from lib.dash.flow_chain import table_from_report
+from lib.dash.flow_chain import DEFAULT_CHAIN_VIEW, table_from_report
 from lib.dash.flow_inventory import figure_from_report
 from lib.dash.flow_gex import figure_from_gex_report
 from lib.dash.flow_vanna import figure_from_vanna_report
@@ -46,8 +49,24 @@ def _report_time(payload: dict | None) -> str:
 
 
 def _loaded_status(payload: dict) -> str:
-    refresh = f" · auto-refresh every {FLOW_REFRESH_MINUTES} min" if FLOW_REFRESH_MINUTES > 0 else ""
-    return f"Report from {_report_time(payload)}{refresh}"
+    """Toolbar note on a plain load. The report's age is the #flow-data-age badge."""
+    _ = payload
+    return f"Auto-refresh every {FLOW_REFRESH_MINUTES} min" if FLOW_REFRESH_MINUTES > 0 else ""
+
+
+def _with_epoch(payload: dict | None) -> dict | None:
+    """Add ``generated_epoch`` so the browser can age the report without timezone guesswork.
+
+    ``generated_at`` is the server's naive local time; on a hosted server in UTC a
+    browser in Rome would read it an hour off.
+    """
+    if not payload:
+        return payload
+    try:
+        epoch = datetime.fromisoformat(str(payload.get("generated_at"))).timestamp()
+    except (TypeError, ValueError):
+        return payload
+    return {**payload, "generated_epoch": epoch}
 
 
 def _render_from_payload(payload: dict | None, theme: dict, *, show_glossary: bool = False):
@@ -60,6 +79,139 @@ def _render_from_payload(payload: dict | None, theme: dict, *, show_glossary: bo
 
 
 def register_flow_callbacks(app) -> None:
+    @app.callback(
+        Output("flow-paper-state", "data"),
+        Input("app-url", "pathname"), Input("flow-data-store", "data"),
+        Input("flow-paper-mode", "value"), Input("flow-paper-next", "n_clicks"),
+        Input("flow-paper-import", "contents"),
+        State("flow-paper-state", "data"),
+        prevent_initial_call=False,
+    )
+    def advance_paper(pathname, payload, mode, _next, imported, state):
+        if not is_flow_route(pathname):
+            raise PreventUpdate
+        ticker = _flow_ticker(pathname, None)
+        state = dict(state or {})
+        trigger = callback_context.triggered_id
+        error = None
+        if trigger == "flow-paper-import" and imported:
+            try:
+                raw = base64.b64decode(imported.split(",", 1)[1], validate=True)
+                if len(raw) > 5_000_000:
+                    raise ValueError("Import exceeds 5 MB")
+                decoded = json.loads(raw)
+                items = decoded if isinstance(decoded, list) else decoded.get("snapshots", [decoded])
+                for item in items:
+                    if flow_store.normalize_ticker(item.get("ticker")) != ticker:
+                        raise ValueError("Imported snapshot ticker differs from this page")
+                    flow_paper.add_snapshot(item)
+            except (ValueError, TypeError, KeyError, IndexError) as exc:
+                error = f"Import failed: {exc}"
+        if payload and trigger == "flow-data-store":
+            try:
+                flow_paper.add_snapshot(flow_paper.snapshot_from_report(payload))
+            except (ValueError, TypeError, KeyError):
+                pass
+        count = len(flow_paper.load(ticker)["snapshots"])
+        if state.get("ticker") != ticker or trigger == "flow-paper-mode":
+            index = 0 if mode == "replay" else max(count - 1, 0)
+        elif trigger == "flow-paper-next" and mode == "replay":
+            index = min(int(state.get("index", 0)) + 1, max(count - 1, 0))
+        elif mode == "paper":
+            index = max(count - 1, 0)
+        else:
+            index = min(int(state.get("index", 0)), max(count - 1, 0))
+        return {"ticker": ticker, "index": index, "error": error}
+
+    @app.callback(
+        Output("flow-paper-observation", "children"),
+        Output("flow-paper-contract", "options"),
+        Output("flow-paper-contract", "value"),
+        Output("flow-paper-position", "options"),
+        Output("flow-paper-positions", "children"),
+        Output("flow-paper-next", "disabled"),
+        Input("flow-paper-state", "data"), Input("flow-paper-revision", "data"),
+        Input("flow-paper-mode", "value"),
+        State("flow-paper-contract", "value"),
+    )
+    def render_paper(state, _revision, mode, selected):
+        ticker = (state or {}).get("ticker")
+        if not ticker:
+            return "No snapshot", [], None, [], "", True
+        data = flow_paper.load(ticker)
+        snapshots = data["snapshots"]
+        if not snapshots:
+            return "No recorded observations. Rescan or import snapshots.", [], None, [], "", True
+        index = min(int(state.get("index", 0)), len(snapshots) - 1)
+        snap = snapshots[index]
+        label = f"Observation {index + 1}/{len(snapshots)} · {snap['observed_at']} · underlying {snap.get('underlying') or 'missing'}"
+        if state.get("error"):
+            label += f" · {state['error']}"
+        options = [{"label": f"{c['expiry']} {c['cp']} {c['strike']:g} · ask {c['ask'] if c['ask'] else 'missing'} · bid {c['bid'] if c['bid'] else 'missing'} · vol {c.get('volume')} · OI {c.get('open_interest')}",
+                    "value": c["key"]} for c in snap["contracts"]]
+        keys = {o["value"] for o in options}
+        contract_value = selected if selected in keys else (options[0]["value"] if options else None)
+        visible = [p for p in data["positions"] if mode != "replay" or p["opened_at"] <= snap["observed_at"]]
+        open_positions = [p for p in visible if p["status"] == "open" or
+                          (mode == "replay" and (p.get("closed_at") or p.get("settlement_verified_at") or "") > snap["observed_at"])]
+        position_options = [{"label": f"{p['contract']} · bought {p['opened_at']}", "value": p["id"]} for p in open_positions]
+        lines = []
+        for p in reversed(visible):
+            q = flow_paper.quote(snap, p["contract"])
+            mark = flow_paper.valuation(p, q.get("bid") if q else None) if p["status"] == "open" else p.get("pnl")
+            future_exit = mode == "replay" and (p.get("closed_at") or p.get("settlement_verified_at") or "") > snap["observed_at"]
+            if future_exit:
+                mark = flow_paper.valuation(p, q.get("bid") if q else None)
+            status = "open" if future_exit else p["status"]
+            lines.append(html.Div(
+                f"{p['contract']} · {status} · bought {p['opened_at']} at {'historical premium' if p.get('entry_source') else 'ask'} ${p['entry_ask']:.2f} × {p['multiplier']} + ${p['entry_fee']:.2f} fee · "
+                f"max loss ${p['max_loss']:.2f} · expiry break-even ${flow_paper.break_even(p):.2f} · "
+                f"{'P&L $' + format(mark, '.2f') if mark is not None else 'P&L unavailable: missing bid'}"
+                + (f" · verified settlement ${p['settlement_price']:.2f} ({p['settlement_source']})" if status == "expired" else "")
+            ))
+        return label, options, contract_value, position_options, lines, mode != "replay" or index >= len(snapshots) - 1
+
+    @app.callback(
+        Output("flow-paper-message", "children"), Output("flow-paper-revision", "data"),
+        Input("flow-paper-buy", "n_clicks"), Input("flow-paper-record-entry", "n_clicks"), Input("flow-paper-close", "n_clicks"), Input("flow-paper-settle", "n_clicks"),
+        State("flow-paper-state", "data"), State("flow-paper-contract", "value"),
+        State("flow-paper-position", "value"), State("flow-paper-fee", "value"),
+        State("flow-paper-settlement", "value"), State("flow-paper-source", "value"),
+        State("flow-paper-verified-at", "value"), State("flow-paper-revision", "data"),
+        State("flow-paper-entry-premium", "value"), State("flow-paper-mode", "value"),
+        prevent_initial_call=True,
+    )
+    def paper_action(_buy, _entry, _close, _settle, state, key, position_id, fee, settlement, source, verified_at, revision, entry_premium, mode):
+        trigger = callback_context.triggered_id
+        if trigger not in ("flow-paper-buy", "flow-paper-record-entry", "flow-paper-close", "flow-paper-settle"):
+            raise PreventUpdate
+        ticker = (state or {}).get("ticker")
+        if not ticker:
+            return "Open a Flow ticker first.", no_update
+        data = flow_paper.load(ticker)
+        snapshots = data["snapshots"]
+        if not snapshots:
+            return "No recorded observation is available.", no_update
+        snap = snapshots[min(int(state.get("index", 0)), len(snapshots) - 1)]
+        try:
+            if trigger == "flow-paper-buy":
+                p = flow_paper.buy(ticker, snap, key, fee=fee or 0)
+                message = f"Paper bought {p['contract']} at observed ask ${p['entry_ask']:.2f}."
+            elif trigger == "flow-paper-record-entry":
+                if mode != "replay":
+                    raise ValueError("Historical entries are available in replay mode")
+                p = flow_paper.record_historical_entry(ticker, snap, key, entry_premium, fee=fee or 0)
+                message = f"Recorded historical entry for {p['contract']} at ${p['entry_ask']:.2f}."
+            elif trigger == "flow-paper-close":
+                p = flow_paper.close(ticker, position_id, snap, fee=fee or 0)
+                message = f"Paper closed {p['contract']} at observed bid ${p['exit_bid']:.2f}; P&L ${p['pnl']:.2f}."
+            else:
+                p = flow_paper.settle(ticker, position_id, settlement, source or "", verified_at or "")
+                message = f"Settled {p['contract']}; expiry P&L ${p['pnl']:.2f}."
+        except (ValueError, TypeError, KeyError) as exc:
+            return str(exc), no_update
+        return message, int(revision or 0) + 1
+
     app.clientside_callback(
         """
         function(nClicksList) {
@@ -215,14 +367,14 @@ def register_flow_callbacks(app) -> None:
         ticker = _flow_ticker(pathname, selected_ticker)
 
         if triggered != "flow-rescan-button" or not rescan_clicks:
-            payload = flow_store.load_report(ticker)
+            payload = _with_epoch(flow_store.load_report(ticker))
             if payload:
                 return _render_from_payload(payload, theme), _loaded_status(payload), payload, False
             message = f"No report for {ticker} yet. Click RESCAN NOW."
             return render_flow_placeholder(theme, message), message, None, False
 
         outcome = flow_store.scan_into_store(ticker)
-        payload = outcome.payload
+        payload = _with_epoch(outcome.payload)
         content = _render_from_payload(payload, theme) if payload else no_update
         store = payload if payload else no_update
 
@@ -279,7 +431,7 @@ def register_flow_callbacks(app) -> None:
         # The visitor may have moved to another symbol since the poll noticed.
         if not is_flow_route(pathname) or ticker != _flow_ticker(pathname, selected_ticker):
             raise PreventUpdate
-        payload = flow_store.load_report(ticker)
+        payload = _with_epoch(flow_store.load_report(ticker))
         if not payload:
             raise PreventUpdate
         theme = get_theme(theme_name or DEFAULT_THEME)
@@ -318,12 +470,40 @@ def register_flow_callbacks(app) -> None:
             if (!panels.length) { return window.dash_clientside.no_update; }
             const anyOpen = Array.prototype.some.call(panels, function (p) { return p.open; });
             Array.prototype.forEach.call(panels, function (p) { p.open = !anyOpen; });
-            return anyOpen ? 'EXPAND ALL' : 'COLLAPSE ALL';
+            return anyOpen ? 'Expand all' : 'Collapse all';
         }
         """,
         Output("flow-collapse-all", "children"),
         Input("flow-collapse-all", "n_clicks"),
         prevent_initial_call=True,
+    )
+
+    # Report age badge: "Data 16:12 · 3 min ago", green → amber → red as it ages.
+    app.clientside_callback(
+        """
+        function(data, _tick) {
+            var epoch = data && data.generated_epoch;
+            if (!epoch) { return ['', 'sfa-flow-age']; }
+            var stamp = new Date(epoch * 1000);
+            var mins = Math.max(0, Math.floor((Date.now() - stamp.getTime()) / 60000));
+            var ago;
+            if (mins < 1) { ago = 'just now'; }
+            else if (mins < 60) { ago = mins + ' min ago'; }
+            else if (mins < 1440) { ago = Math.floor(mins / 60) + ' h ago'; }
+            else { ago = Math.floor(mins / 1440) + ' d ago'; }
+            var sameDay = stamp.toDateString() === new Date().toDateString();
+            var when = stamp.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+            if (!sameDay) {
+                when = stamp.toLocaleDateString([], {month: 'short', day: 'numeric'}) + ' ' + when;
+            }
+            var level = mins < 20 ? 'fresh' : (mins < 120 ? 'aging' : 'stale');
+            return ['Data ' + when + ' · ' + ago, 'sfa-flow-age sfa-flow-age-' + level];
+        }
+        """,
+        Output("flow-data-age", "children"),
+        Output("flow-data-age", "className"),
+        Input("flow-data-store", "data"),
+        Input("flow-age-tick", "n_intervals"),
     )
 
     @app.callback(
@@ -476,12 +656,11 @@ def register_flow_callbacks(app) -> None:
         if not report:
             raise PreventUpdate
         theme = get_theme(theme_name or DEFAULT_THEME)
-        flagged_only = str(filter_value or "all").lower() == "flagged"
         return table_from_report(
             report,
             expiry=expiry,
             theme=theme,
-            flagged_only=flagged_only,
+            view=str(filter_value or DEFAULT_CHAIN_VIEW).lower(),
         )
 
     @app.callback(
