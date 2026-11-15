@@ -187,6 +187,7 @@ outside the tests calls `backtest_portfolio` yet.
 - [x] 6.10 Options paper trading and historical replay in the Flow Scanner — start with simulated purchases of a single call or put. Record the contract, time, entry premium, multiplier, fees, and maximum loss. Use the observed ask for simulated buys and bid for simulated closes, and show P&L and break-even at expiry. <!-- size: L -->
   - Paper mode: save timestamped chain snapshots (underlying price, bid/ask, volume, and open interest) and track a simulated position across sessions.
   - Historical replay: use recorded or imported snapshots, reveal one observation at a time, and use only quotes available at each decision point. Flag missing quotes. If only the underlying history and entry premium are available, calculate P&L at expiry with a verified settlement price.
+- [ ] 6.11 Show contract cost and expiry break-even in the Flow option chain — selecting a call or put quote in the chain immediately shows the quoted premium per share, the contract multiplier, the total premium per contract, and the underlying price needed to break even at expiry, before placing a simulated trade. Calculate total premium as quote × multiplier (typically 100 shares for standard US equity options). For a long call, show strike + premium per share. For a long put, show strike − premium per share. Label the result before fees unless the preview includes them. Example: a TSLA 390 call at $10.15 with a multiplier of 100 shows a $1,015 contract cost and a $400.15 break-even at expiry, before fees.
 
 ## 7. 📊 Fundamentals
 
