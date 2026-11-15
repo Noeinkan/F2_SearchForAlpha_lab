@@ -1,4 +1,4 @@
-"""Observed option quotes, one-contract paper positions, and causal replay."""
+"""Observed option quotes, paper positions and strategies, and causal replay."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from lib.dash import flow_store
+from lib.dash import flow_history, flow_store
 
 _lock = threading.RLock()
 
@@ -30,6 +30,14 @@ def _nonnegative(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) and number >= 0 else None
+
+
+def _multiplier(value: Any) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 100
+    return number if number > 0 else 100
 
 
 def _stamp(value: Any) -> str:
@@ -67,6 +75,7 @@ def snapshot_from_report(payload: Mapping[str, Any]) -> dict:
                     "expiry": str(expiry), "cp": cp, "strike": strike,
                     "bid": _positive(side.get("bid")),
                     "ask": _positive(side.get("ask")),
+                    "multiplier": _multiplier(side.get("multiplier")),
                     "volume": _nonnegative(side.get("volume")),
                     "open_interest": _nonnegative(side.get("open_interest")),
                 })
@@ -83,7 +92,8 @@ def _read(ticker: str) -> dict:
         data = json.loads(_path(ticker).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         data = {}
-    return {"snapshots": data.get("snapshots", []), "positions": data.get("positions", [])}
+    return {"snapshots": data.get("snapshots", []), "positions": data.get("positions", []),
+            "strategies": data.get("strategies", [])}
 
 
 def _write(ticker: str, data: dict) -> None:
@@ -100,6 +110,19 @@ def _write(ticker: str, data: dict) -> None:
 def load(ticker: str) -> dict:
     with _lock:
         return _read(ticker)
+
+
+def timeline(ticker: str, replay_id: str | None = None) -> list[dict]:
+    """Observations to step through: recorded scans, or one historical replay's days."""
+    if replay_id:
+        replay = flow_history.load_replay(ticker, replay_id)
+        return list(replay["snapshots"]) if replay else []
+    return load(ticker)["snapshots"]
+
+
+def in_context(record: Mapping[str, Any], replay_id: str | None) -> bool:
+    """Trades opened in a historical replay belong to that replay only."""
+    return (record.get("replay") or None) == (replay_id or None)
 
 
 def add_snapshot(snapshot: Mapping[str, Any]) -> bool:
@@ -141,11 +164,13 @@ def quote(snapshot: Mapping[str, Any], key: str) -> dict | None:
 
 
 def buy(ticker: str, snapshot: Mapping[str, Any], key: str, *, fee: float = 0,
-        multiplier: int = 100) -> dict:
+        multiplier: int | None = None, replay: str | None = None, quantity: int = 1) -> dict:
     fee = _nonnegative(fee)
-    if fee is None or not isinstance(multiplier, int) or multiplier <= 0:
-        raise ValueError("Fee and multiplier must be nonnegative and positive")
     contract = quote(snapshot, key)
+    multiplier = contract.get("multiplier", 100) if multiplier is None and contract else multiplier
+    if (fee is None or not isinstance(multiplier, int) or isinstance(multiplier, bool) or multiplier <= 0
+            or not isinstance(quantity, int) or isinstance(quantity, bool) or not 1 <= quantity <= 100):
+        raise ValueError("Choose 1–100 contracts, a positive multiplier, and a nonnegative fee")
     if not contract or not _positive(contract.get("ask")):
         raise ValueError("Observed ask is missing; cannot simulate a purchase")
     if flow_store.normalize_ticker(snapshot.get("ticker")) != flow_store.normalize_ticker(ticker):
@@ -155,9 +180,12 @@ def buy(ticker: str, snapshot: Mapping[str, Any], key: str, *, fee: float = 0,
     position = {"id": uuid.uuid4().hex, "ticker": flow_store.normalize_ticker(ticker),
                 "contract": key, "expiry": contract["expiry"], "cp": contract["cp"],
                 "strike": contract["strike"], "opened_at": snapshot["observed_at"],
-                "entry_ask": contract["ask"], "multiplier": multiplier,
-                "entry_fee": fee, "max_loss": contract["ask"] * multiplier + fee,
+                "entry_ask": contract["ask"], "multiplier": multiplier, "quantity": quantity,
+                "entry_fee": round(fee * quantity, 2),
+                "max_loss": round((contract["ask"] * multiplier + fee) * quantity, 2),
                 "status": "open"}
+    if replay:
+        position["replay"] = replay
     with _lock:
         data = _read(ticker)
         data["positions"].append(position)
@@ -166,13 +194,17 @@ def buy(ticker: str, snapshot: Mapping[str, Any], key: str, *, fee: float = 0,
 
 
 def record_historical_entry(ticker: str, snapshot: Mapping[str, Any], key: str,
-                            premium: float, *, fee: float = 0, multiplier: int = 100) -> dict:
+                            premium: float, *, fee: float = 0, multiplier: int | None = None,
+                            quantity: int = 1) -> dict:
     """Record a known historical premium when the snapshot has no usable ask."""
     contract = quote(snapshot, key)
+    multiplier = contract.get("multiplier", 100) if multiplier is None and contract else multiplier
     price = _positive(premium)
     charge = _nonnegative(fee)
-    if not contract or price is None or charge is None or multiplier <= 0:
-        raise ValueError("A contract, positive entry premium, and nonnegative fee are required")
+    if (not contract or price is None or charge is None or not isinstance(multiplier, int)
+            or isinstance(multiplier, bool) or multiplier <= 0 or not isinstance(quantity, int)
+            or isinstance(quantity, bool) or not 1 <= quantity <= 100):
+        raise ValueError("Choose 1–100 contracts, a positive entry premium, and a nonnegative fee")
     if _positive(contract.get("ask")) is not None:
         raise ValueError("An observed ask exists; use the paper buy instead")
     if snapshot.get("ticker") != flow_store.normalize_ticker(ticker):
@@ -183,8 +215,9 @@ def record_historical_entry(ticker: str, snapshot: Mapping[str, Any], key: str,
                 "contract": key, "expiry": contract["expiry"], "cp": contract["cp"],
                 "strike": contract["strike"], "opened_at": snapshot["observed_at"],
                 "entry_ask": price, "entry_source": "imported historical premium",
-                "multiplier": multiplier, "entry_fee": charge,
-                "max_loss": price * multiplier + charge, "status": "open"}
+                "multiplier": multiplier, "quantity": quantity,
+                "entry_fee": round(charge * quantity, 2),
+                "max_loss": round((price * multiplier + charge) * quantity, 2), "status": "open"}
     with _lock:
         data = _read(ticker)
         data["positions"].append(position)
@@ -196,7 +229,7 @@ def valuation(position: Mapping[str, Any], bid: Any) -> float | None:
     price = _positive(bid)
     if price is None:
         return None
-    return round((price - position["entry_ask"]) * position["multiplier"] - position["entry_fee"], 2)
+    return round((price - position["entry_ask"]) * position["multiplier"] * position.get("quantity", 1) - position["entry_fee"], 2)
 
 
 def expiry_pnl(position: Mapping[str, Any], settlement: float) -> float:
@@ -204,11 +237,11 @@ def expiry_pnl(position: Mapping[str, Any], settlement: float) -> float:
     if spot is None:
         raise ValueError("Settlement price is required")
     intrinsic = max(spot - position["strike"], 0) if position["cp"] == "C" else max(position["strike"] - spot, 0)
-    return round(intrinsic * position["multiplier"] - position["max_loss"], 2)
+    return round(intrinsic * position["multiplier"] * position.get("quantity", 1) - position["max_loss"], 2)
 
 
 def break_even(position: Mapping[str, Any]) -> float:
-    cost = position["max_loss"] / position["multiplier"]
+    cost = position["max_loss"] / (position["multiplier"] * position.get("quantity", 1))
     return position["strike"] + cost if position["cp"] == "C" else position["strike"] - cost
 
 
@@ -228,7 +261,9 @@ def close(ticker: str, position_id: str, snapshot: Mapping[str, Any], *, fee: fl
         if bid is None:
             raise ValueError("Observed bid is missing; cannot simulate a close")
         position.update(status="closed", closed_at=snapshot["observed_at"], exit_bid=bid,
-                        exit_fee=fee, pnl=round((bid - position["entry_ask"]) * position["multiplier"] - position["entry_fee"] - fee, 2))
+                        exit_fee=round(fee * position.get("quantity", 1), 2),
+                        pnl=round((bid - position["entry_ask"]) * position["multiplier"] * position.get("quantity", 1)
+                                  - position["entry_fee"] - fee * position.get("quantity", 1), 2))
         _write(ticker, data)
         return position
 
@@ -248,5 +283,150 @@ def settle(ticker: str, position_id: str, price: float, source: str, verified_at
         pnl = expiry_pnl(position, price)
         position.update(status="expired", settlement_price=float(price), settlement_source=source.strip(),
                         settlement_verified_at=stamp, pnl=pnl)
+        _write(ticker, data)
+        return position
+
+
+def delete_position(ticker: str, position_id: str) -> dict:
+    """Remove one paper position after UI confirmation; leave quotes untouched."""
+    with _lock:
+        data = _read(ticker)
+        position = next((p for p in data["positions"] if p.get("id") == position_id), None)
+        if position is None:
+            raise ValueError("Paper position not found")
+        data["positions"] = [p for p in data["positions"] if p.get("id") != position_id]
+        _write(ticker, data)
+        return position
+
+
+def quote_strategy(snapshot: Mapping[str, Any], selections: list[Mapping[str, Any]],
+                   *, fee_per_contract: float = 0) -> dict:
+    """Validate a strategy and price its entry from recorded quotes without saving it."""
+    fee = _nonnegative(fee_per_contract)
+    if fee is None or not isinstance(selections, list) or not 1 <= len(selections) <= 4:
+        raise ValueError("Choose 1–4 option legs and a nonnegative fee")
+    expiry = None
+    seen = set()
+    legs = []
+    entry_cashflow = 0.0
+    for selection in selections:
+        key = str(selection.get("key") or "")
+        side = str(selection.get("side") or "").lower()
+        qty = selection.get("qty")
+        if key in seen or side not in ("buy", "sell") or not isinstance(qty, int) or isinstance(qty, bool) or not 1 <= qty <= 100:
+            raise ValueError("Each leg needs a unique option, Buy or Sell, and 1–100 contracts")
+        seen.add(key)
+        contract = quote(snapshot, key)
+        if not contract:
+            raise ValueError("Selected option is missing from the recorded observation")
+        if expiry is None:
+            expiry = contract["expiry"]
+        elif contract["expiry"] != expiry:
+            raise ValueError("All strategy legs must have the same expiry")
+        if datetime.fromisoformat(snapshot["observed_at"]).date() > date.fromisoformat(contract["expiry"]):
+            raise ValueError("Cannot enter a contract after expiry")
+        price = _positive(contract.get("ask" if side == "buy" else "bid"))
+        if price is None:
+            raise ValueError(f"Observed {'ask' if side == 'buy' else 'bid'} is missing for {key}")
+        multiplier = contract.get("multiplier", 100)
+        if not isinstance(multiplier, int) or isinstance(multiplier, bool) or multiplier <= 0:
+            raise ValueError("Contract multiplier must be positive")
+        amount = qty * multiplier * price
+        charge = qty * fee
+        entry_cashflow += (amount if side == "sell" else -amount) - charge
+        legs.append({"contract": key, "cp": contract["cp"], "strike": contract["strike"],
+                     "side": side, "qty": qty, "multiplier": multiplier,
+                     "entry_price": price, "entry_fee": charge})
+    return {"expiry": expiry, "entry_cashflow": round(entry_cashflow, 2), "legs": legs}
+
+
+def open_strategy(ticker: str, snapshot: Mapping[str, Any], selections: list[Mapping[str, Any]],
+                  *, fee_per_contract: float = 0, replay: str | None = None) -> dict:
+    """Open one grouped paper strategy using observed asks for buys and bids for sells."""
+    symbol = flow_store.normalize_ticker(ticker)
+    if flow_store.normalize_ticker(snapshot.get("ticker")) != symbol:
+        raise ValueError("Snapshot ticker does not match")
+    priced = quote_strategy(snapshot, selections, fee_per_contract=fee_per_contract)
+    position = {"id": uuid.uuid4().hex, "ticker": symbol,
+                "opened_at": snapshot["observed_at"], "status": "open", **priced}
+    if replay:
+        position["replay"] = replay
+    with _lock:
+        data = _read(ticker)
+        data["strategies"].append(position)
+        _write(ticker, data)
+    return position
+
+
+def strategy_expiry_pnl(position: Mapping[str, Any], settlement: float) -> float:
+    spot = _nonnegative(settlement)
+    if spot is None:
+        raise ValueError("Settlement price is required")
+    pnl = position["entry_cashflow"]
+    for leg in position["legs"]:
+        intrinsic = max(spot - leg["strike"], 0) if leg["cp"] == "C" else max(leg["strike"] - spot, 0)
+        pnl += (1 if leg["side"] == "buy" else -1) * leg["qty"] * leg["multiplier"] * intrinsic
+    return round(pnl, 2)
+
+
+def strategy_valuation(position: Mapping[str, Any], snapshot: Mapping[str, Any]) -> float | None:
+    """Indicative close value before any closing fee; missing quotes stay missing."""
+    pnl = position["entry_cashflow"]
+    for leg in position["legs"]:
+        contract = quote(snapshot, leg["contract"])
+        price = _positive(contract.get("bid" if leg["side"] == "buy" else "ask")) if contract else None
+        if price is None:
+            return None
+        pnl += (1 if leg["side"] == "buy" else -1) * leg["qty"] * leg["multiplier"] * price
+    return round(pnl, 2)
+
+
+def close_strategy(ticker: str, strategy_id: str, snapshot: Mapping[str, Any],
+                   *, fee_per_contract: float = 0) -> dict:
+    fee = _nonnegative(fee_per_contract)
+    if fee is None:
+        raise ValueError("Closing fee must be nonnegative")
+    with _lock:
+        data = _read(ticker)
+        position = next((p for p in data["strategies"] if p.get("id") == strategy_id and p.get("status") == "open"), None)
+        if position is None:
+            raise ValueError("Open paper strategy not found")
+        if snapshot.get("ticker") != position["ticker"] or snapshot["observed_at"] <= position["opened_at"]:
+            raise ValueError("A close needs a later observation for this ticker")
+        mark = strategy_valuation(position, snapshot)
+        if mark is None:
+            raise ValueError("A closing quote is missing for a strategy leg")
+        charge = fee * sum(leg["qty"] for leg in position["legs"])
+        position.update(status="closed", closed_at=snapshot["observed_at"], exit_fee=round(charge, 2),
+                        pnl=round(mark - charge, 2))
+        _write(ticker, data)
+        return position
+
+
+def settle_strategy(ticker: str, strategy_id: str, price: float, source: str, verified_at: str) -> dict:
+    if not source.strip():
+        raise ValueError("Settlement source is required")
+    stamp = _stamp(verified_at)
+    with _lock:
+        data = _read(ticker)
+        position = next((p for p in data["strategies"] if p.get("id") == strategy_id and p.get("status") == "open"), None)
+        if position is None:
+            raise ValueError("Open paper strategy not found")
+        if datetime.fromisoformat(stamp).date() < date.fromisoformat(position["expiry"]):
+            raise ValueError("Settlement observation predates expiry")
+        pnl = strategy_expiry_pnl(position, price)
+        position.update(status="expired", settlement_price=float(price), settlement_source=source.strip(),
+                        settlement_verified_at=stamp, pnl=pnl)
+        _write(ticker, data)
+        return position
+
+
+def delete_strategy(ticker: str, strategy_id: str) -> dict:
+    with _lock:
+        data = _read(ticker)
+        position = next((p for p in data["strategies"] if p.get("id") == strategy_id), None)
+        if position is None:
+            raise ValueError("Paper strategy not found")
+        data["strategies"] = [p for p in data["strategies"] if p.get("id") != strategy_id]
         _write(ticker, data)
         return position

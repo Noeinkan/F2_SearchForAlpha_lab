@@ -24,6 +24,19 @@
 .sfa-flow-paper-position-card { padding: 9px 10px; border: 1px solid var(--border-primary); border-radius: 6px; background: var(--bg-tertiary); }
 .sfa-flow-paper-position-title { font-weight: 700; margin-bottom: 4px; }
 .sfa-flow-paper-position-meta { color: var(--text-secondary); line-height: 1.6; }
+.sfa-flow-paper-position-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.sfa-flow-paper-delete {
+    flex: none; border: 1px solid var(--border-primary); border-radius: 4px;
+    padding: 4px 7px; background: transparent; color: var(--text-secondary);
+    font: inherit; font-size: 11px; cursor: pointer;
+}
+.sfa-flow-paper-delete:hover { color: var(--accent-red, #f85149); border-color: var(--accent-red, #f85149); }
+.sfa-flow-paper-strategy-card { margin-top: 12px; }
+.sfa-flow-paper-strategy-card h4 { margin: 0 0 10px; font-size: 13px; }
+.sfa-flow-paper-strategy-track { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-primary); }
+.sfa-flow-paper-strategy-track label { display: block; margin-bottom: 5px; color: var(--text-secondary); }
+.sfa-flow-paper-strategy-legs { margin: 5px 0; color: var(--text-secondary); }
+.sfa-flow-paper-strategy-preview-note { color: var(--text-secondary); font-size: 11px; margin: 6px 0; }
 .sfa-flow-paper-advanced { border-top: 1px solid var(--border-primary); padding-top: 10px; }
 .sfa-flow-paper-advanced summary { cursor: pointer; font-weight: 600; }
 .sfa-flow-paper-advanced p { color: var(--text-secondary); line-height: 1.45; }
@@ -31,3 +44,31 @@
 .sfa-flow-paper-tools-row > label { color: var(--text-secondary); }
 .sfa-flow-paper-tools-row .DateInput_input { background: var(--bg-primary); color: var(--text-primary); font-size: 12px; padding: 5px; }
 @media (max-width: 800px) { .sfa-flow-paper-grid { grid-template-columns: 1fr; } }
+
+/* Order ticket: quantity + fee inputs, then a review list of what the buy costs. */
+.sfa-flow-ticket-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
+.sfa-flow-ticket-head h4 { margin: 0; }
+.sfa-flow-ticket-badge { font-size: 10px; letter-spacing: .08em; font-weight: 700; padding: 2px 7px; border-radius: 10px; border: 1px solid var(--accent); color: var(--accent); }
+.sfa-flow-ticket-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.sfa-flow-ticket-inputs .sfa-flow-paper-field { margin: 4px 0 10px; }
+.sfa-flow-ticket-inputs .sfa-flow-paper-field input { width: 100%; font-size: 15px; font-weight: 600; text-align: right; font-family: 'IBM Plex Mono', monospace; }
+.sfa-flow-ticket-rows { margin: 4px 0 10px; padding: 0; border-top: 1px solid var(--border-primary); }
+.sfa-flow-ticket-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border-primary); }
+.sfa-flow-ticket-row dt { color: var(--text-secondary); font-weight: 400; }
+.sfa-flow-ticket-row dd { margin: 0; font-family: 'IBM Plex Mono', monospace; color: var(--text-primary); text-align: right; }
+.sfa-flow-ticket-row.total dt, .sfa-flow-ticket-row.total dd { color: var(--text-primary); font-weight: 700; font-size: 13px; }
+.sfa-flow-ticket-note small { display: block; color: var(--text-secondary); font-size: 11px; margin-bottom: 10px; }
+.sfa-flow-ticket-submit { width: 100%; padding: 11px; font-size: 13px; border-radius: 22px; }
+@media (max-width: 520px) { .sfa-flow-ticket-inputs { grid-template-columns: 1fr; } }
+
+/* Historical replay (ThetaData EOD): source picker and day-by-day ledger. */
+.sfa-flow-paper-replay-source { max-width: 640px; }
+.sfa-flow-paper-replay-source small { display: block; color: var(--text-secondary); margin-top: -4px; }
+.sfa-flow-paper-replay-ledger:not(:empty) { margin-bottom: 12px; }
+.sfa-flow-replay-note { color: var(--text-secondary); margin-bottom: 4px; }
+.sfa-flow-replay-early { margin: 6px 0; padding: 7px 10px; border-left: 3px solid var(--accent-amber, #d29922); background: var(--bg-tertiary); font-weight: 600; }
+.sfa-flow-replay-scroll { max-height: 260px; overflow: auto; border: 1px solid var(--border-primary); border-radius: 6px; margin-top: 6px; }
+.sfa-flow-replay-table { width: 100%; border-collapse: collapse; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.sfa-flow-replay-table th, .sfa-flow-replay-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-primary); text-align: left; white-space: nowrap; }
+.sfa-flow-replay-table th { position: sticky; top: 0; background: var(--bg-secondary); color: var(--text-secondary); font-weight: 600; }
+.sfa-flow-replay-missing { color: var(--accent-amber, #d29922); }

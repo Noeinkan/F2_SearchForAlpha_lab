@@ -11,6 +11,7 @@ from lib.dash.dash_config import FONT_FAMILY, FONT_SIZES
 from lib.dash.flow_glossary import FLAG_DEFINITIONS
 from lib.dash.flow_inventory import nearest_expiry
 from lib.dash.flow_dates import display_date
+from lib.options.theta_history import history_window
 
 # Default expiry skips the last few days: a chain about to expire quotes
 # near-meaningless IVs (2% on one side, 150% on the other) and almost no OTM size.
@@ -74,7 +75,16 @@ def _side_active(side: Any) -> bool:
     return False
 
 
-def _row_is_active(row: Mapping[str, Any]) -> bool:
+def _side_quoted(side: Any) -> bool:
+    """A side with a bid or an ask: how a historical EOD chain, which has no open interest, is kept."""
+    if not isinstance(side, Mapping):
+        return False
+    return any(_fmt_price(side.get(key)) != "—" for key in ("bid", "ask"))
+
+
+def _row_is_active(row: Mapping[str, Any], *, quoted: bool = False) -> bool:
+    if quoted:
+        return _side_quoted(row.get("call")) or _side_quoted(row.get("put"))
     return _side_active(row.get("call")) or _side_active(row.get("put")) or _row_is_flagged(row)
 
 
@@ -96,16 +106,18 @@ def select_chain_rows(
     view: str,
     spot: float,
     near: int = NEAR_SPOT_STRIKES,
+    quoted: bool = False,
 ) -> list[dict]:
     """Rows for one chain view.
 
     ``flagged`` keeps flagged strikes; ``all`` drops strikes with no volume and no
     open interest on either side (a row of dashes); ``near`` is ``all`` cut to
-    ``near`` strikes either side of the one closest to spot.
+    ``near`` strikes either side of the one closest to spot. ``quoted`` keeps
+    strikes with a bid or ask instead, for historical chains without open interest.
     """
     if view == "flagged":
         return filter_chain_rows(rows, flagged_only=True)
-    active = [dict(r) for r in rows if _row_is_active(r)]
+    active = [dict(r) for r in rows if _row_is_active(r, quoted=quoted)]
     if view != "near" or not active:
         return active
     atm = atm_strike_index(active, spot)
@@ -180,9 +192,11 @@ def flag_reasons(report: Mapping[str, Any], expiry: str | None) -> dict[tuple[fl
     return out
 
 
-def _side_cells(side: Mapping[str, Any] | None, *, cp: str, strike: float, reason: str | None = None) -> list[Any]:
+def _side_cells(side: Mapping[str, Any] | None, *, cp: str, strike: float, reason: str | None = None,
+                observed: str | None = None) -> list[Any]:
     if not side:
-        return [html.Td("—", className="sfa-flow-chain-empty") for _ in range(5)]
+        return [html.Td("—", className="sfa-flow-chain-empty",
+                        title="Not quoted in this report" if observed else None) for _ in range(5)]
 
     flagged = _side_flagged(side)
     values = {
@@ -204,6 +218,10 @@ def _side_cells(side: Mapping[str, Any] | None, *, cp: str, strike: float, reaso
         if flagged:
             classes += " sfa-flow-chain-flagged"
         content: Any = values[key]
+        cell_title = title
+        if observed and key in ("bid", "ask") and values[key] == "—":
+            classes += " sfa-flow-chain-unavailable"
+            cell_title = f"No {key} in the end-of-day report of {display_date(observed, time=True)}"
         if key in ("bid", "ask") and values[key] != "—" and strike > 0:
             try:
                 multiplier = int(side.get("multiplier", 100))
@@ -213,8 +231,9 @@ def _side_cells(side: Mapping[str, Any] | None, *, cp: str, strike: float, reaso
                 content = html.Button(
                     values[key], type="button",
                     className="sfa-flow-chain-price" + (" sfa-flow-chain-quote" if key == "ask" else ""),
-                    title=f"Show quote details for this {'call' if cp == 'C' else 'put'}",
-                    **{"data-cp": cp, "data-strike": str(strike),
+                    title=(f"Show quote details for this {'call' if cp == 'C' else 'put'}"
+                           + (f" · observed {display_date(observed, time=True)}" if observed else "")),
+                    **{"data-cp": cp, "data-strike": str(strike), "data-observed": observed or "",
                        "data-field": key, "data-premium": str(side.get("ask") or ""),
                        "data-bid": str(side.get("bid") or ""), "data-ask": str(side.get("ask") or ""),
                        "data-last": str(side.get("last") or ""),
@@ -224,7 +243,7 @@ def _side_cells(side: Mapping[str, Any] | None, *, cp: str, strike: float, reaso
                        "data-flagged": "true" if flagged else "false",
                        "data-reason": reason or "", "data-multiplier": str(multiplier)},
                 )
-        cells.append(html.Td(content, className=classes, title=title))
+        cells.append(html.Td(content, className=classes, title=cell_title))
     return cells
 
 
@@ -269,6 +288,7 @@ def build_chain_table(
     theme: dict,
     *,
     reasons: Mapping[tuple[float, str], str] | None = None,
+    observed: str | None = None,
 ) -> html.Table:
     """Build the call | strike | put HTML table for one expiry."""
     _ = theme
@@ -345,9 +365,9 @@ def build_chain_table(
         body_rows.append(
             html.Tr(
                 [
-                    *_side_cells(call, cp="C", strike=strike, reason=reasons.get((strike, "C"))),
+                    *_side_cells(call, cp="C", strike=strike, reason=reasons.get((strike, "C")), observed=observed),
                     strike_cell,
-                    *_side_cells(put, cp="P", strike=strike, reason=reasons.get((strike, "P"))),
+                    *_side_cells(put, cp="P", strike=strike, reason=reasons.get((strike, "P")), observed=observed),
                 ],
                 className=" ".join(row_classes),
             )
@@ -387,21 +407,43 @@ def table_from_report(
         ]
 
     view = _resolve_view(view, flagged_only)
-    exp = expiry or default_chain_expiry(chains)
+    historical = report.get("historical") if isinstance(report.get("historical"), Mapping) else None
+    trade_day = date.fromisoformat(historical["date"]) if historical else None
+    observed = historical.get("observed_at") if historical else None
+    if expiry not in chains:
+        expiry = None
+    exp = expiry or default_chain_expiry(chains, today=trade_day)
     all_rows = list(chains.get(exp) or []) if exp else []
     spot = float(report.get("spot") or 0)
-    rows = select_chain_rows(all_rows, view=view, spot=spot)
+    rows = select_chain_rows(all_rows, view=view, spot=spot, quoted=bool(historical))
 
     if not rows:
-        msg = (
-            f"No flagged strikes for expiry {display_date(exp) if exp else '—'}."
-            if view == "flagged"
-            else f"No traded strikes for expiry {display_date(exp) if exp else '—'}."
-        )
+        if view == "flagged" and historical:
+            msg = "Historical chains carry no unusual-activity flags. Choose Near spot or All strikes."
+        elif view == "flagged":
+            msg = f"No flagged strikes for expiry {display_date(exp) if exp else '—'}."
+        elif historical:
+            msg = f"No quoted strikes for expiry {display_date(exp) if exp else '—'} on {display_date(historical['date'])}."
+        else:
+            msg = f"No traded strikes for expiry {display_date(exp) if exp else '—'}."
         return [html.Div(msg, className="sfa-flow-section-empty")]
 
-    hidden = sum(1 for r in all_rows if _row_is_active(r)) - len(rows)
-    children: list[Any] = [
+    hidden = sum(1 for r in all_rows if _row_is_active(r, quoted=bool(historical))) - len(rows)
+    scroll_data = {"data-expiry": exp or ""}
+    if historical:
+        scroll_data.update({"data-source": "historical", "data-observed": observed or "",
+                            "data-trade-date": historical["date"], "data-spot": str(report.get("spot") or ""),
+                            "data-source-label": str(historical.get("source") or "")})
+    children: list[Any] = []
+    if historical:
+        children.append(html.Div(
+            f"Historical end-of-day quotes · {historical.get('source') or 'ThetaData EOD'} · observed "
+            f"{display_date(observed, time=True)} · underlying close "
+            + (f"${spot:,.2f}" if spot > 0 else "unavailable")
+            + " · — means no quote in that report",
+            className="sfa-flow-chain-history-caption",
+        ))
+    children += [
         html.Div(
             [
                 html.Span("Calls", className="sfa-flow-chain-side-label sfa-flow-chain-calls-label"),
@@ -410,9 +452,9 @@ def table_from_report(
             className="sfa-flow-chain-side-headers",
         ),
         html.Div(
-            build_chain_table(rows, spot, theme, reasons=flag_reasons(report, exp)),
+            build_chain_table(rows, spot, theme, reasons=flag_reasons(report, exp), observed=observed),
             className="sfa-flow-chain-scroll",
-            **{"data-expiry": exp or ""},
+            **scroll_data,
         ),
         html.Div(
             [
@@ -450,7 +492,7 @@ def table_from_report(
     if view == "near" and hidden > 0:
         children.append(
             html.Div(
-                f"Showing {len(rows)} strikes around spot · {hidden} more under “All strikes”.",
+                f"Showing {len(rows)} strikes around {'the close' if historical else 'spot'} · {hidden} more under “All strikes”.",
                 className="sfa-flow-chain-more",
             )
         )
@@ -480,6 +522,36 @@ def render_chain_legend() -> html.Div:
         ],
         className="sfa-flow-chain-key",
     )
+
+
+def render_history_controls(ticker: str, *, today: date | None = None) -> html.Div:
+    """Current / Historical switch, past trading date and the Load history action."""
+    first, last = history_window(today)
+    return html.Div([
+        dcc.RadioItems(
+            id={"type": "flow-chain-source", "index": ticker},
+            options=[{"label": "Current", "value": "current"}, {"label": "Historical", "value": "historical"}],
+            value="current", inline=True, className="sfa-flow-chain-source",
+            inputStyle={"marginRight": "4px"}, labelStyle={"marginRight": "12px", "cursor": "pointer"},
+        ),
+        html.Div([
+            html.Label("Trading date", className="sfa-flow-chain-history-label"),
+            dcc.DatePickerSingle(
+                id={"type": "flow-chain-history-date", "index": ticker},
+                min_date_allowed=first.isoformat(), max_date_allowed=last.isoformat(),
+                initial_visible_month=last.isoformat(), display_format="DD/MM/YYYY",
+                placeholder="DD/MM/YYYY", className="sfa-flow-chain-history-date",
+            ),
+            html.Button("Load history", id={"type": "flow-chain-history-load", "index": ticker},
+                        n_clicks=0, className="sfa-flow-chain-history-load",
+                        title="Fetch every contract quoted on that date from ThetaData (end-of-day bid and ask)"),
+        ], id={"type": "flow-chain-history-controls", "index": ticker},
+            className="sfa-flow-chain-history-controls", style={"display": "none"}),
+        dcc.Loading(html.Div(id={"type": "flow-chain-history-status", "index": ticker},
+                             className="sfa-flow-chain-history-status", role="status"),
+                    type="dot", className="sfa-flow-chain-history-loading"),
+        dcc.Store(id={"type": "flow-chain-history", "index": ticker}),
+    ], className="sfa-flow-chain-history")
 
 
 def render_chain_panel(report: Mapping[str, Any], theme: dict, *, today: date | None = None) -> html.Div | None:
@@ -546,6 +618,7 @@ def render_chain_panel(report: Mapping[str, Any], theme: dict, *, today: date | 
                 ],
                 className="sfa-flow-chain-header",
             ),
+            render_history_controls(ticker, today=today),
             render_chain_legend(),
             html.Div(
                 table_from_report(report, expiry=expiry, theme=theme, view=DEFAULT_CHAIN_VIEW),

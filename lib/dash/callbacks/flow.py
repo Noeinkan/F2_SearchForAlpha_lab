@@ -13,7 +13,7 @@ from dash.exceptions import PreventUpdate
 
 from lib.dash import flow_store
 from lib.dash import flow_paper
-from lib.dash.callbacks.flow_paper_ui import register_flow_paper_ui_callbacks
+from lib.dash.callbacks.flow_paper_ui import order_quantity, register_flow_paper_ui_callbacks
 from lib.dash.flow_paper_view import contract_label
 from lib.dash.dash_config import (
     DEFAULT_THEME,
@@ -22,7 +22,7 @@ from lib.dash.dash_config import (
     ROUTE_TERMINAL,
     get_theme,
 )
-from lib.dash.flow_chain import DEFAULT_CHAIN_VIEW, table_from_report
+from lib.dash.callbacks.flow_history import RECORDED, register_flow_history_callbacks, selection_problem
 from lib.dash.flow_inventory import figure_from_report
 from lib.dash.flow_gex import figure_from_gex_report
 from lib.dash.flow_vanna import figure_from_vanna_report
@@ -82,15 +82,37 @@ def _render_from_payload(payload: dict | None, theme: dict, *, show_glossary: bo
 
 def register_flow_callbacks(app) -> None:
     register_flow_paper_ui_callbacks(app)
+    register_flow_history_callbacks(app)
+
+    @app.callback(
+        Output("flow-paper-delete-dialog", "displayed"),
+        Output("flow-paper-delete-dialog", "message"),
+        Output("flow-paper-delete-target", "data"),
+        Input({"type": "flow-paper-delete", "index": ALL}, "n_clicks"),
+        State({"type": "flow-paper-delete", "index": ALL}, "id"),
+        prevent_initial_call=True,
+    )
+    def confirm_paper_delete(clicks, ids):
+        target = callback_context.triggered_id
+        clicked = next((count for count, item_id in zip(clicks or [], ids or []) if item_id == target), 0)
+        if not isinstance(target, dict) or not clicked:
+            raise PreventUpdate
+        raw = str(target.get("index") or "")
+        kind, _, record_id = raw.partition(":")
+        if kind not in ("position", "strategy") or not record_id:
+            raise PreventUpdate
+        label = "strategy" if kind == "strategy" else "purchase"
+        return True, f"Delete this paper {label} permanently? This cannot be undone.", {"kind": kind, "id": record_id}
+
     @app.callback(
         Output("flow-paper-state", "data"),
         Input("app-url", "pathname"), Input("flow-data-store", "data"),
         Input("flow-paper-mode", "value"), Input("flow-paper-next", "n_clicks"),
-        Input("flow-paper-import", "contents"),
+        Input("flow-paper-import", "contents"), Input("flow-paper-replay-source", "value"),
         State("flow-paper-state", "data"),
         prevent_initial_call=False,
     )
-    def advance_paper(pathname, payload, mode, _next, imported, state):
+    def advance_paper(pathname, payload, mode, _next, imported, replay_source, state):
         if not is_flow_route(pathname):
             raise PreventUpdate
         ticker = _flow_ticker(pathname, None)
@@ -115,8 +137,11 @@ def register_flow_callbacks(app) -> None:
                 flow_paper.add_snapshot(flow_paper.snapshot_from_report(payload))
             except (ValueError, TypeError, KeyError):
                 pass
-        count = len(flow_paper.load(ticker)["snapshots"])
-        if state.get("ticker") != ticker or trigger == "flow-paper-mode":
+        # A historical replay (ThetaData) steps through its own daily observations.
+        replay = replay_source if mode == "replay" and replay_source not in (None, "", RECORDED) else None
+        count = len(flow_paper.timeline(ticker, replay))
+        if (state.get("ticker") != ticker or trigger in ("flow-paper-mode", "flow-paper-replay-source")
+                or state.get("replay") != replay):
             index = 0 if mode == "replay" else max(count - 1, 0)
         elif trigger == "flow-paper-next" and mode == "replay":
             index = min(int(state.get("index", 0)) + 1, max(count - 1, 0))
@@ -124,43 +149,87 @@ def register_flow_callbacks(app) -> None:
             index = max(count - 1, 0)
         else:
             index = min(int(state.get("index", 0)), max(count - 1, 0))
-        return {"ticker": ticker, "index": index, "error": error}
+        return {"ticker": ticker, "index": index, "error": error, "replay": replay}
 
     @app.callback(
         Output("flow-paper-message", "children"), Output("flow-paper-revision", "data"),
-        Input("flow-paper-buy", "n_clicks"), Input("flow-paper-record-entry", "n_clicks"), Input("flow-paper-close", "n_clicks"), Input("flow-paper-settle", "n_clicks"),
+        Output("flow-paper-strategy-selection", "data"),
+        Input("flow-paper-buy", "n_clicks"), Input("flow-paper-record-entry", "n_clicks"),
+        Input("flow-paper-close", "n_clicks"), Input("flow-paper-settle", "n_clicks"),
+        Input("flow-paper-strategy-open", "n_clicks"), Input("flow-paper-strategy-close", "n_clicks"),
+        Input("flow-paper-strategy-settle", "n_clicks"), Input("flow-paper-delete-dialog", "submit_n_clicks"),
         State("flow-paper-state", "data"), State("flow-paper-contract", "value"),
         State("flow-paper-position", "value"), State("flow-paper-fee", "value"),
         State("flow-paper-settlement", "value"), State("flow-paper-source", "value"),
         State("flow-paper-verified-at", "date"), State("flow-paper-verified-time", "value"),
         State("flow-paper-revision", "data"),
         State("flow-paper-entry-premium", "value"), State("flow-paper-mode", "value"),
+        State("flow-paper-strategy-selection", "data"), State("flow-paper-strategy-position", "value"),
+        State("flow-paper-delete-target", "data"), State("flow-paper-quantity", "value"),
         prevent_initial_call=True,
     )
-    def paper_action(_buy, _entry, _close, _settle, state, key, position_id, fee, settlement, source, verified_date, verified_time, revision, entry_premium, mode):
+    def paper_action(_buy, _entry, _close, _settle, _strategy_open, _strategy_close,
+                     _strategy_settle, _delete, state, key, position_id, fee, settlement,
+                     source, verified_date, verified_time, revision, entry_premium, mode,
+                     selection, strategy_id, delete_target, quantity):
         trigger = callback_context.triggered_id
-        if trigger not in ("flow-paper-buy", "flow-paper-record-entry", "flow-paper-close", "flow-paper-settle"):
+        if trigger not in ("flow-paper-buy", "flow-paper-record-entry", "flow-paper-close", "flow-paper-settle",
+                           "flow-paper-strategy-open", "flow-paper-strategy-close", "flow-paper-strategy-settle",
+                           "flow-paper-delete-dialog"):
             raise PreventUpdate
         ticker = (state or {}).get("ticker")
         if not ticker:
-            return "Open a Flow ticker first.", no_update
-        data = flow_paper.load(ticker)
-        snapshots = data["snapshots"]
+            return "Open a Flow ticker first.", no_update, no_update
+        replay = state.get("replay")
+        snapshots = flow_paper.timeline(ticker, replay)
         if not snapshots:
-            return "No recorded observation is available.", no_update
+            return "No recorded observation is available.", no_update, no_update
         snap = snapshots[min(int(state.get("index", 0)), len(snapshots) - 1)]
+        clear_selection = no_update
         try:
             if trigger == "flow-paper-buy":
-                p = flow_paper.buy(ticker, snap, key, fee=fee or 0)
-                message = f"Paper bought {contract_label(p)} at observed ask ${p['entry_ask']:.2f}."
+                qty = order_quantity(quantity)
+                if qty is None:
+                    raise ValueError("Enter a whole number of contracts between 1 and 100")
+                p = flow_paper.buy(ticker, snap, key, fee=fee or 0, replay=replay, quantity=qty)
+                message = (f"Paper bought {qty} × {contract_label(p)} at observed ask ${p['entry_ask']:.2f}; "
+                           f"total cost ${p['max_loss']:,.2f}.")
             elif trigger == "flow-paper-record-entry":
                 if mode != "replay":
                     raise ValueError("Historical entries are available in replay mode")
-                p = flow_paper.record_historical_entry(ticker, snap, key, entry_premium, fee=fee or 0)
-                message = f"Recorded historical entry for {contract_label(p)} at ${p['entry_ask']:.2f}."
+                qty = order_quantity(quantity)
+                if qty is None:
+                    raise ValueError("Enter a whole number of contracts between 1 and 100")
+                p = flow_paper.record_historical_entry(ticker, snap, key, entry_premium, fee=fee or 0, quantity=qty)
+                message = f"Recorded historical entry for {qty} × {contract_label(p)} at ${p['entry_ask']:.2f}."
             elif trigger == "flow-paper-close":
                 p = flow_paper.close(ticker, position_id, snap, fee=fee or 0)
                 message = f"Paper closed {contract_label(p)} at observed bid ${p['exit_bid']:.2f}; P&L ${p['pnl']:.2f}."
+            elif trigger == "flow-paper-strategy-open":
+                if not selection or selection.get("ticker") != ticker:
+                    raise ValueError("Send a strategy from this ticker's option chain first")
+                problem = selection_problem(selection, mode, replay, ticker)
+                if problem:
+                    raise ValueError(problem)
+                p = flow_paper.open_strategy(ticker, snap, selection.get("legs") or [],
+                                             fee_per_contract=fee or 0, replay=replay)
+                message = f"Opened a {len(p['legs'])}-option paper strategy expiring {p['expiry']}."
+                clear_selection = None
+            elif trigger == "flow-paper-strategy-close":
+                p = flow_paper.close_strategy(ticker, strategy_id, snap, fee_per_contract=fee or 0)
+                message = f"Closed paper strategy; realised P&L ${p['pnl']:.2f}."
+            elif trigger == "flow-paper-delete-dialog":
+                if not delete_target:
+                    raise ValueError("Choose a paper trade to delete")
+                kind = delete_target.get("kind")
+                record_id = delete_target.get("id")
+                if kind == "strategy":
+                    flow_paper.delete_strategy(ticker, record_id)
+                elif kind == "position":
+                    flow_paper.delete_position(ticker, record_id)
+                else:
+                    raise ValueError("Invalid paper trade selection")
+                message = "Paper trade deleted. Recorded option quotes remain available."
             else:
                 if not verified_date:
                     raise ValueError("Choose the settlement date (DD/MM/YYYY)")
@@ -169,11 +238,15 @@ def register_flow_callbacks(app) -> None:
                 except ValueError as exc:
                     raise ValueError("Enter settlement time as HH:MM (UTC)") from exc
                 stamp = f"{str(verified_date)[:10]}T{time_part}:00Z"
-                p = flow_paper.settle(ticker, position_id, settlement, source or "", stamp)
-                message = f"Settled {contract_label(p)}; expiry P&L ${p['pnl']:.2f}."
+                if trigger == "flow-paper-strategy-settle":
+                    p = flow_paper.settle_strategy(ticker, strategy_id, settlement, source or "", stamp)
+                    message = f"Settled paper strategy; expiry P&L ${p['pnl']:.2f}."
+                else:
+                    p = flow_paper.settle(ticker, position_id, settlement, source or "", stamp)
+                    message = f"Settled {contract_label(p)}; expiry P&L ${p['pnl']:.2f}."
         except (ValueError, TypeError, KeyError) as exc:
-            return str(exc), no_update
-        return message, int(revision or 0) + 1
+            return str(exc), no_update, no_update
+        return message, int(revision or 0) + 1, clear_selection
 
     app.clientside_callback(
         """
@@ -595,36 +668,7 @@ def register_flow_callbacks(app) -> None:
             theme=theme,
         )
 
-    @app.callback(
-        Output({"type": "flow-chain-body", "index": MATCH}, "children"),
-        Input({"type": "flow-chain-expiry", "index": MATCH}, "value"),
-        Input({"type": "flow-chain-filter", "index": MATCH}, "value"),
-        State({"type": "flow-chain-expiry", "index": MATCH}, "id"),
-        State("flow-data-store", "data"),
-        State("theme-store", "data"),
-        prevent_initial_call=True,
-    )
-    def update_chain_table(expiry, filter_value, id_dict, flow_data, theme_name):
-        if not flow_data:
-            raise PreventUpdate
-        ticker = str((id_dict or {}).get("index") or "").upper()
-        report = next(
-            (
-                r
-                for r in (flow_data.get("reports") or [])
-                if str(r.get("ticker", "")).upper() == ticker
-            ),
-            None,
-        )
-        if not report:
-            raise PreventUpdate
-        theme = get_theme(theme_name or DEFAULT_THEME)
-        return table_from_report(
-            report,
-            expiry=expiry,
-            theme=theme,
-            view=str(filter_value or DEFAULT_CHAIN_VIEW).lower(),
-        )
+    # The chain table (current and historical) is rendered in callbacks/flow_history.py.
 
     @app.callback(
         Output("ticker-dropdown", "value", allow_duplicate=True),

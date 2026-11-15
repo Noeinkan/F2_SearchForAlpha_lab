@@ -23,6 +23,7 @@ from .optimizer_regimes import register_optimizer_regimes_callbacks
 from .optimizer_grid import register_optimizer_grid_callbacks
 from .fundamentals import register_fundamentals_callbacks
 from .flow import register_flow_callbacks
+from .options_pricing import register_options_pricing_callbacks
 from .routing import register_routing_callbacks
 from .misc_ui import register_misc_callbacks
 from .layout import register_layout_callbacks
@@ -57,6 +58,7 @@ def register_callbacks(app) -> None:
     register_routing_callbacks(app)
     register_fundamentals_callbacks(app)
     register_flow_callbacks(app)
+    register_options_pricing_callbacks(app)
     register_misc_callbacks(app)
     register_layout_callbacks(app)
     register_command_palette_callbacks(app)
