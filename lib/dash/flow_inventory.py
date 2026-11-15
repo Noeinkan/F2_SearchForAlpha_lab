@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 from dash import dcc, html
 
 from lib.dash.dash_config import FONT_FAMILY, FONT_SIZES
+from lib.dash.flow_dates import display_date
 from lib.dash.flow_glossary import DISCLAIMER, TERM_DEFINITIONS
 
 # Keep strikes within this fraction of spot for readability.
@@ -385,7 +386,7 @@ def render_inventory_panel(report: Mapping[str, Any], theme: dict) -> html.Div |
     figure = build_inventory_figure(ladder, spot, meta, metric="oi", theme=theme)
     caption = inventory_caption_for_meta(meta, spot, metric="oi", ladder=ladder)
 
-    expiry_options = [{"label": k, "value": k} for k in sorted(ladders.keys())]
+    expiry_options = [{"label": display_date(k), "value": k} for k in sorted(ladders.keys())]
 
     return html.Div(
         [

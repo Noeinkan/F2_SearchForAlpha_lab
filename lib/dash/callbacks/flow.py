@@ -13,6 +13,8 @@ from dash.exceptions import PreventUpdate
 
 from lib.dash import flow_store
 from lib.dash import flow_paper
+from lib.dash.callbacks.flow_paper_ui import register_flow_paper_ui_callbacks
+from lib.dash.flow_paper_view import contract_label
 from lib.dash.dash_config import (
     DEFAULT_THEME,
     DEFAULT_TICKER,
@@ -45,7 +47,7 @@ def _report_time(payload: dict | None) -> str:
         stamp = datetime.fromisoformat(str(raw))
     except (TypeError, ValueError):
         return "an earlier scan"
-    return stamp.strftime("%H:%M" if stamp.date() == datetime.now().date() else "%b %d %H:%M")
+    return stamp.strftime("%H:%M" if stamp.date() == datetime.now().date() else "%d/%m/%Y %H:%M")
 
 
 def _loaded_status(payload: dict) -> str:
@@ -79,6 +81,7 @@ def _render_from_payload(payload: dict | None, theme: dict, *, show_glossary: bo
 
 
 def register_flow_callbacks(app) -> None:
+    register_flow_paper_ui_callbacks(app)
     @app.callback(
         Output("flow-paper-state", "data"),
         Input("app-url", "pathname"), Input("flow-data-store", "data"),
@@ -124,64 +127,17 @@ def register_flow_callbacks(app) -> None:
         return {"ticker": ticker, "index": index, "error": error}
 
     @app.callback(
-        Output("flow-paper-observation", "children"),
-        Output("flow-paper-contract", "options"),
-        Output("flow-paper-contract", "value"),
-        Output("flow-paper-position", "options"),
-        Output("flow-paper-positions", "children"),
-        Output("flow-paper-next", "disabled"),
-        Input("flow-paper-state", "data"), Input("flow-paper-revision", "data"),
-        Input("flow-paper-mode", "value"),
-        State("flow-paper-contract", "value"),
-    )
-    def render_paper(state, _revision, mode, selected):
-        ticker = (state or {}).get("ticker")
-        if not ticker:
-            return "No snapshot", [], None, [], "", True
-        data = flow_paper.load(ticker)
-        snapshots = data["snapshots"]
-        if not snapshots:
-            return "No recorded observations. Rescan or import snapshots.", [], None, [], "", True
-        index = min(int(state.get("index", 0)), len(snapshots) - 1)
-        snap = snapshots[index]
-        label = f"Observation {index + 1}/{len(snapshots)} · {snap['observed_at']} · underlying {snap.get('underlying') or 'missing'}"
-        if state.get("error"):
-            label += f" · {state['error']}"
-        options = [{"label": f"{c['expiry']} {c['cp']} {c['strike']:g} · ask {c['ask'] if c['ask'] else 'missing'} · bid {c['bid'] if c['bid'] else 'missing'} · vol {c.get('volume')} · OI {c.get('open_interest')}",
-                    "value": c["key"]} for c in snap["contracts"]]
-        keys = {o["value"] for o in options}
-        contract_value = selected if selected in keys else (options[0]["value"] if options else None)
-        visible = [p for p in data["positions"] if mode != "replay" or p["opened_at"] <= snap["observed_at"]]
-        open_positions = [p for p in visible if p["status"] == "open" or
-                          (mode == "replay" and (p.get("closed_at") or p.get("settlement_verified_at") or "") > snap["observed_at"])]
-        position_options = [{"label": f"{p['contract']} · bought {p['opened_at']}", "value": p["id"]} for p in open_positions]
-        lines = []
-        for p in reversed(visible):
-            q = flow_paper.quote(snap, p["contract"])
-            mark = flow_paper.valuation(p, q.get("bid") if q else None) if p["status"] == "open" else p.get("pnl")
-            future_exit = mode == "replay" and (p.get("closed_at") or p.get("settlement_verified_at") or "") > snap["observed_at"]
-            if future_exit:
-                mark = flow_paper.valuation(p, q.get("bid") if q else None)
-            status = "open" if future_exit else p["status"]
-            lines.append(html.Div(
-                f"{p['contract']} · {status} · bought {p['opened_at']} at {'historical premium' if p.get('entry_source') else 'ask'} ${p['entry_ask']:.2f} × {p['multiplier']} + ${p['entry_fee']:.2f} fee · "
-                f"max loss ${p['max_loss']:.2f} · expiry break-even ${flow_paper.break_even(p):.2f} · "
-                f"{'P&L $' + format(mark, '.2f') if mark is not None else 'P&L unavailable: missing bid'}"
-                + (f" · verified settlement ${p['settlement_price']:.2f} ({p['settlement_source']})" if status == "expired" else "")
-            ))
-        return label, options, contract_value, position_options, lines, mode != "replay" or index >= len(snapshots) - 1
-
-    @app.callback(
         Output("flow-paper-message", "children"), Output("flow-paper-revision", "data"),
         Input("flow-paper-buy", "n_clicks"), Input("flow-paper-record-entry", "n_clicks"), Input("flow-paper-close", "n_clicks"), Input("flow-paper-settle", "n_clicks"),
         State("flow-paper-state", "data"), State("flow-paper-contract", "value"),
         State("flow-paper-position", "value"), State("flow-paper-fee", "value"),
         State("flow-paper-settlement", "value"), State("flow-paper-source", "value"),
-        State("flow-paper-verified-at", "value"), State("flow-paper-revision", "data"),
+        State("flow-paper-verified-at", "date"), State("flow-paper-verified-time", "value"),
+        State("flow-paper-revision", "data"),
         State("flow-paper-entry-premium", "value"), State("flow-paper-mode", "value"),
         prevent_initial_call=True,
     )
-    def paper_action(_buy, _entry, _close, _settle, state, key, position_id, fee, settlement, source, verified_at, revision, entry_premium, mode):
+    def paper_action(_buy, _entry, _close, _settle, state, key, position_id, fee, settlement, source, verified_date, verified_time, revision, entry_premium, mode):
         trigger = callback_context.triggered_id
         if trigger not in ("flow-paper-buy", "flow-paper-record-entry", "flow-paper-close", "flow-paper-settle"):
             raise PreventUpdate
@@ -196,18 +152,25 @@ def register_flow_callbacks(app) -> None:
         try:
             if trigger == "flow-paper-buy":
                 p = flow_paper.buy(ticker, snap, key, fee=fee or 0)
-                message = f"Paper bought {p['contract']} at observed ask ${p['entry_ask']:.2f}."
+                message = f"Paper bought {contract_label(p)} at observed ask ${p['entry_ask']:.2f}."
             elif trigger == "flow-paper-record-entry":
                 if mode != "replay":
                     raise ValueError("Historical entries are available in replay mode")
                 p = flow_paper.record_historical_entry(ticker, snap, key, entry_premium, fee=fee or 0)
-                message = f"Recorded historical entry for {p['contract']} at ${p['entry_ask']:.2f}."
+                message = f"Recorded historical entry for {contract_label(p)} at ${p['entry_ask']:.2f}."
             elif trigger == "flow-paper-close":
                 p = flow_paper.close(ticker, position_id, snap, fee=fee or 0)
-                message = f"Paper closed {p['contract']} at observed bid ${p['exit_bid']:.2f}; P&L ${p['pnl']:.2f}."
+                message = f"Paper closed {contract_label(p)} at observed bid ${p['exit_bid']:.2f}; P&L ${p['pnl']:.2f}."
             else:
-                p = flow_paper.settle(ticker, position_id, settlement, source or "", verified_at or "")
-                message = f"Settled {p['contract']}; expiry P&L ${p['pnl']:.2f}."
+                if not verified_date:
+                    raise ValueError("Choose the settlement date (DD/MM/YYYY)")
+                try:
+                    time_part = datetime.strptime(str(verified_time or ""), "%H:%M").strftime("%H:%M")
+                except ValueError as exc:
+                    raise ValueError("Enter settlement time as HH:MM (UTC)") from exc
+                stamp = f"{str(verified_date)[:10]}T{time_part}:00Z"
+                p = flow_paper.settle(ticker, position_id, settlement, source or "", stamp)
+                message = f"Settled {contract_label(p)}; expiry P&L ${p['pnl']:.2f}."
         except (ValueError, TypeError, KeyError) as exc:
             return str(exc), no_update
         return message, int(revision or 0) + 1

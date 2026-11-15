@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 
 from lib.dash import flow_paper, flow_store
+from lib.dash.flow_dates import display_date
+from lib.dash.flow_paper_view import contract_label
 
 
 def _snapshot(stamp, *, ask=2.1, bid=1.9):
@@ -59,3 +61,9 @@ def test_put_expiry_payoff(tmp_path, monkeypatch):
     assert flow_paper.break_even(p) == pytest.approx(97.89)
     assert flow_paper.expiry_pnl(p, 95) == 289
     assert flow_paper.expiry_pnl(p, 105) == -211
+
+
+def test_flow_dates_are_european_in_display_only():
+    assert display_date("2026-11-20") == "20/11/2026"
+    assert display_date("2026-11-20T21:00:00Z", time=True) == "20/11/2026 21:00 UTC"
+    assert contract_label({"cp": "P", "strike": 95.0, "expiry": "2026-11-20"}) == "Put 95 · expires 20/11/2026"

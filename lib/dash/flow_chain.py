@@ -10,6 +10,7 @@ from dash import dcc, html
 from lib.dash.dash_config import FONT_FAMILY, FONT_SIZES
 from lib.dash.flow_glossary import FLAG_DEFINITIONS
 from lib.dash.flow_inventory import nearest_expiry
+from lib.dash.flow_dates import display_date
 
 # Default expiry skips the last few days: a chain about to expire quotes
 # near-meaningless IVs (2% on one side, 150% on the other) and almost no OTM size.
@@ -144,7 +145,7 @@ def default_chain_expiry(
 
 def expiry_option_label(expiry: str, rows: Sequence[Mapping[str, Any]], *, today: date | None = None) -> str:
     """Dropdown label: ``2026-11-21 · 6d · 4 flagged``."""
-    parts = [str(expiry)]
+    parts = [display_date(expiry)]
     days = _days_to(expiry, today or date.today())
     if days is not None:
         parts.append("expired" if days < 0 else f"{days}d")
@@ -372,9 +373,9 @@ def table_from_report(
 
     if not rows:
         msg = (
-            f"No flagged strikes for expiry {exp or '—'}."
+            f"No flagged strikes for expiry {display_date(exp) if exp else '—'}."
             if view == "flagged"
-            else f"No traded strikes for expiry {exp or '—'}."
+            else f"No traded strikes for expiry {display_date(exp) if exp else '—'}."
         )
         return [html.Div(msg, className="sfa-flow-section-empty")]
 

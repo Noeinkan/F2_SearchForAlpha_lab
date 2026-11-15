@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 from dash import dcc, html
 
 from lib.dash.dash_config import FONT_FAMILY, FONT_SIZES
+from lib.dash.flow_dates import display_date
 from lib.dash.flow_glossary import DISCLAIMER, GEX_PANEL, TERM_DEFINITIONS
 from lib.dash.flow_inventory import STRIKE_WINDOW_PCT, filter_ladder_window
 from lib.options.greeks import ALL_EXPIRIES_KEY
@@ -329,7 +330,7 @@ def render_gex_panel(report: Mapping[str, Any], theme: dict) -> html.Div | None:
     expiry_options: list[dict[str, str]] = []
     if ALL_EXPIRIES_KEY in ladders:
         expiry_options.append({"label": "All expirations", "value": ALL_EXPIRIES_KEY})
-    expiry_options.extend({"label": k, "value": k} for k in dated)
+    expiry_options.extend({"label": display_date(k), "value": k} for k in dated)
 
     return html.Div(
         [

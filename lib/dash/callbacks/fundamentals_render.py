@@ -171,12 +171,15 @@ def _section_band(title: str, slug: str, body: Any, header_extra: Any = None) ->
     ]
     if header_extra is not None:
         header_children.append(header_extra)
+    # data-explain-*: the band is a smart-help panel (✦ on its header, 95-explain.js).
     return html.Section(
         [
-            html.Div(header_children, className='sfa-fundamentals-band-header'),
+            html.Div(header_children, className='sfa-fundamentals-band-header',
+                     **{'data-explain-head': ''}),
             body,
         ],
         className=f'sfa-fundamentals-band sfa-fundamentals-band-{slug}',
+        **{'data-explain-panel': f'Fundamentals · {title}'},
     )
 
 

@@ -301,3 +301,30 @@ def test_rate_limit(monkeypatch):
     for _ in range(REQUESTS_PER_MINUTE):
         assert _post(client, {"selection": "1"}).status_code == 200
     assert _post(client, {"selection": "1"}).status_code == 429
+
+
+def test_chart_and_fundamentals_bands_opt_into_smart_help():
+    """95-explain.js puts a ✦ on any [data-explain-panel] with a [data-explain-head]
+    direct child; the price chart and every Fundamentals band rely on it."""
+    from dash import html
+
+    from lib.dash.callbacks.fundamentals_render import _section_band
+    from lib.dash.dash_config import THEMES, DEFAULT_THEME
+    from lib.dash.layout.chart_area import _create_chart_area
+    from lib.dash.styles import get_styles
+
+    band = _section_band('Quality', 'quality', html.Div('body'))
+    assert getattr(band, 'data-explain-panel') == 'Fundamentals · Quality'
+    assert hasattr(band.children[0], 'data-explain-head')
+
+    theme = THEMES[DEFAULT_THEME]
+    home = _create_chart_area(get_styles(theme), theme).children[0]
+    assert home.id == 'chart-area-home'
+    assert getattr(home, 'data-explain-panel') == 'Price chart'
+    assert hasattr(home.children[0], 'data-explain-head')
+
+
+def test_prompt_asks_for_plain_words_and_covers_chart_points():
+    prompt = gemini.build_prompt("Candle of 2026-03-14: close 250.10 (+2.10%)", 'panel "Price chart"')
+    assert "plain everyday words" in prompt
+    assert "one point of a chart" in prompt

@@ -57,6 +57,8 @@ Format, nothing else (no headings, no tables, no HTML, no LaTeX):
 If it is a number: say what it measures, how to read it, and whether this particular value is good, bad or typical — and why.
 If it is a label, signal name or control: say what it is, what it is used for in this app, and what changes when the user turns it on or changes its value.
 If it is an indicator or overlay: say what it measures, the parameters this app uses by default, and which Buy/Sell signals it can generate.
+If it is one point of a chart (a candle, a volume bar, an indicator value, a yearly figure): say what that point shows on that date, what stands out compared with the rest of the series, and for a Buy/Sell marker which kind of signal fired there.
+Write for someone who is not a trader: plain everyday words, and explain in a few words any jargon you cannot avoid.
 Use the app's own definitions below over textbook ones. If the context is not enough to be sure, say what it most likely is and what would confirm it.
 This is research software, not financial advice; do not tell the user to buy or sell anything."""
 

@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 from dash import dcc, dash_table, html
 
 from lib.dash.dash_config import FONT_FAMILY, FONT_SIZES
+from lib.dash.flow_dates import display_date
 from lib.dash.flow_glossary import (
     COLUMN_HEADERS,
     DISCLAIMER,
@@ -137,7 +138,7 @@ def _format_contract_row(contract: Mapping[str, Any]) -> dict[str, Any]:
     otm = bool(contract.get("is_otm", False))
     strike_disp = f"{strike} {'OTM' if otm else 'ITM'}"
     cp = str(contract.get("cp", ""))
-    expiry = str(contract.get("expiry", ""))
+    expiry = display_date(str(contract.get("expiry", "")))
     weekly = bool(contract.get("is_weekly", False))
     if weekly:
         expiry = f"{expiry} weekly"

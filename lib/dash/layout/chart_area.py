@@ -143,7 +143,7 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
                 'justifyContent': 'space-between',
                 'alignItems': 'center',
                 'gap': '12px',
-            }),
+            }, **{'data-explain-head': ''}),
 
             # The glue owns everything inside #financial-chart.
             html.Div(
@@ -192,7 +192,9 @@ def _create_chart_area(styles: dict, theme: dict, bootstrap: BootstrapSnapshot |
                     'minWidth': 0,
                 },
             ),
-        ], id='chart-area-home', style={
+        # data-explain-*: a smart-help panel (95-explain.js); a ✦ click on a
+        # bar explains that bar (96-explain-points.js).
+        ], id='chart-area-home', **{'data-explain-panel': 'Price chart'}, style={
             'display': 'flex',
             'flexDirection': 'column',
             'flex': '1 1 0',

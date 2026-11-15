@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 from dash import dcc, html
 
 from lib.dash.dash_config import FONT_FAMILY, FONT_SIZES
+from lib.dash.flow_dates import display_date
 from lib.dash.flow_glossary import (
     DISCLAIMER,
     TERM_DEFINITIONS,
@@ -310,7 +311,7 @@ def render_vanna_panel(report: Mapping[str, Any], theme: dict) -> html.Div | Non
                     html.Div(
                         dcc.Checklist(
                             id={"type": "flow-vanna-expiry", "index": ticker},
-                            options=[{"label": k, "value": k} for k in expiry_keys],
+                            options=[{"label": display_date(k), "value": k} for k in expiry_keys],
                             value=active,
                             inline=True,
                             className="sfa-flow-vanna-expiry",

@@ -127,7 +127,7 @@ def test_default_expiry_skips_the_last_week_and_labels_say_days_and_flags():
     assert default_chain_expiry(chains, today=today) == "2026-11-27"
     # Nothing a week out: the furthest listed, not tomorrow's.
     assert default_chain_expiry({"2026-11-16": [], "2026-11-18": [], "2026-11-20": []}, today=today) == "2026-11-20"
-    assert expiry_option_label("2026-11-27", chains["2026-11-27"], today=today) == "2026-11-27 · 12d · 1 flagged"
+    assert expiry_option_label("2026-11-27", chains["2026-11-27"], today=today) == "27/11/2026 · 12d · 1 flagged"
 
 
 def test_flagged_cells_carry_the_reason_on_hover():
