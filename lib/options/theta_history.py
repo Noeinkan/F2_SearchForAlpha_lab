@@ -25,6 +25,7 @@ import logging
 import math
 import os
 import threading
+import time as clock
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -44,13 +45,20 @@ MARKET_TZ = ZoneInfo("America/New_York")
 EOD_REPORT_TIME = time(17, 15)
 STANDARD_MULTIPLIER = 100
 
-# The free plan allows one request in flight per account; queueing them here
-# keeps a second dashboard click from being refused by the terminal.
+# The free plan allows one request in flight per account and 20 requests a
+# minute; queueing them here, spaced by MIN_INTERVAL_SECONDS, keeps a bulk
+# download and a dashboard click from being refused by the terminal.
+MIN_INTERVAL_SECONDS = float(os.environ.get("SFA_THETA_MIN_INTERVAL", "3.0") or 3.0)
 _request_lock = threading.Lock()
+_last_request_at = 0.0
 
 
 class ThetaUnavailable(DataFetchError):
     """The Theta Terminal is not running or not reachable."""
+
+
+class ThetaTooLarge(DataFetchError):
+    """HTTP 570: the date range holds too much data; ask for a shorter one."""
 
 
 def history_window(today: date | None = None) -> tuple[date, date]:
@@ -78,6 +86,8 @@ def _get(path: str, params: dict[str, Any], *, session_get: Callable[..., Any] |
         except requests.Timeout as exc:
             raise TransientFetchError(f"ThetaData timed out on {path}") from exc
         status = response.status_code
+        if status == 570:
+            raise ThetaTooLarge(f"ThetaData says the request for {path} asks for too much data")
         if status == 429 or status >= 500:
             raise TransientFetchError(f"ThetaData returned HTTP {status} on {path}", status_code=status)
         body = response.text or ""
@@ -90,8 +100,18 @@ def _get(path: str, params: dict[str, Any], *, session_get: Callable[..., Any] |
         return [{str(k).strip().lower(): v for k, v in row.items() if k is not None}
                 for row in csv.DictReader(io.StringIO(body))]
 
+    def spaced() -> list[dict]:
+        global _last_request_at
+        wait = _last_request_at + MIN_INTERVAL_SECONDS - clock.monotonic()
+        if wait > 0 and session_get is None:
+            clock.sleep(wait)
+        try:
+            return operation()
+        finally:
+            _last_request_at = clock.monotonic()
+
     with _request_lock:
-        return retry_with_backoff(operation, describe=f"ThetaData {path}")
+        return retry_with_backoff(spaced, describe=f"ThetaData {path}")
 
 
 def _number(value: Any) -> float | None:

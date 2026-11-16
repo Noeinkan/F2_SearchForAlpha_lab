@@ -7,8 +7,7 @@ import pytest
 from typer.testing import CliRunner
 
 from lib.cli.app import app
-from lib.dash.routes import build_options_path, is_options_route, parse_path
-from lib.options.pricing import Leg, payoff_at, payoff_summary, price_option
+from lib.options.pricing import Leg, implied_vol, net_premium, payoff_at, payoff_summary, price_option
 
 
 def test_textbook_call_and_put_parity():
@@ -48,11 +47,32 @@ def test_expiry_and_invalid_inputs():
         payoff_summary([Leg(1, 'call', 100, float('nan'))])
 
 
-def test_cli_json_and_route():
+def test_cli_json():
     result = CliRunner().invoke(app, ['options', 'price', '--spot', '100', '--strike', '100',
                                      '--days', '365', '--iv', '0.2', '--json'])
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)['value'] == pytest.approx(10.4505835722)
-    assert build_options_path('TSLA') == '/options/TSLA'
-    assert is_options_route('/options/TSLA')
-    assert parse_path('/options/tsla') == ('options', 'TSLA')
+
+
+def test_four_leg_short_iron_butterfly_matches_the_old_browser_numbers():
+    legs = [Leg(-5, 'put', 50, 2.55), Leg(-5, 'call', 50, 2.40),
+            Leg(5, 'call', 55, 0.80), Leg(5, 'put', 45, 0.85)]
+    assert net_premium(legs) == pytest.approx(-1650)
+    summary = payoff_summary(legs)
+    assert summary['break_evens'] == pytest.approx([46.7, 53.3])
+    assert summary['max_profit'] == pytest.approx(1650)
+    assert summary['max_loss'] == pytest.approx(-850)
+    assert payoff_at(40, legs) == pytest.approx(-850)
+    assert payoff_at(50, legs) == pytest.approx(1650)
+
+
+def test_contract_multiplier_scales_payoff():
+    assert payoff_at(120, [Leg(1, 'call', 100, 5, multiplier=50)]) == pytest.approx(750)
+    assert payoff_summary([Leg(1, 'put', 390, 10.15)])['break_evens'] == [379.85]
+
+
+def test_implied_vol_round_trips_and_rejects_impossible_prices():
+    value = price_option(spot=100, strike=110, days=60, iv=.35, rate=.04)['value']
+    assert implied_vol(value, spot=100, strike=110, days=60, rate=.04) == pytest.approx(.35, abs=1e-6)
+    assert implied_vol(0.0001, spot=100, strike=50, days=60) is None  # below intrinsic
+    assert implied_vol(5, spot=100, strike=100, days=0) is None

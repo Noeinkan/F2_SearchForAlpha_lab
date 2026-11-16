@@ -5,7 +5,6 @@ from __future__ import annotations
 from lib.dash.dash_config import (
     ROUTE_FUNDAMENTALS,
     ROUTE_FLOW,
-    ROUTE_OPTIONS,
     ROUTE_OPTIMIZE,
     ROUTE_TERMINAL,
     ROUTE_TICKER_TERMINAL,
@@ -13,7 +12,6 @@ from lib.dash.dash_config import (
 
 _FUNDAMENTALS_PATH = ROUTE_FUNDAMENTALS.rstrip('/')
 _FLOW_PATH = ROUTE_FLOW.rstrip('/')
-_OPTIONS_PATH = ROUTE_OPTIONS.rstrip('/')
 _OPTIMIZE_PATH = ROUTE_OPTIMIZE.rstrip('/')
 _TICKER_TERMINAL_PATH = ROUTE_TICKER_TERMINAL.rstrip('/')
 
@@ -51,9 +49,6 @@ def parse_path(pathname: str | None) -> tuple[str, str | None]:
     if head == _FLOW_PATH.lstrip('/'):
         ticker = segments[1].strip().upper() if len(segments) > 1 else None
         return 'flow', ticker or None
-    if head == _OPTIONS_PATH.lstrip('/'):
-        ticker = segments[1].strip().upper() if len(segments) > 1 else None
-        return 'options', ticker or None
     if head == _OPTIMIZE_PATH.lstrip('/'):
         ticker = segments[1].strip().upper() if len(segments) > 1 else None
         return 'optimize', ticker or None
@@ -90,16 +85,6 @@ def is_flow_route(pathname: str | None) -> bool:
     """True when the browser URL targets the flow scanner workspace."""
     route, _ = parse_path(pathname)
     return route == 'flow'
-
-
-def is_options_route(pathname: str | None) -> bool:
-    route, _ = parse_path(pathname)
-    return route == 'options'
-
-
-def build_options_path(ticker: str | None = None) -> str:
-    symbol = str(ticker or '').strip().upper()
-    return f'{ROUTE_OPTIONS}/{symbol}' if symbol else ROUTE_OPTIONS
 
 
 def is_optimize_route(pathname: str | None) -> bool:

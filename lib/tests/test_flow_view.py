@@ -540,3 +540,21 @@ def test_flow_overlay_scrolls_in_one_container():
 
     # Glossary is nested in the scroll region, not a sibling stealing viewport height.
     assert _find_by_id(region, "flow-glossary") is not None
+
+
+def test_paper_panel_sits_between_chain_and_deep_dive():
+    """Report head (up to the chain) → paper trading → dealer-positioning charts."""
+    from lib.dash.flow_view import render_flow_report_parts
+
+    theme = get_theme(DEFAULT_THEME)
+    region = _find_by_id(_create_flow_overlay(get_styles(theme), theme), "flow-scroll-region")
+    order = [str(c) for c in region.children]
+    content = next(i for i, c in enumerate(order) if "flow-content'" in c or 'flow-content"' in c)
+    paper = next(i for i, c in enumerate(order) if "sfa-flow-paper" in c)
+    deep = next(i for i, c in enumerate(order) if "flow-content-deep" in c)
+    assert content < paper < deep
+
+    payload = {"generated_at": "2026-06-14T12:00:00", "reports": [_sample_report()]}
+    head, tail = render_flow_report_parts(payload, theme)
+    assert "sfa-flow-ticker-card" in str(head) and "sfa-flow-education" not in str(head)
+    assert "sfa-flow-education" in str(tail) and "Educational/research use only" in str(tail)

@@ -16,6 +16,7 @@ from lib.dash.dash_config import (
 )
 from lib.dash.flow_view import render_learn_modal_content
 from lib.dash.flow_paper_view import panel as flow_paper_panel
+from lib.dash.flow_strategy_view import panel as flow_strategy_panel
 from lib.dash.layout.symbol_search import build_symbol_search_trigger
 
 
@@ -263,7 +264,6 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
         html.Div(
             [
                 html.Div(id='flow-glossary', style={'display': 'none'}, children=[]),
-                flow_paper_panel(theme),
                 dcc.Loading(
                     id='flow-loading',
                     type='circle',
@@ -283,6 +283,12 @@ def _create_flow_overlay(styles: dict, theme: dict) -> html.Div:
                         style={'backgroundColor': theme['bg_primary']},
                     ),
                 ),
+                # Paper trading sits right under the option chain it trades from;
+                # the report's deep-dive charts continue below it. Fixed here, not
+                # in the rendered report, so a refresh never resets its inputs.
+                flow_strategy_panel(theme),
+                flow_paper_panel(theme),
+                html.Div(id='flow-content-deep', children=[]),
             ],
             id='flow-scroll-region',
             style={

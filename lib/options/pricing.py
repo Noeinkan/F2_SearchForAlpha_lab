@@ -1,4 +1,7 @@
-"""Pure European option pricing and exact expiry payoff for manual strategies."""
+"""Pure European option pricing and exact expiry payoff for option strategies.
+
+The only payoff/Greeks implementation: the Flow strategy panel and `sfa options price` both call it.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +20,7 @@ class Leg:
     strike: float
     premium: float
     iv: float = 0.2
+    multiplier: int = MULTIPLIER
 
 
 def _check(spot: float, strike: float, days: float, iv: float, rate: float, yield_rate: float) -> None:
@@ -69,7 +73,7 @@ def payoff_at(underlying: float, legs: list[Leg]) -> float:
     if underlying < 0:
         raise ValueError("Underlying cannot be negative")
     return sum(
-        MULTIPLIER * leg.quantity * (
+        leg.multiplier * leg.quantity * (
             (max(underlying - leg.strike, 0.0) if leg.kind.lower() in ("call", "c")
              else max(leg.strike - underlying, 0.0)) - leg.premium
         ) for leg in legs
@@ -97,7 +101,7 @@ def payoff_summary(legs: list[Leg]) -> dict:
             roots.append(a - ya * (b - a) / (yb - ya))
     if abs(vals[-1]) < 1e-8:
         roots.append(knots[-1])
-    slope = MULTIPLIER * sum(leg.quantity for leg in legs if leg.kind.lower() in ("call", "c"))
+    slope = sum(leg.multiplier * leg.quantity for leg in legs if leg.kind.lower() in ("call", "c"))
     if slope and vals[-1] * slope < 0:
         roots.append(knots[-1] - vals[-1] / slope)
     return {"break_evens": sorted({round(x, 8) for x in roots if x >= 0}),
@@ -105,12 +109,41 @@ def payoff_summary(legs: list[Leg]) -> dict:
             "max_loss": None if slope < 0 else min(vals)}
 
 
+def net_premium(legs: list[Leg]) -> float:
+    """Cash at entry: positive means the strategy costs money, negative means it collects a credit."""
+    return sum(leg.multiplier * leg.quantity * leg.premium for leg in legs)
+
+
+def implied_vol(price: float, *, spot: float, strike: float, days: float, kind: str = "call",
+                rate: float = 0.05, yield_rate: float = 0.0) -> float | None:
+    """Volatility at which the BSM value equals `price`, or None when no volatility can reach it."""
+    if not (price > 0 and days > 0):
+        return None
+    low, high = 1e-4, 5.0
+
+    def value(iv: float) -> float:
+        return float(price_option(spot=spot, strike=strike, days=days, iv=iv, kind=kind,
+                                  rate=rate, yield_rate=yield_rate)["value"])
+
+    if not value(low) <= price <= value(high):
+        return None
+    for _ in range(100):
+        mid = (low + high) / 2
+        if value(mid) < price:
+            low = mid
+        else:
+            high = mid
+    return (low + high) / 2
+
+
 def strategy_legs(preset: str, spot: float, premium: float = 0.0, iv: float = 0.2) -> list[Leg]:
     """Create editable example legs; premiums default to theoretical values in the UI."""
     if spot <= 0:
         raise ValueError("Spot must be positive")
-    at = round(spot, 2)
-    width = max(round(spot * 0.05, 2), 0.01)
+    # Whole-dollar strikes above $10, like a listed chain; cents below.
+    places = 0 if spot >= 10 else 2
+    at = round(spot, places)
+    width = max(round(spot * 0.05, places), 0.01)
     if preset == "long_call":
         return [Leg(1, "call", at, premium, iv)]
     if preset == "long_put":

@@ -54,3 +54,91 @@ Please update the following components: %s t @ http://127.0.0.1:8050/_dash-compo
 [  896139ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=XqFEXqBW7kI77PU7pa8YOft7~e6656a1fa4e7ffec51ed1ca02c8450b6b5fa535085c93e55c4e3edb73c0d17e0:1
 [  896163ms] [ERROR] Error: Callback failed: the server did not respond.
     at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 1846339ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://127.0.0.1:8050/_dash-component-suites/dash/deps/react-dom@18.v4_4_1m1785880594.3.1.js:29905
+[ 1854556ms] [WARNING] Warning: componentWillMount has been renamed, and is not recommended for use. See https://reactjs.org/link/unsafe-component-lifecycles for details.
+
+* Move code with side effects to componentDidMount, and set initial state in the constructor.
+* Rename componentWillMount to UNSAFE_componentWillMount to suppress this warning in non-strict mode. In React 18.x, only the UNSAFE_ name will work. To rename all deprecated lifecycles to their new names, you can run `npx react-codemod rename-unsafe-lifecycles` in your project source folder.
+
+Please update the following components: %s t @ http://127.0.0.1:8050/_dash-component-suites/dash/deps/react-dom@18.v4_4_1m1785880594.3.1.js:73
+[ 1854556ms] [WARNING] Warning: componentWillReceiveProps has been renamed, and is not recommended for use. See https://reactjs.org/link/unsafe-component-lifecycles for details.
+
+* Move data fetching code or side effects to componentDidUpdate.
+* If you're updating state whenever props change, refactor your code to use memoization techniques or move it to static getDerivedStateFromProps. Learn more at: https://reactjs.org/link/derived-state
+* Rename componentWillReceiveProps to UNSAFE_componentWillReceiveProps to suppress this warning in non-strict mode. In React 18.x, only the UNSAFE_ name will work. To rename all deprecated lifecycles to their new names, you can run `npx react-codemod rename-unsafe-lifecycles` in your project source folder.
+
+Please update the following components: %s t @ http://127.0.0.1:8050/_dash-component-suites/dash/deps/react-dom@18.v4_4_1m1785880594.3.1.js:73
+[ 1867529ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ http://127.0.0.1:8050/_dash-component-suites/plotly/package_data/plotly.min.js:2008
+[ 1870448ms] [ERROR] Failed to load resource: the server responded with a status of 500 (INTERNAL SERVER ERROR) @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 1870748ms] [ERROR] Failed to load resource: the server responded with a status of 500 (INTERNAL SERVER ERROR) @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 1873232ms] [ERROR] {message: Callback error updating ..flow-content.children...…w-data-store.data...flow-rescan-button.disabled.., html: <!doctype html>
+<html lang=en>
+  <head>
+    <title…re.data...flow-rescan-button.disabled..'."
+
+
+-->
+} @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 1873406ms] [ERROR] {message: Callback error updating options-ticker.children, html: <!doctype html>
+<html lang=en>
+  <head>
+    <title…und for output 'options-ticker.children'."
+
+
+-->
+} @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 1956594ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 1956632ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 1957589ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 1957625ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 1957695ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_reload-hash:1
+[ 1957695ms] [LOG] fetch error undefined @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:6013
+[ 1958586ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 1958617ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 1959599ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 1959640ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 1960215ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 1960235ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 1960581ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 1960624ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 1960685ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_reload-hash:1
+[ 1960685ms] [LOG] fetch error undefined @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:6013
+[ 1961576ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 1961614ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 1962596ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 1962626ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 2103088ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 2103124ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 2104081ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 2104108ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 2104632ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_reload-hash:1
+[ 2104632ms] [LOG] fetch error undefined @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:6013
+[ 2105076ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 2105107ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 2106102ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 2106141ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 2107085ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 2107125ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 2107632ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_reload-hash:1
+[ 2107632ms] [LOG] fetch error undefined @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:6013
+[ 2108071ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 2108099ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[ 2108630ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8050/_dash-update-component?endId=8e2LPIAszTFmPvzg795lO83d~5b66666df511ed5a91878672abd70674f33a0e504f083d43aac7039a107e68ef:1
+[ 2108655ms] [ERROR] Error: Callback failed: the server did not respond.
+    at handleError (http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:1051:14) @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:11306
+[29705634ms] [ERROR] Failed to load resource: net::ERR_NETWORK_IO_SUSPENDED @ http://127.0.0.1:8050/_reload-hash:1
+[29705636ms] [LOG] fetch error undefined @ http://127.0.0.1:8050/_dash-component-suites/dash/dash-renderer/build/dash_renderer.v4_4_1m1785880539.dev.js:6013

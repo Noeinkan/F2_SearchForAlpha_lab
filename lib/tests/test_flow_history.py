@@ -9,7 +9,7 @@ import requests
 
 from lib.dash import flow_history, flow_paper, flow_store
 from lib.dash.flow_chain import table_from_report
-from lib.options import theta_history
+from lib.options import history_archive, theta_history
 
 TODAY = date(2026, 11, 15)
 ENTRY = date(2026, 3, 2)          # a Monday inside the one-year window
@@ -34,6 +34,7 @@ class _Response:
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(flow_store, "FLOW_DIR", tmp_path / "flow")
     monkeypatch.setattr(flow_history, "HISTORY_DIR", tmp_path / "flow-history")
+    monkeypatch.setattr(history_archive, "ARCHIVE_DIR", tmp_path / "option-history")
     return tmp_path
 
 

@@ -226,62 +226,13 @@
     color: var(--accent-orange, #f0a43a);
 }
 .sfa-flow-quote-flag { color: var(--accent-purple, #c084fc); }
-.sfa-flow-chain-preview {
-    margin-top: 10px;
-    padding: 14px 16px;
-    border: 1px solid color-mix(in srgb, var(--accent-cyan, #58a6ff) 32%, var(--border-primary, #333));
-    border-radius: 10px;
-    background: linear-gradient(125deg, color-mix(in srgb, var(--accent-cyan, #58a6ff) 10%, var(--bg-secondary, #1c1c1c)), var(--bg-secondary, #1c1c1c) 62%);
-    color: var(--text-secondary, #a8a8a8);
-    font-size: 12px;
-}
-.sfa-flow-chain-preview-empty,
-.sfa-flow-chain-preview-heading { display: flex; flex-direction: column; gap: 4px; }
-.sfa-flow-chain-preview-empty[hidden] { display: none; }
-.sfa-flow-chain-preview-eyebrow,
-.sfa-flow-chain-preview-metric-label {
+/* Popup payoff card (assets/51-flow.js payoffCard) — the chain's only single-contract preview. */
+.sfa-flow-chain-preview-eyebrow {
     color: var(--accent-cyan, #58a6ff);
     font-size: 10px;
     font-weight: 700;
     letter-spacing: .11em;
 }
-.sfa-flow-chain-preview-prompt { color: var(--text-primary, #e8e8e8); }
-.sfa-flow-chain-preview-contract {
-    color: var(--text-primary, #e8e8e8);
-    font-size: 16px;
-    font-weight: 700;
-}
-.sfa-flow-chain-preview-values:not([hidden]) {
-    display: block;
-}
-.sfa-flow-chain-preview-metrics {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    margin: 12px 0 8px;
-}
-.sfa-flow-chain-preview-metric {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 0;
-    padding: 10px 12px;
-    border: 1px solid var(--border-primary, #333);
-    border-radius: 7px;
-    background: color-mix(in srgb, var(--bg-primary, #101010) 72%, transparent);
-}
-.sfa-flow-chain-preview-metric-be { border-color: color-mix(in srgb, var(--accent-green, #3fb950) 40%, var(--border-primary, #333)); }
-.sfa-flow-chain-preview-metric-be .sfa-flow-chain-preview-metric-label { color: var(--accent-green, #3fb950); }
-.sfa-flow-chain-preview-cost,
-.sfa-flow-chain-preview-breakeven {
-    color: var(--text-primary, #e8e8e8);
-    font-family: var(--font-mono, monospace);
-    font-size: clamp(18px, 2vw, 24px);
-    font-weight: 700;
-    line-height: 1.2;
-}
-.sfa-flow-chain-preview-metric-note,
-.sfa-flow-chain-preview-cost-note { color: var(--text-secondary, #a8a8a8); font-size: 11px; }
 .sfa-flow-chain-preview-chart {
     overflow: hidden;
     border: 1px solid var(--border-primary, #333);
@@ -305,113 +256,47 @@
 .sfa-flow-payoff-be-label { fill: var(--accent-green, #3fb950); font-weight: 700; }
 .sfa-flow-payoff-spot-label { fill: var(--accent-cyan, #58a6ff); font-weight: 700; }
 .sfa-flow-payoff-axis-title { fill: var(--text-tertiary, #888); }
-.sfa-flow-chain-preview-foot {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 12px;
-    margin-top: 8px;
-    color: var(--text-secondary, #aaa);
-    font-size: 11px;
-}
-@media (max-width: 560px) {
-    .sfa-flow-chain-preview-metrics { grid-template-columns: 1fr; }
-}
 .sfa-flow-chain-more {
     margin-top: 6px;
     font-size: 11px;
     color: var(--text-tertiary, #8a8a8a);
 }
 
-/* The strategy builder stays folded until someone asks for combined legs. */
-.sfa-flow-strategy {
-    margin-top: 10px;
-    border: 1px solid var(--border-primary, #333);
-    border-radius: 8px;
-    background: var(--bg-secondary, #171717);
-    color: var(--text-primary, #eee);
-}
-.sfa-flow-strategy-summary { padding: 12px 15px; font-weight: 700; cursor: pointer; }
-.sfa-flow-strategy-summary:hover { color: var(--accent-cyan, #58a6ff); }
-.sfa-flow-strategy-body { padding: 0 15px 15px; }
-.sfa-flow-strategy-help,
-.sfa-flow-strategy-legs { color: var(--text-secondary, #aaa); font-size: 12px; }
-.sfa-flow-strategy-help { margin: 0 0 12px; }
-.sfa-flow-strategy-legs { display: grid; gap: 6px; }
-.sfa-flow-strategy-leg {
-    display: grid;
-    grid-template-columns: 80px minmax(100px, 1fr) 140px minmax(110px, 1fr) 28px;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 9px;
-    border: 1px solid var(--border-primary, #333);
-    border-radius: 5px;
-}
-.sfa-flow-strategy-leg select,
-.sfa-flow-strategy-leg input {
-    width: 100%;
-    min-height: 28px;
-    border: 1px solid var(--border-primary, #444);
-    border-radius: 4px;
-    background: var(--bg-primary, #101010);
-    color: var(--text-primary, #eee);
-    font: inherit;
-}
-.sfa-flow-strategy-leg label { display: flex; align-items: center; gap: 6px; font-size: 11px; }
-.sfa-flow-strategy-leg input { max-width: 64px; padding-left: 5px; }
-.sfa-flow-strategy-leg-name { font-weight: 700; }
-.sfa-flow-strategy-leg-price { color: var(--text-secondary, #aaa); font-size: 11px; }
-.sfa-flow-strategy-leg > button {
-    border: 0; background: transparent; color: var(--text-secondary, #aaa);
-    font-size: 20px; cursor: pointer;
-}
-.sfa-flow-strategy-leg > button:hover { color: var(--accent-red, #f85149); }
-.sfa-flow-strategy-message { min-height: 18px; margin: 8px 0; color: var(--accent-cyan, #58a6ff); font-size: 12px; }
-.sfa-flow-strategy-results { display: grid; gap: 12px; }
-.sfa-flow-strategy-heading { font-size: 14px; font-weight: 700; }
-.sfa-flow-strategy-metrics {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-}
+/* Strategy panel (lib/dash/flow_strategy_view.py): legs table, payoff and Greeks. */
+.sfa-flow-strategy-panel { margin: 12px 14px; border: 1px solid var(--border-primary); border-radius: 9px; background: var(--bg-secondary); color: var(--text-primary); font-size: 12px; }
+.sfa-flow-strategy-panel-summary { padding: 11px 14px; cursor: pointer; font-weight: 700; font-size: 13px; }
+.sfa-flow-strategy-panel-summary:hover { color: var(--accent-cyan, #58a6ff); }
+.sfa-flow-strategy-body { padding: 2px 14px 14px; display: grid; gap: 10px; }
+.sfa-flow-strategy-intro { margin: 0; color: var(--text-secondary, #aaa); max-width: 980px; }
+.sfa-flow-strategy-controls { display: flex; flex-wrap: wrap; gap: 10px; }
+.sfa-flow-strategy-field { display: flex; flex-direction: column; gap: 5px; flex: 1 1 130px; min-width: 120px; color: var(--text-secondary, #aaa); }
+.sfa-flow-strategy-field-wide { flex: 1.4 1 180px; }
+.sfa-flow-strategy-field input { box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid var(--border-primary); border-radius: 5px; background: var(--bg-primary); color: var(--text-primary); }
+.sfa-flow-strategy-actions { display: flex; gap: 8px; }
+.sfa-flow-strategy-message { min-height: 16px; color: var(--accent-cyan, #58a6ff); }
+.sfa-flow-strategy-output { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); gap: 12px; align-items: start; }
+.sfa-flow-strategy-chart { border: 1px solid var(--border-primary, #333); border-radius: 6px; overflow: hidden; }
+.sfa-flow-strategy-results { display: grid; gap: 12px; min-width: 0; }
+.sfa-flow-strategy-empty { color: var(--text-secondary, #aaa); }
+.sfa-flow-strategy-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .sfa-flow-strategy-metrics > div {
     display: flex; flex-direction: column; gap: 4px; min-width: 0;
     padding: 10px; border: 1px solid var(--border-primary, #333); border-radius: 6px;
     background: var(--bg-primary, #101010);
 }
-.sfa-flow-strategy-metrics span { color: var(--text-secondary, #aaa); font-size: 10px; font-weight: 700; letter-spacing: .07em; }
-.sfa-flow-strategy-metrics strong { font-family: var(--font-mono, monospace); font-size: 17px; overflow-wrap: anywhere; }
-.sfa-flow-strategy-chart { border: 1px solid var(--border-primary, #333); border-radius: 6px; overflow: hidden; background: var(--bg-primary, #101010); }
-.sfa-flow-strategy-chart svg { display: block; width: 100%; height: 210px; }
-.sfa-flow-strategy-foot { color: var(--text-secondary, #aaa); font-size: 11px; }
-.sfa-flow-strategy-paper {
-    justify-self: start;
-    min-height: 34px;
-    padding: 7px 12px;
-    border: 1px solid var(--accent-cyan, #58a6ff);
-    border-radius: 5px;
-    background: color-mix(in srgb, var(--accent-cyan, #58a6ff) 20%, transparent);
-    color: var(--text-primary, #eee);
-    font: inherit;
-    font-weight: 700;
-    cursor: pointer;
-}
-.sfa-flow-strategy-paper:hover { background: color-mix(in srgb, var(--accent-cyan, #58a6ff) 35%, transparent); }
-.sfa-flow-strategy-warning {
-    padding: 8px 10px;
-    border-radius: 5px;
-    background: color-mix(in srgb, var(--accent-orange, #f0a43a) 20%, transparent);
-    color: var(--accent-orange, #f0a43a);
-    font-size: 11px;
-}
-@media (max-width: 760px) {
-    .sfa-flow-strategy-leg { grid-template-columns: 70px 1fr 92px 28px; }
-    .sfa-flow-strategy-leg-price { grid-column: 2 / 4; }
-    .sfa-flow-strategy-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 480px) {
-    .sfa-flow-strategy-leg { grid-template-columns: 70px 1fr 28px; }
-    .sfa-flow-strategy-leg label { grid-column: 1 / 3; }
-    .sfa-flow-strategy-leg-price { grid-column: 1 / 3; }
+.sfa-flow-strategy-metrics span { color: var(--text-secondary, #aaa); font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.sfa-flow-strategy-metrics strong { font-family: var(--font-mono, monospace); font-size: 16px; overflow-wrap: anywhere; }
+.sfa-flow-strategy-greeks-title { font-weight: 700; margin-bottom: 4px; }
+.sfa-flow-strategy-greeks-total { color: var(--text-secondary, #aaa); margin-bottom: 6px; }
+.sfa-flow-strategy-greeks-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-family: var(--font-mono, monospace); font-size: 11px; }
+.sfa-flow-strategy-greeks-table th, .sfa-flow-strategy-greeks-table td { padding: 5px 6px; border-bottom: 1px solid var(--border-primary, #333); text-align: right; white-space: nowrap; }
+.sfa-flow-strategy-greeks-table th:first-child, .sfa-flow-strategy-greeks-table td:first-child { text-align: left; }
+.sfa-flow-strategy-results > div:last-child { overflow-x: auto; }
+.sfa-flow-strategy-notes { display: grid; gap: 4px; color: var(--accent-orange, #f0a43a); font-size: 11px; }
+.sfa-flow-strategy-notes:empty { display: none; }
+#flow-strategy-paper { justify-self: start; }
+@media (max-width: 900px) {
+    .sfa-flow-strategy-output { grid-template-columns: 1fr; }
 }
 
 /* ---- Ticker card: score -------------------------------------------- */

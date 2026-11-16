@@ -1244,7 +1244,57 @@ def _explain_panel(title: str) -> dict[str, str]:
 EXPLAIN_HEAD = {"data-explain-head": ""}
 
 
-def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0) -> html.Details:
+def _deep_dive_children(report: Mapping[str, Any], theme: dict) -> list[Any]:
+    """GEX, dealer inventory and vanna charts: the positioning deep dive under the chain."""
+    gex_panel = render_gex_panel(report, theme)
+    inventory_panel = render_inventory_panel(report, theme)
+    vanna_panel = render_vanna_panel(report, theme)
+    # Fallback to the lightweight strike-dot map when ladder data is absent
+    # (older flow_report.json without strike_ladders).
+    strike_map = None if inventory_panel is not None else _strike_map(report, theme)
+
+    children: list[Any] = []
+    cols: list[Any] = []
+    if gex_panel is not None:
+        cols.append(html.Div(gex_panel, className="sfa-flow-deep-col"))
+    if inventory_panel is not None:
+        cols.append(html.Div(inventory_panel, className="sfa-flow-deep-col"))
+    elif strike_map is not None:
+        cols.append(html.Div(strike_map, className="sfa-flow-deep-col"))
+    if cols:
+        children.append(html.Div(cols, className="sfa-flow-deep-dive"))
+    if vanna_panel is not None:
+        children.append(vanna_panel)
+    return children
+
+
+def render_ticker_deep_dive(report: Mapping[str, Any], theme: dict, *, index: int = 0) -> html.Details | None:
+    """The deep-dive charts as their own card, for when paper trading sits between them and the chain."""
+    if report.get("error"):
+        return None
+    children = _deep_dive_children(report, theme)
+    if not children:
+        return None
+    ticker = str(report.get("ticker", ""))
+    return html.Details(
+        [
+            html.Summary(f"Dealer positioning · {ticker}", style={
+                **_panel_summary_style(theme),
+                "fontSize": FONT_SIZES["lg"],
+            }, **EXPLAIN_HEAD),
+            html.Div(children),
+        ],
+        open=(index == 0),
+        className="sfa-flow-panel sfa-flow-deep-card",
+        style=_panel_style(theme),
+        **_explain_panel(f"Dealer positioning · {ticker}"),
+    )
+
+
+def render_ticker_card(
+    report: Mapping[str, Any], theme: dict, *, index: int = 0, deep_dive: bool = True,
+) -> html.Details:
+    """One ticker's card. ``deep_dive=False`` stops after the chain (see ``render_ticker_deep_dive``)."""
     ticker = str(report.get("ticker", ""))
     if report.get("error"):
         # A throttled fetch is not a bad ticker: say so, the way the terminal's
@@ -1323,12 +1373,6 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
     insight_block = _insight_list(insights, theme)
     score_chips = render_score_row(report)
     chain_panel = render_chain_panel(report, theme)
-    gex_panel = render_gex_panel(report, theme)
-    inventory_panel = render_inventory_panel(report, theme)
-    vanna_panel = render_vanna_panel(report, theme)
-    # Fallback to the lightweight strike-dot map when ladder data is absent
-    # (older flow_report.json without strike_ladders).
-    strike_map = None if inventory_panel is not None else _strike_map(report, theme)
 
     # Score stays visible on the summary row so a collapsed card is still rankable.
     header_children.append(html.Span(
@@ -1390,17 +1434,8 @@ def render_ticker_card(report: Mapping[str, Any], theme: dict, *, index: int = 0
     if chain_panel is not None:
         card_children.append(chain_panel)
 
-    deep_children: list[Any] = []
-    if gex_panel is not None:
-        deep_children.append(html.Div(gex_panel, className="sfa-flow-deep-col"))
-    if inventory_panel is not None:
-        deep_children.append(html.Div(inventory_panel, className="sfa-flow-deep-col"))
-    elif strike_map is not None:
-        deep_children.append(html.Div(strike_map, className="sfa-flow-deep-col"))
-    if deep_children:
-        card_children.append(html.Div(deep_children, className="sfa-flow-deep-dive"))
-    if vanna_panel is not None:
-        card_children.append(vanna_panel)
+    if deep_dive:
+        card_children.extend(_deep_dive_children(report, theme))
 
     return html.Details(
         [
@@ -1430,10 +1465,28 @@ def render_flow_placeholder(theme: dict, message: str = "No report yet. Click RE
 
 def render_flow_reports(payload: Mapping[str, Any], theme: dict, *, show_glossary: bool = False) -> html.Div:
     """Compose full flow scanner content from JSON payload (narrative stack)."""
-    reports = list(payload.get("reports") or [])
-    if isinstance(payload, list):
-        reports = list(payload)
+    head, tail = render_flow_report_parts(payload, theme, show_glossary=show_glossary)
+    return html.Div(
+        [*head.children, *tail.children], className="sfa-flow-reports",
+        **{"data-scan-epoch": _scan_epoch(payload)},
+    )
 
+
+def _scan_epoch(payload: Mapping[str, Any] | list) -> str:
+    return str(payload.get("generated_epoch") or "") if isinstance(payload, Mapping) else ""
+
+
+def render_flow_report_parts(
+    payload: Mapping[str, Any], theme: dict, *, show_glossary: bool = False,
+) -> tuple[html.Div, html.Div]:
+    """The report cut in two around the paper-trading panel.
+
+    The head runs verdict → KPIs → option chain; the tail holds the dealer-positioning
+    charts, the concepts and the disclaimer. The layout mounts the paper panel between
+    them (``#flow-content`` / ``#flow-content-deep``) so it sits right under the chain
+    while staying a fixed component that a re-render never resets.
+    """
+    reports = list(payload) if isinstance(payload, list) else list(payload.get("reports") or [])
     sorted_reports = sorted(reports, key=lambda r: r.get("unusual_score", 0), reverse=True)
 
     # Report age is shown once, live, in the toolbar badge (#flow-data-age).
@@ -1442,8 +1495,14 @@ def render_flow_reports(payload: Mapping[str, Any], theme: dict, *, show_glossar
         children.append(render_glossary_panel(theme))
     children.append(render_summary_cards(sorted_reports, theme))
     for idx, report in enumerate(sorted_reports):
-        children.append(render_ticker_card(report, theme, index=idx))
+        children.append(render_ticker_card(report, theme, index=idx, deep_dive=False))
+    epoch = _scan_epoch(payload)
+    head = html.Div(children, className="sfa-flow-reports", **{"data-scan-epoch": epoch})
 
+    children = [
+        card for idx, report in enumerate(sorted_reports)
+        if (card := render_ticker_deep_dive(report, theme, index=idx)) is not None
+    ]
     # Education last, collapsed — still fully available when opened.
     children.append(html.Div(
         [
@@ -1473,8 +1532,5 @@ def render_flow_reports(payload: Mapping[str, Any], theme: dict, *, show_glossar
             "marginTop": "16px",
         },
     ))
-
-    return html.Div(
-        children, className="sfa-flow-reports",
-        **{"data-scan-epoch": str(payload.get("generated_epoch") or "")},
-    )
+    tail = html.Div(children, className="sfa-flow-reports sfa-flow-reports-tail", **{"data-scan-epoch": epoch})
+    return head, tail

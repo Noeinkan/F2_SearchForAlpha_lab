@@ -36,7 +36,8 @@
 .sfa-flow-overlay #flow-content { background: transparent !important; }
 
 /* One gutter for everything in the report, matching the paper panel's 14px. */
-.sfa-flow-overlay #flow-content > .sfa-flow-reports { padding: 0 14px 18px; }
+.sfa-flow-overlay #flow-content > .sfa-flow-reports { padding: 0 14px; }
+.sfa-flow-overlay #flow-content-deep > .sfa-flow-reports { padding: 0 14px 18px; }
 .sfa-flow-overlay #flow-scroll-region {
     scrollbar-width: thin;
     scrollbar-color: var(--flow-glass-border-hi) transparent;
@@ -194,11 +195,6 @@
     box-shadow: inset 0 0 0 1px var(--accent-purple, #c084fc),
                 inset 0 0 0 999px color-mix(in srgb, var(--accent, #ffa726) 8%, transparent);
 }
-.sfa-flow-chain-preview {
-    border-radius: 14px;
-    box-shadow: inset 0 1px 0 var(--flow-glass-highlight);
-}
-.sfa-flow-chain-preview-metric,
 .sfa-flow-chain-preview-chart { border-color: var(--flow-glass-border); border-radius: 10px; }
 
 /* ---- Quote popup: true frosted glass over the chain ---------------------- */
@@ -298,7 +294,8 @@
 }
 @media (max-width: 768px) {
     :root { --flow-glass-blur: blur(10px) saturate(140%); }
-    .sfa-flow-overlay #flow-content > .sfa-flow-reports { padding: 0 8px 14px; }
+    .sfa-flow-overlay #flow-content > .sfa-flow-reports { padding: 0 8px; }
+    .sfa-flow-overlay #flow-content-deep > .sfa-flow-reports { padding: 0 8px 14px; }
     .sfa-flow-overlay .sfa-flow-paper { margin: 10px 8px; }
     .sfa-flow-overlay .sfa-flow-panel { padding: 10px 12px !important; }
     .sfa-flow-overlay .sfa-flow-ticker-card[open] > summary { margin: -10px -12px 6px; padding: 8px 12px; }

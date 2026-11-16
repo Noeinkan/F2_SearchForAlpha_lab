@@ -1,29 +1,31 @@
-# Options pricing workspace — current integration plan
+# Option strategy payoff & Greeks — design
 
-Status: implementation plan for ROADMAP 6.6, refreshed 2026-11-15 against the current dashboard. The old optlib/tab-switcher plan was deleted because its entry points no longer exist.
+Status: ROADMAP 6.6, revised 2026-11-15. The calculator first shipped as a separate `/options` page while the Flow option chain had its own browser-side strategy builder: two payoff implementations (Python and JavaScript), two charts, and a page that knew nothing of the chain's quotes. Both were merged into one panel inside Flow.
 
-## Scope and decisions
+## Decisions
 
-- Add an **Options pricing** workspace for manual European equity-option estimates, expiry payoff and Greeks. Educational estimates, not executable quotes.
-- Use in-house Black–Scholes–Merton pricing built on `lib/options/greeks.py`. No `optlib` submodule, `greeks-package`, or new pricing dependency.
-- Support long call, long put, bull call spread, and iron condor presets, with editable legs (signed quantity, call/put, strike, premium and volatility), spot, rate, dividend yield and days to expiry.
-- `sfa options price ... --json` uses the same pure pricing module as Dash. Invalid inputs produce the CLI's JSON error shape and a nonzero exit.
-- Keep the calculator independent of Yahoo. The Flow Scanner's chain remains a separate data product; quoted bid/ask can be integrated later without making network access necessary for pricing.
+- **One place:** the *Strategy · payoff & Greeks* panel in the Flow page, above *Paper options & replay*. There is no OPTIONS header button and no `/options` route.
+- **One pricing path:** `lib/options/pricing.py` (in-house Black–Scholes–Merton on top of `lib/options/greeks.py`; no `optlib` or other pricing dependency). The panel, `sfa options price` and the tests all call it. The browser does no payoff maths for strategies.
+- **One leg editor:** the panel's table. A leg arrives three ways — **Add to strategy** in a chain quote's popup, a template (long call, long put, bull call spread, iron condor around spot), or **Add leg**. Every cell is editable for what-ifs.
+- **Chain legs stay tied to their quote.** A leg added from the chain keeps its `key` (`expiry|C/P|strike`), bid and ask. Making its quantity negative re-prices it at the bid (buy at ask, sell at bid). Changing its strike or call/put turns it into a hypothetical leg. Only a table made entirely of chain legs can be sent to paper trading.
+- **Chain rules:** all chain legs share one expiry and one observation (current quotes, or one historical date), at most four. A leg from another ticker, or a table with no chain leg left, starts a new strategy.
+- **Inputs follow the chain.** Spot comes from the Flow report (or the historical close for a historical chain), days to expiry from the expiry and the observation date, IV from the chain. When a quote carries no IV (historical EOD), it is solved from the premium and marked `*`.
+- The quote popup keeps its one-contract cost / break-even card: that is the quick look before adding a leg, not a second strategy tool.
 
-## Current architecture and insertion points
+## Where the code lives
 
-The dashboard has URL workspaces, not a tab switcher. `lib/dash/layout/header.py` renders CHART/FUNDAMENTALS/FLOW navigation. `lib/dash/layout/shell.py` mounts terminal and overlay workspaces. `lib/dash/callbacks/routing.py` owns navigation and hides the terminal for alternate routes. `lib/dash/routes.py` parses routes. `lib/dash/callbacks/__init__.py` registers callbacks. Do not edit `integrated_dashboard.py` for controls or callback imports.
-
-1. Add `/options/<ticker>` to `dash_config.py` and `routes.py`, preserving the selected symbol through `sync_dropdown_to_url`.
-2. Add an OPTIONS header button and a mounted options workspace in `layout/shell.py` via `layout/options_pricing.py`. Extend the route layout callback to hide the terminal on this route. Keep one callback writer per output.
-3. Put validation, European theoretical price, theta/vega/rho, leg payoff and portfolio break-evens in `lib/options/pricing.py`. Reuse `bs_delta` and `bs_gamma` from `greeks.py`; keep all rate and IV inputs as fractions internally. Handle expiry with intrinsic value and explicitly mark Greeks as undefined there.
-4. `lib/dash/callbacks/options_pricing.py` reads the mounted manual inputs, applies a preset to legs, computes through the pure module, and renders a Plotly payoff figure, per-leg Greeks and aggregate Greeks. Plotly is suitable here because the payoff is a small standalone plot; it does not touch the terminal's Lightweight Charts payload.
-5. Register `lib/cli/commands/options_cmd.py` in `lib/cli/app.py`. The command prices one option using spot, strike, days to expiry, IV, rate, yield and call/put. Share model validation and units with Dash.
-6. Add focused numerical and payoff tests, CLI contract tests, and dashboard routing/callback smoke tests. Restart the local dashboard after code changes as required by `CLAUDE.md`.
+| Piece | File |
+| --- | --- |
+| Pricing, payoff, implied vol | `lib/options/pricing.py` |
+| Leg rules, edits, analysis, paper hand-off (pure, tested) | `lib/dash/flow_strategy.py` |
+| Panel layout | `lib/dash/flow_strategy_view.py`, mounted in `lib/dash/layout/overlays.py` |
+| Callbacks | `lib/dash/callbacks/flow_strategy.py` |
+| Quote → panel hand-off | `lib/dash/assets/52-flow-strategy.js` writes `flow-strategy-add` |
+| Paper trading | the panel writes `flow-paper-strategy-selection`, read by the paper panel as before |
 
 ## Pricing semantics
 
-Premiums are entered per share; a standard displayed contract uses a 100-share multiplier. For a signed leg quantity `n`, expiry P/L at underlying `x` is `100 × n × (intrinsic(x) − premium)`. Positive `n` is long, negative is short. Portfolio Greeks are sums of per-share Greeks multiplied by `100 × n`. Theta is displayed per calendar day; vega and rho per one percentage-point change. The chart samples spot outcomes but break-evens and finite extrema must be solved from the exact piecewise-linear payoff, including `x = 0`, every strike and the slope beyond the highest strike. Unbounded profit/loss is labelled explicitly.
+Premiums are entered per share; each leg carries its contract multiplier `m` (100 for standard US equity options, the chain's value for adjusted contracts). For a signed leg quantity `n`, expiry P/L at underlying `x` is `m × n × (intrinsic(x) − premium)`. Positive `n` is long, negative is short. Strategy Greeks are sums of per-share Greeks multiplied by `m × n`. Theta is displayed per calendar day; vega and rho per one percentage-point change. The chart samples spot outcomes but break-evens and finite extrema must be solved from the exact piecewise-linear payoff, including `x = 0`, every strike and the slope beyond the highest strike. Unbounded profit/loss is labelled explicitly.
 
 Black–Scholes–Merton prices European exercise. US equity options may be American, and early exercise around dividends can make the estimate differ from a tradable quote. Show that limitation beside the results.
 
@@ -33,8 +35,7 @@ Black–Scholes–Merton prices European exercise. US equity options may be Amer
 
 ## Acceptance
 
-- The OPTIONS workspace opens from the header, works with no network and follows ticker changes.
+- The panel opens from **Add to strategy** in the Flow chain, follows the Flow ticker's spot, and works with typed legs and no network.
 - Canonical call at S=K=100, T=1 year, r=5%, q=0, IV=20% is about $10.4506; finite-difference checks agree with analytical Greeks.
-- Preset payoff, break-even and bounded/unbounded labels match known examples; a short leg reverses both payoff and Greeks.
-- CLI `--json` and the dashboard produce the same theoretical value for the same inputs.
-- Existing terminal, fundamentals and flow navigation still work; no duplicate Dash outputs.
+- The four-leg short iron butterfly (sell 5 × 50 put at 2.55 and 50 call at 2.40, buy 5 × 55 call at 0.80 and 45 put at 0.85) collects $1,650, breaks even at $46.70 and $53.30, and loses at most $850.
+- CLI `--json` and the panel produce the same theoretical value for the same inputs.

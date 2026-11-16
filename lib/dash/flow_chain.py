@@ -456,38 +456,6 @@ def table_from_report(
             className="sfa-flow-chain-scroll",
             **scroll_data,
         ),
-        html.Div(
-            [
-                html.Div([
-                    html.Span("EXPIRY PAYOFF", className="sfa-flow-chain-preview-eyebrow"),
-                    html.Span("Select a call or put quote to preview one long contract.",
-                              className="sfa-flow-chain-preview-prompt"),
-                ], className="sfa-flow-chain-preview-empty"),
-                html.Div([
-                    html.Div([
-                        html.Span("EXPIRY PAYOFF · 1 LONG CONTRACT", className="sfa-flow-chain-preview-eyebrow"),
-                        html.Strong(className="sfa-flow-chain-preview-contract"),
-                    ], className="sfa-flow-chain-preview-heading"),
-                    html.Div([
-                        html.Div([
-                            html.Span("CONTRACT COST", className="sfa-flow-chain-preview-metric-label"),
-                            html.Strong(className="sfa-flow-chain-preview-cost"),
-                            html.Span(className="sfa-flow-chain-preview-cost-note"),
-                        ], className="sfa-flow-chain-preview-metric"),
-                        html.Div([
-                            html.Span("EXPIRY BREAK-EVEN", className="sfa-flow-chain-preview-metric-label"),
-                            html.Strong(className="sfa-flow-chain-preview-breakeven"),
-                            html.Span("Underlying price · before fees", className="sfa-flow-chain-preview-metric-note"),
-                        ], className="sfa-flow-chain-preview-metric sfa-flow-chain-preview-metric-be"),
-                    ], className="sfa-flow-chain-preview-metrics"),
-                    html.Div(className="sfa-flow-chain-preview-chart", **{"aria-hidden": "true"}),
-                    html.Div([
-                        html.Span(className="sfa-flow-chain-preview-premium"),
-                        html.Span(className="sfa-flow-chain-preview-multiplier"),
-                    ], className="sfa-flow-chain-preview-foot"),
-                ], className="sfa-flow-chain-preview-values", hidden=True),
-            ], className="sfa-flow-chain-preview", role="status", **{"aria-live": "polite"},
-        ),
     ]
     if view == "near" and hidden > 0:
         children.append(
@@ -625,16 +593,6 @@ def render_chain_panel(report: Mapping[str, Any], theme: dict, *, today: date | 
                 id={"type": "flow-chain-body", "index": ticker},
                 className="sfa-flow-chain-table-wrap",
             ),
-            html.Details([
-                html.Summary("Build a strategy · up to 4 options", className="sfa-flow-strategy-summary"),
-                html.Div([
-                    html.P("Add quotes from the chain, then choose Buy or Sell and how many contracts. All options must share one expiry.",
-                           className="sfa-flow-strategy-help"),
-                    html.Div("No options added yet.", className="sfa-flow-strategy-legs"),
-                    html.Div(className="sfa-flow-strategy-message", role="status"),
-                    html.Div(className="sfa-flow-strategy-results"),
-                ], className="sfa-flow-strategy-body"),
-            ], className="sfa-flow-strategy"),
         ],
         className="sfa-flow-chain",
         **{"data-ticker": ticker, "data-spot": str(report.get("spot") or "")},

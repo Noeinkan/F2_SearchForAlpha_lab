@@ -28,7 +28,7 @@ from lib.dash.flow_gex import figure_from_gex_report
 from lib.dash.flow_vanna import figure_from_vanna_report
 from lib.dash.flow_view import (
     render_flow_placeholder,
-    render_flow_reports,
+    render_flow_report_parts,
     render_glossary_panel,
     render_learn_modal_content,
 )
@@ -72,12 +72,13 @@ def _with_epoch(payload: dict | None) -> dict | None:
 
 
 def _render_from_payload(payload: dict | None, theme: dict, *, show_glossary: bool = False):
+    """``(flow-content, flow-content-deep)``: the report above and below the paper panel."""
     if not payload:
-        return render_flow_placeholder(theme)
+        return render_flow_placeholder(theme), []
     reports = payload.get("reports")
     if not reports:
-        return render_flow_placeholder(theme, "Report file is empty. Click RESCAN NOW.")
-    return render_flow_reports(payload, theme, show_glossary=show_glossary)
+        return render_flow_placeholder(theme, "Report file is empty. Click RESCAN NOW."), []
+    return render_flow_report_parts(payload, theme, show_glossary=show_glossary)
 
 
 def register_flow_callbacks(app) -> None:
@@ -380,6 +381,7 @@ def register_flow_callbacks(app) -> None:
     @app.callback(
         [
             Output("flow-content", "children"),
+            Output("flow-content-deep", "children"),
             Output("flow-status", "children"),
             Output("flow-data-store", "data"),
             Output("flow-rescan-button", "disabled"),
@@ -398,24 +400,24 @@ def register_flow_callbacks(app) -> None:
         theme = get_theme(theme_name or DEFAULT_THEME)
 
         if not is_flow_route(pathname):
-            return no_update, no_update, no_update, False
+            return no_update, no_update, no_update, no_update, False
 
         ticker = _flow_ticker(pathname, selected_ticker)
 
         if triggered != "flow-rescan-button" or not rescan_clicks:
             payload = _with_epoch(flow_store.load_report(ticker))
             if payload:
-                return _render_from_payload(payload, theme), _loaded_status(payload), payload, False
+                return *_render_from_payload(payload, theme), _loaded_status(payload), payload, False
             message = f"No report for {ticker} yet. Click RESCAN NOW."
-            return render_flow_placeholder(theme, message), message, None, False
+            return render_flow_placeholder(theme, message), [], message, None, False
 
         outcome = flow_store.scan_into_store(ticker)
         payload = _with_epoch(outcome.payload)
-        content = _render_from_payload(payload, theme) if payload else no_update
+        content = _render_from_payload(payload, theme) if payload else (no_update, no_update)
         store = payload if payload else no_update
 
         if outcome.error_kind == "scan_failed":
-            return content, outcome.message, store, False
+            return *content, outcome.message, store, False
 
         dashboard_state.flow_last_scan_at = datetime.now()
         dashboard_state.flow_last_scan_path = str(flow_store.html_path(ticker))
@@ -429,7 +431,7 @@ def register_flow_callbacks(app) -> None:
             status = f"RATE LIMITED — RESCAN {ticker} in a minute"
         else:
             status = f"Rescan of {ticker} failed"
-        return content, status, store, False
+        return *content, status, store, False
 
     # Two steps so the minute poll never touches flow-content (see the note on
     # flow-refresh-interval in layout/overlays.py): the first only notices a
@@ -454,6 +456,7 @@ def register_flow_callbacks(app) -> None:
 
     @app.callback(
         Output("flow-content", "children", allow_duplicate=True),
+        Output("flow-content-deep", "children", allow_duplicate=True),
         Output("flow-status", "children", allow_duplicate=True),
         Output("flow-data-store", "data", allow_duplicate=True),
         Input("flow-refresh-signal", "data"),
@@ -471,7 +474,7 @@ def register_flow_callbacks(app) -> None:
         if not payload:
             raise PreventUpdate
         theme = get_theme(theme_name or DEFAULT_THEME)
-        return _render_from_payload(payload, theme), _loaded_status(payload), payload
+        return *_render_from_payload(payload, theme), _loaded_status(payload), payload
 
     @app.callback(
         Output("flow-glossary", "children"),
@@ -566,6 +569,7 @@ def register_flow_callbacks(app) -> None:
 
     @app.callback(
         Output("flow-content", "children", allow_duplicate=True),
+        Output("flow-content-deep", "children", allow_duplicate=True),
         Input("theme-store", "data"),
         State("flow-data-store", "data"),
         prevent_initial_call=True,

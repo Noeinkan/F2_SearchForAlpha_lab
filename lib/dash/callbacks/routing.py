@@ -11,13 +11,11 @@ from lib.dash.routes import (
     build_flow_path,
     build_fundamentals_path,
     build_optimize_path,
-    build_options_path,
     build_ticker_terminal_path,
     extract_path_ticker,
     is_fundamentals_route,
     is_flow_route,
     is_optimize_route,
-    is_options_route,
     normalize_pathname,
 )
 
@@ -77,8 +75,6 @@ def register_routing_callbacks(app) -> None:
             new_path = build_flow_path(symbol)
         elif is_optimize_route(pathname):
             new_path = build_optimize_path(symbol)
-        elif is_options_route(pathname):
-            new_path = build_options_path(symbol)
         else:
             new_path = build_ticker_terminal_path(symbol)
         if normalize_pathname(pathname) == normalize_pathname(new_path):
@@ -89,13 +85,11 @@ def register_routing_callbacks(app) -> None:
         Output('app-url', 'pathname', allow_duplicate=True),
         [Input('close-fundamentals-button', 'n_clicks'),
          Input('nav-workspace-sfa', 'n_clicks'),
-         Input('nav-workspace-fundamentals', 'n_clicks'),
-         Input('nav-workspace-options', 'n_clicks'),
-         Input('options-back-button', 'n_clicks')],
+         Input('nav-workspace-fundamentals', 'n_clicks')],
         State('ticker-dropdown', 'value'),
         prevent_initial_call=True,
     )
-    def navigate_between_routes(close_clicks, nav_sfa, nav_fund, nav_options, options_back, ticker):
+    def navigate_between_routes(close_clicks, nav_sfa, nav_fund, ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
@@ -104,17 +98,14 @@ def register_routing_callbacks(app) -> None:
         symbol = str(ticker or DEFAULT_TICKER).strip().upper()
         if trigger_id == 'nav-workspace-fundamentals':
             return build_fundamentals_path(symbol)
-        if trigger_id == 'nav-workspace-options':
-            return build_options_path(symbol)
-        if trigger_id in ('close-fundamentals-button', 'nav-workspace-sfa', 'options-back-button'):
+        if trigger_id in ('close-fundamentals-button', 'nav-workspace-sfa'):
             return build_ticker_terminal_path(symbol)
         raise PreventUpdate
 
     @app.callback(
         [Output('nav-workspace-sfa', 'className'),
          Output('nav-workspace-fundamentals', 'className'),
-         Output('nav-workspace-flow', 'className'),
-         Output('nav-workspace-options', 'className')],
+         Output('nav-workspace-flow', 'className')],
         Input('app-url', 'pathname'),
         prevent_initial_call=False,
     )
@@ -122,17 +113,10 @@ def register_routing_callbacks(app) -> None:
         base = 'sfa-workspace-nav-btn'
         active = f'{base} is-active'
         if is_fundamentals_route(pathname):
-            return base, active, base, base
+            return base, active, base
         if is_flow_route(pathname):
-            return base, base, active, base
-        if is_options_route(pathname):
-            return base, base, base, active
-        return active, base, base, base
-
-    @app.callback(Output('options-workspace', 'style'),
-                  Input('app-url', 'pathname'), prevent_initial_call=False)
-    def show_options(pathname):
-        return {'display': 'block'} if is_options_route(pathname) else {'display': 'none'}
+            return base, base, active
+        return active, base, base
 
     @app.callback(
         [Output('terminal-shell', 'style'),
@@ -151,7 +135,6 @@ def register_routing_callbacks(app) -> None:
             on_fundamentals
             or is_flow_route(pathname)
             or is_optimize_route(pathname)
-            or is_options_route(pathname)
         )
 
         terminal_style = {'display': 'none'} if on_alt_page else {}

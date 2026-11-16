@@ -25,7 +25,7 @@ from typing import Any, Mapping
 from lib.dash import flow_store
 from lib.dash.flow_dates import display_date
 from lib.fetch_errors import DataFetchError
-from lib.options import theta_history
+from lib.options import history_archive, theta_history
 
 HISTORY_DIR = flow_store.FLOW_DIR.parent / "flow-history"
 MAX_REPLAYS = 20
@@ -94,8 +94,12 @@ def _clean_quote(row: Mapping[str, Any]) -> dict:
 
 
 def _underlying(ticker: str, start: date, end: date) -> dict[str, float]:
+    archived = {d: c for d, c in history_archive.underlying(ticker).items()
+                if start.isoformat() <= d <= end.isoformat()}
+    if archived and min(archived) == start.isoformat() and max(archived) >= end.isoformat():
+        return archived
     try:
-        return theta_history.stock_eod(ticker, start, end)
+        return theta_history.stock_eod(history_archive.theta_symbol(ticker), start, end)
     except theta_history.ThetaUnavailable:
         raise
     except DataFetchError:
@@ -113,7 +117,10 @@ def load_chain(ticker: str, trade_date: date | str, *, refresh: bool = False,
         cached = _read_json(path)
         if isinstance(cached, dict) and cached.get("contracts"):
             return cached
-    rows = theta_history.option_eod(symbol, day, day, expiration="*")
+    # The bulk archive (sfa options-history download) answers without a terminal call.
+    rows = history_archive.chain_on(symbol, day)
+    if not rows:
+        rows = theta_history.option_eod(history_archive.theta_symbol(symbol), day, day, expiration="*")
     contracts = [_clean_quote(r) for r in rows if r["date"] == day.isoformat()]
     if not contracts:
         raise ValueError(f"ThetaData has no option quotes for {symbol} on {day.strftime('%d/%m/%Y')}. "
@@ -221,8 +228,10 @@ def build_replay(ticker: str, trade_date: date | str, legs: list[Mapping[str, An
 
     by_leg: dict[str, dict[str, dict]] = {}
     for leg in legs:
-        rows = theta_history.option_eod(symbol, entry, end, expiration=leg["expiry"],
-                                        strike=leg["strike"], right=leg["cp"])
+        rows = history_archive.contract_history(symbol, leg["expiry"], leg["cp"], leg["strike"], entry, end)
+        if rows is None:
+            rows = theta_history.option_eod(history_archive.theta_symbol(symbol), entry, end,
+                                            expiration=leg["expiry"], strike=leg["strike"], right=leg["cp"])
         by_leg[leg["key"]] = {r["date"]: _clean_quote(r) for r in rows
                               if contract_key(r["expiry"], r["cp"], r["strike"]) == leg["key"]}
     chain = cached_chain(symbol, entry)

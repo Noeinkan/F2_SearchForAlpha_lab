@@ -194,9 +194,9 @@ def test_chain_asks_offer_contract_preview_and_missing_asks_do_not():
     assert "data-multiplier='50'" in blob
     assert "data-cp='C'" in blob and "data-cp='P'" in blob
     report = {"ticker": "TSLA", "spot": 391.0, "option_chains": {"2026-11-20": rows}}
-    preview = str(table_from_report(report, expiry="2026-11-20", theme=get_theme(DEFAULT_THEME)))
-    assert "Select a call or put quote" in preview
-    assert "sfa-flow-chain-preview-chart" in preview
+    body = str(table_from_report(report, expiry="2026-11-20", theme=get_theme(DEFAULT_THEME)))
+    # The payoff preview lives in the quote popup; the strategy in the Flow strategy panel.
+    assert "sfa-flow-chain-preview" not in body
 
 
 def test_render_chain_panel_and_empty_state():
@@ -241,7 +241,7 @@ def test_render_chain_panel_and_empty_state():
     assert "Flagged only" in blob
     assert "Near spot" in blob
     assert "sfa-flow-chain-key" in blob
-    assert "Build a strategy" in blob
+    assert "sfa-flow-strategy" not in blob  # one strategy panel per page, not per chain
 
     body = table_from_report(report, expiry="2026-06-20", theme=theme, flagged_only=True)
     assert "sfa-flow-chain-table" in str(body)
