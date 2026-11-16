@@ -95,6 +95,15 @@ def test_learn_sections_cover_beginner_topics():
     assert all(s["body"] for s in LEARN_SECTIONS)
 
 
+def test_oi_quality_warning_is_visible_on_ticker_card():
+    theme = get_theme(DEFAULT_THEME)
+    card = str(render_ticker_card(_sample_report(
+        oi_unreliable=True, oi_zero_count=236, oi_contract_count=240,
+    ), theme))
+    assert "Open interest unavailable" in card
+    assert "236 of 240" in card
+
+
 def test_score_parts_and_breakdown():
     report = _sample_report(flags=[
         {"kind": "high_unusual", "message": "a"},

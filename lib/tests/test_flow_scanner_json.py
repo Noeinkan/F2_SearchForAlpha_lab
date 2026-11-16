@@ -7,10 +7,14 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
+import pandas as pd
+
+from lib.options.chain_source import ChainSnapshot, ExpiryChain, Quote
 from scripts.flow_scanner import (
     Contract,
     TickerReport,
     UnusualFlag,
+    fetch_ticker_report,
     main,
     reports_to_json,
     write_json_report,
@@ -87,3 +91,26 @@ def test_cli_json_out_flag(monkeypatch):
         assert json_path.is_file()
         data = json.loads(json_path.read_text(encoding="utf-8"))
         assert data["reports"][0]["ticker"] == "NVDA"
+
+
+def test_zero_oi_yahoo_chain_does_not_create_false_unusual_signals(monkeypatch):
+    expiry = date(2026, 11, 20)
+    rows = pd.DataFrame({
+        "strike": range(350, 470), "lastPrice": [2.0] * 120,
+        "bid": [0.0] * 120, "ask": [0.0] * 120,
+        "volume": [100] * 120, "openInterest": [0] * 118 + [50, 100],
+        "impliedVolatility": [0.0625] * 120,
+    })
+    snapshot = ChainSnapshot("TSLA", Quote(spot=390.0), [ExpiryChain(expiry, rows, rows)])
+    monkeypatch.setattr("scripts.flow_scanner.fetch_option_chain", lambda *args: snapshot)
+
+    report = fetch_ticker_report("TSLA", min_size=5000, min_premium=1_000_000)
+    payload = json.loads(reports_to_json([report]))["reports"][0]
+    assert report.oi_unreliable
+    assert report.oi_zero_count == 236
+    assert not any(f.kind in {"unusual", "repeat_call"} for f in report.flags)
+    assert report.unusual_score == 0
+    assert payload["pc_oi_ratio"] is None
+    assert payload["option_chains"][expiry.isoformat()][0]["call"]["open_interest"] is None
+    assert payload["gex_ladders"] == {}
+    assert payload["vanna_model"] == {}

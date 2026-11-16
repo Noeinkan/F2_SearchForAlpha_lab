@@ -156,7 +156,8 @@ def _format_contract_row(contract: Mapping[str, Any]) -> dict[str, Any]:
 
     signal_label, signal_color = contract_signal(contract, flags)
     vol = int(contract.get("volume", 0))
-    oi = int(contract.get("open_interest", 0))
+    raw_oi = contract.get("open_interest")
+    oi = int(raw_oi or 0)
     premium = float(contract.get("premium", 0))
     iv = float(contract.get("iv", 0))
 
@@ -167,7 +168,7 @@ def _format_contract_row(contract: Mapping[str, Any]) -> dict[str, Any]:
         "bid": f'{float(contract.get("bid", 0)):.2f}',
         "ask": f'{float(contract.get("ask", 0)):.2f}',
         "vol": f"{vol:,}",
-        "oi": f"{oi:,}",
+        "oi": f"{oi:,}" if raw_oi is not None else "—",
         "iv": f"{iv * 100:.1f}%",
         "premium": fmt_premium(premium),
         "expiry": expiry,
@@ -1246,6 +1247,8 @@ EXPLAIN_HEAD = {"data-explain-head": ""}
 
 def _deep_dive_children(report: Mapping[str, Any], theme: dict) -> list[Any]:
     """GEX, dealer inventory and vanna charts: the positioning deep dive under the chain."""
+    if report.get("oi_unreliable"):
+        return []
     gex_panel = render_gex_panel(report, theme)
     inventory_panel = render_inventory_panel(report, theme)
     vanna_panel = render_vanna_panel(report, theme)
@@ -1415,6 +1418,17 @@ def render_ticker_card(
             f"({', '.join(failed_expiries)}) and {'is' if len(failed_expiries) == 1 else 'are'} "
             "missing from every figure below.",
             className="sfa-flow-partial-chain",
+            style={"color": theme["accent_orange"], "fontSize": FONT_SIZES["xs"], "margin": "0 0 8px"},
+        ))
+    if report.get("oi_unreliable"):
+        zero = int(report.get("oi_zero_count") or 0)
+        total = int(report.get("oi_contract_count") or 0)
+        card_children.append(html.P(
+            f"Open interest unavailable: Yahoo reported zero OI for {zero:,} of {total:,} "
+            "contracts. OI values and positioning charts are hidden; volume-based activity "
+            "remains visible. OI-based unusual flags and repeat-call signals are paused "
+            "until a later scan provides a usable chain.",
+            className="sfa-flow-oi-warning",
             style={"color": theme["accent_orange"], "fontSize": FONT_SIZES["xs"], "margin": "0 0 8px"},
         ))
     if insight_block is not None:

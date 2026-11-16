@@ -122,6 +122,10 @@ class TickerReport:
     error_kind: Literal["rate_limited", "error"] | None = None
     # Expiries left out of an otherwise good report: { "YYYY-MM-DD": reason }
     failed_expiries: dict[str, str] = field(default_factory=dict)
+    # Yahoo sometimes returns zero OI for almost the entire chain while volume
+    # is populated. In that case OI-based signals cannot be trusted.
+    oi_unreliable: bool = False
+    oi_zero_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +203,7 @@ def detect_flags(
     unusual_by_expiry: dict[date, list[Contract]] = defaultdict(list)
 
     for c in report.contracts:
-        if c.is_unusual():
+        if not report.oi_unreliable and c.is_unusual():
             flags.append(
                 UnusualFlag(
                     kind="unusual",
@@ -271,13 +275,13 @@ def aggregate_strike_ladder(contracts: list[Contract]) -> list[dict]:
     )
 
 
-def _side_quote(contract: Contract, *, flagged: bool) -> dict:
+def _side_quote(contract: Contract, *, flagged: bool, oi_unreliable: bool = False) -> dict:
     return {
         "last": float(contract.last),
         "bid": float(contract.bid),
         "ask": float(contract.ask),
         "volume": int(contract.volume),
-        "open_interest": int(contract.open_interest),
+        "open_interest": None if oi_unreliable else int(contract.open_interest),
         "iv": float(contract.iv),
         "flagged": bool(flagged),
     }
@@ -286,6 +290,8 @@ def _side_quote(contract: Contract, *, flagged: bool) -> dict:
 def build_option_chains(
     contracts: list[Contract],
     flagged_contracts: set[Contract] | frozenset[Contract] | None = None,
+    *,
+    oi_unreliable: bool = False,
 ) -> dict[str, list[dict]]:
     """Pivot full chain into Robinhood-style call|strike|put rows per expiry."""
     flagged = flagged_contracts or frozenset()
@@ -297,7 +303,7 @@ def build_option_chains(
             float(c.strike),
             {"strike": float(c.strike), "call": None, "put": None},
         )
-        side = _side_quote(c, flagged=c in flagged)
+        side = _side_quote(c, flagged=c in flagged, oi_unreliable=oi_unreliable)
         if c.cp == "C":
             row["call"] = side
         else:
@@ -413,12 +419,10 @@ def compute_metrics(report: TickerReport) -> None:
         reverse=True,
     )[:10]
 
-    report.strike_ladders, report.inventory_meta = build_strike_ladders(report.contracts)
-    report.gex_ladders, report.gex_meta = build_gex_ladders(
-        report.contracts,
-        report.spot,
-    )
-    report.vanna_model = build_vanna_model(report.contracts, report.spot)
+    if not report.oi_unreliable:
+        report.strike_ladders, report.inventory_meta = build_strike_ladders(report.contracts)
+        report.gex_ladders, report.gex_meta = build_gex_ladders(report.contracts, report.spot)
+        report.vanna_model = build_vanna_model(report.contracts, report.spot)
 
     hu = sum(1 for f in report.flags if f.kind == "high_unusual")
     bp = sum(1 for f in report.flags if f.kind == "block_premium")
@@ -454,6 +458,12 @@ def fetch_ticker_report(
             wk52_high=quote.wk52_high,
             contracts=contracts,
             failed_expiries=dict(snapshot.failed_expiries),
+        )
+        report.oi_zero_count = sum(c.open_interest == 0 for c in contracts)
+        active = sum(c.volume > 0 for c in contracts)
+        report.oi_unreliable = (
+            len(contracts) >= 100 and active >= 50
+            and report.oi_zero_count / len(contracts) >= 0.9
         )
         report.flags = detect_flags(report, min_premium, min_size)
         compute_metrics(report)
@@ -549,8 +559,9 @@ def print_terminal_summary(reports: list[TickerReport], console: Console, scan_m
             f"52w {report.wk52_low:,.2f}-{report.wk52_high:,.2f})"
         )
         console.print(Text.from_markup(f"[{_header_style(report.pc_vol_ratio)}]{header}[/]"))
+        oi_ratio = "unavailable" if report.oi_unreliable else f"{report.pc_oi_ratio:.2f}"
         console.print(
-            f"  P/C vol {report.pc_vol_ratio:.2f}  P/C OI {report.pc_oi_ratio:.2f}  "
+            f"  P/C vol {report.pc_vol_ratio:.2f}  P/C OI {oi_ratio}  "
             f"score {report.unusual_score}"
         )
 
@@ -725,7 +736,7 @@ def _report_to_dict(report: TickerReport, today: date | None = None) -> dict:
             "bid": c.bid,
             "ask": c.ask,
             "volume": c.volume,
-            "open_interest": c.open_interest,
+            "open_interest": None if report.oi_unreliable else c.open_interest,
             "iv": c.iv,
             "premium": c.premium,
             "expiry": c.expiry.isoformat(),
@@ -743,7 +754,10 @@ def _report_to_dict(report: TickerReport, today: date | None = None) -> dict:
         "wk52_low": report.wk52_low,
         "wk52_high": report.wk52_high,
         "pc_vol_ratio": report.pc_vol_ratio,
-        "pc_oi_ratio": report.pc_oi_ratio,
+        "pc_oi_ratio": None if report.oi_unreliable else report.pc_oi_ratio,
+        "oi_unreliable": report.oi_unreliable,
+        "oi_zero_count": report.oi_zero_count,
+        "oi_contract_count": len(report.contracts),
         "call_pct": report.call_pct,
         "put_pct": report.put_pct,
         "unusual_score": report.unusual_score,
@@ -757,7 +771,9 @@ def _report_to_dict(report: TickerReport, today: date | None = None) -> dict:
         "gex_ladders": report.gex_ladders,
         "gex_meta": report.gex_meta,
         "vanna_model": report.vanna_model,
-        "option_chains": build_option_chains(report.contracts, flagged_set),
+        "option_chains": build_option_chains(
+            report.contracts, flagged_set, oi_unreliable=report.oi_unreliable,
+        ),
         "flags": [{"kind": f.kind, "message": f.message} for f in report.flags],
         "contracts": flagged_contracts,
     }
@@ -807,7 +823,7 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
                 "is_weekly": c.is_weekly(today),
                 "flags": [{"kind": f.kind, "message": f.message} for f in cflags],
             }
-            row_cls = "row-unusual" if c.volume > c.open_interest else ""
+            row_cls = "row-unusual" if not report.oi_unreliable and c.is_unusual() else ""
             prem_cls = _premium_cell_class(c.premium)
             iv_cls = _iv_cell_class(c.iv)
             rows.append(
@@ -815,7 +831,7 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
                 f"<td>{_html_strike_cell(report, c, today)}</td>"
                 f"<td>{_html_type_cell(c.cp)}</td>"
                 f"<td>{c.last:.2f}</td><td>{c.bid:.2f}</td><td>{c.ask:.2f}</td>"
-                f"<td>{c.volume:,}</td><td>{c.open_interest:,}</td>"
+                f"<td>{c.volume:,}</td><td>{'—' if report.oi_unreliable else f'{c.open_interest:,}'}</td>"
                 f'<td class="{iv_cls}">{c.iv * 100:.1f}%</td>'
                 f'<td class="{prem_cls}">{fmt_premium(c.premium)}</td>'
                 f"<td>{_html_expiry_cell(c, today)}</td>"
@@ -843,6 +859,11 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
             _html_th("Signal", "signal"),
         ])
 
+        oi_warning = (
+            f'<p class="oi-warning">Open interest unavailable: Yahoo reported zero OI for '
+            f'{report.oi_zero_count:,} of {len(report.contracts):,} contracts. '
+            'OI-based unusual flags are paused.</p>'
+        ) if report.oi_unreliable else ""
         cards.append(
             f"""<div class="card" data-ticker="{escape(report.ticker)}">
   <div class="card-header">
@@ -862,6 +883,7 @@ def write_html_report(reports: list[TickerReport], output_path: str) -> None:
     <span>Puts {report.put_pct:.1f}%</span>
   </div>
   <p class="top-strikes">Top calls: {escape(top_calls)} | Top puts: {escape(top_puts)}</p>
+  {oi_warning}
   {insights_html}
   <div class="table-wrap">
   <table class="sortable">
@@ -927,6 +949,7 @@ td:nth-child(2) {{ text-align:center; }}
 .badge-b {{ background:#f0883e33; color:#f0883e; }}
 .badge-rc {{ background:#f0c67433; color:#f0c674; }}
 .err {{ color:#f85149; }}
+.oi-warning {{ color:#f0c674; font-size:0.85rem; }}
 footer {{ margin-top:24px; font-size:0.75rem; color:#8b949e; text-align:center; }}
 </style>
 </head>
