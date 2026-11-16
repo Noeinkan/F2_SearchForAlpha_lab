@@ -27,3 +27,5 @@ results/
 .deploy/.env
 .deploy-app/.env
 demo/fixtures.staging/
+# Claude Code's per-machine permission approvals: personal, never shared.
+.claude/settings.local.json
