@@ -206,6 +206,7 @@ def _open_flow(app, pathname, ticker="TSLA"):
         "app-url.pathname": pathname,
         "flow-rescan-button.n_clicks": 0,
         "ticker-dropdown.value": ticker,
+        "flow-state-store.data": {"tickers": [pathname.rsplit("/", 1)[-1].upper()]},
     })
 
 
@@ -228,6 +229,46 @@ def test_a_ticker_without_a_report_says_so_by_name(flow_app):
     assert status == 200
     assert body["response"]["flow-status"]["children"] == "No report for MSFT yet. Click RESCAN NOW."
     assert body["response"]["flow-data-store"]["data"] is None
+
+
+def test_changing_flow_ticker_scans_once_and_keeps_manual_rescan(flow_app, monkeypatch):
+    calls = []
+    monkeypatch.setattr(flow_store, "run_flow_scan", _runner(calls=calls))
+    key = callback_key(flow_app, "flow-content.children", "flow-rescan-button.n_clicks")
+    values = {"app-url.pathname": "/flow/AAPL", "flow-rescan-button.n_clicks": 0,
+              "flow-state-store.data": {"tickers": ["TSLA"]}}
+    status, body = post_callback(flow_app, key, "app-url.pathname", values)
+    assert status == 200
+    assert calls == [["AAPL"]]
+    state = body["response"]["flow-state-store"]["data"]
+    assert state["tickers"] == ["AAPL"]
+    assert body["response"]["flow-data-store"]["data"]["reports"][0]["ticker"] == "AAPL"
+
+    status, _ = post_callback(flow_app, key, "app-url.pathname", {**values, "flow-state-store.data": state})
+    assert status == 200
+    assert calls == [["AAPL"]]
+
+    status, _ = post_callback(flow_app, key, "flow-rescan-button.n_clicks", {
+        **values, "flow-state-store.data": state, "flow-rescan-button.n_clicks": 1})
+    assert status == 200
+    assert calls == [["AAPL"], ["AAPL"]]
+
+    status, body = post_callback(flow_app, key, "app-url.pathname", {
+        **values, "app-url.pathname": "/flow/TSLA", "flow-state-store.data": state})
+    assert status == 200
+    assert calls[-1] == ["TSLA"]
+    assert body["response"]["flow-state-store"]["data"]["tickers"] == ["TSLA"]
+
+
+def test_failed_automatic_scan_clears_previous_ticker_report(flow_app, monkeypatch):
+    monkeypatch.setattr(flow_store, "run_flow_scan", _runner(rc=1))
+    key = callback_key(flow_app, "flow-content.children", "flow-rescan-button.n_clicks")
+    status, body = post_callback(flow_app, key, "app-url.pathname", {
+        "app-url.pathname": "/flow/MSFT", "flow-rescan-button.n_clicks": 0,
+        "flow-state-store.data": {"tickers": ["AAPL"]}})
+    assert status == 200
+    assert body["response"]["flow-data-store"]["data"] is None
+    assert "MSFT" in json.dumps(body["response"]["flow-content"])
 
 
 def test_rescan_throttled_keeps_the_last_good_report_on_screen(flow_app, monkeypatch):

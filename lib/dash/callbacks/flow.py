@@ -345,9 +345,9 @@ def register_flow_callbacks(app) -> None:
         theme = get_theme(theme_name or DEFAULT_THEME)
         on_flow = is_flow_route(pathname)
         href = f"/flow_report.html?ticker={quote(_flow_ticker(pathname, selected_ticker), safe='')}"
-        # Poll for a newer stored report only while the page is open and the
-        # background refresh can actually produce one.
-        poll_disabled = not (on_flow and FLOW_REFRESH_MINUTES > 0)
+        # A scan started by a ticker change can finish while another request
+        # already holds its per-ticker lock, even when scheduled refresh is off.
+        poll_disabled = not on_flow
 
         style = dict(overlay_style or {})
         style.update(
@@ -385,6 +385,7 @@ def register_flow_callbacks(app) -> None:
             Output("flow-status", "children"),
             Output("flow-data-store", "data"),
             Output("flow-rescan-button", "disabled"),
+            Output("flow-state-store", "data"),
         ],
         [Input("flow-rescan-button", "n_clicks"), Input("app-url", "pathname")],
         [
@@ -400,27 +401,40 @@ def register_flow_callbacks(app) -> None:
         theme = get_theme(theme_name or DEFAULT_THEME)
 
         if not is_flow_route(pathname):
-            return no_update, no_update, no_update, no_update, False
+            return no_update, no_update, no_update, no_update, False, no_update
 
         ticker = _flow_ticker(pathname, selected_ticker)
+        state = dict(flow_state or {})
+        recent = state.get("tickers")
+        last_ticker = recent[-1] if isinstance(recent, list) and recent else None
+        manual = triggered == "flow-rescan-button" and bool(rescan_clicks)
+        auto = last_ticker != ticker
 
-        if triggered != "flow-rescan-button" or not rescan_clicks:
+        if not manual and not auto:
             payload = _with_epoch(flow_store.load_report(ticker))
             if payload:
-                return *_render_from_payload(payload, theme), _loaded_status(payload), payload, False
+                return *_render_from_payload(payload, theme), _loaded_status(payload), payload, False, no_update
             message = f"No report for {ticker} yet. Click RESCAN NOW."
-            return render_flow_placeholder(theme, message), [], message, None, False
+            return render_flow_placeholder(theme, message), [], message, None, False, no_update
 
-        outcome = flow_store.scan_into_store(ticker)
+        state["tickers"] = [ticker]
+        outcome = flow_store.scan_into_store(ticker, blocking=manual)
+        if outcome is None:
+            payload = _with_epoch(flow_store.load_report(ticker))
+            content = _render_from_payload(payload, theme) if payload else (
+                render_flow_placeholder(theme, f"Scanning {ticker}…"), [])
+            return *content, f"Scan already in progress for {ticker}", payload, False, state
         payload = _with_epoch(outcome.payload)
-        content = _render_from_payload(payload, theme) if payload else (no_update, no_update)
-        store = payload if payload else no_update
+        content = _render_from_payload(payload, theme) if payload else (
+            render_flow_placeholder(theme, f"No report for {ticker} yet. Click RESCAN NOW."), [])
+        store = payload
 
         if outcome.error_kind == "scan_failed":
-            return *content, outcome.message, store, False
+            return *content, outcome.message, store, False, state
 
         dashboard_state.flow_last_scan_at = datetime.now()
         dashboard_state.flow_last_scan_path = str(flow_store.html_path(ticker))
+        state["last_scan_at"] = datetime.now().isoformat(timespec="seconds")
         if outcome.error_kind is None:
             status = f"Rescanned {ticker} at {datetime.now().strftime('%H:%M:%S')}"
         elif not outcome.promoted:
@@ -431,7 +445,7 @@ def register_flow_callbacks(app) -> None:
             status = f"RATE LIMITED — RESCAN {ticker} in a minute"
         else:
             status = f"Rescan of {ticker} failed"
-        return *content, status, store, False
+        return *content, status, store, False, state
 
     # Two steps so the minute poll never touches flow-content (see the note on
     # flow-refresh-interval in layout/overlays.py): the first only notices a

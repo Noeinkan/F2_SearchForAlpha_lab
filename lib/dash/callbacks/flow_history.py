@@ -11,7 +11,8 @@ from dash.exceptions import PreventUpdate
 
 from lib.dash import flow_history, flow_paper, flow_store
 from lib.dash.dash_config import DEFAULT_THEME, get_theme
-from lib.dash.flow_chain import DEFAULT_CHAIN_VIEW, default_chain_expiry, expiry_option_label, table_from_report
+from lib.dash.flow_chain import (DEFAULT_CHAIN_VIEW, default_chain_expiry, expiry_option_label,
+                                 render_expiry_navigation, table_from_report)
 from lib.dash.flow_dates import display_date
 from lib.dash.routes import extract_path_ticker, is_flow_route
 from lib.fetch_errors import DataFetchError
@@ -161,6 +162,7 @@ def register_flow_history_callbacks(app) -> None:
     @app.callback(
         Output({"type": "flow-chain-expiry", "index": MATCH}, "options"),
         Output({"type": "flow-chain-expiry", "index": MATCH}, "value"),
+        Output({"type": "flow-chain-expiry-nav", "index": MATCH}, "children"),
         Input({"type": "flow-chain-source", "index": MATCH}, "value"),
         Input({"type": "flow-chain-history", "index": MATCH}, "data"),
         State({"type": "flow-chain-source", "index": MATCH}, "id"),
@@ -172,7 +174,7 @@ def register_flow_history_callbacks(app) -> None:
         if source == "historical":
             report = _historical_report(ticker, history)
             if not report:
-                return [], None
+                return [], None, render_expiry_navigation({}, None)
             day = date.fromisoformat(report["historical"]["date"])
         else:
             report = _current_report(flow_data, ticker)
@@ -182,7 +184,8 @@ def register_flow_history_callbacks(app) -> None:
         chains = report.get("option_chains") or {}
         options = [{"label": expiry_option_label(k, chains.get(k) or [], today=day), "value": k}
                    for k in sorted(chains)]
-        return options, default_chain_expiry(chains, today=day)
+        selected = default_chain_expiry(chains, today=day)
+        return options, selected, render_expiry_navigation(chains, selected, today=day)
 
     @app.callback(
         Output({"type": "flow-chain-body", "index": MATCH}, "children"),

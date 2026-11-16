@@ -28,6 +28,7 @@ from typing import Any, Callable
 import pandas as pd
 import yfinance as yf
 
+from lib.options.expiry_selection import flow_expiries
 from lib.fetch_errors import (
     DataFetchError,
     TransientFetchError,
@@ -140,7 +141,7 @@ def fetch_option_chain(
     ticker_factory: Callable[[str], Any] | None = None,
     sleep: Sleep = time.sleep,
 ) -> ChainSnapshot:
-    """Fetch the nearest ``expirations`` chains for ``ticker``.
+    """Fetch the nearest ``expirations`` chains, or sparse horizons when zero.
 
     Raises ``DataFetchError`` (``TransientFetchError`` when retryable) if the
     expiry list cannot be read, or if every listed expiry fails. A ticker with
@@ -149,9 +150,8 @@ def fetch_option_chain(
     symbol = ticker.upper()
     tk = (ticker_factory or yf.Ticker)(symbol)
 
-    expiries = list(
-        _yahoo_call(lambda: tk.options or (), f"Option expiries for {symbol}", sleep)
-    )[: max(0, expirations)]
+    listed = list(_yahoo_call(lambda: tk.options or (), f"Option expiries for {symbol}", sleep))
+    expiries = flow_expiries(listed, date.today()) if expirations == 0 else listed[:max(0, expirations)]
     quote = fetch_quote(tk)
 
     snapshot = ChainSnapshot(ticker=symbol, quote=quote)

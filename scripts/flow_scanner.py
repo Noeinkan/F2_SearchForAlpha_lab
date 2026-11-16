@@ -1171,7 +1171,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Re-run every --interval seconds during market hours (9:30-16:00 ET)",
     )
     p.add_argument("--interval", type=int, default=60, help="Watch poll interval seconds (default 60)")
-    p.add_argument("--expirations", type=int, default=3, help="Option expirations per ticker (default 3)")
+    p.add_argument("--expirations", type=int, default=3,
+                   help="Option expirations per ticker (default 3; 0 selects this week plus 2w/1m/3m/6m/12m)")
     p.add_argument("--output", default="flow_report.html", help="HTML report path")
     p.add_argument("--json-out", default=None, metavar="PATH", help="JSON report path for Dash dashboard")
     p.add_argument("--min-premium", type=float, default=1_000_000, help="Block premium threshold")

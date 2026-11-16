@@ -14,6 +14,7 @@ from lib.dash.flow_chain import (
     filter_chain_rows,
     flag_reasons,
     render_chain_panel,
+    render_expiry_navigation,
     select_chain_rows,
     table_from_report,
 )
@@ -127,7 +128,21 @@ def test_default_expiry_skips_the_last_week_and_labels_say_days_and_flags():
     assert default_chain_expiry(chains, today=today) == "2026-11-27"
     # Nothing a week out: the furthest listed, not tomorrow's.
     assert default_chain_expiry({"2026-11-16": [], "2026-11-18": [], "2026-11-20": []}, today=today) == "2026-11-20"
-    assert expiry_option_label("2026-11-27", chains["2026-11-27"], today=today) == "27/11/2026 · 12d · 1 flagged"
+    assert expiry_option_label("2026-11-27", chains["2026-11-27"], today=today) == "27 Nov · 12d"
+
+
+def test_expiry_navigation_shows_exact_horizon_dates_and_available_months():
+    chains = {key: [] for key in ("2026-11-16", "2026-11-18", "2026-11-20",
+                                    "2026-11-27", "2026-12-18", "2027-02-19",
+                                    "2027-05-21", "2027-11-19")}
+    nav = str(render_expiry_navigation(chains, "2026-11-20", today=date(2026, 11, 16)))
+    assert "Prossimi 7 giorni" in nav and "Orizzonte" in nav
+    assert "data-expiry='2026-11-27'" in nav
+    assert "data-expiry='2027-11-19'" in nav
+    assert "Scadenza: 20/11/2026" in nav
+    assert "data-month='2027-11'" in nav
+    assert "2026-11-27" not in str(render_expiry_navigation(
+        {"2026-11-16": []}, "2026-11-16", today=date(2026, 11, 16)))
 
 
 def test_flagged_cells_carry_the_reason_on_hover():
@@ -238,6 +253,11 @@ def test_render_chain_panel_and_empty_state():
     blob = str(panel)
     assert "sfa-flow-chain" in blob
     assert "flow-chain-expiry" in blob
+    assert "2 settimane" in blob
+    assert "12 mesi" in blob
+    assert "Mese / anno" in blob
+    assert "flow-chain-side" in blob
+    assert "Entrambe" in blob
     assert "Flagged only" in blob
     assert "Near spot" in blob
     assert "sfa-flow-chain-key" in blob
@@ -245,6 +265,7 @@ def test_render_chain_panel_and_empty_state():
 
     body = table_from_report(report, expiry="2026-06-20", theme=theme, flagged_only=True)
     assert "sfa-flow-chain-table" in str(body)
+    assert "data-strike='100.0'" in str(body)
 
 
 def test_ticker_card_narrative_includes_chain_before_education_order():

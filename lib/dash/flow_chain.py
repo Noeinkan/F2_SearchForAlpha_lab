@@ -12,6 +12,7 @@ from lib.dash.flow_glossary import FLAG_DEFINITIONS
 from lib.dash.flow_inventory import nearest_expiry
 from lib.dash.flow_dates import display_date
 from lib.options.theta_history import history_window
+from lib.options.expiry_selection import HORIZONS, available_dates, closest_expiry, horizon_target
 
 # Default expiry skips the last few days: a chain about to expire quotes
 # near-meaningless IVs (2% on one side, 150% on the other) and almost no OTM size.
@@ -156,15 +157,67 @@ def default_chain_expiry(
 
 
 def expiry_option_label(expiry: str, rows: Sequence[Mapping[str, Any]], *, today: date | None = None) -> str:
-    """Dropdown label: ``2026-11-21 · 6d · 4 flagged``."""
-    parts = [display_date(expiry)]
+    """Compact tab label with date and days to expiry."""
+    try:
+        day = date.fromisoformat(str(expiry)[:10])
+        label = f"{day.day} {day.strftime('%b')}"
+    except ValueError:
+        label = display_date(expiry)
+    parts = [label]
     days = _days_to(expiry, today or date.today())
     if days is not None:
         parts.append("expired" if days < 0 else f"{days}d")
-    flagged = sum(1 for r in rows if _row_is_flagged(r))
-    if flagged:
-        parts.append(f"{flagged} flagged")
     return " · ".join(parts)
+
+
+def render_expiry_navigation(chains: Mapping[str, Any], selected: str | None,
+                             *, today: date | None = None) -> html.Div:
+    """Week dates, horizon shortcuts and available longer months for one chain."""
+    today = today or date.today()
+    dates = available_dates(chains, today)
+    week = [key for key in dates if (date.fromisoformat(key[:10]) - today).days <= 7]
+    week_label = "Prossimi 7 giorni" if week else "Prime scadenze"
+    if not week:
+        week = dates[:3]
+
+    def _button(label: str, expiry: str | None, *, horizon: bool = False) -> html.Button:
+        exact = display_date(expiry) if expiry else "Non disponibile"
+        return html.Button(
+            [html.Span(label), html.Small(exact)] if horizon else label,
+            type="button", disabled=not expiry,
+            className="sfa-flow-chain-date-button" + (" sfa-flow-chain-date-active" if expiry == selected else ""),
+            title=exact,
+            **{"data-expiry": expiry or ""},
+        )
+
+    shortcuts = []
+    for label, months in HORIZONS:
+        target = horizon_target(today, months)
+        nearest = closest_expiry(dates, target)
+        gap = abs((date.fromisoformat(nearest[:10]) - target).days) if nearest else 10**9
+        tolerance = max(7, round((target - today).days * 0.25))
+        shortcuts.append(_button(label, nearest if gap <= tolerance else None, horizon=True))
+
+    months = sorted({key[:7] for key in dates if (date.fromisoformat(key[:10]) - today).days > 7})
+    month_select = html.Details([
+        html.Summary("Mese / anno", className="sfa-flow-chain-month-summary"),
+        html.Div([
+            html.Button(date.fromisoformat(month + "-01").strftime("%B %Y"), type="button",
+                        className="sfa-flow-chain-month-button", **{"data-month": month,
+                                                                   "data-expiry": next(key for key in dates if key[:7] == month)})
+            for month in months
+        ], className="sfa-flow-chain-month-list"),
+    ], className="sfa-flow-chain-month-select" + (" sfa-flow-chain-month-empty" if not months else ""))
+    return html.Div([
+        html.Div([html.Span(week_label, className="sfa-flow-chain-date-heading"),
+                  *[_button(expiry_option_label(key, chains.get(key) or [], today=today), key) for key in week]],
+                 className="sfa-flow-chain-week-dates"),
+        html.Div([html.Span("Orizzonte", className="sfa-flow-chain-date-heading"), *shortcuts],
+                 className="sfa-flow-chain-horizons"),
+        html.Div([month_select, html.Span(f"Scadenza: {display_date(selected) if selected else '—'}",
+                                          className="sfa-flow-chain-selected-date")],
+                 className="sfa-flow-chain-date-footer"),
+    ], className="sfa-flow-chain-expiry-nav")
 
 
 def flag_reasons(report: Mapping[str, Any], expiry: str | None) -> dict[tuple[float, str], str]:
@@ -370,6 +423,7 @@ def build_chain_table(
                     *_side_cells(put, cp="P", strike=strike, reason=reasons.get((strike, "P")), observed=observed),
                 ],
                 className=" ".join(row_classes),
+                **{"data-strike": str(strike)},
             )
         )
 
@@ -553,15 +607,6 @@ def render_chain_panel(report: Mapping[str, Any], theme: dict, *, today: date | 
                     ),
                     html.Div(
                         [
-                            dcc.Dropdown(
-                                id={"type": "flow-chain-expiry", "index": ticker},
-                                options=expiry_options,
-                                value=expiry,
-                                clearable=False,
-                                searchable=False,
-                                className="sfa-flow-chain-expiry",
-                                style={"minWidth": "230px", "fontSize": "12px"},
-                            ),
                             dcc.RadioItems(
                                 id={"type": "flow-chain-filter", "index": ticker},
                                 options=[
@@ -587,6 +632,23 @@ def render_chain_panel(report: Mapping[str, Any], theme: dict, *, today: date | 
                 className="sfa-flow-chain-header",
             ),
             render_history_controls(ticker, today=today),
+            dcc.RadioItems(
+                id={"type": "flow-chain-expiry", "index": ticker},
+                options=expiry_options,
+                value=expiry,
+                className="sfa-flow-chain-expiry",
+            ),
+            html.Div(render_expiry_navigation(chains, expiry, today=today),
+                     id={"type": "flow-chain-expiry-nav", "index": ticker}),
+            html.Div([
+                dcc.RadioItems(
+                    id={"type": "flow-chain-side", "index": ticker},
+                    options=[{"label": "Call", "value": "call"},
+                             {"label": "Put", "value": "put"},
+                             {"label": "Entrambe", "value": "both"}],
+                    value="both", inline=True, className="sfa-flow-chain-side-filter",
+                ),
+            ], className="sfa-flow-chain-display-controls"),
             render_chain_legend(),
             html.Div(
                 table_from_report(report, expiry=expiry, theme=theme, view=DEFAULT_CHAIN_VIEW),

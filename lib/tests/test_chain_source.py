@@ -11,6 +11,7 @@ import pytest
 
 from lib.fetch_errors import DataFetchError, TransientFetchError
 from lib.options import chain_source
+from lib.options.expiry_selection import flow_expiries
 from lib.options.chain_source import (
     FALLBACK_SYMBOLS,
     ChainSnapshot,
@@ -99,6 +100,14 @@ def test_expirations_caps_the_expiry_list():
     snapshot, _ = _fetch(tk, expirations=2)
     assert len(snapshot.chains) == 2
     assert "2026-10-02" not in tk.chain_calls
+
+
+def test_flow_expiries_keep_this_week_and_sparse_long_horizons():
+    listed = ["2026-11-16", "2026-11-18", "2026-11-20", "2026-11-27",
+              "2026-12-18", "2027-02-19", "2027-05-21", "2027-11-19"]
+    assert flow_expiries(listed, date(2026, 11, 16)) == listed
+    listed.insert(4, "2026-12-04")
+    assert "2026-12-04" not in flow_expiries(listed, date(2026, 11, 16))
 
 
 def test_a_bad_expiry_is_skipped_not_fatal_and_not_retried():

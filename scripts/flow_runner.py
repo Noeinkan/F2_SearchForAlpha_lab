@@ -15,8 +15,8 @@ def run_flow_scan(
     output_path: str | Path,
     *,
     quiet: bool = True,
-    expirations: int = 3,
-    timeout: int = 180,
+    expirations: int = 0,
+    timeout: int = 300,
     json_path: str | Path | None = None,
 ) -> tuple[int, str]:
     """Run flow_scanner.py; return (returncode, tail_of_combined_output)."""
@@ -46,6 +46,6 @@ def run_flow_scan(
         tail = (result.stdout or "") + (result.stderr or "")
         return result.returncode, tail[-500:]
     except subprocess.TimeoutExpired:
-        return 124, "Scan timed out (>180s)"
+        return 124, f"Scan timed out (>{timeout}s)"
     except FileNotFoundError as exc:
         return 127, str(exc)
