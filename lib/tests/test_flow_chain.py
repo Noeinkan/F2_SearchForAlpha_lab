@@ -136,10 +136,10 @@ def test_expiry_navigation_shows_exact_horizon_dates_and_available_months():
                                     "2026-11-27", "2026-12-18", "2027-02-19",
                                     "2027-05-21", "2027-11-19")}
     nav = str(render_expiry_navigation(chains, "2026-11-20", today=date(2026, 11, 16)))
-    assert "Prossimi 7 giorni" in nav and "Orizzonte" in nav
+    assert "Next 7 days" in nav and "Horizon" in nav
     assert "data-expiry='2026-11-27'" in nav
     assert "data-expiry='2027-11-19'" in nav
-    assert "Scadenza: 20/11/2026" in nav
+    assert "Expiry: 20/11/2026" in nav
     assert "data-month='2027-11'" in nav
     assert "2026-11-27" not in str(render_expiry_navigation(
         {"2026-11-16": []}, "2026-11-16", today=date(2026, 11, 16)))
@@ -253,11 +253,11 @@ def test_render_chain_panel_and_empty_state():
     blob = str(panel)
     assert "sfa-flow-chain" in blob
     assert "flow-chain-expiry" in blob
-    assert "2 settimane" in blob
-    assert "12 mesi" in blob
-    assert "Mese / anno" in blob
+    assert "2 weeks" in blob
+    assert "12 months" in blob
+    assert "Month / year" in blob
     assert "flow-chain-side" in blob
-    assert "Entrambe" in blob
+    assert "Both" in blob
     assert "Flagged only" in blob
     assert "Near spot" in blob
     assert "sfa-flow-chain-key" in blob

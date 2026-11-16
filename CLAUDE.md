@@ -20,6 +20,7 @@ Every task that touches code, config or `lib/dash/assets/` ends with a restart o
 - **sfa research in Cursor:** read [docs/openclaw-research.md](docs/openclaw-research.md) first (`@`-mention it)
 
 ## Non-obvious essentials
+- **UI language: English only.** All user-visible website copy, including Flow labels, tooltips, status messages and text updated by JavaScript, must be in English.
 - **Dashboard fetch windows end tomorrow** (`full_history_window`): yfinance's `end` is exclusive, so an end of today dropped today's bar. During the session the last bar is today's, still forming. Daily cache files go stale after an hour, not at midnight, and a page opened after the session moved on is sent the current snapshot on load (`_page_load_decision` in `callbacks/data_loading.py`), because the layout is built once at server start
 - OHLCV is split- and dividend-adjusted, and corporate-action columns are stripped — [docs/data-adjustment.md](docs/data-adjustment.md). Yahoo is the only wired vendor; the seam for adding another is `_yahoo_history` in `lib/data_processing.py`, and [docs/data-vendors.md](docs/data-vendors.md) records why no free second source exists today
 - Transient fetch failures (429/5xx/timeout) are retried then raised as `TransientFetchError` (`lib/fetch_errors.py`); the dashboard renders them as `RATE LIMITED`, distinct from a bad ticker

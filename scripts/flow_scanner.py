@@ -15,10 +15,12 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from html import escape
+from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import yfinance as yf
 from rich.console import Console
 from rich.progress_bar import ProgressBar
 from rich.table import Table
@@ -1208,6 +1210,12 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # yfinance's default SQLite cache lives in the user's LocalAppData. The
+    # dashboard's scanner subprocess may read there but cannot write there.
+    cache_dir = Path(__file__).resolve().parents[1] / "state" / "yfinance-cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    yf.set_tz_cache_location(str(cache_dir))
 
     if args.watch and args.scan:
         parser.error("--watch and --scan are mutually exclusive (use --watch with tickers or --watchlist)")

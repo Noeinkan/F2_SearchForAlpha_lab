@@ -6,7 +6,7 @@ from calendar import monthrange
 from datetime import date, timedelta
 from typing import Iterable
 
-HORIZONS = (("2 settimane", 0), ("1 mese", 1), ("3 mesi", 3), ("6 mesi", 6), ("12 mesi", 12))
+HORIZONS = (("2 weeks", 0), ("1 month", 1), ("3 months", 3), ("6 months", 6), ("12 months", 12))
 
 
 def add_months(day: date, months: int) -> date:

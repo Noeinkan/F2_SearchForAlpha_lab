@@ -187,6 +187,18 @@ def test_most_actives_falls_back_when_the_screener_fails(monkeypatch):
 # --- the scanner on top of the source -------------------------------------------------
 
 
+def test_scanner_configures_writable_yahoo_cache_before_fetch(tmp_path, monkeypatch):
+    from scripts import flow_scanner
+
+    locations = []
+    monkeypatch.setattr(flow_scanner, "__file__", str(tmp_path / "scripts" / "flow_scanner.py"))
+    monkeypatch.setattr(flow_scanner.yf, "set_tz_cache_location", locations.append)
+    monkeypatch.setattr(flow_scanner, "scan_tickers", lambda *_args: [])
+    assert flow_scanner.main(["AAPL", "--no-html", "--quiet"]) == 0
+    assert locations == [str(tmp_path / "state" / "yfinance-cache")]
+    assert (tmp_path / "state" / "yfinance-cache").is_dir()
+
+
 def test_scanner_marks_a_throttled_ticker_rate_limited(monkeypatch):
     from scripts import flow_scanner
 

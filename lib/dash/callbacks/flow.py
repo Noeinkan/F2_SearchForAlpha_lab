@@ -531,7 +531,7 @@ def register_flow_callbacks(app) -> None:
         prevent_initial_call=True,
     )
 
-    # Report age badge: "Data 16:12 · 3 min ago", green → amber → red as it ages.
+    # Report age badge: "Updated 16:12 · 3 min ago", green → amber → red as it ages.
     app.clientside_callback(
         """
         function(data, _tick) {
@@ -550,7 +550,7 @@ def register_flow_callbacks(app) -> None:
                 when = stamp.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'}) + ' ' + when;
             }
             var level = mins < 20 ? 'fresh' : (mins < 120 ? 'aging' : 'stale');
-            return ['Data ' + when + ' · ' + ago, 'sfa-flow-age sfa-flow-age-' + level];
+            return ['Updated ' + when + ' · ' + ago, 'sfa-flow-age sfa-flow-age-' + level];
         }
         """,
         Output("flow-data-age", "children"),

@@ -176,12 +176,12 @@ def render_expiry_navigation(chains: Mapping[str, Any], selected: str | None,
     today = today or date.today()
     dates = available_dates(chains, today)
     week = [key for key in dates if (date.fromisoformat(key[:10]) - today).days <= 7]
-    week_label = "Prossimi 7 giorni" if week else "Prime scadenze"
+    week_label = "Next 7 days" if week else "Earliest expiries"
     if not week:
         week = dates[:3]
 
     def _button(label: str, expiry: str | None, *, horizon: bool = False) -> html.Button:
-        exact = display_date(expiry) if expiry else "Non disponibile"
+        exact = display_date(expiry) if expiry else "Unavailable"
         return html.Button(
             [html.Span(label), html.Small(exact)] if horizon else label,
             type="button", disabled=not expiry,
@@ -200,7 +200,7 @@ def render_expiry_navigation(chains: Mapping[str, Any], selected: str | None,
 
     months = sorted({key[:7] for key in dates if (date.fromisoformat(key[:10]) - today).days > 7})
     month_select = html.Details([
-        html.Summary("Mese / anno", className="sfa-flow-chain-month-summary"),
+        html.Summary("Month / year", className="sfa-flow-chain-month-summary"),
         html.Div([
             html.Button(date.fromisoformat(month + "-01").strftime("%B %Y"), type="button",
                         className="sfa-flow-chain-month-button", **{"data-month": month,
@@ -212,9 +212,9 @@ def render_expiry_navigation(chains: Mapping[str, Any], selected: str | None,
         html.Div([html.Span(week_label, className="sfa-flow-chain-date-heading"),
                   *[_button(expiry_option_label(key, chains.get(key) or [], today=today), key) for key in week]],
                  className="sfa-flow-chain-week-dates"),
-        html.Div([html.Span("Orizzonte", className="sfa-flow-chain-date-heading"), *shortcuts],
+        html.Div([html.Span("Horizon", className="sfa-flow-chain-date-heading"), *shortcuts],
                  className="sfa-flow-chain-horizons"),
-        html.Div([month_select, html.Span(f"Scadenza: {display_date(selected) if selected else '—'}",
+        html.Div([month_select, html.Span(f"Expiry: {display_date(selected) if selected else '—'}",
                                           className="sfa-flow-chain-selected-date")],
                  className="sfa-flow-chain-date-footer"),
     ], className="sfa-flow-chain-expiry-nav")
@@ -645,7 +645,7 @@ def render_chain_panel(report: Mapping[str, Any], theme: dict, *, today: date | 
                     id={"type": "flow-chain-side", "index": ticker},
                     options=[{"label": "Call", "value": "call"},
                              {"label": "Put", "value": "put"},
-                             {"label": "Entrambe", "value": "both"}],
+                             {"label": "Both", "value": "both"}],
                     value="both", inline=True, className="sfa-flow-chain-side-filter",
                 ),
             ], className="sfa-flow-chain-display-controls"),
