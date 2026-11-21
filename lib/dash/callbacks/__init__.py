@@ -25,6 +25,7 @@ from .fundamentals import register_fundamentals_callbacks
 from .flow import register_flow_callbacks
 from .flow_strategy import register_flow_strategy_callbacks
 from .routing import register_routing_callbacks
+from .sector_flows import register_sector_flows_callbacks
 from .misc_ui import register_misc_callbacks
 from .layout import register_layout_callbacks
 from .command_palette import register_command_palette_callbacks
@@ -58,6 +59,7 @@ def register_callbacks(app) -> None:
     register_routing_callbacks(app)
     register_fundamentals_callbacks(app)
     register_flow_callbacks(app)
+    register_sector_flows_callbacks(app)
     register_flow_strategy_callbacks(app)
     register_misc_callbacks(app)
     register_layout_callbacks(app)

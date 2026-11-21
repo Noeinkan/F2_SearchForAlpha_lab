@@ -337,6 +337,7 @@ DEFAULT_BAR_INTERVAL = "1d"
 ROUTE_TERMINAL = '/'
 ROUTE_FUNDAMENTALS = '/fundamentals'
 ROUTE_FLOW = '/flow'
+ROUTE_SECTOR_FLOWS = '/sector-flows'
 ROUTE_OPTIMIZE = '/optimize'
 ROUTE_TICKER_TERMINAL = '/ticker'
 

@@ -65,6 +65,13 @@ def _create_header(styles: dict, theme: dict, bootstrap: BootstrapSnapshot | Non
                         title='Unusual options flow scanner',
                         **{'aria-label': 'Open flow scanner'},
                     ),
+                    html.Button(
+                        'SECTOR FLOWS',
+                        id='nav-workspace-sector-flows',
+                        n_clicks=0,
+                        className='sfa-workspace-nav-btn',
+                        title='Weekly sector ETF flows',
+                    ),
                 ],
                 className='sfa-workspace-nav',
                 role='navigation',

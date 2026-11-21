@@ -1,0 +1,43 @@
+.sfa-sector-flows {
+    position: fixed;
+    inset: 44px 0 0;
+    overflow: auto;
+    padding: clamp(16px, 4vw, 52px);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.sfa-sector-flows h1 { font-size: 1.75rem; }
+.sfa-sector-flows p { color: var(--text-secondary); }
+
+.sfa-sector-flows-table {
+    max-width: 70rem;
+    overflow-x: auto;
+    margin: 1.5rem 0;
+}
+
+.sfa-sector-flows table {
+    width: 100%;
+    border-collapse: collapse;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.sfa-sector-flows caption {
+    caption-side: top;
+    color: var(--text-secondary);
+}
+
+.sfa-sector-flows th,
+.sfa-sector-flows td {
+    border-bottom: 1px solid var(--border-primary);
+    padding: 0.65rem 0.8rem;
+    text-align: right;
+}
+
+.sfa-sector-flows th:nth-child(-n+2),
+.sfa-sector-flows td:nth-child(2) { text-align: left; }
+.sfa-sector-flows thead { background: var(--table-header-bg); }
+.sfa-sector-flows .inflow { color: var(--up); }
+.sfa-sector-flows .outflow { color: var(--down); }
+.sfa-sector-flows-note { max-width: 72ch; font-size: 0.875rem; }

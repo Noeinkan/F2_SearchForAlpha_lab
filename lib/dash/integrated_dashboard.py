@@ -305,6 +305,8 @@ def create_app() -> dash.Dash:
         "/flow",
         "/flow/",
         "/flow/<ticker>",
+        "/sector-flows",
+        "/sector-flows/",
         "/optimize",
         "/optimize/",
         "/optimize/<ticker>",

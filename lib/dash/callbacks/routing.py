@@ -6,7 +6,7 @@ from dash import callback_context, no_update
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, get_theme
+from lib.dash.dash_config import DEFAULT_THEME, DEFAULT_TICKER, ROUTE_SECTOR_FLOWS, get_theme
 from lib.dash.routes import (
     build_flow_path,
     build_fundamentals_path,
@@ -16,6 +16,7 @@ from lib.dash.routes import (
     is_fundamentals_route,
     is_flow_route,
     is_optimize_route,
+    is_sector_flows_route,
     normalize_pathname,
 )
 
@@ -66,7 +67,7 @@ def register_routing_callbacks(app) -> None:
         so the shared symbol-search modal can change symbols without bouncing
         back to the chart shell.
         """
-        if not ticker:
+        if not ticker or is_sector_flows_route(pathname):
             raise PreventUpdate
         symbol = str(ticker).strip().upper()
         if is_fundamentals_route(pathname):
@@ -85,17 +86,20 @@ def register_routing_callbacks(app) -> None:
         Output('app-url', 'pathname', allow_duplicate=True),
         [Input('close-fundamentals-button', 'n_clicks'),
          Input('nav-workspace-sfa', 'n_clicks'),
-         Input('nav-workspace-fundamentals', 'n_clicks')],
+         Input('nav-workspace-fundamentals', 'n_clicks'),
+         Input('nav-workspace-sector-flows', 'n_clicks')],
         State('ticker-dropdown', 'value'),
         prevent_initial_call=True,
     )
-    def navigate_between_routes(close_clicks, nav_sfa, nav_fund, ticker):
+    def navigate_between_routes(close_clicks, nav_sfa, nav_fund, nav_sectors, ticker):
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
 
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         symbol = str(ticker or DEFAULT_TICKER).strip().upper()
+        if trigger_id == 'nav-workspace-sector-flows':
+            return ROUTE_SECTOR_FLOWS
         if trigger_id == 'nav-workspace-fundamentals':
             return build_fundamentals_path(symbol)
         if trigger_id in ('close-fundamentals-button', 'nav-workspace-sfa'):
@@ -105,7 +109,8 @@ def register_routing_callbacks(app) -> None:
     @app.callback(
         [Output('nav-workspace-sfa', 'className'),
          Output('nav-workspace-fundamentals', 'className'),
-         Output('nav-workspace-flow', 'className')],
+         Output('nav-workspace-flow', 'className'),
+         Output('nav-workspace-sector-flows', 'className')],
         Input('app-url', 'pathname'),
         prevent_initial_call=False,
     )
@@ -113,10 +118,12 @@ def register_routing_callbacks(app) -> None:
         base = 'sfa-workspace-nav-btn'
         active = f'{base} is-active'
         if is_fundamentals_route(pathname):
-            return base, active, base
+            return base, active, base, base
         if is_flow_route(pathname):
-            return base, base, active
-        return active, base, base
+            return base, base, active, base
+        if is_sector_flows_route(pathname):
+            return base, base, base, active
+        return active, base, base, base
 
     @app.callback(
         [Output('terminal-shell', 'style'),
@@ -135,6 +142,7 @@ def register_routing_callbacks(app) -> None:
             on_fundamentals
             or is_flow_route(pathname)
             or is_optimize_route(pathname)
+            or is_sector_flows_route(pathname)
         )
 
         terminal_style = {'display': 'none'} if on_alt_page else {}
