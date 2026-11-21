@@ -22,6 +22,7 @@ from .header import _create_header, _create_status_bar
 from .overlays import _create_fundamentals_overlay, _create_flow_overlay
 from .optimizer_workspace import _create_optimize_overlay
 from .data_overlay import _create_data_overlay
+from .sector_flows import create_sector_flows_layout
 from .sidebar import _create_sidebar
 from .chart_area import _create_chart_area
 from .right_panel import _create_right_panel
@@ -222,6 +223,7 @@ def create_dashboard_layout(theme: dict, bootstrap: BootstrapSnapshot | None = N
 
         _create_fundamentals_overlay(styles, theme),
         _create_flow_overlay(styles, theme),
+        create_sector_flows_layout(),
         _create_optimize_overlay(styles, theme),
         _create_data_overlay(styles, theme),
 

@@ -6,6 +6,7 @@ from lib.dash.dash_config import (
     ROUTE_FUNDAMENTALS,
     ROUTE_FLOW,
     ROUTE_OPTIMIZE,
+    ROUTE_SECTOR_FLOWS,
     ROUTE_TERMINAL,
     ROUTE_TICKER_TERMINAL,
 )
@@ -37,12 +38,14 @@ def parse_path(pathname: str | None) -> tuple[str, str | None]:
     """Parse pathname into (route_name, ticker).
 
     route_name is one of: terminal, fundamentals, flow, optimize,
-    ticker_terminal, unknown.
+    ticker_terminal, sector_flows, unknown.
     """
     segments = _split_path(pathname)
     if not segments:
         return 'terminal', None
     head = segments[0].lower()
+    if head == ROUTE_SECTOR_FLOWS.lstrip('/') and len(segments) == 1:
+        return 'sector_flows', None
     if head == _FUNDAMENTALS_PATH.lstrip('/'):
         ticker = segments[1].strip().upper() if len(segments) > 1 else None
         return 'fundamentals', ticker or None
@@ -85,6 +88,10 @@ def is_flow_route(pathname: str | None) -> bool:
     """True when the browser URL targets the flow scanner workspace."""
     route, _ = parse_path(pathname)
     return route == 'flow'
+
+
+def is_sector_flows_route(pathname: str | None) -> bool:
+    return parse_path(pathname)[0] == 'sector_flows'
 
 
 def is_optimize_route(pathname: str | None) -> bool:
